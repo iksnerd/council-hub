@@ -32,7 +32,7 @@ docker run -d --name council-hub \
 Runs only the MCP server over stdin/stdout for direct integration with CLI agents:
 
 ```bash
-docker run -i --rm \
+docker run -i --rm --no-healthcheck \
   -v ~/Documents/council-hub:/data \
   -e COUNCIL_DB=/data/council.db \
   -e COUNCIL_TRANSPORT=stdio \
@@ -41,7 +41,7 @@ docker run -i --rm \
 
 ### Claude Code
 
-Add to your project's `.mcp.json`:
+**Project-level** — add to `.mcp.json` in your project root:
 
 ```json
 {
@@ -49,7 +49,7 @@ Add to your project's `.mcp.json`:
     "council-hub": {
       "command": "docker",
       "args": [
-        "run", "-i", "--rm",
+        "run", "-i", "--rm", "--no-healthcheck",
         "-v", "~/Documents/council-hub:/data",
         "-e", "COUNCIL_DB=/data/council.db",
         "-e", "COUNCIL_TRANSPORT=stdio",
@@ -59,6 +59,8 @@ Add to your project's `.mcp.json`:
   }
 }
 ```
+
+**Global** — add the same `council-hub` entry to `mcpServers` in `~/.claude.json` for all projects.
 
 ### Gemini CLI
 
@@ -70,7 +72,7 @@ Add to `~/.gemini/settings.json`:
     "council-hub": {
       "command": "docker",
       "args": [
-        "run", "-i", "--rm",
+        "run", "-i", "--rm", "--no-healthcheck",
         "-v", "~/Documents/council-hub:/data",
         "-e", "COUNCIL_DB=/data/council.db",
         "-e", "COUNCIL_TRANSPORT=stdio",
