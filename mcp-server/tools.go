@@ -94,6 +94,17 @@ type ArchiveRoomInput struct {
 	Delete string `json:"delete"`
 }
 
+// GetMessagesInput represents the parameters for fetching messages by ID.
+type GetMessagesInput struct {
+	MessageIDs string `json:"message_ids"`
+}
+
+// ReadRecentInput represents the parameters for reading recent messages.
+type ReadRecentInput struct {
+	RoomID string `json:"room_id"`
+	Limit  int    `json:"limit"`
+}
+
 var validMessageTypes = map[string]bool{
 	"message":  true,
 	"thought":  true,
@@ -141,8 +152,18 @@ func registerTools(cs *CouncilServer) {
 
 	mcp.AddTool(cs.mcp, &mcp.Tool{
 		Name:        "search_messages",
-		Description: "Search messages across rooms by keyword, author, and/or message type. Returns matching messages sorted by most recent.",
+		Description: "Search messages across rooms by keyword, author, and/or message type. All filter params are optional (pass empty string to skip). Returns matching messages sorted by most recent with truncated snippets. Use get_messages to fetch full content by ID.",
 	}, cs.handleSearchMessages)
+
+	mcp.AddTool(cs.mcp, &mcp.Tool{
+		Name:        "get_messages",
+		Description: "Fetch the full content of specific messages by their IDs. Use this after search_messages to retrieve complete message text without loading entire transcripts.",
+	}, cs.handleGetMessages)
+
+	mcp.AddTool(cs.mcp, &mcp.Tool{
+		Name:        "read_recent",
+		Description: "Read the last N messages from a room (default 10, max 50). More token-efficient than read_transcript for long-running rooms.",
+	}, cs.handleReadRecent)
 
 	mcp.AddTool(cs.mcp, &mcp.Tool{
 		Name:        "room_stats",
@@ -398,10 +419,91 @@ func (cs *CouncilServer) handleSearchMessages(ctx context.Context, req *mcp.Call
 	for _, m := range messages {
 		ts := m.Timestamp.Format("2006-01-02 15:04:05")
 		snippet := m.Content
-		if len(snippet) > 200 {
-			snippet = snippet[:200] + "..."
+		if len(snippet) > 300 {
+			snippet = snippet[:300] + "..."
 		}
 		fmt.Fprintf(&b, "- **#%d** [%s] %s in **%s** (%s):\n  %s\n\n", m.ID, ts, m.Author, m.RoomID, m.MessageType, snippet)
+	}
+
+	return msg(b.String())
+}
+
+func (cs *CouncilServer) handleGetMessages(ctx context.Context, req *mcp.CallToolRequest, args GetMessagesInput) (*mcp.CallToolResult, ToolOutput, error) {
+	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: text}},
+		}, ToolOutput{Message: text}, nil
+	}
+
+	if args.MessageIDs == "" {
+		return msg("Error: message_ids is required (comma-separated list of message IDs).")
+	}
+
+	parts := strings.Split(args.MessageIDs, ",")
+	var ids []int64
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		var id int64
+		if _, err := fmt.Sscanf(p, "%d", &id); err != nil {
+			return msg(fmt.Sprintf("Error: '%s' is not a valid message ID.", p))
+		}
+		ids = append(ids, id)
+	}
+
+	messages, err := cs.getMessagesByIDs(ids)
+	if err != nil {
+		cs.logger.Error("Failed to get messages", "error", err)
+		return nil, ToolOutput{}, err
+	}
+
+	if len(messages) == 0 {
+		return msg("No messages found with the given IDs.")
+	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "Found %d message(s):\n\n", len(messages))
+	for _, m := range messages {
+		ts := m.Timestamp.Format("2006-01-02 15:04:05")
+		fmt.Fprintf(&b, "---\n**#%d** [%s] %s in **%s** (%s):\n\n%s\n\n", m.ID, ts, m.Author, m.RoomID, m.MessageType, m.Content)
+	}
+
+	return msg(b.String())
+}
+
+func (cs *CouncilServer) handleReadRecent(ctx context.Context, req *mcp.CallToolRequest, args ReadRecentInput) (*mcp.CallToolResult, ToolOutput, error) {
+	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: text}},
+		}, ToolOutput{Message: text}, nil
+	}
+
+	if args.RoomID == "" {
+		return msg("Error: room_id is required.")
+	}
+
+	messages, err := cs.getRecentMessages(args.RoomID, args.Limit)
+	if err != nil {
+		return msg(fmt.Sprintf("Error: %s", err.Error()))
+	}
+
+	room, _ := cs.getRoom(args.RoomID)
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "# %s [%s] — last %d message(s)\n", room.ID, room.Status, len(messages))
+	if room.Description != "" {
+		fmt.Fprintf(&b, "**Topic:** %s\n", room.Description)
+	}
+	b.WriteString("---\n")
+
+	for _, m := range messages {
+		ts := m.Timestamp.Format("2006-01-02 15:04:05")
+		if m.IsSummary {
+			fmt.Fprintf(&b, "\n**[%s] SUMMARY:**\n%s\n", ts, m.Content)
+		} else if m.MessageType != "" && m.MessageType != "message" {
+			fmt.Fprintf(&b, "\n**[%s] %s (%s):**\n%s\n", ts, m.Author, m.MessageType, m.Content)
+		} else {
+			fmt.Fprintf(&b, "\n**[%s] %s:**\n%s\n", ts, m.Author, m.Content)
+		}
 	}
 
 	return msg(b.String())

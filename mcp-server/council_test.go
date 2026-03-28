@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log/slog"
 	"os"
 	"strings"
@@ -556,6 +557,198 @@ func TestArchiveRoomNotFound(t *testing.T) {
 	_, err := cs.archiveRoom("nonexistent")
 	if err == nil {
 		t.Fatal("expected error for nonexistent room")
+	}
+}
+
+// -- get_messages tests --
+
+func TestGetMessagesByIDs(t *testing.T) {
+	cs := setupTestServer(t)
+	cs.createRoom("getmsg-room", "Get messages test", "", "", "", "")
+	id1, _ := cs.postMessage("getmsg-room", "Claude", "Full content of message one with lots of detail", "thought")
+
+	msgs, err := cs.getMessagesByIDs([]int64{id1})
+	if err != nil {
+		t.Fatalf("getMessagesByIDs failed: %v", err)
+	}
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(msgs))
+	}
+	if msgs[0].Content != "Full content of message one with lots of detail" {
+		t.Errorf("expected full content, got '%s'", msgs[0].Content)
+	}
+	if msgs[0].Author != "Claude" {
+		t.Errorf("expected author 'Claude', got '%s'", msgs[0].Author)
+	}
+}
+
+func TestGetMessagesByIDsMultiple(t *testing.T) {
+	cs := setupTestServer(t)
+	cs.createRoom("getmsg-room-a", "Room A", "", "", "", "")
+	cs.createRoom("getmsg-room-b", "Room B", "", "", "", "")
+	id1, _ := cs.postMessage("getmsg-room-a", "Claude", "Message in room A", "message")
+	id2, _ := cs.postMessage("getmsg-room-b", "Gemini", "Message in room B", "review")
+	id3, _ := cs.postMessage("getmsg-room-a", "Amp", "Another in room A", "decision")
+
+	msgs, err := cs.getMessagesByIDs([]int64{id1, id2, id3})
+	if err != nil {
+		t.Fatalf("getMessagesByIDs failed: %v", err)
+	}
+	if len(msgs) != 3 {
+		t.Fatalf("expected 3 messages, got %d", len(msgs))
+	}
+	if msgs[0].RoomID != "getmsg-room-a" || msgs[1].RoomID != "getmsg-room-b" || msgs[2].RoomID != "getmsg-room-a" {
+		t.Errorf("unexpected room IDs: %s, %s, %s", msgs[0].RoomID, msgs[1].RoomID, msgs[2].RoomID)
+	}
+}
+
+func TestGetMessagesByIDsNotFound(t *testing.T) {
+	cs := setupTestServer(t)
+
+	msgs, err := cs.getMessagesByIDs([]int64{99999, 99998})
+	if err != nil {
+		t.Fatalf("getMessagesByIDs failed: %v", err)
+	}
+	if len(msgs) != 0 {
+		t.Errorf("expected 0 messages, got %d", len(msgs))
+	}
+}
+
+func TestGetMessagesByIDsEmpty(t *testing.T) {
+	cs := setupTestServer(t)
+
+	msgs, err := cs.getMessagesByIDs([]int64{})
+	if err != nil {
+		t.Fatalf("getMessagesByIDs failed: %v", err)
+	}
+	if msgs != nil {
+		t.Errorf("expected nil, got %v", msgs)
+	}
+}
+
+// -- read_recent tests --
+
+func TestGetRecentMessages(t *testing.T) {
+	cs := setupTestServer(t)
+	cs.createRoom("recent-room", "Recent test", "", "", "", "")
+	for i := 0; i < 10; i++ {
+		cs.postMessage("recent-room", "Claude", fmt.Sprintf("Message %d", i), "message")
+	}
+
+	msgs, err := cs.getRecentMessages("recent-room", 3)
+	if err != nil {
+		t.Fatalf("getRecentMessages failed: %v", err)
+	}
+	if len(msgs) != 3 {
+		t.Fatalf("expected 3 messages, got %d", len(msgs))
+	}
+	// Should be chronological (last 3)
+	if !strings.Contains(msgs[0].Content, "Message 7") {
+		t.Errorf("expected 'Message 7', got '%s'", msgs[0].Content)
+	}
+	if !strings.Contains(msgs[2].Content, "Message 9") {
+		t.Errorf("expected 'Message 9', got '%s'", msgs[2].Content)
+	}
+}
+
+func TestGetRecentMessagesDefault(t *testing.T) {
+	cs := setupTestServer(t)
+	cs.createRoom("recent-default", "Default limit test", "", "", "", "")
+	for i := 0; i < 15; i++ {
+		cs.postMessage("recent-default", "Claude", fmt.Sprintf("Message %d", i), "message")
+	}
+
+	msgs, err := cs.getRecentMessages("recent-default", 0)
+	if err != nil {
+		t.Fatalf("getRecentMessages failed: %v", err)
+	}
+	if len(msgs) != 10 {
+		t.Errorf("expected default 10 messages, got %d", len(msgs))
+	}
+}
+
+func TestGetRecentMessagesOverLimit(t *testing.T) {
+	cs := setupTestServer(t)
+	cs.createRoom("recent-cap", "Cap test", "", "", "", "")
+	for i := 0; i < 60; i++ {
+		cs.postMessage("recent-cap", "Claude", fmt.Sprintf("Message %d", i), "message")
+	}
+
+	msgs, err := cs.getRecentMessages("recent-cap", 100)
+	if err != nil {
+		t.Fatalf("getRecentMessages failed: %v", err)
+	}
+	if len(msgs) != 50 {
+		t.Errorf("expected capped 50 messages, got %d", len(msgs))
+	}
+}
+
+func TestGetRecentMessagesEmptyRoom(t *testing.T) {
+	cs := setupTestServer(t)
+	cs.createRoom("recent-empty", "Empty room", "", "", "", "")
+
+	msgs, err := cs.getRecentMessages("recent-empty", 5)
+	if err != nil {
+		t.Fatalf("getRecentMessages failed: %v", err)
+	}
+	if len(msgs) != 0 {
+		t.Errorf("expected 0 messages, got %d", len(msgs))
+	}
+}
+
+func TestGetRecentMessagesNotFound(t *testing.T) {
+	cs := setupTestServer(t)
+
+	_, err := cs.getRecentMessages("nonexistent", 5)
+	if err == nil {
+		t.Fatal("expected error for nonexistent room")
+	}
+}
+
+// -- search_messages additional tests --
+
+func TestSearchMessagesGlobal(t *testing.T) {
+	cs := setupTestServer(t)
+	cs.createRoom("search-global-a", "Room A", "proj", "", "", "")
+	cs.createRoom("search-global-b", "Room B", "proj", "", "", "")
+	cs.postMessage("search-global-a", "Claude", "BEP 44 analysis here", "thought")
+	cs.postMessage("search-global-b", "Gemini", "BEP 46 analysis here", "review")
+
+	// Search across all rooms with only query
+	msgs, err := cs.searchMessages("BEP", "", "", "", 20)
+	if err != nil {
+		t.Fatalf("searchMessages failed: %v", err)
+	}
+	if len(msgs) != 2 {
+		t.Errorf("expected 2 global results, got %d", len(msgs))
+	}
+	// Verify they're from different rooms
+	rooms := map[string]bool{}
+	for _, m := range msgs {
+		rooms[m.RoomID] = true
+	}
+	if len(rooms) != 2 {
+		t.Errorf("expected results from 2 rooms, got %d", len(rooms))
+	}
+}
+
+func TestSearchMessagesSnippetLength(t *testing.T) {
+	cs := setupTestServer(t)
+	cs.createRoom("search-snippet", "Snippet test", "", "", "", "")
+	longContent := strings.Repeat("A", 400)
+	cs.postMessage("search-snippet", "Claude", longContent, "message")
+
+	msgs, err := cs.searchMessages("AAAA", "", "", "search-snippet", 1)
+	if err != nil {
+		t.Fatalf("searchMessages failed: %v", err)
+	}
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(msgs))
+	}
+	// The DB returns full content; truncation happens in the handler
+	// Verify the DB returns full content
+	if len(msgs[0].Content) != 400 {
+		t.Errorf("expected full 400 char content from DB, got %d", len(msgs[0].Content))
 	}
 }
 

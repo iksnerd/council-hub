@@ -204,6 +204,76 @@ func (cs *CouncilServer) updateRoom(roomID, description, project, techStack, tag
 	return nil
 }
 
+func (cs *CouncilServer) getMessagesByIDs(ids []int64) ([]Message, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+
+	placeholders := make([]string, len(ids))
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+
+	query := fmt.Sprintf(`SELECT id, room_id, author, content, message_type, is_summary, timestamp FROM messages WHERE id IN (%s) ORDER BY id ASC`, strings.Join(placeholders, ","))
+	rows, err := cs.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var msgs []Message
+	for rows.Next() {
+		var m Message
+		if err := rows.Scan(&m.ID, &m.RoomID, &m.Author, &m.Content, &m.MessageType, &m.IsSummary, &m.Timestamp); err != nil {
+			return nil, err
+		}
+		msgs = append(msgs, m)
+	}
+	return msgs, rows.Err()
+}
+
+func (cs *CouncilServer) getRecentMessages(roomID string, limit int) ([]Message, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+	if limit > 50 {
+		limit = 50
+	}
+
+	// Verify room exists
+	_, err := cs.getRoom(roomID)
+	if err != nil {
+		return nil, fmt.Errorf("room '%s' not found", roomID)
+	}
+
+	// Get last N messages in reverse, then flip to chronological
+	rows, err := cs.db.Query(`SELECT id, room_id, author, content, message_type, is_summary, timestamp FROM messages WHERE room_id = ? ORDER BY id DESC LIMIT ?`, roomID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var msgs []Message
+	for rows.Next() {
+		var m Message
+		if err := rows.Scan(&m.ID, &m.RoomID, &m.Author, &m.Content, &m.MessageType, &m.IsSummary, &m.Timestamp); err != nil {
+			return nil, err
+		}
+		msgs = append(msgs, m)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Reverse to chronological order
+	for i, j := 0, len(msgs)-1; i < j; i, j = i+1, j-1 {
+		msgs[i], msgs[j] = msgs[j], msgs[i]
+	}
+	return msgs, nil
+}
+
 func (cs *CouncilServer) deleteRoom(roomID string) error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
