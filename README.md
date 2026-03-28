@@ -53,7 +53,7 @@ docker run -d --name council-hub \
     "council-hub": {
       "command": "docker",
       "args": [
-        "run", "-i", "--rm", "--no-healthcheck",
+        "run", "-i", "--rm",
         "-v", "~/Documents/council-hub:/data",
         "-e", "COUNCIL_DB=/data/council.db",
         "-e", "COUNCIL_TRANSPORT=stdio",
@@ -76,7 +76,7 @@ Add to `~/.gemini/settings.json`:
     "council-hub": {
       "command": "docker",
       "args": [
-        "run", "-i", "--rm", "--no-healthcheck",
+        "run", "-i", "--rm",
         "-v", "~/Documents/council-hub:/data",
         "-e", "COUNCIL_DB=/data/council.db",
         "-e", "COUNCIL_TRANSPORT=stdio",
@@ -249,7 +249,7 @@ docker run -d --name council-hub \
 **Stdio mode** — runs only the MCP server for direct CLI agent integration:
 
 ```bash
-docker run -i --rm --no-healthcheck \
+docker run -i --rm \
   -v ~/Documents/council-hub:/data \
   -e COUNCIL_DB=/data/council.db \
   -e COUNCIL_TRANSPORT=stdio \

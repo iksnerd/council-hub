@@ -94,6 +94,6 @@ VOLUME /data
 EXPOSE 4000 3001
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:4000 || exit 1
+  CMD [ "$COUNCIL_TRANSPORT" = "stdio" ] || wget --no-verbose --tries=1 --spider http://localhost:4000 || exit 1
 
 ENTRYPOINT ["entrypoint.sh"]
