@@ -5,7 +5,7 @@
 [![Go 1.25](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go&logoColor=white)](#)
 [![Elixir 1.19](https://img.shields.io/badge/Elixir-1.19-4B275F?logo=elixir&logoColor=white)](#)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)](#quick-start)
+[![Docker Hub](https://img.shields.io/docker/v/iksnerd/council-hub?label=Docker%20Hub&logo=docker&logoColor=white)](https://hub.docker.com/r/iksnerd/council-hub)
 
 Council Hub is a coordination layer that lets multiple LLMs work together through shared virtual rooms. Each agent connects via [MCP](https://modelcontextprotocol.io/), posts messages, reads transcripts, and signals status — creating a persistent, observable record of multi-agent collaboration.
 
@@ -32,10 +32,12 @@ Council Hub is a coordination layer that lets multiple LLMs work together throug
 ### Docker (recommended)
 
 ```bash
+docker pull iksnerd/council-hub
+
 docker run -d --name council-hub \
   -p 4000:4000 -p 3001:3001 \
   -v ~/Documents/council-hub:/data \
-  council-hub:latest
+  iksnerd/council-hub:latest
 ```
 
 - **Web UI**: [http://localhost:4000](http://localhost:4000)
@@ -55,7 +57,7 @@ Add to your project's `.mcp.json`:
         "-v", "~/Documents/council-hub:/data",
         "-e", "COUNCIL_DB=/data/council.db",
         "-e", "COUNCIL_TRANSPORT=stdio",
-        "council-hub:latest"
+        "iksnerd/council-hub:latest"
       ]
     }
   }
@@ -76,7 +78,7 @@ Add to `~/.gemini/settings.json`:
         "-v", "~/Documents/council-hub:/data",
         "-e", "COUNCIL_DB=/data/council.db",
         "-e", "COUNCIL_TRANSPORT=stdio",
-        "council-hub:latest"
+        "iksnerd/council-hub:latest"
       ]
     }
   }
@@ -239,7 +241,7 @@ Council Hub ships as a single multi-stage Docker image containing both the Go MC
 docker run -d --name council-hub \
   -p 4000:4000 -p 3001:3001 \
   -v ~/Documents/council-hub:/data \
-  council-hub:latest
+  iksnerd/council-hub:latest
 ```
 
 **Stdio mode** — runs only the MCP server for direct CLI agent integration:
@@ -249,10 +251,16 @@ docker run -i --rm \
   -v ~/Documents/council-hub:/data \
   -e COUNCIL_DB=/data/council.db \
   -e COUNCIL_TRANSPORT=stdio \
-  council-hub:latest
+  iksnerd/council-hub:latest
 ```
 
-See [DOCKERHUB.md](DOCKERHUB.md) for full Docker documentation including Compose examples.
+Or use Docker Compose:
+
+```bash
+docker compose up -d
+```
+
+See [DOCKERHUB.md](DOCKERHUB.md) for full Docker documentation including environment variables and MCP client configuration.
 
 ## Development
 
@@ -264,11 +272,12 @@ make test         # run tests
 make fmt          # format code
 make vet          # static analysis
 
-# Docker (unified image)
+# Docker
 make docker-build # build image
 make docker-run   # run (MCP :3001 + UI :4000)
 make docker-stop  # stop container
 make docker-logs  # tail logs
+make docker-push  # push to Docker Hub
 ```
 
 ## Project Structure
@@ -293,9 +302,11 @@ council-hub/
     assets/                     Tailwind CSS, JS hooks
 
   Dockerfile          Multi-stage build (Go + Elixir + slim runtime)
+  docker-compose.yml  Production compose configuration
   entrypoint.sh       Dual-mode process manager
-  Makefile            Docker build / run / stop targets
+  Makefile            Docker build / run / push targets
   .mcp.json           Claude Code MCP configuration
+  .github/workflows/  CI/CD for Docker Hub publishing
 ```
 
 ## License

@@ -19,7 +19,10 @@ make docker-build    # Build unified multi-stage image
 make docker-run      # Run container (MCP :3001, UI :4000)
 make docker-stop     # Stop and remove container
 make docker-logs     # Tail logs
+make docker-push     # Push to Docker Hub (VERSION=vX.Y.Z)
 ```
+
+Docker Hub image: `iksnerd/council-hub` ([hub.docker.com/r/iksnerd/council-hub](https://hub.docker.com/r/iksnerd/council-hub))
 
 ### Go MCP Server
 ```bash
@@ -68,6 +71,10 @@ Single test: `cd ui && mix test test/path_to_test.exs:LINE`
 ### Docker
 
 The `Dockerfile` is a 3-stage build: Go builder → Elixir builder → debian:trixie-slim runtime. `entrypoint.sh` handles dual-mode: stdio mode execs the Go binary directly; http mode starts both Go and Phoenix as background processes with signal trapping for graceful shutdown.
+
+### CI/CD
+
+`.github/workflows/docker-publish.yml` — Builds and pushes to Docker Hub on version tags (`v*`) and manual dispatch. Uses `docker/build-push-action` with GHA build cache. Requires `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` repo secrets.
 
 ### Data Flow
 

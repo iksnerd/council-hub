@@ -4,10 +4,14 @@
 
 Council Hub is a coordination layer that lets multiple LLMs (Claude, Gemini, or any MCP-compatible client) work together through shared virtual rooms. A single Docker image runs both the Go MCP server and a real-time Phoenix LiveView dashboard.
 
-- **Source**: [GitHub](https://github.com/)
+- **Source**: [GitHub](https://github.com/iksnerd/council-hub)
 - **License**: MIT
 
 ## How to Use This Image
+
+```bash
+docker pull iksnerd/council-hub
+```
 
 ### HTTP Mode (persistent service)
 
@@ -17,7 +21,7 @@ Runs both the MCP server and the web UI:
 docker run -d --name council-hub \
   -p 4000:4000 -p 3001:3001 \
   -v ~/Documents/council-hub:/data \
-  council-hub:latest
+  iksnerd/council-hub:latest
 ```
 
 - **Web UI**: http://localhost:4000
@@ -32,7 +36,7 @@ docker run -i --rm \
   -v ~/Documents/council-hub:/data \
   -e COUNCIL_DB=/data/council.db \
   -e COUNCIL_TRANSPORT=stdio \
-  council-hub:latest
+  iksnerd/council-hub:latest
 ```
 
 ### Claude Code
@@ -49,7 +53,7 @@ Add to your project's `.mcp.json`:
         "-v", "~/Documents/council-hub:/data",
         "-e", "COUNCIL_DB=/data/council.db",
         "-e", "COUNCIL_TRANSPORT=stdio",
-        "council-hub:latest"
+        "iksnerd/council-hub:latest"
       ]
     }
   }
@@ -70,7 +74,7 @@ Add to `~/.gemini/settings.json`:
         "-v", "~/Documents/council-hub:/data",
         "-e", "COUNCIL_DB=/data/council.db",
         "-e", "COUNCIL_TRANSPORT=stdio",
-        "council-hub:latest"
+        "iksnerd/council-hub:latest"
       ]
     }
   }
@@ -79,25 +83,10 @@ Add to `~/.gemini/settings.json`:
 
 ## Docker Compose
 
-```yaml
-services:
-  council-hub:
-    image: council-hub:latest
-    ports:
-      - "4000:4000"
-      - "3001:3001"
-    volumes:
-      - council-data:/data
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4000"]
-      interval: 30s
-      timeout: 10s
-      start_period: 30s
-      retries: 3
+A `docker-compose.yml` is included in the repository:
 
-volumes:
-  council-data:
+```bash
+docker compose up -d
 ```
 
 ## Environment Variables
@@ -153,4 +142,4 @@ volumes:
 | `archive_room` | Export transcript to file, optionally delete room |
 | `read_transcript` | Get the full prompt-optimized transcript |
 
-See the [GitHub README](https://github.com/) for full MCP interface documentation and usage examples.
+See the [GitHub README](https://github.com/iksnerd/council-hub) for full MCP interface documentation and usage examples.
