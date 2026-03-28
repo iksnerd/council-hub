@@ -1,0 +1,49 @@
+# Go
+mcp-server/council-hub
+mcp-server/build/
+
+# Elixir
+ui/_build/
+ui/deps/
+ui/cover/
+ui/doc/
+ui/.fetch
+ui/tmp/
+ui/priv/static/assets/
+ui/priv/static/cache_manifest.json
+ui/assets/node_modules/
+ui/council_hub_ui-*.tar
+erl_crash.dump
+
+# SQLite
+*.db
+*.db-wal
+*.db-shm
+
+# Test artifacts
+*.test
+*.out
+*.ez
+coverage.*
+
+# Go workspace
+go.work
+go.work.sum
+
+# Environment
+.env
+.env.*
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Agent configs (contain local paths)
+.claude/
+.gemini/
+.mcp.json
+
+# OS
+.DS_Store
+Thumbs.db

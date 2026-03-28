@@ -1,0 +1,15 @@
+.git/
+mcp-server/build/
+mcp-server/council-hub
+mcp-server/.idea/
+ui/_build/
+ui/deps/
+ui/node_modules/
+ui/priv/static/assets/
+ui/priv/static/cache_manifest.json
+*.db
+*.db-shm
+*.db-wal
+.claude/
+.gemini/
+.idea/

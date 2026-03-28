@@ -1,0 +1,530 @@
+package main
+
+import (
+	"database/sql"
+	"fmt"
+	"log/slog"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"time"
+
+	_ "github.com/mattn/go-sqlite3"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+)
+
+// Room represents a council room.
+type Room struct {
+	ID           string
+	Description  string
+	Status       string
+	Project      string
+	TechStack    string
+	Tags         string
+	SystemPrompt string
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+}
+
+// Message represents a message in a council room.
+type Message struct {
+	ID          int64
+	RoomID      string
+	Author      string
+	Content     string
+	MessageType string
+	IsSummary   bool
+	Timestamp   time.Time
+}
+
+// CouncilServer holds the database, mutex, MCP server, and logger.
+type CouncilServer struct {
+	db     *sql.DB
+	dbPath string
+	mu     sync.Mutex
+	mcp    *mcp.Server
+	logger *slog.Logger
+}
+
+// NewCouncilServer creates a new CouncilServer with an initialized SQLite database.
+func NewCouncilServer(dbPath string, logger *slog.Logger) (*CouncilServer, error) {
+	dsn := dbPath + "?_journal=WAL&_busy_timeout=5000"
+	if dbPath == ":memory:" {
+		dsn = ":memory:"
+	}
+
+	db, err := sql.Open("sqlite3", dsn)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open database: %w", err)
+	}
+
+	if err := initSchema(db); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to initialize schema: %w", err)
+	}
+
+	mcpServer := mcp.NewServer(&mcp.Implementation{
+		Name:    "council-hub",
+		Version: "0.1.0",
+	}, &mcp.ServerOptions{
+		Logger:       logger,
+		Capabilities: &mcp.ServerCapabilities{},
+	})
+
+	return &CouncilServer{
+		db:     db,
+		dbPath: dbPath,
+		mcp:    mcpServer,
+		logger: logger,
+	}, nil
+}
+
+func initSchema(db *sql.DB) error {
+	schema := `
+	CREATE TABLE IF NOT EXISTS rooms (
+		id TEXT PRIMARY KEY,
+		description TEXT,
+		status TEXT DEFAULT 'active',
+		project TEXT DEFAULT '',
+		tech_stack TEXT DEFAULT '',
+		tags TEXT DEFAULT '',
+		system_prompt TEXT DEFAULT '',
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+
+	CREATE TABLE IF NOT EXISTS messages (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		room_id TEXT,
+		author TEXT,
+		content TEXT,
+		message_type TEXT DEFAULT 'message',
+		is_summary BOOLEAN DEFAULT 0,
+		timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY(room_id) REFERENCES rooms(id)
+	);`
+
+	_, err := db.Exec(schema)
+	return err
+}
+
+func (cs *CouncilServer) createRoom(id, description, project, techStack, tags, systemPrompt string) error {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+
+	_, err := cs.db.Exec(
+		`INSERT OR IGNORE INTO rooms (id, description, project, tech_stack, tags, system_prompt) VALUES (?, ?, ?, ?, ?, ?)`,
+		id, description, project, techStack, tags, systemPrompt,
+	)
+	return err
+}
+
+func (cs *CouncilServer) postMessage(roomID, author, content, messageType string) (int64, error) {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+
+	if messageType == "" {
+		messageType = "message"
+	}
+
+	result, err := cs.db.Exec(
+		`INSERT INTO messages (room_id, author, content, message_type) VALUES (?, ?, ?, ?)`,
+		roomID, author, content, messageType,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	// Update room's updated_at
+	cs.db.Exec(`UPDATE rooms SET updated_at = CURRENT_TIMESTAMP WHERE id = ?`, roomID)
+
+	id, err := result.LastInsertId()
+	return id, err
+}
+
+func (cs *CouncilServer) updateStatus(roomID, status string) error {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+
+	res, err := cs.db.Exec(
+		`UPDATE rooms SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+		status, roomID,
+	)
+	if err != nil {
+		return err
+	}
+	rows, _ := res.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("room '%s' not found", roomID)
+	}
+	return nil
+}
+
+func (cs *CouncilServer) updateRoom(roomID, description, project, techStack, tags, systemPrompt string) error {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+
+	// Build dynamic UPDATE — only set fields that are non-empty.
+	setClauses := []string{"updated_at = CURRENT_TIMESTAMP"}
+	var args []any
+
+	if description != "" {
+		setClauses = append(setClauses, "description = ?")
+		args = append(args, description)
+	}
+	if project != "" {
+		setClauses = append(setClauses, "project = ?")
+		args = append(args, project)
+	}
+	if techStack != "" {
+		setClauses = append(setClauses, "tech_stack = ?")
+		args = append(args, techStack)
+	}
+	if tags != "" {
+		setClauses = append(setClauses, "tags = ?")
+		args = append(args, tags)
+	}
+	if systemPrompt != "" {
+		setClauses = append(setClauses, "system_prompt = ?")
+		args = append(args, systemPrompt)
+	}
+
+	query := fmt.Sprintf("UPDATE rooms SET %s WHERE id = ?", strings.Join(setClauses, ", "))
+	args = append(args, roomID)
+
+	res, err := cs.db.Exec(query, args...)
+	if err != nil {
+		return err
+	}
+	rows, _ := res.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("room '%s' not found", roomID)
+	}
+	return nil
+}
+
+func (cs *CouncilServer) deleteRoom(roomID string) error {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+
+	res, err := cs.db.Exec(`DELETE FROM rooms WHERE id = ?`, roomID)
+	if err != nil {
+		return err
+	}
+	rows, _ := res.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("room '%s' not found", roomID)
+	}
+
+	cs.db.Exec(`DELETE FROM messages WHERE room_id = ?`, roomID)
+	return nil
+}
+
+// RoomStats holds aggregate statistics for a room.
+type RoomStats struct {
+	RoomID       string
+	Status       string
+	MessageCount int
+	Participants map[string]int // author -> message count
+	FirstMessage time.Time
+	LastMessage  time.Time
+}
+
+func (cs *CouncilServer) searchMessages(query, author, messageType, roomID string, limit int) ([]Message, error) {
+	where := `WHERE 1=1`
+	var args []any
+
+	if query != "" {
+		where += ` AND content LIKE '%' || ? || '%'`
+		args = append(args, query)
+	}
+	if author != "" {
+		where += ` AND author = ?`
+		args = append(args, author)
+	}
+	if messageType != "" {
+		where += ` AND message_type = ?`
+		args = append(args, messageType)
+	}
+	if roomID != "" {
+		where += ` AND room_id = ?`
+		args = append(args, roomID)
+	}
+
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+
+	q := fmt.Sprintf(`SELECT id, room_id, author, content, message_type, is_summary, timestamp FROM messages %s ORDER BY timestamp DESC LIMIT ?`, where)
+	args = append(args, limit)
+
+	rows, err := cs.db.Query(q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var msgs []Message
+	for rows.Next() {
+		var m Message
+		if err := rows.Scan(&m.ID, &m.RoomID, &m.Author, &m.Content, &m.MessageType, &m.IsSummary, &m.Timestamp); err != nil {
+			return nil, err
+		}
+		msgs = append(msgs, m)
+	}
+	return msgs, rows.Err()
+}
+
+func (cs *CouncilServer) getRoomStats(roomID string) (RoomStats, error) {
+	var stats RoomStats
+	stats.RoomID = roomID
+	stats.Participants = make(map[string]int)
+
+	// Verify room exists and get status
+	var status string
+	err := cs.db.QueryRow(`SELECT status FROM rooms WHERE id = ?`, roomID).Scan(&status)
+	if err != nil {
+		return stats, fmt.Errorf("room '%s' not found", roomID)
+	}
+	stats.Status = status
+
+	// Get aggregate stats
+	var firstMsg, lastMsg sql.NullString
+	err = cs.db.QueryRow(`SELECT COUNT(*), MIN(timestamp), MAX(timestamp) FROM messages WHERE room_id = ?`, roomID).
+		Scan(&stats.MessageCount, &firstMsg, &lastMsg)
+	if err != nil {
+		return stats, err
+	}
+	if firstMsg.Valid {
+		stats.FirstMessage, _ = time.Parse("2006-01-02 15:04:05", firstMsg.String)
+	}
+	if lastMsg.Valid {
+		stats.LastMessage, _ = time.Parse("2006-01-02 15:04:05", lastMsg.String)
+	}
+
+	// Get per-author counts
+	rows, err := cs.db.Query(`SELECT author, COUNT(*) FROM messages WHERE room_id = ? GROUP BY author ORDER BY COUNT(*) DESC`, roomID)
+	if err != nil {
+		return stats, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var author string
+		var count int
+		if err := rows.Scan(&author, &count); err != nil {
+			return stats, err
+		}
+		stats.Participants[author] = count
+	}
+
+	return stats, rows.Err()
+}
+
+func (cs *CouncilServer) deleteMessages(ids []int64) (int64, error) {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+
+	if len(ids) == 0 {
+		return 0, nil
+	}
+
+	placeholders := make([]string, len(ids))
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+
+	query := fmt.Sprintf(`DELETE FROM messages WHERE id IN (%s)`, strings.Join(placeholders, ","))
+	res, err := cs.db.Exec(query, args...)
+	if err != nil {
+		return 0, err
+	}
+
+	return res.RowsAffected()
+}
+
+func (cs *CouncilServer) archiveRoom(roomID string) (string, error) {
+	room, err := cs.getRoom(roomID)
+	if err != nil {
+		return "", fmt.Errorf("room '%s' not found", roomID)
+	}
+
+	messages, err := cs.getTranscript(roomID)
+	if err != nil {
+		return "", fmt.Errorf("failed to read transcript: %w", err)
+	}
+
+	transcript := formatTranscript(room, messages)
+
+	// Derive archive dir from DB path
+	archiveDir := filepath.Join(filepath.Dir(cs.dbPath), "archives")
+	if cs.dbPath == ":memory:" {
+		archiveDir = "archives"
+	}
+
+	if err := os.MkdirAll(archiveDir, 0755); err != nil {
+		return "", fmt.Errorf("failed to create archive directory: %w", err)
+	}
+
+	archivePath := filepath.Join(archiveDir, roomID+".md")
+	if err := os.WriteFile(archivePath, []byte(transcript), 0644); err != nil {
+		return "", fmt.Errorf("failed to write archive: %w", err)
+	}
+
+	return archivePath, nil
+}
+
+func (cs *CouncilServer) getRoom(roomID string) (Room, error) {
+	var r Room
+	err := cs.db.QueryRow(
+		`SELECT id, description, status, project, tech_stack, tags, system_prompt, created_at, updated_at FROM rooms WHERE id = ?`,
+		roomID,
+	).Scan(&r.ID, &r.Description, &r.Status, &r.Project, &r.TechStack, &r.Tags, &r.SystemPrompt, &r.CreatedAt, &r.UpdatedAt)
+	if err != nil {
+		return r, err
+	}
+	return r, nil
+}
+
+// getTranscript returns summaries + all individual messages after the latest summary.
+func (cs *CouncilServer) getTranscript(roomID string) ([]Message, error) {
+	rows, err := cs.db.Query(`
+		SELECT id, room_id, author, content, message_type, is_summary, timestamp
+		FROM messages
+		WHERE room_id = ?
+		  AND (is_summary = 1 OR id > COALESCE(
+		      (SELECT MAX(id) FROM messages WHERE room_id = ? AND is_summary = 1), 0
+		  ))
+		ORDER BY timestamp ASC`,
+		roomID, roomID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var msgs []Message
+	for rows.Next() {
+		var m Message
+		if err := rows.Scan(&m.ID, &m.RoomID, &m.Author, &m.Content, &m.MessageType, &m.IsSummary, &m.Timestamp); err != nil {
+			return nil, err
+		}
+		msgs = append(msgs, m)
+	}
+	return msgs, rows.Err()
+}
+
+// getRoomsNeedingSummary returns room IDs with more than threshold unsummarized messages.
+func (cs *CouncilServer) getRoomsNeedingSummary(threshold int) ([]string, error) {
+	rows, err := cs.db.Query(`
+		SELECT room_id
+		FROM messages
+		WHERE is_summary = 0
+		  AND id > COALESCE(
+		      (SELECT MAX(m2.id) FROM messages m2 WHERE m2.room_id = messages.room_id AND m2.is_summary = 1), 0
+		  )
+		GROUP BY room_id
+		HAVING COUNT(*) > ?`,
+		threshold,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var roomIDs []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		roomIDs = append(roomIDs, id)
+	}
+	return roomIDs, rows.Err()
+}
+
+// getUnsummarizedMessages returns messages after the latest summary for a room.
+func (cs *CouncilServer) getUnsummarizedMessages(roomID string) ([]Message, error) {
+	rows, err := cs.db.Query(`
+		SELECT id, room_id, author, content, message_type, is_summary, timestamp
+		FROM messages
+		WHERE room_id = ?
+		  AND is_summary = 0
+		  AND id > COALESCE(
+		      (SELECT MAX(id) FROM messages WHERE room_id = ? AND is_summary = 1), 0
+		  )
+		ORDER BY timestamp ASC`,
+		roomID, roomID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var msgs []Message
+	for rows.Next() {
+		var m Message
+		if err := rows.Scan(&m.ID, &m.RoomID, &m.Author, &m.Content, &m.MessageType, &m.IsSummary, &m.Timestamp); err != nil {
+			return nil, err
+		}
+		msgs = append(msgs, m)
+	}
+	return msgs, rows.Err()
+}
+
+// insertSummary inserts a summary message into a room.
+func (cs *CouncilServer) insertSummary(roomID, summary string) error {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+
+	_, err := cs.db.Exec(
+		`INSERT INTO messages (room_id, author, content, message_type, is_summary) VALUES (?, ?, ?, 'message', 1)`,
+		roomID, "System", summary,
+	)
+	if err != nil {
+		return err
+	}
+
+	cs.db.Exec(`UPDATE rooms SET updated_at = CURRENT_TIMESTAMP WHERE id = ?`, roomID)
+	return nil
+}
+
+// listRooms returns rooms matching optional filters.
+func (cs *CouncilServer) listRooms(project, tag, status string) ([]Room, error) {
+	query := `SELECT id, description, status, project, tech_stack, tags, system_prompt, created_at, updated_at FROM rooms WHERE 1=1`
+	var args []any
+
+	if project != "" {
+		query += ` AND project = ?`
+		args = append(args, project)
+	}
+	if tag != "" {
+		query += ` AND (',' || tags || ',') LIKE '%,' || ? || ',%'`
+		args = append(args, tag)
+	}
+	if status != "" {
+		query += ` AND status = ?`
+		args = append(args, status)
+	}
+
+	query += ` ORDER BY updated_at DESC`
+
+	rows, err := cs.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var rooms []Room
+	for rows.Next() {
+		var r Room
+		if err := rows.Scan(&r.ID, &r.Description, &r.Status, &r.Project, &r.TechStack, &r.Tags, &r.SystemPrompt, &r.CreatedAt, &r.UpdatedAt); err != nil {
+			return nil, err
+		}
+		rooms = append(rooms, r)
+	}
+	return rooms, rows.Err()
+}
