@@ -9,6 +9,7 @@ defmodule CouncilHubUi.Council.Room do
     field :tech_stack, :string, default: ""
     field :tags, :string, default: ""
     field :system_prompt, :string, default: ""
+    field :related_rooms, :string, default: ""
     field :created_at, :naive_datetime
     field :updated_at, :naive_datetime
   end

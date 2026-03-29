@@ -122,6 +122,14 @@ defmodule CouncilHubUiWeb.CouncilComponents do
           #{tag}
         </span>
 
+        <span
+          :for={related <- parse_tags(Map.get(@room, :related_rooms, ""))}
+          class="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-500/10 text-emerald-400 text-xs border border-emerald-500/15"
+        >
+          <span class="hero-link w-3 h-3 opacity-50"></span>
+          {related}
+        </span>
+
         <button
           :if={@room.system_prompt && @room.system_prompt != ""}
           phx-click="toggle_system_prompt"
@@ -168,6 +176,13 @@ defmodule CouncilHubUiWeb.CouncilComponents do
             <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-800/80 text-gray-400 border border-gray-700/50">
               <span class={[type_icon(@msg.message_type), "w-3 h-3"]}></span>
               {type_label(@msg.message_type)}
+            </span>
+            <span
+              :if={Map.get(@msg, :reply_to, 0) > 0}
+              class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-cyan-500/10 text-cyan-400 border border-cyan-500/20"
+            >
+              <span class="hero-arrow-uturn-left w-3 h-3"></span>
+              re: #{Map.get(@msg, :reply_to)}
             </span>
             <span class="text-[10px] text-gray-600 font-mono tabular-nums">
               {format_timestamp(@msg.timestamp)}

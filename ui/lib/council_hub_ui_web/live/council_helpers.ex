@@ -28,6 +28,7 @@ defmodule CouncilHubUiWeb.CouncilHelpers do
     "code" => "hero-code-bracket",
     "review" => "hero-magnifying-glass",
     "action" => "hero-bolt",
+    "critique" => "hero-exclamation-triangle",
     "error" => "hero-x-circle"
   }
 
