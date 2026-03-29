@@ -114,75 +114,157 @@ var validMessageTypes = map[string]bool{
 	"action":   true,
 }
 
+// schema builds a JSON Schema object with additionalProperties: true.
+// required lists the field names that are mandatory; all others are optional.
+func schema(required []string, props map[string]map[string]any) map[string]any {
+	s := map[string]any{
+		"type":                 "object",
+		"properties":           props,
+		"additionalProperties": true,
+	}
+	if len(required) > 0 {
+		s["required"] = required
+	}
+	return s
+}
+
+func prop(typ, desc string) map[string]any {
+	return map[string]any{"type": typ, "description": desc}
+}
+
 func registerTools(cs *CouncilServer) {
 	mcp.AddTool(cs.mcp, &mcp.Tool{
 		Name:        "create_room",
 		Description: "Create a new council room (virtual workspace) for a topic or task. Does nothing if the room already exists.",
+		InputSchema: schema([]string{"id"}, map[string]map[string]any{
+			"id":            prop("string", "Unique room identifier (e.g. auth-migration-v2)"),
+			"topic":         prop("string", "What this room is about"),
+			"project":       prop("string", "Project grouping for filtering"),
+			"tech_stack":    prop("string", "Technologies involved"),
+			"tags":          prop("string", "Comma-separated labels"),
+			"system_prompt": prop("string", "Instructions injected into transcripts for LLM context"),
+		}),
 	}, cs.handleCreateRoom)
 
 	mcp.AddTool(cs.mcp, &mcp.Tool{
 		Name:        "post_to_room",
 		Description: "Post a message, thought, critique, or code snippet to a council room's ledger.",
+		InputSchema: schema([]string{"room_id", "author", "message"}, map[string]map[string]any{
+			"room_id":      prop("string", "Target room ID"),
+			"author":       prop("string", "Name of the posting agent"),
+			"message":      prop("string", "Message content (markdown supported)"),
+			"message_type": prop("string", "One of: message, thought, decision, code, review, action (default: message)"),
+		}),
 	}, cs.handlePostToRoom)
 
 	mcp.AddTool(cs.mcp, &mcp.Tool{
 		Name:        "signal_status",
 		Description: "Update a room's status to coordinate work between agents (active, paused, or resolved).",
+		InputSchema: schema([]string{"room_id", "status"}, map[string]map[string]any{
+			"room_id": prop("string", "Target room ID"),
+			"status":  prop("string", "One of: active, paused, resolved"),
+		}),
 	}, cs.handleSignalStatus)
 
 	mcp.AddTool(cs.mcp, &mcp.Tool{
 		Name:        "list_rooms",
 		Description: "List council rooms, optionally filtered by project, tag, or status. Returns room metadata sorted by recent activity.",
+		InputSchema: schema(nil, map[string]map[string]any{
+			"project": prop("string", "Filter by project name"),
+			"tag":     prop("string", "Filter by tag"),
+			"status":  prop("string", "Filter by status (active, paused, resolved)"),
+		}),
 	}, cs.handleListRooms)
 
 	mcp.AddTool(cs.mcp, &mcp.Tool{
 		Name:        "update_room",
-		Description: "Update a room's metadata (topic, project, tech_stack, tags, system_prompt). Only provided fields are changed; omitted fields are left unchanged.",
+		Description: "Update a room's metadata. Only provided fields are changed; omitted fields are left unchanged.",
+		InputSchema: schema([]string{"room_id"}, map[string]map[string]any{
+			"room_id":       prop("string", "Target room ID"),
+			"topic":         prop("string", "New topic/description"),
+			"project":       prop("string", "New project grouping"),
+			"tech_stack":    prop("string", "New tech stack"),
+			"tags":          prop("string", "New comma-separated tags"),
+			"system_prompt": prop("string", "New system prompt"),
+		}),
 	}, cs.handleUpdateRoom)
 
 	mcp.AddTool(cs.mcp, &mcp.Tool{
 		Name:        "read_room",
 		Description: "Read a room's metadata (topic, project, tech_stack, tags, status, system_prompt) without loading messages.",
+		InputSchema: schema([]string{"room_id"}, map[string]map[string]any{
+			"room_id": prop("string", "Target room ID"),
+		}),
 	}, cs.handleReadRoom)
 
 	mcp.AddTool(cs.mcp, &mcp.Tool{
 		Name:        "delete_room",
 		Description: "Permanently delete a council room and all its messages. This cannot be undone.",
+		InputSchema: schema([]string{"room_id"}, map[string]map[string]any{
+			"room_id": prop("string", "Target room ID"),
+		}),
 	}, cs.handleDeleteRoom)
 
 	mcp.AddTool(cs.mcp, &mcp.Tool{
 		Name:        "search_messages",
-		Description: "Search messages across rooms by keyword, author, and/or message type. All filter params are optional (pass empty string to skip). Returns matching messages sorted by most recent with truncated snippets. Use get_messages to fetch full content by ID.",
+		Description: "Search messages across rooms. All filter params are optional — omit or leave empty to skip. Returns snippets with message IDs; use get_messages to fetch full content.",
+		InputSchema: schema(nil, map[string]map[string]any{
+			"query":        prop("string", "Text to search for in message content"),
+			"author":       prop("string", "Filter by author name"),
+			"message_type": prop("string", "Filter by type (message, thought, decision, code, review, action)"),
+			"room_id":      prop("string", "Scope search to a specific room"),
+			"limit":        prop("string", "Max results to return (default 20, max 100)"),
+		}),
 	}, cs.handleSearchMessages)
 
 	mcp.AddTool(cs.mcp, &mcp.Tool{
 		Name:        "get_messages",
 		Description: "Fetch the full content of specific messages by their IDs. Use this after search_messages to retrieve complete message text without loading entire transcripts.",
+		InputSchema: schema([]string{"message_ids"}, map[string]map[string]any{
+			"message_ids": prop("string", "Comma-separated message IDs (e.g. 48,52,55)"),
+		}),
 	}, cs.handleGetMessages)
 
 	mcp.AddTool(cs.mcp, &mcp.Tool{
 		Name:        "read_recent",
 		Description: "Read the last N messages from a room (default 10, max 50). More token-efficient than read_transcript for long-running rooms.",
+		InputSchema: schema([]string{"room_id"}, map[string]map[string]any{
+			"room_id": prop("string", "Target room ID"),
+			"limit":   prop("string", "Number of recent messages to return (default 10, max 50)"),
+		}),
 	}, cs.handleReadRecent)
 
 	mcp.AddTool(cs.mcp, &mcp.Tool{
 		Name:        "room_stats",
 		Description: "Get statistics for a room: message count, participants with message counts, and activity timestamps.",
+		InputSchema: schema([]string{"room_id"}, map[string]map[string]any{
+			"room_id": prop("string", "Target room ID"),
+		}),
 	}, cs.handleRoomStats)
 
 	mcp.AddTool(cs.mcp, &mcp.Tool{
 		Name:        "delete_messages",
 		Description: "Delete specific messages by their IDs. Provide a comma-separated list of message IDs.",
+		InputSchema: schema([]string{"message_ids"}, map[string]map[string]any{
+			"message_ids": prop("string", "Comma-separated message IDs to delete"),
+		}),
 	}, cs.handleDeleteMessages)
 
 	mcp.AddTool(cs.mcp, &mcp.Tool{
 		Name:        "archive_room",
 		Description: "Export a room's transcript to a markdown file in the archives directory. Optionally delete the room after archiving.",
+		InputSchema: schema([]string{"room_id"}, map[string]map[string]any{
+			"room_id": prop("string", "Target room ID"),
+			"delete":  prop("string", "Set to 'true' to delete room after archiving"),
+		}),
 	}, cs.handleArchiveRoom)
 
 	mcp.AddTool(cs.mcp, &mcp.Tool{
 		Name:        "read_transcript",
 		Description: "Read the full transcript of a council room. Returns the prompt-optimized markdown with room metadata, system instructions, and all messages.",
+		InputSchema: schema([]string{"room_id"}, map[string]map[string]any{
+			"room_id": prop("string", "Target room ID"),
+		}),
 	}, cs.handleReadTranscript)
 }
 
