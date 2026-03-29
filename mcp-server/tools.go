@@ -75,7 +75,7 @@ type SearchMessagesInput struct {
 	Author      string `json:"author"`
 	MessageType string `json:"message_type"`
 	RoomID      string `json:"room_id"`
-	Limit       int    `json:"limit"`
+	Limit       string `json:"limit"`
 }
 
 // RoomStatsInput represents the parameters for getting room statistics.
@@ -102,7 +102,7 @@ type GetMessagesInput struct {
 // ReadRecentInput represents the parameters for reading recent messages.
 type ReadRecentInput struct {
 	RoomID string `json:"room_id"`
-	Limit  int    `json:"limit"`
+	Limit  string `json:"limit"`
 }
 
 var validMessageTypes = map[string]bool{
@@ -404,7 +404,14 @@ func (cs *CouncilServer) handleSearchMessages(ctx context.Context, req *mcp.Call
 		return msg("Error: at least one search filter is required (query, author, message_type, or room_id).")
 	}
 
-	messages, err := cs.searchMessages(args.Query, args.Author, args.MessageType, args.RoomID, args.Limit)
+	limit := 20
+	if args.Limit != "" {
+		if _, err := fmt.Sscanf(args.Limit, "%d", &limit); err != nil {
+			limit = 20
+		}
+	}
+
+	messages, err := cs.searchMessages(args.Query, args.Author, args.MessageType, args.RoomID, limit)
 	if err != nil {
 		cs.logger.Error("Failed to search messages", "error", err)
 		return nil, ToolOutput{}, err
@@ -481,7 +488,14 @@ func (cs *CouncilServer) handleReadRecent(ctx context.Context, req *mcp.CallTool
 		return msg("Error: room_id is required.")
 	}
 
-	messages, err := cs.getRecentMessages(args.RoomID, args.Limit)
+	limit := 10
+	if args.Limit != "" {
+		if _, err := fmt.Sscanf(args.Limit, "%d", &limit); err != nil {
+			limit = 10
+		}
+	}
+
+	messages, err := cs.getRecentMessages(args.RoomID, limit)
 	if err != nil {
 		return msg(fmt.Sprintf("Error: %s", err.Error()))
 	}
