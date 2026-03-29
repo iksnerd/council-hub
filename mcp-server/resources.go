@@ -70,6 +70,9 @@ func formatTranscript(room Room, messages []Message) string {
 	if room.Tags != "" {
 		fmt.Fprintf(&b, "**Tags:** %s\n", room.Tags)
 	}
+	if room.RelatedRooms != "" {
+		fmt.Fprintf(&b, "**Related Rooms:** %s\n", room.RelatedRooms)
+	}
 	b.WriteString("---\n")
 
 	if room.SystemPrompt != "" {
@@ -78,10 +81,16 @@ func formatTranscript(room Room, messages []Message) string {
 
 	for _, m := range messages {
 		ts := m.Timestamp.Format("2006-01-02 15:04:05")
+		replyTag := ""
+		if m.ReplyTo > 0 {
+			replyTag = fmt.Sprintf(", re: #%d", m.ReplyTo)
+		}
 		if m.IsSummary {
 			fmt.Fprintf(&b, "\n**[%s] SUMMARY:**\n%s\n", ts, m.Content)
 		} else if m.MessageType != "" && m.MessageType != "message" {
-			fmt.Fprintf(&b, "\n**[%s] %s (%s):**\n%s\n", ts, m.Author, m.MessageType, m.Content)
+			fmt.Fprintf(&b, "\n**[%s] %s (%s%s):**\n%s\n", ts, m.Author, m.MessageType, replyTag, m.Content)
+		} else if m.ReplyTo > 0 {
+			fmt.Fprintf(&b, "\n**[%s] %s (re: #%d):**\n%s\n", ts, m.Author, m.ReplyTo, m.Content)
 		} else {
 			fmt.Fprintf(&b, "\n**[%s] %s:**\n%s\n", ts, m.Author, m.Content)
 		}

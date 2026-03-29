@@ -21,6 +21,7 @@ type CreateRoomInput struct {
 	TechStack    string `json:"tech_stack"`
 	Tags         string `json:"tags"`
 	SystemPrompt string `json:"system_prompt"`
+	RelatedRooms string `json:"related_rooms"`
 }
 
 // PostToRoomInput represents the parameters for posting a message.
@@ -29,6 +30,7 @@ type PostToRoomInput struct {
 	Author      string `json:"author"`
 	Message     string `json:"message"`
 	MessageType string `json:"message_type"`
+	ReplyTo     string `json:"reply_to"`
 }
 
 // SignalStatusInput represents the parameters for signaling room status.
@@ -52,6 +54,7 @@ type UpdateRoomInput struct {
 	TechStack    string `json:"tech_stack"`
 	Tags         string `json:"tags"`
 	SystemPrompt string `json:"system_prompt"`
+	RelatedRooms string `json:"related_rooms"`
 }
 
 // ReadRoomInput represents the parameters for reading a room's metadata.
@@ -112,6 +115,7 @@ var validMessageTypes = map[string]bool{
 	"code":     true,
 	"review":   true,
 	"action":   true,
+	"critique": true,
 }
 
 // schema builds a JSON Schema object with additionalProperties: true.
@@ -143,6 +147,7 @@ func registerTools(cs *CouncilServer) {
 			"tech_stack":    prop("string", "Technologies involved"),
 			"tags":          prop("string", "Comma-separated labels"),
 			"system_prompt": prop("string", "Instructions injected into transcripts for LLM context"),
+			"related_rooms": prop("string", "Comma-separated IDs of related rooms for cross-referencing"),
 		}),
 	}, cs.handleCreateRoom)
 
@@ -153,7 +158,8 @@ func registerTools(cs *CouncilServer) {
 			"room_id":      prop("string", "Target room ID"),
 			"author":       prop("string", "Name of the posting agent"),
 			"message":      prop("string", "Message content (markdown supported)"),
-			"message_type": prop("string", "One of: message, thought, decision, code, review, action (default: message)"),
+			"message_type": prop("string", "One of: message, thought, decision, code, review, action, critique (default: message)"),
+			"reply_to":     prop("string", "Message ID this is a reply to (e.g. 42). Renders as 're: #42' in transcripts"),
 		}),
 	}, cs.handlePostToRoom)
 
@@ -186,6 +192,7 @@ func registerTools(cs *CouncilServer) {
 			"tech_stack":    prop("string", "New tech stack"),
 			"tags":          prop("string", "New comma-separated tags"),
 			"system_prompt": prop("string", "New system prompt"),
+			"related_rooms": prop("string", "Comma-separated IDs of related rooms"),
 		}),
 	}, cs.handleUpdateRoom)
 
@@ -211,7 +218,7 @@ func registerTools(cs *CouncilServer) {
 		InputSchema: schema(nil, map[string]map[string]any{
 			"query":        prop("string", "Text to search for in message content"),
 			"author":       prop("string", "Filter by author name"),
-			"message_type": prop("string", "Filter by type (message, thought, decision, code, review, action)"),
+			"message_type": prop("string", "Filter by type (message, thought, decision, code, review, action, critique)"),
 			"room_id":      prop("string", "Scope search to a specific room"),
 			"limit":        prop("string", "Max results to return (default 20, max 100)"),
 		}),
@@ -279,7 +286,7 @@ func (cs *CouncilServer) handleCreateRoom(ctx context.Context, req *mcp.CallTool
 		return msg("Error: room id is required.")
 	}
 
-	if err := cs.createRoom(args.ID, args.Topic, args.Project, args.TechStack, args.Tags, args.SystemPrompt); err != nil {
+	if err := cs.createRoom(args.ID, args.Topic, args.Project, args.TechStack, args.Tags, args.SystemPrompt, args.RelatedRooms); err != nil {
 		cs.logger.Error("Failed to create room", "id", args.ID, "error", err)
 		return nil, ToolOutput{}, err
 	}
@@ -303,7 +310,7 @@ func (cs *CouncilServer) handlePostToRoom(ctx context.Context, req *mcp.CallTool
 		args.MessageType = "message"
 	}
 	if !validMessageTypes[args.MessageType] {
-		return msg(fmt.Sprintf("Error: Invalid message_type '%s'. Must be one of: message, thought, decision, code, review, action.", args.MessageType))
+		return msg(fmt.Sprintf("Error: Invalid message_type '%s'. Must be one of: message, thought, decision, code, review, action, critique.", args.MessageType))
 	}
 
 	// Verify room exists
@@ -311,7 +318,14 @@ func (cs *CouncilServer) handlePostToRoom(ctx context.Context, req *mcp.CallTool
 		return msg(fmt.Sprintf("Error: Room '%s' not found. Create it first with create_room.", args.RoomID))
 	}
 
-	msgID, err := cs.postMessage(args.RoomID, args.Author, args.Message, args.MessageType)
+	var replyTo int64
+	if args.ReplyTo != "" {
+		if _, err := fmt.Sscanf(args.ReplyTo, "%d", &replyTo); err != nil {
+			return msg(fmt.Sprintf("Error: reply_to '%s' is not a valid message ID.", args.ReplyTo))
+		}
+	}
+
+	msgID, err := cs.postMessage(args.RoomID, args.Author, args.Message, args.MessageType, replyTo)
 	if err != nil {
 		cs.logger.Error("Failed to post message", "room_id", args.RoomID, "error", err)
 		return nil, ToolOutput{}, err
@@ -372,6 +386,9 @@ func (cs *CouncilServer) handleListRooms(ctx context.Context, req *mcp.CallToolR
 		if r.TechStack != "" {
 			fmt.Fprintf(&b, "  Tech: %s\n", r.TechStack)
 		}
+		if r.RelatedRooms != "" {
+			fmt.Fprintf(&b, "  Related: %s\n", r.RelatedRooms)
+		}
 		fmt.Fprintf(&b, "  Last activity: %s\n", r.UpdatedAt.Format("2006-01-02 15:04:05"))
 	}
 
@@ -390,11 +407,11 @@ func (cs *CouncilServer) handleUpdateRoom(ctx context.Context, req *mcp.CallTool
 		return msg("Error: room_id is required.")
 	}
 
-	if args.Topic == "" && args.Project == "" && args.TechStack == "" && args.Tags == "" && args.SystemPrompt == "" {
-		return msg("Error: at least one field to update must be provided (topic, project, tech_stack, tags, system_prompt).")
+	if args.Topic == "" && args.Project == "" && args.TechStack == "" && args.Tags == "" && args.SystemPrompt == "" && args.RelatedRooms == "" {
+		return msg("Error: at least one field to update must be provided (topic, project, tech_stack, tags, system_prompt, related_rooms).")
 	}
 
-	if err := cs.updateRoom(args.RoomID, args.Topic, args.Project, args.TechStack, args.Tags, args.SystemPrompt); err != nil {
+	if err := cs.updateRoom(args.RoomID, args.Topic, args.Project, args.TechStack, args.Tags, args.SystemPrompt, args.RelatedRooms); err != nil {
 		return msg(fmt.Sprintf("Error: %s", err.Error()))
 	}
 
@@ -413,6 +430,9 @@ func (cs *CouncilServer) handleUpdateRoom(ctx context.Context, req *mcp.CallTool
 	}
 	if args.SystemPrompt != "" {
 		updated = append(updated, "system_prompt")
+	}
+	if args.RelatedRooms != "" {
+		updated = append(updated, "related_rooms")
 	}
 
 	cs.logger.Info("Room updated", "room_id", args.RoomID, "fields", strings.Join(updated, ", "))
@@ -449,6 +469,9 @@ func (cs *CouncilServer) handleReadRoom(ctx context.Context, req *mcp.CallToolRe
 	}
 	if room.SystemPrompt != "" {
 		fmt.Fprintf(&b, "**System Prompt:** %s\n", room.SystemPrompt)
+	}
+	if room.RelatedRooms != "" {
+		fmt.Fprintf(&b, "**Related Rooms:** %s\n", room.RelatedRooms)
 	}
 	fmt.Fprintf(&b, "**Created:** %s\n", room.CreatedAt.Format("2006-01-02 15:04:05"))
 	fmt.Fprintf(&b, "**Updated:** %s\n", room.UpdatedAt.Format("2006-01-02 15:04:05"))
@@ -593,10 +616,16 @@ func (cs *CouncilServer) handleReadRecent(ctx context.Context, req *mcp.CallTool
 
 	for _, m := range messages {
 		ts := m.Timestamp.Format("2006-01-02 15:04:05")
+		replyTag := ""
+		if m.ReplyTo > 0 {
+			replyTag = fmt.Sprintf(", re: #%d", m.ReplyTo)
+		}
 		if m.IsSummary {
 			fmt.Fprintf(&b, "\n**[%s] SUMMARY:**\n%s\n", ts, m.Content)
 		} else if m.MessageType != "" && m.MessageType != "message" {
-			fmt.Fprintf(&b, "\n**[%s] %s (%s):**\n%s\n", ts, m.Author, m.MessageType, m.Content)
+			fmt.Fprintf(&b, "\n**[%s] %s (%s%s):**\n%s\n", ts, m.Author, m.MessageType, replyTag, m.Content)
+		} else if m.ReplyTo > 0 {
+			fmt.Fprintf(&b, "\n**[%s] %s (re: #%d):**\n%s\n", ts, m.Author, m.ReplyTo, m.Content)
 		} else {
 			fmt.Fprintf(&b, "\n**[%s] %s:**\n%s\n", ts, m.Author, m.Content)
 		}

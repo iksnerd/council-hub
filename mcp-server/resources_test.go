@@ -1,0 +1,59 @@
+package main
+
+import (
+	"context"
+	"strings"
+	"testing"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+)
+
+func TestHandleTranscriptResource(t *testing.T) {
+	cs := setupTestServer(t)
+	registerResources(cs)
+	cs.createRoom("res-room", "Resource test", "proj", "Go", "tag", "Be helpful", "related-a")
+	cs.postMessage("res-room", "Claude", "Hello", "thought", 0)
+
+	result, err := cs.handleTranscript(context.Background(), &mcp.ReadResourceRequest{
+		Params: &mcp.ReadResourceParams{URI: "council://room/res-room/transcript"},
+	})
+	if err != nil {
+		t.Fatalf("handleTranscript error: %v", err)
+	}
+	if len(result.Contents) != 1 {
+		t.Fatalf("expected 1 content, got %d", len(result.Contents))
+	}
+	text := result.Contents[0].Text
+	if !strings.Contains(text, "COUNCIL ROOM: res-room") {
+		t.Error("missing room header")
+	}
+	if !strings.Contains(text, "Hello") {
+		t.Error("missing message content")
+	}
+}
+
+func TestHandleTranscriptResourceNotFound(t *testing.T) {
+	cs := setupTestServer(t)
+
+	result, err := cs.handleTranscript(context.Background(), &mcp.ReadResourceRequest{
+		Params: &mcp.ReadResourceParams{URI: "council://room/nonexistent/transcript"},
+	})
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	text := result.Contents[0].Text
+	if !strings.Contains(text, "not found") {
+		t.Errorf("expected not found message, got: %s", text)
+	}
+}
+
+func TestHandleTranscriptResourceEmptyURI(t *testing.T) {
+	cs := setupTestServer(t)
+
+	_, err := cs.handleTranscript(context.Background(), &mcp.ReadResourceRequest{
+		Params: &mcp.ReadResourceParams{URI: "council://room//transcript"},
+	})
+	if err == nil {
+		t.Fatal("expected error for empty room_id")
+	}
+}

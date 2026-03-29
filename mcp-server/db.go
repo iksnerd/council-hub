@@ -23,6 +23,7 @@ type Room struct {
 	TechStack    string
 	Tags         string
 	SystemPrompt string
+	RelatedRooms string
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 }
@@ -35,6 +36,7 @@ type Message struct {
 	Content     string
 	MessageType string
 	IsSummary   bool
+	ReplyTo     int64
 	Timestamp   time.Time
 }
 
@@ -90,6 +92,7 @@ func initSchema(db *sql.DB) error {
 		tech_stack TEXT DEFAULT '',
 		tags TEXT DEFAULT '',
 		system_prompt TEXT DEFAULT '',
+		related_rooms TEXT DEFAULT '',
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
@@ -101,26 +104,41 @@ func initSchema(db *sql.DB) error {
 		content TEXT,
 		message_type TEXT DEFAULT 'message',
 		is_summary BOOLEAN DEFAULT 0,
+		reply_to INTEGER DEFAULT 0,
 		timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
 		FOREIGN KEY(room_id) REFERENCES rooms(id)
 	);`
 
 	_, err := db.Exec(schema)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Migrate existing databases: add new columns if they don't exist.
+	// These use constant defaults so ALTER TABLE works with SQLite.
+	migrations := []string{
+		`ALTER TABLE rooms ADD COLUMN related_rooms TEXT DEFAULT ''`,
+		`ALTER TABLE messages ADD COLUMN reply_to INTEGER DEFAULT 0`,
+	}
+	for _, m := range migrations {
+		db.Exec(m) // Ignore "duplicate column" errors for already-migrated DBs
+	}
+
+	return nil
 }
 
-func (cs *CouncilServer) createRoom(id, description, project, techStack, tags, systemPrompt string) error {
+func (cs *CouncilServer) createRoom(id, description, project, techStack, tags, systemPrompt, relatedRooms string) error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
 
 	_, err := cs.db.Exec(
-		`INSERT OR IGNORE INTO rooms (id, description, project, tech_stack, tags, system_prompt) VALUES (?, ?, ?, ?, ?, ?)`,
-		id, description, project, techStack, tags, systemPrompt,
+		`INSERT OR IGNORE INTO rooms (id, description, project, tech_stack, tags, system_prompt, related_rooms) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		id, description, project, techStack, tags, systemPrompt, relatedRooms,
 	)
 	return err
 }
 
-func (cs *CouncilServer) postMessage(roomID, author, content, messageType string) (int64, error) {
+func (cs *CouncilServer) postMessage(roomID, author, content, messageType string, replyTo int64) (int64, error) {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
 
@@ -129,8 +147,8 @@ func (cs *CouncilServer) postMessage(roomID, author, content, messageType string
 	}
 
 	result, err := cs.db.Exec(
-		`INSERT INTO messages (room_id, author, content, message_type) VALUES (?, ?, ?, ?)`,
-		roomID, author, content, messageType,
+		`INSERT INTO messages (room_id, author, content, message_type, reply_to) VALUES (?, ?, ?, ?, ?)`,
+		roomID, author, content, messageType, replyTo,
 	)
 	if err != nil {
 		return 0, err
@@ -161,7 +179,7 @@ func (cs *CouncilServer) updateStatus(roomID, status string) error {
 	return nil
 }
 
-func (cs *CouncilServer) updateRoom(roomID, description, project, techStack, tags, systemPrompt string) error {
+func (cs *CouncilServer) updateRoom(roomID, description, project, techStack, tags, systemPrompt, relatedRooms string) error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
 
@@ -188,6 +206,10 @@ func (cs *CouncilServer) updateRoom(roomID, description, project, techStack, tag
 	if systemPrompt != "" {
 		setClauses = append(setClauses, "system_prompt = ?")
 		args = append(args, systemPrompt)
+	}
+	if relatedRooms != "" {
+		setClauses = append(setClauses, "related_rooms = ?")
+		args = append(args, relatedRooms)
 	}
 
 	query := fmt.Sprintf("UPDATE rooms SET %s WHERE id = ?", strings.Join(setClauses, ", "))
@@ -216,7 +238,7 @@ func (cs *CouncilServer) getMessagesByIDs(ids []int64) ([]Message, error) {
 		args[i] = id
 	}
 
-	query := fmt.Sprintf(`SELECT id, room_id, author, content, message_type, is_summary, timestamp FROM messages WHERE id IN (%s) ORDER BY id ASC`, strings.Join(placeholders, ","))
+	query := fmt.Sprintf(`SELECT id, room_id, author, content, message_type, is_summary, reply_to, timestamp FROM messages WHERE id IN (%s) ORDER BY id ASC`, strings.Join(placeholders, ","))
 	rows, err := cs.db.Query(query, args...)
 	if err != nil {
 		return nil, err
@@ -226,7 +248,7 @@ func (cs *CouncilServer) getMessagesByIDs(ids []int64) ([]Message, error) {
 	var msgs []Message
 	for rows.Next() {
 		var m Message
-		if err := rows.Scan(&m.ID, &m.RoomID, &m.Author, &m.Content, &m.MessageType, &m.IsSummary, &m.Timestamp); err != nil {
+		if err := rows.Scan(&m.ID, &m.RoomID, &m.Author, &m.Content, &m.MessageType, &m.IsSummary, &m.ReplyTo, &m.Timestamp); err != nil {
 			return nil, err
 		}
 		msgs = append(msgs, m)
@@ -249,7 +271,7 @@ func (cs *CouncilServer) getRecentMessages(roomID string, limit int) ([]Message,
 	}
 
 	// Get last N messages in reverse, then flip to chronological
-	rows, err := cs.db.Query(`SELECT id, room_id, author, content, message_type, is_summary, timestamp FROM messages WHERE room_id = ? ORDER BY id DESC LIMIT ?`, roomID, limit)
+	rows, err := cs.db.Query(`SELECT id, room_id, author, content, message_type, is_summary, reply_to, timestamp FROM messages WHERE room_id = ? ORDER BY id DESC LIMIT ?`, roomID, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -258,7 +280,7 @@ func (cs *CouncilServer) getRecentMessages(roomID string, limit int) ([]Message,
 	var msgs []Message
 	for rows.Next() {
 		var m Message
-		if err := rows.Scan(&m.ID, &m.RoomID, &m.Author, &m.Content, &m.MessageType, &m.IsSummary, &m.Timestamp); err != nil {
+		if err := rows.Scan(&m.ID, &m.RoomID, &m.Author, &m.Content, &m.MessageType, &m.IsSummary, &m.ReplyTo, &m.Timestamp); err != nil {
 			return nil, err
 		}
 		msgs = append(msgs, m)
@@ -326,7 +348,7 @@ func (cs *CouncilServer) searchMessages(query, author, messageType, roomID strin
 		limit = 20
 	}
 
-	q := fmt.Sprintf(`SELECT id, room_id, author, content, message_type, is_summary, timestamp FROM messages %s ORDER BY timestamp DESC LIMIT ?`, where)
+	q := fmt.Sprintf(`SELECT id, room_id, author, content, message_type, is_summary, reply_to, timestamp FROM messages %s ORDER BY timestamp DESC LIMIT ?`, where)
 	args = append(args, limit)
 
 	rows, err := cs.db.Query(q, args...)
@@ -338,7 +360,7 @@ func (cs *CouncilServer) searchMessages(query, author, messageType, roomID strin
 	var msgs []Message
 	for rows.Next() {
 		var m Message
-		if err := rows.Scan(&m.ID, &m.RoomID, &m.Author, &m.Content, &m.MessageType, &m.IsSummary, &m.Timestamp); err != nil {
+		if err := rows.Scan(&m.ID, &m.RoomID, &m.Author, &m.Content, &m.MessageType, &m.IsSummary, &m.ReplyTo, &m.Timestamp); err != nil {
 			return nil, err
 		}
 		msgs = append(msgs, m)
@@ -450,9 +472,9 @@ func (cs *CouncilServer) archiveRoom(roomID string) (string, error) {
 func (cs *CouncilServer) getRoom(roomID string) (Room, error) {
 	var r Room
 	err := cs.db.QueryRow(
-		`SELECT id, description, status, project, tech_stack, tags, system_prompt, created_at, updated_at FROM rooms WHERE id = ?`,
+		`SELECT id, description, status, project, tech_stack, tags, system_prompt, related_rooms, created_at, updated_at FROM rooms WHERE id = ?`,
 		roomID,
-	).Scan(&r.ID, &r.Description, &r.Status, &r.Project, &r.TechStack, &r.Tags, &r.SystemPrompt, &r.CreatedAt, &r.UpdatedAt)
+	).Scan(&r.ID, &r.Description, &r.Status, &r.Project, &r.TechStack, &r.Tags, &r.SystemPrompt, &r.RelatedRooms, &r.CreatedAt, &r.UpdatedAt)
 	if err != nil {
 		return r, err
 	}
@@ -462,7 +484,7 @@ func (cs *CouncilServer) getRoom(roomID string) (Room, error) {
 // getTranscript returns summaries + all individual messages after the latest summary.
 func (cs *CouncilServer) getTranscript(roomID string) ([]Message, error) {
 	rows, err := cs.db.Query(`
-		SELECT id, room_id, author, content, message_type, is_summary, timestamp
+		SELECT id, room_id, author, content, message_type, is_summary, reply_to, timestamp
 		FROM messages
 		WHERE room_id = ?
 		  AND (is_summary = 1 OR id > COALESCE(
@@ -479,7 +501,7 @@ func (cs *CouncilServer) getTranscript(roomID string) ([]Message, error) {
 	var msgs []Message
 	for rows.Next() {
 		var m Message
-		if err := rows.Scan(&m.ID, &m.RoomID, &m.Author, &m.Content, &m.MessageType, &m.IsSummary, &m.Timestamp); err != nil {
+		if err := rows.Scan(&m.ID, &m.RoomID, &m.Author, &m.Content, &m.MessageType, &m.IsSummary, &m.ReplyTo, &m.Timestamp); err != nil {
 			return nil, err
 		}
 		msgs = append(msgs, m)
@@ -519,7 +541,7 @@ func (cs *CouncilServer) getRoomsNeedingSummary(threshold int) ([]string, error)
 // getUnsummarizedMessages returns messages after the latest summary for a room.
 func (cs *CouncilServer) getUnsummarizedMessages(roomID string) ([]Message, error) {
 	rows, err := cs.db.Query(`
-		SELECT id, room_id, author, content, message_type, is_summary, timestamp
+		SELECT id, room_id, author, content, message_type, is_summary, reply_to, timestamp
 		FROM messages
 		WHERE room_id = ?
 		  AND is_summary = 0
@@ -537,7 +559,7 @@ func (cs *CouncilServer) getUnsummarizedMessages(roomID string) ([]Message, erro
 	var msgs []Message
 	for rows.Next() {
 		var m Message
-		if err := rows.Scan(&m.ID, &m.RoomID, &m.Author, &m.Content, &m.MessageType, &m.IsSummary, &m.Timestamp); err != nil {
+		if err := rows.Scan(&m.ID, &m.RoomID, &m.Author, &m.Content, &m.MessageType, &m.IsSummary, &m.ReplyTo, &m.Timestamp); err != nil {
 			return nil, err
 		}
 		msgs = append(msgs, m)
@@ -564,7 +586,7 @@ func (cs *CouncilServer) insertSummary(roomID, summary string) error {
 
 // listRooms returns rooms matching optional filters.
 func (cs *CouncilServer) listRooms(project, tag, status string) ([]Room, error) {
-	query := `SELECT id, description, status, project, tech_stack, tags, system_prompt, created_at, updated_at FROM rooms WHERE 1=1`
+	query := `SELECT id, description, status, project, tech_stack, tags, system_prompt, related_rooms, created_at, updated_at FROM rooms WHERE 1=1`
 	var args []any
 
 	if project != "" {
@@ -591,7 +613,7 @@ func (cs *CouncilServer) listRooms(project, tag, status string) ([]Room, error) 
 	var rooms []Room
 	for rows.Next() {
 		var r Room
-		if err := rows.Scan(&r.ID, &r.Description, &r.Status, &r.Project, &r.TechStack, &r.Tags, &r.SystemPrompt, &r.CreatedAt, &r.UpdatedAt); err != nil {
+		if err := rows.Scan(&r.ID, &r.Description, &r.Status, &r.Project, &r.TechStack, &r.Tags, &r.SystemPrompt, &r.RelatedRooms, &r.CreatedAt, &r.UpdatedAt); err != nil {
 			return nil, err
 		}
 		rooms = append(rooms, r)
