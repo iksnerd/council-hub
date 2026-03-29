@@ -32,7 +32,7 @@ docker run -d --name council-hub \
 Runs only the MCP server over stdin/stdout for direct integration with CLI agents:
 
 ```bash
-docker run -i --rm \
+docker run -i --rm --no-healthcheck \
   -v ~/Documents/council-hub:/data \
   -e COUNCIL_DB=/data/council.db \
   -e COUNCIL_TRANSPORT=stdio \
