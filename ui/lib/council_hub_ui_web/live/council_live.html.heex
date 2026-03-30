@@ -80,6 +80,7 @@
     <%!-- Footer --%>
     <div class="px-4 py-2.5 border-t border-gray-800/80 text-[10px] text-gray-600 font-mono flex items-center justify-between">
       <span>{length(@rooms)} rooms</span>
+      <span>v{Application.spec(:council_hub_ui, :vsn)}</span>
       <span class="flex items-center gap-1">
         <span class="w-1.5 h-1.5 rounded-full bg-green-500/60 animate-pulse"></span>
         live
