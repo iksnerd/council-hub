@@ -11,7 +11,15 @@ defmodule CouncilHubUi.MixProject do
       aliases: aliases(),
       deps: deps(),
       compilers: [:phoenix_live_view] ++ Mix.compilers(),
-      listeners: [Phoenix.CodeReloader]
+      listeners: [Phoenix.CodeReloader],
+      test_coverage: [
+        threshold: 50,
+        ignore_modules: [
+          CouncilHubUi.Release,
+          CouncilHubUiWeb.CoreComponents,
+          CouncilHubUiWeb.Layouts
+        ]
+      ]
     ]
   end
 

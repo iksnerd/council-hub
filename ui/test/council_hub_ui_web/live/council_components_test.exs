@@ -1,0 +1,237 @@
+defmodule CouncilHubUiWeb.CouncilComponentsTest do
+  use CouncilHubUiWeb.ConnCase
+
+  import Phoenix.LiveViewTest
+
+  # Component rendering is tested end-to-end via LiveView integration tests
+  # in council_live_test.exs. These tests verify specific component behavior
+  # using render_component/2 from Phoenix.LiveViewTest.
+
+  alias CouncilHubUiWeb.CouncilComponents
+
+  describe "room_card" do
+    test "renders room id and status" do
+      assigns = %{
+        room: %{
+          id: "test-room",
+          status: "active",
+          description: "A test room",
+          tags: "tag1,tag2",
+          updated_at: ~N[2026-03-29 14:00:00]
+        },
+        active: false,
+        count: 5
+      }
+
+      html = render_component(&CouncilComponents.room_card/1, assigns)
+      assert html =~ "test-room"
+      assert html =~ "active"
+      assert html =~ "tag1"
+      assert html =~ "5"
+    end
+
+    test "renders active styling" do
+      assigns = %{
+        room: %{
+          id: "active-card",
+          status: "active",
+          description: "",
+          tags: "",
+          updated_at: ~N[2026-03-29 14:00:00]
+        },
+        active: true,
+        count: 0
+      }
+
+      html = render_component(&CouncilComponents.room_card/1, assigns)
+      assert html =~ "amber"
+    end
+
+    test "renders paused status" do
+      assigns = %{
+        room: %{
+          id: "paused-card",
+          status: "paused",
+          description: "Paused room",
+          tags: "",
+          updated_at: ~N[2026-03-29 14:00:00]
+        },
+        active: false,
+        count: 0
+      }
+
+      html = render_component(&CouncilComponents.room_card/1, assigns)
+      assert html =~ "paused"
+    end
+  end
+
+  describe "room_header" do
+    test "renders room metadata" do
+      assigns = %{
+        room: %{
+          id: "header-room",
+          status: "active",
+          description: "Header test",
+          project: "my-proj",
+          tech_stack: "Elixir, Go",
+          tags: "tag1,tag2",
+          system_prompt: "Be helpful",
+          related_rooms: "room-a,room-b",
+          created_at: ~N[2026-03-29 14:00:00]
+        },
+        count: 10,
+        show_system_prompt: false
+      }
+
+      html = render_component(&CouncilComponents.room_header/1, assigns)
+      assert html =~ "header-room"
+      assert html =~ "my-proj"
+      assert html =~ "Elixir, Go"
+      assert html =~ "tag1"
+      assert html =~ "room-a"
+      assert html =~ "room-b"
+      assert html =~ "10 msgs"
+    end
+
+    test "shows system prompt when toggled" do
+      assigns = %{
+        room: %{
+          id: "prompt-header",
+          status: "active",
+          description: "",
+          project: "",
+          tech_stack: "",
+          tags: "",
+          system_prompt: "Secret instructions",
+          related_rooms: "",
+          created_at: ~N[2026-03-29 14:00:00]
+        },
+        count: 0,
+        show_system_prompt: true
+      }
+
+      html = render_component(&CouncilComponents.room_header/1, assigns)
+      assert html =~ "Secret instructions"
+    end
+
+    test "hides system prompt by default" do
+      assigns = %{
+        room: %{
+          id: "hidden-prompt",
+          status: "active",
+          description: "",
+          project: "",
+          tech_stack: "",
+          tags: "",
+          system_prompt: "Hidden stuff",
+          related_rooms: "",
+          created_at: ~N[2026-03-29 14:00:00]
+        },
+        count: 0,
+        show_system_prompt: false
+      }
+
+      html = render_component(&CouncilComponents.room_header/1, assigns)
+      refute html =~ "Hidden stuff"
+    end
+  end
+
+  describe "message_bubble" do
+    test "renders author, type, and content" do
+      assigns = %{
+        msg: %{
+          id: 1,
+          author: "Claude",
+          content: "Hello **world**",
+          message_type: "thought",
+          reply_to: 0,
+          timestamp: ~N[2026-03-29 14:00:00]
+        }
+      }
+
+      html = render_component(&CouncilComponents.message_bubble/1, assigns)
+      assert html =~ "Claude"
+      assert html =~ "thought"
+      assert html =~ "world"
+    end
+
+    test "renders reply_to badge" do
+      assigns = %{
+        msg: %{
+          id: 2,
+          author: "Gemini",
+          content: "Reply here",
+          message_type: "review",
+          reply_to: 1,
+          timestamp: ~N[2026-03-29 14:00:00]
+        }
+      }
+
+      html = render_component(&CouncilComponents.message_bubble/1, assigns)
+      assert html =~ "re: #1"
+    end
+
+    test "no reply badge when reply_to is 0" do
+      assigns = %{
+        msg: %{
+          id: 3,
+          author: "Claude",
+          content: "No reply",
+          message_type: "message",
+          reply_to: 0,
+          timestamp: ~N[2026-03-29 14:00:00]
+        }
+      }
+
+      html = render_component(&CouncilComponents.message_bubble/1, assigns)
+      refute html =~ "re: #"
+    end
+
+    test "renders critique type" do
+      assigns = %{
+        msg: %{
+          id: 4,
+          author: "Gemini",
+          content: "This is flawed",
+          message_type: "critique",
+          reply_to: 0,
+          timestamp: ~N[2026-03-29 14:00:00]
+        }
+      }
+
+      html = render_component(&CouncilComponents.message_bubble/1, assigns)
+      assert html =~ "critique"
+    end
+  end
+
+  describe "summary_block" do
+    test "renders summary content" do
+      assigns = %{
+        msg: %{
+          id: 1,
+          content: "Summary of discussion",
+          timestamp: ~N[2026-03-29 14:00:00]
+        },
+        collapsed: false
+      }
+
+      html = render_component(&CouncilComponents.summary_block/1, assigns)
+      assert html =~ "Summary"
+      assert html =~ "Summary of discussion"
+    end
+
+    test "renders collapsed state" do
+      assigns = %{
+        msg: %{
+          id: 1,
+          content: "Summary of discussion",
+          timestamp: ~N[2026-03-29 14:00:00]
+        },
+        collapsed: true
+      }
+
+      html = render_component(&CouncilComponents.summary_block/1, assigns)
+      assert html =~ "expand"
+    end
+  end
+end

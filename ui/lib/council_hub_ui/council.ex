@@ -52,7 +52,7 @@ defmodule CouncilHubUi.Council do
     Repo.all(
       from m in Message,
         where: m.room_id == ^room_id and m.is_summary == false,
-        distinct: m.author,
+        group_by: m.author,
         select: m.author
     )
   end
