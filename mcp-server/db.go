@@ -44,7 +44,7 @@ type Message struct {
 type CouncilServer struct {
 	db     *sql.DB
 	dbPath string
-	mu     sync.Mutex
+	mu     sync.RWMutex
 	mcp    *mcp.Server
 	logger *slog.Logger
 }
@@ -60,6 +60,12 @@ func NewCouncilServer(dbPath string, logger *slog.Logger) (*CouncilServer, error
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
+
+	// SQLite handles concurrency via WAL mode, but we still configure
+	// the pool to avoid "database is locked" under heavy concurrent reads.
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+	db.SetConnMaxLifetime(0)
 
 	if err := initSchema(db); err != nil {
 		db.Close()
@@ -154,8 +160,8 @@ func (cs *CouncilServer) postMessage(roomID, author, content, messageType string
 		return 0, err
 	}
 
-	// Update room's updated_at
-	cs.db.Exec(`UPDATE rooms SET updated_at = CURRENT_TIMESTAMP WHERE id = ?`, roomID)
+	// Update room's updated_at — best-effort, don't fail the post on this
+	_, _ = cs.db.Exec(`UPDATE rooms SET updated_at = CURRENT_TIMESTAMP WHERE id = ?`, roomID)
 
 	id, err := result.LastInsertId()
 	return id, err
@@ -302,14 +308,16 @@ func (cs *CouncilServer) deleteRoom(roomID string) error {
 
 	res, err := cs.db.Exec(`DELETE FROM rooms WHERE id = ?`, roomID)
 	if err != nil {
-		return err
+		return fmt.Errorf("delete room '%s': %w", roomID, err)
 	}
 	rows, _ := res.RowsAffected()
 	if rows == 0 {
 		return fmt.Errorf("room '%s' not found", roomID)
 	}
 
-	cs.db.Exec(`DELETE FROM messages WHERE room_id = ?`, roomID)
+	if _, err := cs.db.Exec(`DELETE FROM messages WHERE room_id = ?`, roomID); err != nil {
+		return fmt.Errorf("delete messages for room '%s': %w", roomID, err)
+	}
 	return nil
 }
 
@@ -580,7 +588,7 @@ func (cs *CouncilServer) insertSummary(roomID, summary string) error {
 		return err
 	}
 
-	cs.db.Exec(`UPDATE rooms SET updated_at = CURRENT_TIMESTAMP WHERE id = ?`, roomID)
+	_, _ = cs.db.Exec(`UPDATE rooms SET updated_at = CURRENT_TIMESTAMP WHERE id = ?`, roomID)
 	return nil
 }
 

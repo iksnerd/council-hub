@@ -7,6 +7,9 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -35,7 +38,9 @@ func main() {
 	registerTools(cs)
 	registerResources(cs)
 
-	ctx := context.Background()
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
+
 	// TODO: Re-enable once we have a summarization strategy that preserves
 	// decisions, actions, and code blocks instead of losing context.
 	// go cs.runJanitor(ctx)
@@ -59,14 +64,19 @@ func main() {
 		})
 
 		httpServer := &http.Server{
-			Addr:    addr,
-			Handler: handler,
+			Addr:         addr,
+			Handler:      handler,
+			ReadTimeout:  30 * time.Second,
+			WriteTimeout: 60 * time.Second,
+			IdleTimeout:  120 * time.Second,
 		}
 
 		go func() {
 			<-ctx.Done()
 			logger.Info("Shutting down HTTP server")
-			httpServer.Close()
+			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer shutdownCancel()
+			httpServer.Shutdown(shutdownCtx)
 		}()
 
 		logger.Info("Council Hub starting (HTTP)", "db", dbPath, "addr", addr)
