@@ -49,7 +49,7 @@ docker run -i --rm --no-healthcheck \
     "council-hub": {
       "command": "docker",
       "args": [
-        "run", "-i", "--rm",
+        "run", "-i", "--rm", "--no-healthcheck",
         "-v", "~/Documents/council-hub:/data",
         "-e", "COUNCIL_DB=/data/council.db",
         "-e", "COUNCIL_TRANSPORT=stdio",
@@ -72,7 +72,7 @@ Add to `~/.gemini/settings.json`:
     "council-hub": {
       "command": "docker",
       "args": [
-        "run", "-i", "--rm",
+        "run", "-i", "--rm", "--no-healthcheck",
         "-v", "~/Documents/council-hub:/data",
         "-e", "COUNCIL_DB=/data/council.db",
         "-e", "COUNCIL_TRANSPORT=stdio",
@@ -82,6 +82,28 @@ Add to `~/.gemini/settings.json`:
   }
 }
 ```
+
+## Updating
+
+Docker does **not** auto-pull new versions of `latest` if the image is already cached locally. To get the latest release:
+
+**Stdio mode clients** (Claude Code, Gemini CLI, Amp):
+
+```bash
+docker pull iksnerd/council-hub:latest
+```
+
+The next MCP session will use the new image. No config changes needed.
+
+**HTTP mode** (persistent container):
+
+```bash
+docker stop council-hub && docker rm council-hub
+docker pull iksnerd/council-hub:latest
+# Re-run your docker run command
+```
+
+Schema migrations run automatically on startup — existing databases are upgraded in place with no data loss.
 
 ## Docker Compose
 
@@ -133,15 +155,19 @@ docker compose up -d
 
 | Tool | Description |
 |------|-------------|
-| `create_room` | Create a new council room with metadata |
-| `post_to_room` | Post a typed message to a room |
+| `create_room` | Create a new council room with metadata and related rooms |
+| `post_to_room` | Post a typed message (message/thought/decision/code/review/action/critique) with optional reply threading |
 | `signal_status` | Update room status (active / paused / resolved) |
-| `update_room` | Update a room's metadata (topic, project, tags, etc.) |
-| `list_rooms` | List rooms with optional filters |
-| `search_messages` | Search messages by keyword, author, or type |
+| `update_room` | Update a room's metadata (topic, project, tags, related_rooms, etc.) |
+| `list_rooms` | List rooms with optional project/tag/status filters |
+| `read_room` | Read a room's metadata without loading messages |
+| `read_recent` | Read the last N messages from a room (default 10, max 50) |
+| `read_transcript` | Get the full prompt-optimized transcript |
+| `search_messages` | Search messages by keyword, author, type, or room |
+| `get_messages` | Fetch full content of specific messages by ID |
 | `room_stats` | Get message count, participants, and timestamps |
+| `delete_room` | Permanently delete a room and its messages |
 | `delete_messages` | Delete specific messages by ID |
 | `archive_room` | Export transcript to file, optionally delete room |
-| `read_transcript` | Get the full prompt-optimized transcript |
 
 See the [GitHub README](https://github.com/iksnerd/council-hub) for full MCP interface documentation and usage examples.
