@@ -40,7 +40,7 @@ defmodule CouncilHubUiWeb.CouncilComponents do
         </div>
       </div>
       <p
-        :if={@room.description && @room.description != ""}
+        :if={present?(@room.description)}
         class="text-xs text-gray-400 leading-relaxed mb-1.5 line-clamp-2"
       >
         {@room.description}
@@ -87,7 +87,7 @@ defmodule CouncilHubUiWeb.CouncilComponents do
             </span>
           </div>
           <p
-            :if={@room.description && @room.description != ""}
+            :if={present?(@room.description)}
             class="text-sm text-gray-300 leading-relaxed"
           >
             {@room.description}
@@ -104,13 +104,13 @@ defmodule CouncilHubUiWeb.CouncilComponents do
       <%!-- Metadata pills --%>
       <div class="flex items-center gap-2 mt-2.5 flex-wrap">
         <span
-          :if={@room.project && @room.project != ""}
+          :if={present?(@room.project)}
           class="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-blue-500/10 text-blue-400 text-xs border border-blue-500/15"
         >
           <span class="opacity-50">project</span> {@room.project}
         </span>
         <span
-          :if={@room.tech_stack && @room.tech_stack != ""}
+          :if={present?(@room.tech_stack)}
           class="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-purple-500/10 text-purple-400 text-xs border border-purple-500/15"
         >
           <span class="opacity-50">stack</span> {@room.tech_stack}
@@ -131,7 +131,7 @@ defmodule CouncilHubUiWeb.CouncilComponents do
         </span>
 
         <button
-          :if={@room.system_prompt && @room.system_prompt != ""}
+          :if={present?(@room.system_prompt)}
           phx-click="toggle_system_prompt"
           aria-label={if @show_system_prompt, do: "Hide system prompt", else: "Show system prompt"}
           aria-expanded={to_string(@show_system_prompt)}
@@ -144,7 +144,7 @@ defmodule CouncilHubUiWeb.CouncilComponents do
 
       <%!-- System prompt content --%>
       <div
-        :if={@show_system_prompt && @room.system_prompt && @room.system_prompt != ""}
+        :if={@show_system_prompt && present?(@room.system_prompt)}
         class="mt-3 p-3 rounded-lg bg-amber-500/5 border border-amber-500/15 text-sm text-gray-300 council-prose"
       >
         {raw(render_markdown(@room.system_prompt))}

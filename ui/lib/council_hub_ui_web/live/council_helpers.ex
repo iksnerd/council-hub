@@ -144,4 +144,8 @@ defmodule CouncilHubUiWeb.CouncilHelpers do
 
   def message_count_label(0), do: nil
   def message_count_label(count), do: "#{count}"
+
+  def present?(nil), do: false
+  def present?(""), do: false
+  def present?(_), do: true
 end

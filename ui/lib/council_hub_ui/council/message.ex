@@ -1,8 +1,10 @@
 defmodule CouncilHubUi.Council.Message do
   use Ecto.Schema
 
+  alias CouncilHubUi.Council.Room
+
   schema "messages" do
-    field :room_id, :string
+    belongs_to :room, Room, type: :string
     field :author, :string
     field :content, :string
     field :message_type, :string, default: "message"

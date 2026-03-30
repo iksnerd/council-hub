@@ -1,6 +1,8 @@
 defmodule CouncilHubUi.Council.Room do
   use Ecto.Schema
 
+  alias CouncilHubUi.Council.Message
+
   @primary_key {:id, :string, autogenerate: false}
   schema "rooms" do
     field :description, :string
@@ -12,5 +14,7 @@ defmodule CouncilHubUi.Council.Room do
     field :related_rooms, :string, default: ""
     field :created_at, :naive_datetime
     field :updated_at, :naive_datetime
+
+    has_many :messages, Message, foreign_key: :room_id
   end
 end

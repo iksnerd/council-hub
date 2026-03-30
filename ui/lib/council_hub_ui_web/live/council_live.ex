@@ -76,24 +76,9 @@ defmodule CouncilHubUiWeb.CouncilLive do
   def handle_info(:poll_messages, socket) do
     schedule_poll(:poll_messages, @poll_interval)
 
-    case socket.assigns.active_room do
-      nil ->
-        {:noreply, socket}
-
-      room ->
-        new_messages = Council.get_messages_since(room.id, socket.assigns.last_msg_id)
-
-        if new_messages == [] do
-          {:noreply, socket}
-        else
-          last_id = last_message_id(new_messages)
-
-          {:noreply,
-           socket
-           |> stream(:messages, new_messages, at: -1)
-           |> assign(last_msg_id: last_id, has_messages: true)}
-        end
-    end
+    socket
+    |> poll_active_room_messages()
+    |> then(&{:noreply, &1})
   end
 
   def handle_info(:poll_rooms, socket) do
@@ -166,37 +151,57 @@ defmodule CouncilHubUiWeb.CouncilLive do
 
   defp schedule_poll(msg, interval), do: Process.send_after(self(), msg, interval)
 
+  defp poll_active_room_messages(%{assigns: %{active_room: nil}} = socket), do: socket
+
+  defp poll_active_room_messages(%{assigns: %{active_room: room, last_msg_id: last_id}} = socket) do
+    case Council.get_messages_since(room.id, last_id) do
+      [] ->
+        socket
+
+      new_messages ->
+        socket
+        |> stream(:messages, new_messages, at: -1)
+        |> assign(last_msg_id: last_message_id(new_messages), has_messages: true)
+    end
+  end
+
   defp safe_latest_update do
     Council.latest_room_update()
   rescue
-    _ -> nil
+    _e in [DBConnection.ConnectionError, Exqlite.Error] -> nil
   end
 
   defp last_message_id([]), do: 0
   defp last_message_id(messages), do: List.last(messages).id
 
   defp load_rooms do
-    rooms = Council.list_rooms()
-    {rooms, true}
+    {Council.list_rooms(), true}
   rescue
-    e ->
+    e in [DBConnection.ConnectionError, Exqlite.Error] ->
       Logger.warning("Failed to load rooms: #{inspect(e)}")
       {[], false}
   end
 
   def group_rooms_by_project(rooms) do
     rooms
-    |> Enum.group_by(fn room ->
-      if room.project && room.project != "", do: room.project, else: "ungrouped"
-    end)
+    |> Enum.group_by(&room_project/1)
     |> Enum.sort_by(fn {project, _} -> if project == "ungrouped", do: "zzz", else: project end)
   end
 
+  defp room_project(%{project: project}) when project in [nil, ""], do: "ungrouped"
+  defp room_project(%{project: project}), do: project
+
   def filter_rooms(rooms, ""), do: rooms
+
   def filter_rooms(rooms, query) do
     q = String.downcase(query)
+
     Enum.filter(rooms, fn room ->
-      String.contains?(String.downcase(room.id <> " " <> (room.description || "")), q)
+      room.id
+      |> Kernel.<>(" ")
+      |> Kernel.<>(room.description || "")
+      |> String.downcase()
+      |> String.contains?(q)
     end)
   end
 
@@ -205,7 +210,7 @@ defmodule CouncilHubUiWeb.CouncilLive do
   defp safe_room_counts(true) do
     Council.all_room_message_counts()
   rescue
-    e ->
+    e in [DBConnection.ConnectionError, Exqlite.Error] ->
       Logger.warning("Failed to load room counts: #{inspect(e)}")
       %{}
   end

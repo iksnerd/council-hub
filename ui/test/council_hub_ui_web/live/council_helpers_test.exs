@@ -226,4 +226,18 @@ defmodule CouncilHubUiWeb.CouncilHelpersTest do
   test "message_count_label positive returns string" do
     assert CouncilHelpers.message_count_label(5) == "5"
   end
+
+  # -- present? --
+
+  test "present? nil is false" do
+    refute CouncilHelpers.present?(nil)
+  end
+
+  test "present? empty string is false" do
+    refute CouncilHelpers.present?("")
+  end
+
+  test "present? non-empty string is true" do
+    assert CouncilHelpers.present?("hello")
+  end
 end
