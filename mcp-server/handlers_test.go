@@ -1150,3 +1150,434 @@ func TestHandleReadTranscriptNotFound(t *testing.T) {
 		t.Error("expected not found")
 	}
 }
+
+// ========== Quick Win Tests ==========
+
+// -- room_stats: latest_message_id + type breakdown --
+
+func TestHandleRoomStatsLatestMessageID(t *testing.T) {
+	cs := setupTestServer(t)
+	cs.createRoom("h-stats-latest", "Latest ID test", "", "", "", "", "")
+	cs.postMessage("h-stats-latest", "Claude", "First", "thought", 0)
+	id2, _ := cs.postMessage("h-stats-latest", "Gemini", "Second", "decision", 0)
+
+	res, _, _ := cs.handleRoomStats(context.Background(), nil, RoomStatsInput{RoomID: "h-stats-latest"})
+	text := resultText(res)
+
+	expected := fmt.Sprintf("Latest message ID:** %d", id2)
+	if !strings.Contains(text, expected) {
+		t.Errorf("expected latest_message_id %d, got: %s", id2, text)
+	}
+}
+
+func TestHandleRoomStatsTypeCounts(t *testing.T) {
+	cs := setupTestServer(t)
+	cs.createRoom("h-stats-types", "Type counts test", "", "", "", "", "")
+	cs.postMessage("h-stats-types", "Claude", "T1", "thought", 0)
+	cs.postMessage("h-stats-types", "Claude", "T2", "thought", 0)
+	cs.postMessage("h-stats-types", "Gemini", "D1", "decision", 0)
+	cs.postMessage("h-stats-types", "Claude", "A1", "action", 0)
+
+	res, _, _ := cs.handleRoomStats(context.Background(), nil, RoomStatsInput{RoomID: "h-stats-types"})
+	text := resultText(res)
+
+	if !strings.Contains(text, "Types:") {
+		t.Error("expected Types field in room_stats")
+	}
+	if !strings.Contains(text, "thought: 2") {
+		t.Errorf("expected thought: 2, got: %s", text)
+	}
+	if !strings.Contains(text, "decision: 1") {
+		t.Errorf("expected decision: 1, got: %s", text)
+	}
+	if !strings.Contains(text, "action: 1") {
+		t.Errorf("expected action: 1, got: %s", text)
+	}
+}
+
+func TestHandleRoomStatsEmptyNoLatestID(t *testing.T) {
+	cs := setupTestServer(t)
+	cs.createRoom("h-stats-empty", "Empty room", "", "", "", "", "")
+
+	res, _, _ := cs.handleRoomStats(context.Background(), nil, RoomStatsInput{RoomID: "h-stats-empty"})
+	text := resultText(res)
+
+	if strings.Contains(text, "Latest message ID") {
+		t.Error("empty room should not show Latest message ID")
+	}
+	if strings.Contains(text, "Types:") {
+		t.Error("empty room should not show Types")
+	}
+}
+
+// -- search_messages: project filter --
+
+func TestHandleSearchMessagesProjectFilter(t *testing.T) {
+	cs := setupTestServer(t)
+	cs.createRoom("h-search-proj-a", "Room A", "alpha", "", "", "", "")
+	cs.createRoom("h-search-proj-b", "Room B", "beta", "", "", "", "")
+	cs.postMessage("h-search-proj-a", "Claude", "keyword match", "message", 0)
+	cs.postMessage("h-search-proj-b", "Gemini", "keyword match", "message", 0)
+
+	// Search with project filter should only return results from "alpha"
+	res, _, _ := cs.handleSearchMessages(context.Background(), nil, SearchMessagesInput{
+		Query: "keyword", Project: "alpha",
+	})
+	text := resultText(res)
+
+	if !strings.Contains(text, "1 message(s)") {
+		t.Errorf("expected 1 message from alpha project, got: %s", text)
+	}
+	if !strings.Contains(text, "h-search-proj-a") {
+		t.Error("expected result from room in alpha project")
+	}
+	if strings.Contains(text, "h-search-proj-b") {
+		t.Error("should not contain result from beta project")
+	}
+}
+
+func TestHandleSearchMessagesProjectFilterOnly(t *testing.T) {
+	cs := setupTestServer(t)
+	cs.createRoom("h-search-projonly", "Proj-only room", "gamma", "", "", "", "")
+	cs.postMessage("h-search-projonly", "Claude", "Hello world", "message", 0)
+
+	// Using project as the only filter should work
+	res, _, _ := cs.handleSearchMessages(context.Background(), nil, SearchMessagesInput{
+		Project: "gamma",
+	})
+	text := resultText(res)
+
+	if !strings.Contains(text, "1 message(s)") {
+		t.Errorf("expected 1 message with project-only filter, got: %s", text)
+	}
+}
+
+func TestHandleSearchMessagesProjectFilterNoResults(t *testing.T) {
+	cs := setupTestServer(t)
+	cs.createRoom("h-search-proj-nr", "Room", "delta", "", "", "", "")
+	cs.postMessage("h-search-proj-nr", "Claude", "Hello", "message", 0)
+
+	res, _, _ := cs.handleSearchMessages(context.Background(), nil, SearchMessagesInput{
+		Project: "nonexistent-project",
+	})
+	text := resultText(res)
+
+	if !strings.Contains(text, "No messages found") {
+		t.Errorf("expected no results for nonexistent project, got: %s", text)
+	}
+}
+
+// -- list_rooms compact: message count --
+
+func TestHandleListRoomsCompactMessageCount(t *testing.T) {
+	cs := setupTestServer(t)
+	cs.createRoom("h-compact-cnt1", "Room with msgs", "proj", "", "", "", "")
+	cs.createRoom("h-compact-cnt2", "Empty room", "proj", "", "", "", "")
+	cs.postMessage("h-compact-cnt1", "Claude", "M1", "message", 0)
+	cs.postMessage("h-compact-cnt1", "Gemini", "M2", "thought", 0)
+	cs.postMessage("h-compact-cnt1", "Claude", "M3", "decision", 0)
+
+	res, _, _ := cs.handleListRooms(context.Background(), nil, ListRoomsInput{Compact: "true"})
+	text := resultText(res)
+
+	// Room with 3 messages should show "3 msgs"
+	if !strings.Contains(text, "3 msgs") {
+		t.Errorf("expected '3 msgs' in compact output, got: %s", text)
+	}
+	// Empty room should show "0 msgs"
+	if !strings.Contains(text, "0 msgs") {
+		t.Errorf("expected '0 msgs' for empty room, got: %s", text)
+	}
+}
+
+// -- read_transcript after_id: latest_id in header --
+
+func TestHandleReadTranscriptAfterIDLatestID(t *testing.T) {
+	cs := setupTestServer(t)
+	cs.createRoom("h-transcript-afterid-latest", "Latest ID test", "", "", "", "", "")
+	id1, _ := cs.postMessage("h-transcript-afterid-latest", "Claude", "First", "message", 0)
+	cs.postMessage("h-transcript-afterid-latest", "Gemini", "Second", "thought", 0)
+	id3, _ := cs.postMessage("h-transcript-afterid-latest", "Claude", "Third", "decision", 0)
+
+	res, _, _ := cs.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
+		RoomID: "h-transcript-afterid-latest", AfterID: fmt.Sprintf("%d", id1),
+	})
+	text := resultText(res)
+
+	// Header should include latest ID
+	expected := fmt.Sprintf("(latest: #%d)", id3)
+	if !strings.Contains(text, expected) {
+		t.Errorf("expected latest_id in header, got: %s", text)
+	}
+	if !strings.Contains(text, "2 message(s) after") {
+		t.Errorf("expected 2 messages, got: %s", text)
+	}
+}
+
+func TestHandleReadTranscriptAfterIDNoMessagesNoLatest(t *testing.T) {
+	cs := setupTestServer(t)
+	cs.createRoom("h-transcript-afterid-empty", "No new", "", "", "", "", "")
+	id1, _ := cs.postMessage("h-transcript-afterid-empty", "Claude", "Only one", "message", 0)
+
+	res, _, _ := cs.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
+		RoomID: "h-transcript-afterid-empty", AfterID: fmt.Sprintf("%d", id1),
+	})
+	text := resultText(res)
+
+	// With no messages after, should not show "latest:"
+	if strings.Contains(text, "latest:") {
+		t.Errorf("should not show latest_id when no new messages, got: %s", text)
+	}
+}
+
+// ========== Medium Feature Tests ==========
+
+// -- list_rooms search param --
+
+func TestHandleListRoomsSearch(t *testing.T) {
+	cs := setupTestServer(t)
+	cs.createRoom("auth-migration", "JWT auth migration", "proj-a", "", "auth,security", "", "")
+	cs.createRoom("frontend-ui", "React dashboard", "proj-b", "", "ui,react", "", "")
+	cs.createRoom("auth-review", "Auth code review", "proj-a", "", "auth", "", "")
+
+	// Search by room ID substring
+	res, _, _ := cs.handleListRooms(context.Background(), nil, ListRoomsInput{Search: "auth"})
+	text := resultText(res)
+	if !strings.Contains(text, "2 room(s)") {
+		t.Errorf("expected 2 rooms matching 'auth', got: %s", text)
+	}
+
+	// Search by description keyword
+	res, _, _ = cs.handleListRooms(context.Background(), nil, ListRoomsInput{Search: "React"})
+	text = resultText(res)
+	if !strings.Contains(text, "1 room(s)") {
+		t.Errorf("expected 1 room matching 'React', got: %s", text)
+	}
+
+	// Search by tag
+	res, _, _ = cs.handleListRooms(context.Background(), nil, ListRoomsInput{Search: "security"})
+	text = resultText(res)
+	if !strings.Contains(text, "1 room(s)") {
+		t.Errorf("expected 1 room matching tag 'security', got: %s", text)
+	}
+
+	// Search with no results
+	res, _, _ = cs.handleListRooms(context.Background(), nil, ListRoomsInput{Search: "zzz-nope"})
+	text = resultText(res)
+	if !strings.Contains(text, "No rooms found") {
+		t.Errorf("expected no rooms, got: %s", text)
+	}
+}
+
+func TestHandleListRoomsSearchWithCompact(t *testing.T) {
+	cs := setupTestServer(t)
+	cs.createRoom("search-compact-1", "Bug tracker", "proj", "", "bug", "", "")
+	cs.createRoom("search-compact-2", "Feature design", "proj", "", "feature", "", "")
+	cs.postMessage("search-compact-1", "Claude", "A message", "message", 0)
+
+	res, _, _ := cs.handleListRooms(context.Background(), nil, ListRoomsInput{
+		Search: "Bug", Compact: "true",
+	})
+	text := resultText(res)
+	if !strings.Contains(text, "1 room(s)") {
+		t.Errorf("expected 1 room, got: %s", text)
+	}
+	if !strings.Contains(text, "1 msgs") {
+		t.Error("compact search should include message count")
+	}
+}
+
+// -- bulk_status_update with closing message --
+
+func TestHandleBulkStatusUpdateWithMessage(t *testing.T) {
+	cs := setupTestServer(t)
+	cs.createRoom("bulk-msg-1", "Room 1", "", "", "", "", "")
+	cs.createRoom("bulk-msg-2", "Room 2", "", "", "", "", "")
+
+	res, _, _ := cs.handleBulkStatusUpdate(context.Background(), nil, BulkStatusInput{
+		RoomIDs: "bulk-msg-1,bulk-msg-2",
+		Status:  "resolved",
+		Message: "Closed: all issues fixed in PR #42.",
+		Author:  "Claude",
+	})
+	text := resultText(res)
+	if !strings.Contains(text, "Updated 2 room(s)") {
+		t.Errorf("expected 2 updated, got: %s", text)
+	}
+
+	// Verify closing message was posted to both rooms
+	msgs1, _ := cs.getRecentMessages("bulk-msg-1", 1)
+	if len(msgs1) != 1 || !strings.Contains(msgs1[0].Content, "PR #42") {
+		t.Error("expected closing message in room 1")
+	}
+	if msgs1[0].MessageType != "decision" {
+		t.Errorf("expected decision type, got '%s'", msgs1[0].MessageType)
+	}
+
+	msgs2, _ := cs.getRecentMessages("bulk-msg-2", 1)
+	if len(msgs2) != 1 || !strings.Contains(msgs2[0].Content, "PR #42") {
+		t.Error("expected closing message in room 2")
+	}
+}
+
+func TestHandleBulkStatusUpdateMessageWithoutAuthor(t *testing.T) {
+	cs := setupTestServer(t)
+
+	res, _, _ := cs.handleBulkStatusUpdate(context.Background(), nil, BulkStatusInput{
+		RoomIDs: "x", Status: "resolved", Message: "Closing",
+	})
+	text := resultText(res)
+	if !strings.Contains(text, "author is required") {
+		t.Errorf("expected author required error, got: %s", text)
+	}
+}
+
+// -- read_transcript mode=changelog --
+
+func TestHandleReadTranscriptChangelog(t *testing.T) {
+	cs := setupTestServer(t)
+	cs.createRoom("h-transcript-cl", "Changelog test", "", "", "", "", "")
+	cs.postMessage("h-transcript-cl", "Claude", "Thinking about options", "thought", 0)
+	cs.postMessage("h-transcript-cl", "Claude", "Let's use RS256", "decision", 0)
+	cs.postMessage("h-transcript-cl", "Gemini", "Reviewing approach", "review", 0)
+	cs.postMessage("h-transcript-cl", "Claude", "Implemented RS256 in auth.go", "action", 0)
+	cs.postMessage("h-transcript-cl", "Gemini", "Some critique", "critique", 0)
+
+	res, _, _ := cs.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
+		RoomID: "h-transcript-cl", Mode: "changelog",
+	})
+	text := resultText(res)
+
+	if !strings.Contains(text, "changelog") {
+		t.Error("expected changelog header")
+	}
+	// Should contain decision and action
+	if !strings.Contains(text, "Let's use RS256") {
+		t.Error("expected decision in changelog")
+	}
+	if !strings.Contains(text, "Implemented RS256") {
+		t.Error("expected action in changelog")
+	}
+	// Should NOT contain thought, review, critique
+	if strings.Contains(text, "Thinking about") {
+		t.Error("changelog should not contain thoughts")
+	}
+	if strings.Contains(text, "Reviewing approach") {
+		t.Error("changelog should not contain reviews")
+	}
+	if strings.Contains(text, "Some critique") {
+		t.Error("changelog should not contain critiques")
+	}
+}
+
+func TestHandleReadTranscriptChangelogEmpty(t *testing.T) {
+	cs := setupTestServer(t)
+	cs.createRoom("h-transcript-cl-empty", "Empty changelog", "", "", "", "", "")
+	cs.postMessage("h-transcript-cl-empty", "Claude", "Just a thought", "thought", 0)
+
+	res, _, _ := cs.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
+		RoomID: "h-transcript-cl-empty", Mode: "changelog",
+	})
+	text := resultText(res)
+	if !strings.Contains(text, "No decisions or actions") {
+		t.Errorf("expected empty changelog message, got: %s", text)
+	}
+}
+
+// -- get_or_create_room --
+
+func TestHandleGetOrCreateRoomNew(t *testing.T) {
+	cs := setupTestServer(t)
+	registerTools(cs)
+
+	res, _, _ := cs.handleGetOrCreateRoom(context.Background(), nil, GetOrCreateRoomInput{
+		ID: "upsert-new", Topic: "New room", Project: "proj", SystemPrompt: "Be helpful.",
+	})
+	text := resultText(res)
+
+	if !strings.Contains(text, "Created") {
+		t.Errorf("expected 'Created', got: %s", text)
+	}
+	if !strings.Contains(text, "Be helpful.") {
+		t.Error("expected system prompt in response")
+	}
+
+	// Room should exist now
+	room, err := cs.getRoom("upsert-new")
+	if err != nil {
+		t.Fatalf("room should exist: %v", err)
+	}
+	if room.Project != "proj" {
+		t.Errorf("expected project 'proj', got '%s'", room.Project)
+	}
+}
+
+func TestHandleGetOrCreateRoomExisting(t *testing.T) {
+	cs := setupTestServer(t)
+	cs.createRoom("upsert-existing", "Already here", "proj", "", "", "Prompt text.", "")
+	cs.postMessage("upsert-existing", "Claude", "First message", "decision", 0)
+	cs.postMessage("upsert-existing", "Gemini", "Second message", "action", 0)
+
+	res, _, _ := cs.handleGetOrCreateRoom(context.Background(), nil, GetOrCreateRoomInput{
+		ID: "upsert-existing",
+	})
+	text := resultText(res)
+
+	if !strings.Contains(text, "Found") {
+		t.Errorf("expected 'Found', got: %s", text)
+	}
+	if !strings.Contains(text, "Recent messages") {
+		t.Error("expected recent messages for existing room")
+	}
+	if !strings.Contains(text, "First message") || !strings.Contains(text, "Second message") {
+		t.Error("expected both messages in response")
+	}
+}
+
+func TestHandleGetOrCreateRoomExistingEmpty(t *testing.T) {
+	cs := setupTestServer(t)
+	cs.createRoom("upsert-empty", "Empty room", "", "", "", "", "")
+
+	res, _, _ := cs.handleGetOrCreateRoom(context.Background(), nil, GetOrCreateRoomInput{
+		ID: "upsert-empty",
+	})
+	text := resultText(res)
+	if !strings.Contains(text, "Found") {
+		t.Error("expected Found")
+	}
+	if !strings.Contains(text, "No messages yet") {
+		t.Errorf("expected 'No messages yet', got: %s", text)
+	}
+}
+
+func TestHandleGetOrCreateRoomMissingID(t *testing.T) {
+	cs := setupTestServer(t)
+
+	res, _, _ := cs.handleGetOrCreateRoom(context.Background(), nil, GetOrCreateRoomInput{})
+	text := resultText(res)
+	if !strings.Contains(text, "Error") {
+		t.Errorf("expected error for missing id, got: %s", text)
+	}
+}
+
+func TestHandleGetOrCreateRoomCustomLastN(t *testing.T) {
+	cs := setupTestServer(t)
+	cs.createRoom("upsert-lastn", "LastN test", "", "", "", "", "")
+	for i := 0; i < 10; i++ {
+		cs.postMessage("upsert-lastn", "Claude", fmt.Sprintf("Msg %d", i), "message", 0)
+	}
+
+	res, _, _ := cs.handleGetOrCreateRoom(context.Background(), nil, GetOrCreateRoomInput{
+		ID: "upsert-lastn", LastN: "2",
+	})
+	text := resultText(res)
+	if !strings.Contains(text, "Recent messages (2)") {
+		t.Errorf("expected 2 recent messages, got: %s", text)
+	}
+	if !strings.Contains(text, "Msg 9") {
+		t.Error("expected last message")
+	}
+	if strings.Contains(text, "Msg 0") {
+		t.Error("should not contain old messages with last_n=2")
+	}
+}

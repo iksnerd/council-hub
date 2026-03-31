@@ -151,7 +151,7 @@ func TestSearchMessages(t *testing.T) {
 	cs.postMessage("search-room-2", "Claude", "Database migration complete", "action", 0)
 
 	// Search by keyword
-	msgs, err := cs.searchMessages("JWT", "", "", "", 20)
+	msgs, err := cs.searchMessages("JWT", "", "", "", "", 20)
 	if err != nil {
 		t.Fatalf("searchMessages failed: %v", err)
 	}
@@ -160,25 +160,25 @@ func TestSearchMessages(t *testing.T) {
 	}
 
 	// Search by author
-	msgs, _ = cs.searchMessages("", "Claude", "", "", 20)
+	msgs, _ = cs.searchMessages("", "Claude", "", "", "", 20)
 	if len(msgs) != 2 {
 		t.Errorf("expected 2 messages from Claude, got %d", len(msgs))
 	}
 
 	// Search by message type
-	msgs, _ = cs.searchMessages("", "", "review", "", 20)
+	msgs, _ = cs.searchMessages("", "", "review", "", "", 20)
 	if len(msgs) != 1 {
 		t.Errorf("expected 1 review message, got %d", len(msgs))
 	}
 
 	// Search scoped to room
-	msgs, _ = cs.searchMessages("", "Claude", "", "search-room-2", 20)
+	msgs, _ = cs.searchMessages("", "Claude", "", "search-room-2", "", 20)
 	if len(msgs) != 1 {
 		t.Errorf("expected 1 message from Claude in search-room-2, got %d", len(msgs))
 	}
 
 	// No results
-	msgs, _ = cs.searchMessages("nonexistent", "", "", "", 20)
+	msgs, _ = cs.searchMessages("nonexistent", "", "", "", "", 20)
 	if len(msgs) != 0 {
 		t.Errorf("expected 0 messages, got %d", len(msgs))
 	}
@@ -191,7 +191,7 @@ func TestSearchMessagesGlobal(t *testing.T) {
 	cs.postMessage("search-global-a", "Claude", "BEP 44 analysis here", "thought", 0)
 	cs.postMessage("search-global-b", "Gemini", "BEP 46 analysis here", "review", 0)
 
-	msgs, err := cs.searchMessages("BEP", "", "", "", 20)
+	msgs, err := cs.searchMessages("BEP", "", "", "", "", 20)
 	if err != nil {
 		t.Fatalf("searchMessages failed: %v", err)
 	}
@@ -213,7 +213,7 @@ func TestSearchMessagesSnippetLength(t *testing.T) {
 	longContent := strings.Repeat("A", 400)
 	cs.postMessage("search-snippet", "Claude", longContent, "message", 0)
 
-	msgs, err := cs.searchMessages("AAAA", "", "", "search-snippet", 1)
+	msgs, err := cs.searchMessages("AAAA", "", "", "search-snippet", "", 1)
 	if err != nil {
 		t.Fatalf("searchMessages failed: %v", err)
 	}

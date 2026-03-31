@@ -44,6 +44,7 @@ type ListRoomsInput struct {
 	Project string `json:"project"`
 	Tag     string `json:"tag"`
 	Status  string `json:"status"`
+	Search  string `json:"search"`
 	Compact string `json:"compact"`
 }
 
@@ -82,6 +83,7 @@ type SearchMessagesInput struct {
 	Author      string `json:"author"`
 	MessageType string `json:"message_type"`
 	RoomID      string `json:"room_id"`
+	Project     string `json:"project"`
 	Limit       string `json:"limit"`
 	SummaryOnly string `json:"summary_only"`
 }
@@ -113,6 +115,20 @@ type GetMessagesInput struct {
 type BulkStatusInput struct {
 	RoomIDs string `json:"room_ids"`
 	Status  string `json:"status"`
+	Message string `json:"message"`
+	Author  string `json:"author"`
+}
+
+// GetOrCreateRoomInput represents the parameters for upserting a room.
+type GetOrCreateRoomInput struct {
+	ID           string `json:"id"`
+	Topic        string `json:"topic"`
+	Project      string `json:"project"`
+	TechStack    string `json:"tech_stack"`
+	Tags         string `json:"tags"`
+	SystemPrompt string `json:"system_prompt"`
+	RelatedRooms string `json:"related_rooms"`
+	LastN        string `json:"last_n"`
 }
 
 // ReadRecentInput represents the parameters for reading recent messages.
@@ -165,6 +181,21 @@ func registerTools(cs *CouncilServer) {
 	}, cs.handleCreateRoom)
 
 	mcp.AddTool(cs.mcp, &mcp.Tool{
+		Name:        "get_or_create_room",
+		Description: "Get an existing room (with recent messages) or create it if it doesn't exist. Saves 2-3 round trips vs list_rooms → check → read_recent or create_room.",
+		InputSchema: schema([]string{"id"}, map[string]map[string]any{
+			"id":            prop("string", "Room identifier — returns existing room if found, creates if not"),
+			"topic":         prop("string", "Topic (used only when creating)"),
+			"project":       prop("string", "Project grouping (used only when creating)"),
+			"tech_stack":    prop("string", "Technologies (used only when creating)"),
+			"tags":          prop("string", "Comma-separated labels (used only when creating)"),
+			"system_prompt": prop("string", "Instructions (used only when creating)"),
+			"related_rooms": prop("string", "Comma-separated related room IDs (used only when creating)"),
+			"last_n":        prop("string", "Number of recent messages to return for existing rooms (default 5, max 50)"),
+		}),
+	}, cs.handleGetOrCreateRoom)
+
+	mcp.AddTool(cs.mcp, &mcp.Tool{
 		Name:        "post_to_room",
 		Description: "Post a message, thought, critique, or code snippet to a council room's ledger.",
 		InputSchema: schema([]string{"room_id", "author", "message"}, map[string]map[string]any{
@@ -187,21 +218,24 @@ func registerTools(cs *CouncilServer) {
 
 	mcp.AddTool(cs.mcp, &mcp.Tool{
 		Name:        "bulk_status_update",
-		Description: "Update the status of multiple rooms in one call. Useful for closing out a sprint or batch-resolving rooms.",
+		Description: "Update the status of multiple rooms in one call. Optionally post a closing message to each room. Useful for closing out a sprint or batch-resolving rooms.",
 		InputSchema: schema([]string{"room_ids", "status"}, map[string]map[string]any{
 			"room_ids": prop("string", "Comma-separated room IDs (e.g. bug-123,bug-456,feature-x)"),
 			"status":   prop("string", "One of: active, paused, resolved"),
+			"message":  prop("string", "Optional closing message to post to each room before updating status"),
+			"author":   prop("string", "Author name for the closing message (required if message is provided)"),
 		}),
 	}, cs.handleBulkStatusUpdate)
 
 	mcp.AddTool(cs.mcp, &mcp.Tool{
 		Name:        "list_rooms",
-		Description: "List council rooms, optionally filtered by project, tag, or status. Returns room metadata sorted by recent activity. Use compact=true for a one-line-per-room summary (saves ~60-80% tokens).",
+		Description: "List council rooms, optionally filtered by project, tag, status, or keyword search. Returns room metadata sorted by recent activity. Use compact=true for a one-line-per-room summary (saves ~60-80% tokens).",
 		InputSchema: schema(nil, map[string]map[string]any{
 			"project": prop("string", "Filter by project name"),
 			"tag":     prop("string", "Filter by tag"),
 			"status":  prop("string", "Filter by status (active, paused, resolved)"),
-			"compact": prop("string", "Set to 'true' for one-line-per-room output (id | project | status | topic | last_activity)"),
+			"search":  prop("string", "Keyword search across room ID, topic/description, and tags"),
+			"compact": prop("string", "Set to 'true' for one-line-per-room output (id | project | status | msgs | topic | last_activity)"),
 		}),
 	}, cs.handleListRooms)
 
@@ -241,8 +275,9 @@ func registerTools(cs *CouncilServer) {
 		InputSchema: schema(nil, map[string]map[string]any{
 			"query":        prop("string", "Text to search for in message content"),
 			"author":       prop("string", "Filter by author name"),
-			"message_type": prop("string", "Filter by type (message, thought, decision, code, review, action, critique)"),
+			"message_type": prop("string", "Filter by type: message, thought, decision, code, review, action, critique"),
 			"room_id":      prop("string", "Scope search to a specific room"),
+			"project":      prop("string", "Scope search to rooms in this project"),
 			"limit":        prop("string", "Max results to return (default 20, max 100)"),
 			"summary_only": prop("string", "Set to 'true' for compact output: id, author, timestamp, room, type, and 120-char excerpt"),
 		}),
@@ -250,7 +285,7 @@ func registerTools(cs *CouncilServer) {
 
 	mcp.AddTool(cs.mcp, &mcp.Tool{
 		Name:        "get_messages",
-		Description: "Fetch full message content by IDs, or browse a room's messages. Provide message_ids for specific messages, or room_id + optional last_n to browse (default 10, max 50).",
+		Description: "Fetch specific messages by ID, or browse a room's recent messages. Best for: retrieving search results by ID, or getting raw message content without room headers. For formatted transcripts with room context, use read_transcript instead.",
 		InputSchema: schema(nil, map[string]map[string]any{
 			"message_ids": prop("string", "Comma-separated message IDs (e.g. 48,52,55)"),
 			"room_id":     prop("string", "Browse messages from this room (alternative to message_ids)"),
@@ -260,7 +295,7 @@ func registerTools(cs *CouncilServer) {
 
 	mcp.AddTool(cs.mcp, &mcp.Tool{
 		Name:        "read_recent",
-		Description: "Read the last N messages from a room (default 10, max 50). More token-efficient than read_transcript for long-running rooms.",
+		Description: "Quick-check the last N messages from a room (default 10, max 50). Lightweight: includes room topic header but no system_prompt. Best for rooms you already know. For full context with system_prompt, use read_transcript(last_n=N) instead.",
 		InputSchema: schema([]string{"room_id"}, map[string]map[string]any{
 			"room_id": prop("string", "Target room ID"),
 			"limit":   prop("string", "Number of recent messages to return (default 10, max 50)"),
@@ -294,12 +329,12 @@ func registerTools(cs *CouncilServer) {
 
 	mcp.AddTool(cs.mcp, &mcp.Tool{
 		Name:        "read_transcript",
-		Description: "Read the transcript of a council room. Returns prompt-optimized markdown with room metadata, system instructions, and messages. Use last_n to limit to recent messages, after_id for delta reads (messages after a known ID), or mode=summary for a quick orientation (system_prompt + latest message per type).",
+		Description: "Read a room's transcript with full context (room header, system_prompt, messages). The primary tool for reading rooms. Supports: last_n for recent messages, after_id for delta reads, mode=summary for orientation, mode=changelog for decisions+actions only.",
 		InputSchema: schema([]string{"room_id"}, map[string]map[string]any{
 			"room_id":  prop("string", "Target room ID"),
 			"last_n":   prop("string", "Return only the last N messages (default: all). Keeps room header and system prompt."),
 			"after_id": prop("string", "Return only messages with ID greater than this value. For delta reads after context compaction."),
-			"mode":     prop("string", "Set to 'summary' to return system_prompt + latest message per message_type (thought, decision, action, etc). Ideal for start-of-session orientation."),
+			"mode":     prop("string", "Set to 'summary' for system_prompt + latest per type, or 'changelog' for only decision + action messages chronologically (ideal for PR descriptions/release notes)."),
 		}),
 	}, cs.handleReadTranscript)
 }
@@ -322,6 +357,76 @@ func (cs *CouncilServer) handleCreateRoom(ctx context.Context, req *mcp.CallTool
 
 	cs.logger.Info("Room created", "id", args.ID, "project", args.Project, "topic", args.Topic)
 	return msg(fmt.Sprintf("Room '%s' is ready. Topic: %s", args.ID, args.Topic))
+}
+
+func (cs *CouncilServer) handleGetOrCreateRoom(ctx context.Context, req *mcp.CallToolRequest, args GetOrCreateRoomInput) (*mcp.CallToolResult, ToolOutput, error) {
+	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: text}},
+		}, ToolOutput{Message: text}, nil
+	}
+
+	if args.ID == "" {
+		return msg("Error: id is required.")
+	}
+
+	// Try to get existing room
+	room, err := cs.getRoom(args.ID)
+	created := false
+	if err != nil {
+		// Room doesn't exist — create it
+		if err := cs.createRoom(args.ID, args.Topic, args.Project, args.TechStack, args.Tags, args.SystemPrompt, args.RelatedRooms); err != nil {
+			cs.logger.Error("Failed to create room", "id", args.ID, "error", err)
+			return nil, ToolOutput{}, err
+		}
+		room, _ = cs.getRoom(args.ID)
+		created = true
+	}
+
+	limit := 5
+	if args.LastN != "" {
+		if _, err := fmt.Sscanf(args.LastN, "%d", &limit); err != nil {
+			limit = 5
+		}
+	}
+	if limit <= 0 {
+		limit = 5
+	}
+	if limit > 50 {
+		limit = 50
+	}
+
+	var b strings.Builder
+	if created {
+		fmt.Fprintf(&b, "**Created** room '%s'.\n", room.ID)
+	} else {
+		fmt.Fprintf(&b, "**Found** room '%s'.\n", room.ID)
+	}
+	fmt.Fprintf(&b, "**%s** [%s]\n", room.ID, room.Status)
+	fmt.Fprintf(&b, "**Topic:** %s\n", room.Description)
+	if room.SystemPrompt != "" {
+		fmt.Fprintf(&b, "**System Prompt:** %s\n", room.SystemPrompt)
+	}
+
+	if !created {
+		messages, _ := cs.getRecentMessages(args.ID, limit)
+		if len(messages) > 0 {
+			fmt.Fprintf(&b, "---\n**Recent messages (%d):**\n", len(messages))
+			for _, m := range messages {
+				ts := m.Timestamp.Format("2006-01-02 15:04:05")
+				if m.MessageType != "" && m.MessageType != "message" {
+					fmt.Fprintf(&b, "\n**[#%d %s] %s (%s):**\n%s\n", m.ID, ts, m.Author, m.MessageType, m.Content)
+				} else {
+					fmt.Fprintf(&b, "\n**[#%d %s] %s:**\n%s\n", m.ID, ts, m.Author, m.Content)
+				}
+			}
+		} else {
+			b.WriteString("No messages yet.\n")
+		}
+	}
+
+	cs.logger.Info("get_or_create_room", "id", args.ID, "created", created)
+	return msg(b.String())
 }
 
 func (cs *CouncilServer) handlePostToRoom(ctx context.Context, req *mcp.CallToolRequest, args PostToRoomInput) (*mcp.CallToolResult, ToolOutput, error) {
@@ -400,12 +505,20 @@ func (cs *CouncilServer) handleBulkStatusUpdate(ctx context.Context, req *mcp.Ca
 		return msg("Error: room_ids is required (comma-separated list of room IDs).")
 	}
 
+	if args.Message != "" && args.Author == "" {
+		return msg("Error: author is required when message is provided.")
+	}
+
 	parts := strings.Split(args.RoomIDs, ",")
 	var updated, notFound []string
 	for _, p := range parts {
 		roomID := strings.TrimSpace(p)
 		if roomID == "" {
 			continue
+		}
+		// Post closing message before status change (if provided)
+		if args.Message != "" {
+			cs.postMessage(roomID, args.Author, args.Message, "decision", 0)
 		}
 		if err := cs.updateStatus(roomID, args.Status); err != nil {
 			notFound = append(notFound, roomID)
@@ -439,7 +552,7 @@ func (cs *CouncilServer) handleListRooms(ctx context.Context, req *mcp.CallToolR
 		}, ToolOutput{Message: text}, nil
 	}
 
-	rooms, err := cs.listRooms(args.Project, args.Tag, args.Status)
+	rooms, err := cs.listRooms(args.Project, args.Tag, args.Status, args.Search)
 	if err != nil {
 		cs.logger.Error("Failed to list rooms", "error", err)
 		return nil, ToolOutput{}, err
@@ -453,6 +566,9 @@ func (cs *CouncilServer) handleListRooms(ctx context.Context, req *mcp.CallToolR
 	fmt.Fprintf(&b, "Found %d room(s):\n\n", len(rooms))
 
 	if args.Compact == "true" {
+		// Fetch message counts for compact display
+		msgCounts := cs.getMessageCounts()
+
 		for _, r := range rooms {
 			topic := r.Description
 			if len(topic) > 60 {
@@ -462,7 +578,8 @@ func (cs *CouncilServer) handleListRooms(ctx context.Context, req *mcp.CallToolR
 			if project == "" {
 				project = "-"
 			}
-			fmt.Fprintf(&b, "- **%s** | %s | %s | %s | %s\n", r.ID, project, r.Status, topic, r.UpdatedAt.Format("2006-01-02 15:04"))
+			count := msgCounts[r.ID]
+			fmt.Fprintf(&b, "- **%s** | %s | %s | %d msgs | %s | %s\n", r.ID, project, r.Status, count, topic, r.UpdatedAt.Format("2006-01-02 15:04"))
 		}
 	} else {
 		for _, r := range rooms {
@@ -597,8 +714,8 @@ func (cs *CouncilServer) handleSearchMessages(ctx context.Context, req *mcp.Call
 		}, ToolOutput{Message: text}, nil
 	}
 
-	if args.Query == "" && args.Author == "" && args.MessageType == "" && args.RoomID == "" {
-		return msg("Error: at least one search filter is required (query, author, message_type, or room_id).")
+	if args.Query == "" && args.Author == "" && args.MessageType == "" && args.RoomID == "" && args.Project == "" {
+		return msg("Error: at least one search filter is required (query, author, message_type, room_id, or project).")
 	}
 
 	limit := 20
@@ -608,7 +725,7 @@ func (cs *CouncilServer) handleSearchMessages(ctx context.Context, req *mcp.Call
 		}
 	}
 
-	messages, err := cs.searchMessages(args.Query, args.Author, args.MessageType, args.RoomID, limit)
+	messages, err := cs.searchMessages(args.Query, args.Author, args.MessageType, args.RoomID, args.Project, limit)
 	if err != nil {
 		cs.logger.Error("Failed to search messages", "error", err)
 		return nil, ToolOutput{}, err
@@ -783,6 +900,9 @@ func (cs *CouncilServer) handleRoomStats(ctx context.Context, req *mcp.CallToolR
 	var b strings.Builder
 	fmt.Fprintf(&b, "**%s** [%s]\n", stats.RoomID, stats.Status)
 	fmt.Fprintf(&b, "**Messages:** %d\n", stats.MessageCount)
+	if stats.LatestMessageID > 0 {
+		fmt.Fprintf(&b, "**Latest message ID:** %d\n", stats.LatestMessageID)
+	}
 
 	if len(stats.Participants) > 0 {
 		var parts []string
@@ -792,6 +912,14 @@ func (cs *CouncilServer) handleRoomStats(ctx context.Context, req *mcp.CallToolR
 		fmt.Fprintf(&b, "**Participants:** %s\n", strings.Join(parts, ", "))
 		fmt.Fprintf(&b, "**First message:** %s\n", stats.FirstMessage.Format("2006-01-02 15:04:05"))
 		fmt.Fprintf(&b, "**Last message:** %s\n", stats.LastMessage.Format("2006-01-02 15:04:05"))
+	}
+
+	if len(stats.TypeCounts) > 0 {
+		var types []string
+		for msgType, count := range stats.TypeCounts {
+			types = append(types, fmt.Sprintf("%s: %d", msgType, count))
+		}
+		fmt.Fprintf(&b, "**Types:** %s\n", strings.Join(types, ", "))
 	}
 
 	return msg(b.String())
@@ -906,6 +1034,36 @@ func (cs *CouncilServer) handleReadTranscript(ctx context.Context, req *mcp.Call
 		return msg(b.String())
 	}
 
+	// Mode: changelog — only decision + action messages, chronological
+	if args.Mode == "changelog" {
+		messages, err := cs.getTranscript(args.RoomID)
+		if err != nil {
+			cs.logger.Error("Failed to get transcript", "room_id", args.RoomID, "error", err)
+			return nil, ToolOutput{}, err
+		}
+
+		var b strings.Builder
+		fmt.Fprintf(&b, "# %s — changelog\n", room.ID)
+		if room.Description != "" {
+			fmt.Fprintf(&b, "**Topic:** %s\n", room.Description)
+		}
+		b.WriteString("---\n")
+
+		count := 0
+		for _, m := range messages {
+			if m.MessageType != "decision" && m.MessageType != "action" {
+				continue
+			}
+			ts := m.Timestamp.Format("2006-01-02 15:04:05")
+			fmt.Fprintf(&b, "\n**[#%d %s] %s (%s):**\n%s\n", m.ID, ts, m.Author, m.MessageType, m.Content)
+			count++
+		}
+		if count == 0 {
+			b.WriteString("\nNo decisions or actions recorded yet.\n")
+		}
+		return msg(b.String())
+	}
+
 	// Mode: after_id — delta read
 	if args.AfterID != "" {
 		var afterID int64
@@ -919,8 +1077,20 @@ func (cs *CouncilServer) handleReadTranscript(ctx context.Context, req *mcp.Call
 			return nil, ToolOutput{}, err
 		}
 
+		// Find the latest message ID in the room for cursor tracking
+		var latestID int64
+		for _, m := range messages {
+			if m.ID > latestID {
+				latestID = m.ID
+			}
+		}
+
 		var b strings.Builder
-		fmt.Fprintf(&b, "# %s — %d message(s) after #%d\n---\n", room.ID, len(messages), afterID)
+		fmt.Fprintf(&b, "# %s — %d message(s) after #%d", room.ID, len(messages), afterID)
+		if latestID > 0 {
+			fmt.Fprintf(&b, " (latest: #%d)", latestID)
+		}
+		b.WriteString("\n---\n")
 		for _, m := range messages {
 			ts := m.Timestamp.Format("2006-01-02 15:04:05")
 			replyTag := ""

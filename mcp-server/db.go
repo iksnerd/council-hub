@@ -74,7 +74,7 @@ func NewCouncilServer(dbPath string, logger *slog.Logger) (*CouncilServer, error
 
 	mcpServer := mcp.NewServer(&mcp.Implementation{
 		Name:    "council-hub",
-		Version: "0.3.0",
+		Version: "0.3.1",
 	}, &mcp.ServerOptions{
 		Logger:       logger,
 		Capabilities: &mcp.ServerCapabilities{},
@@ -323,40 +323,48 @@ func (cs *CouncilServer) deleteRoom(roomID string) error {
 
 // RoomStats holds aggregate statistics for a room.
 type RoomStats struct {
-	RoomID       string
-	Status       string
-	MessageCount int
-	Participants map[string]int // author -> message count
-	FirstMessage time.Time
-	LastMessage  time.Time
+	RoomID          string
+	Status          string
+	MessageCount    int
+	LatestMessageID int64
+	Participants    map[string]int // author -> message count
+	TypeCounts      map[string]int // message_type -> count
+	FirstMessage    time.Time
+	LastMessage     time.Time
 }
 
-func (cs *CouncilServer) searchMessages(query, author, messageType, roomID string, limit int) ([]Message, error) {
+func (cs *CouncilServer) searchMessages(query, author, messageType, roomID, project string, limit int) ([]Message, error) {
 	where := `WHERE 1=1`
 	var args []any
+	join := ""
 
 	if query != "" {
-		where += ` AND content LIKE '%' || ? || '%'`
+		where += ` AND m.content LIKE '%' || ? || '%'`
 		args = append(args, query)
 	}
 	if author != "" {
-		where += ` AND author = ?`
+		where += ` AND m.author = ?`
 		args = append(args, author)
 	}
 	if messageType != "" {
-		where += ` AND message_type = ?`
+		where += ` AND m.message_type = ?`
 		args = append(args, messageType)
 	}
 	if roomID != "" {
-		where += ` AND room_id = ?`
+		where += ` AND m.room_id = ?`
 		args = append(args, roomID)
+	}
+	if project != "" {
+		join = ` JOIN rooms r ON m.room_id = r.id`
+		where += ` AND r.project = ?`
+		args = append(args, project)
 	}
 
 	if limit <= 0 || limit > 100 {
 		limit = 20
 	}
 
-	q := fmt.Sprintf(`SELECT id, room_id, author, content, message_type, is_summary, reply_to, timestamp FROM messages %s ORDER BY timestamp DESC LIMIT ?`, where)
+	q := fmt.Sprintf(`SELECT m.id, m.room_id, m.author, m.content, m.message_type, m.is_summary, m.reply_to, m.timestamp FROM messages m%s %s ORDER BY m.timestamp DESC LIMIT ?`, join, where)
 	args = append(args, limit)
 
 	rows, err := cs.db.Query(q, args...)
@@ -380,6 +388,7 @@ func (cs *CouncilServer) getRoomStats(roomID string) (RoomStats, error) {
 	var stats RoomStats
 	stats.RoomID = roomID
 	stats.Participants = make(map[string]int)
+	stats.TypeCounts = make(map[string]int)
 
 	// Verify room exists and get status
 	var status string
@@ -389,10 +398,11 @@ func (cs *CouncilServer) getRoomStats(roomID string) (RoomStats, error) {
 	}
 	stats.Status = status
 
-	// Get aggregate stats
+	// Get aggregate stats + latest message ID
 	var firstMsg, lastMsg sql.NullString
-	err = cs.db.QueryRow(`SELECT COUNT(*), MIN(timestamp), MAX(timestamp) FROM messages WHERE room_id = ?`, roomID).
-		Scan(&stats.MessageCount, &firstMsg, &lastMsg)
+	var latestID sql.NullInt64
+	err = cs.db.QueryRow(`SELECT COUNT(*), MIN(timestamp), MAX(timestamp), MAX(id) FROM messages WHERE room_id = ?`, roomID).
+		Scan(&stats.MessageCount, &firstMsg, &lastMsg, &latestID)
 	if err != nil {
 		return stats, err
 	}
@@ -401,6 +411,9 @@ func (cs *CouncilServer) getRoomStats(roomID string) (RoomStats, error) {
 	}
 	if lastMsg.Valid {
 		stats.LastMessage, _ = time.Parse("2006-01-02 15:04:05", lastMsg.String)
+	}
+	if latestID.Valid {
+		stats.LatestMessageID = latestID.Int64
 	}
 
 	// Get per-author counts
@@ -418,8 +431,27 @@ func (cs *CouncilServer) getRoomStats(roomID string) (RoomStats, error) {
 		}
 		stats.Participants[author] = count
 	}
+	if err := rows.Err(); err != nil {
+		return stats, err
+	}
 
-	return stats, rows.Err()
+	// Get per-type counts
+	typeRows, err := cs.db.Query(`SELECT message_type, COUNT(*) FROM messages WHERE room_id = ? AND is_summary = 0 GROUP BY message_type ORDER BY COUNT(*) DESC`, roomID)
+	if err != nil {
+		return stats, err
+	}
+	defer typeRows.Close()
+
+	for typeRows.Next() {
+		var msgType string
+		var count int
+		if err := typeRows.Scan(&msgType, &count); err != nil {
+			return stats, err
+		}
+		stats.TypeCounts[msgType] = count
+	}
+
+	return stats, typeRows.Err()
 }
 
 func (cs *CouncilServer) deleteMessages(ids []int64) (int64, error) {
@@ -648,7 +680,7 @@ func (cs *CouncilServer) insertSummary(roomID, summary string) error {
 }
 
 // listRooms returns rooms matching optional filters.
-func (cs *CouncilServer) listRooms(project, tag, status string) ([]Room, error) {
+func (cs *CouncilServer) listRooms(project, tag, status, search string) ([]Room, error) {
 	query := `SELECT id, description, status, project, tech_stack, tags, system_prompt, related_rooms, created_at, updated_at FROM rooms WHERE 1=1`
 	var args []any
 
@@ -663,6 +695,10 @@ func (cs *CouncilServer) listRooms(project, tag, status string) ([]Room, error) 
 	if status != "" {
 		query += ` AND status = ?`
 		args = append(args, status)
+	}
+	if search != "" {
+		query += ` AND (id LIKE '%' || ? || '%' OR description LIKE '%' || ? || '%' OR tags LIKE '%' || ? || '%')`
+		args = append(args, search, search, search)
 	}
 
 	query += ` ORDER BY updated_at DESC`
@@ -682,4 +718,24 @@ func (cs *CouncilServer) listRooms(project, tag, status string) ([]Room, error) 
 		rooms = append(rooms, r)
 	}
 	return rooms, rows.Err()
+}
+
+// getMessageCounts returns a map of room_id -> message count for all rooms.
+func (cs *CouncilServer) getMessageCounts() map[string]int {
+	counts := make(map[string]int)
+	rows, err := cs.db.Query(`SELECT room_id, COUNT(*) FROM messages GROUP BY room_id`)
+	if err != nil {
+		return counts
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var roomID string
+		var count int
+		if err := rows.Scan(&roomID, &count); err != nil {
+			continue
+		}
+		counts[roomID] = count
+	}
+	return counts
 }

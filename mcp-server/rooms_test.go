@@ -199,7 +199,7 @@ func TestListRooms(t *testing.T) {
 	cs.createRoom("room-c", "More auth", "project-alpha", "Go", "auth", "", "")
 
 	// Filter by project
-	rooms, err := cs.listRooms("project-alpha", "", "")
+	rooms, err := cs.listRooms("project-alpha", "", "", "")
 	if err != nil {
 		t.Fatalf("listRooms failed: %v", err)
 	}
@@ -208,25 +208,25 @@ func TestListRooms(t *testing.T) {
 	}
 
 	// Filter by tag
-	rooms, _ = cs.listRooms("", "auth", "")
+	rooms, _ = cs.listRooms("", "auth", "", "")
 	if len(rooms) != 2 {
 		t.Fatalf("expected 2 rooms with tag 'auth', got %d", len(rooms))
 	}
 
 	// Filter by tag that only one room has
-	rooms, _ = cs.listRooms("", "frontend", "")
+	rooms, _ = cs.listRooms("", "frontend", "", "")
 	if len(rooms) != 1 {
 		t.Fatalf("expected 1 room with tag 'frontend', got %d", len(rooms))
 	}
 
 	// No filter — all rooms
-	rooms, _ = cs.listRooms("", "", "")
+	rooms, _ = cs.listRooms("", "", "", "")
 	if len(rooms) != 3 {
 		t.Fatalf("expected 3 rooms total, got %d", len(rooms))
 	}
 
 	// Filter by project + tag
-	rooms, _ = cs.listRooms("project-alpha", "api", "")
+	rooms, _ = cs.listRooms("project-alpha", "api", "", "")
 	if len(rooms) != 1 {
 		t.Fatalf("expected 1 room for project-alpha+api, got %d", len(rooms))
 	}
@@ -238,7 +238,7 @@ func TestListRoomsByStatus(t *testing.T) {
 	cs.createRoom("paused-room", "Paused", "", "", "", "", "")
 	cs.updateStatus("paused-room", "paused")
 
-	rooms, _ := cs.listRooms("", "", "paused")
+	rooms, _ := cs.listRooms("", "", "paused", "")
 	if len(rooms) != 1 {
 		t.Fatalf("expected 1 paused room, got %d", len(rooms))
 	}

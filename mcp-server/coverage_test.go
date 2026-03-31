@@ -308,7 +308,7 @@ func TestGetRecentMessagesScanError(t *testing.T) {
 
 func TestSearchMessagesScanError(t *testing.T) {
 	cs := corruptMessages(t)
-	_, err := cs.searchMessages("msg", "", "", "", 10)
+	_, err := cs.searchMessages("msg", "", "", "", "", 10)
 	if err == nil {
 		t.Error("expected scan error")
 	}
@@ -370,7 +370,7 @@ func corruptRooms(t *testing.T) *CouncilServer {
 
 func TestListRoomsScanError(t *testing.T) {
 	cs := corruptRooms(t)
-	_, err := cs.listRooms("", "", "")
+	_, err := cs.listRooms("", "", "", "")
 	if err == nil {
 		t.Error("expected scan error")
 	}
@@ -632,7 +632,7 @@ func TestConcurrentReads(t *testing.T) {
 	done := make(chan bool, 10)
 	for i := 0; i < 10; i++ {
 		go func() {
-			_, err := cs.listRooms("", "", "")
+			_, err := cs.listRooms("", "", "", "")
 			if err != nil {
 				t.Errorf("concurrent listRooms failed: %v", err)
 			}
@@ -640,7 +640,7 @@ func TestConcurrentReads(t *testing.T) {
 			if err != nil {
 				t.Errorf("concurrent getTranscript failed: %v", err)
 			}
-			_, err = cs.searchMessages("msg", "", "", "", 10)
+			_, err = cs.searchMessages("msg", "", "", "", "", 10)
 			if err != nil {
 				t.Errorf("concurrent searchMessages failed: %v", err)
 			}

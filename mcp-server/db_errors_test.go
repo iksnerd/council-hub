@@ -68,7 +68,7 @@ func TestGetTranscriptDBClosed(t *testing.T) {
 
 func TestListRoomsDBClosed(t *testing.T) {
 	cs := setupAndClose(t)
-	_, err := cs.listRooms("", "", "")
+	_, err := cs.listRooms("", "", "", "")
 	if err == nil {
 		t.Error("expected error on closed DB")
 	}
@@ -76,7 +76,7 @@ func TestListRoomsDBClosed(t *testing.T) {
 
 func TestSearchMessagesDBClosed(t *testing.T) {
 	cs := setupAndClose(t)
-	_, err := cs.searchMessages("test", "", "", "", 10)
+	_, err := cs.searchMessages("test", "", "", "", "", 10)
 	if err == nil {
 		t.Error("expected error on closed DB")
 	}

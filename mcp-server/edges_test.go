@@ -291,13 +291,13 @@ func TestSearchMessagesLimitClamping(t *testing.T) {
 	}
 
 	// Negative limit should clamp to 20
-	msgs, _ := cs.searchMessages("keyword", "", "", "", -5)
+	msgs, _ := cs.searchMessages("keyword", "", "", "", "", -5)
 	if len(msgs) != 5 {
 		t.Errorf("expected 5 (all) with clamped limit, got %d", len(msgs))
 	}
 
 	// Over-100 limit should clamp to 20
-	msgs, _ = cs.searchMessages("keyword", "", "", "", 200)
+	msgs, _ = cs.searchMessages("keyword", "", "", "", "", 200)
 	if len(msgs) != 5 {
 		t.Errorf("expected 5 with clamped limit, got %d", len(msgs))
 	}
@@ -331,12 +331,12 @@ func TestListRoomsByStatusFilter(t *testing.T) {
 	cs.createRoom("ls-resolved", "Resolved", "", "", "", "", "")
 	cs.updateStatus("ls-resolved", "resolved")
 
-	rooms, _ := cs.listRooms("", "", "active")
+	rooms, _ := cs.listRooms("", "", "active", "")
 	if len(rooms) != 1 || rooms[0].ID != "ls-active" {
 		t.Errorf("expected only active room, got %d rooms", len(rooms))
 	}
 
-	rooms, _ = cs.listRooms("", "", "resolved")
+	rooms, _ = cs.listRooms("", "", "resolved", "")
 	if len(rooms) != 1 || rooms[0].ID != "ls-resolved" {
 		t.Errorf("expected only resolved room, got %d rooms", len(rooms))
 	}
