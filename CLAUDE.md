@@ -24,6 +24,16 @@ make docker-push     # Push to Docker Hub (VERSION=vX.Y.Z)
 
 Docker Hub image: `iksnerd/council-hub` ([hub.docker.com/r/iksnerd/council-hub](https://hub.docker.com/r/iksnerd/council-hub))
 
+### Release Flow (when shipping a new version vX.Y.Z)
+
+1. **Bump versions** in both packages:
+   - `mcp-server/db.go` — `Version: "X.Y.Z"` in the `mcp.NewServer` call
+   - `ui/mix.exs` — `version: "X.Y.Z"`
+2. **Commit & push** the version bump: `git commit -m "Bump version to vX.Y.Z" && git push`
+3. **Build the Docker image**: `make docker-build`
+4. **Push to Docker Hub**: `make docker-push VERSION=vX.Y.Z`
+5. **Tag the git commit**: `git tag vX.Y.Z && git push origin vX.Y.Z`
+
 ### Go MCP Server
 ```bash
 cd mcp-server
