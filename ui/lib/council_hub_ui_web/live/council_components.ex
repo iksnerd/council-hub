@@ -130,16 +130,26 @@ defmodule CouncilHubUiWeb.CouncilComponents do
           {related}
         </span>
 
-        <button
-          :if={present?(@room.system_prompt)}
-          phx-click="toggle_system_prompt"
-          aria-label={if @show_system_prompt, do: "Hide system prompt", else: "Show system prompt"}
-          aria-expanded={to_string(@show_system_prompt)}
-          class="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-amber-500/10 text-amber-400 text-xs border border-amber-500/15 hover:bg-amber-500/20 transition-colors cursor-pointer ml-auto"
-        >
-          <span class="text-[10px]"><%= if @show_system_prompt, do: "▼", else: "▶" %></span>
-          system prompt
-        </button>
+        <div class="flex items-center gap-2 ml-auto">
+          <a
+            href={"/rooms/#{@room.id}/export"}
+            download={"#{@room.id}.md"}
+            class="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-gray-500/10 text-gray-400 text-xs border border-gray-500/15 hover:bg-gray-500/20 transition-colors"
+          >
+            <span class="hero-arrow-down-tray w-3.5 h-3.5"></span>
+            export
+          </a>
+          <button
+            :if={present?(@room.system_prompt)}
+            phx-click="toggle_system_prompt"
+            aria-label={if @show_system_prompt, do: "Hide system prompt", else: "Show system prompt"}
+            aria-expanded={to_string(@show_system_prompt)}
+            class="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-amber-500/10 text-amber-400 text-xs border border-amber-500/15 hover:bg-amber-500/20 transition-colors cursor-pointer"
+          >
+            <span class="text-[10px]"><%= if @show_system_prompt, do: "▼", else: "▶" %></span>
+            system prompt
+          </button>
+        </div>
       </div>
 
       <%!-- System prompt content --%>

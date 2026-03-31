@@ -169,4 +169,60 @@ defmodule CouncilHubUi.CouncilTest do
       assert msg.reply_to == 0
     end
   end
+
+  describe "format_transcript/2" do
+    test "formats room header and messages" do
+      room = create_room(%{id: "fmt-room", description: "Format test", project: "proj", tech_stack: "Go", tags: "tag1", status: "active"})
+      create_message(%{room_id: room.id, author: "Claude", content: "Hello", message_type: "thought"})
+      create_message(%{room_id: room.id, author: "Gemini", content: "World", message_type: "message"})
+
+      messages = Council.list_messages_for_room(room.id)
+      transcript = Council.format_transcript(room, messages)
+
+      assert transcript =~ "# COUNCIL ROOM: fmt-room"
+      assert transcript =~ "**Project:** proj"
+      assert transcript =~ "**Tech Stack:** Go"
+      assert transcript =~ "**Tags:** tag1"
+      assert transcript =~ "Claude (thought)"
+      assert transcript =~ "Gemini:"
+      assert transcript =~ "Hello"
+      assert transcript =~ "World"
+    end
+
+    test "formats summary messages" do
+      room = create_room(%{id: "sum-fmt", description: "Summary format"})
+      create_message(%{room_id: room.id, author: "System", content: "Summary here", is_summary: true})
+
+      messages = Council.list_messages_for_room(room.id)
+      transcript = Council.format_transcript(room, messages)
+
+      assert transcript =~ "SUMMARY"
+      assert transcript =~ "Summary here"
+    end
+
+    test "formats reply_to" do
+      room = create_room(%{id: "reply-fmt", description: "Reply format"})
+      m1 = create_message(%{room_id: room.id, author: "Claude", content: "Original"})
+      create_message(%{room_id: room.id, author: "Gemini", content: "Reply", message_type: "review", reply_to: m1.id})
+
+      messages = Council.list_messages_for_room(room.id)
+      transcript = Council.format_transcript(room, messages)
+
+      assert transcript =~ "re: ##{m1.id}"
+    end
+
+    test "includes system prompt" do
+      room = create_room(%{id: "sys-fmt", description: "Sys prompt", system_prompt: "Be helpful"})
+
+      transcript = Council.format_transcript(room, [])
+      assert transcript =~ "*Instructions: Be helpful*"
+    end
+
+    test "includes related rooms" do
+      room = create_room(%{id: "rel-fmt", description: "Related", related_rooms: "a,b"})
+
+      transcript = Council.format_transcript(room, [])
+      assert transcript =~ "**Related Rooms:** a,b"
+    end
+  end
 end

@@ -17,6 +17,8 @@ defmodule CouncilHubUiWeb.Router do
   scope "/", CouncilHubUiWeb do
     pipe_through :browser
 
+    get "/rooms/:room_id/export", RoomController, :export
+
     live_session :default do
       live "/", CouncilLive, :index
       live "/rooms/:room_id", CouncilLive, :show
