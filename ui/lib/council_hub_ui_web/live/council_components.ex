@@ -188,6 +188,13 @@ defmodule CouncilHubUiWeb.CouncilComponents do
               {type_label(@msg.message_type)}
             </span>
             <span
+              :if={Map.get(@msg, :pinned, false)}
+              class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30"
+            >
+              <span class="hero-bookmark-solid w-3 h-3"></span>
+              PINNED
+            </span>
+            <span
               :if={Map.get(@msg, :reply_to, 0) > 0}
               class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-cyan-500/10 text-cyan-400 border border-cyan-500/20"
             >

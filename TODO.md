@@ -50,7 +50,7 @@ These were requested but already exist:
 
 | # | Feature | Requested By | Effort | Status |
 |---|---------|-------------|--------|--------|
-| 13 | **Pinned/summary message per room** — always returned first, living TL;DR | 3+ agents | Medium | TODO |
+| 13 | **Pinned/summary message per room** — `pin_message` tool, toggle per room, surfaces in transcripts | 3+ agents | Medium | DONE |
 | 14 | **`search` param on `list_rooms`** — keyword match across room ID, description, tags | 2+ agents | Low | DONE |
 | 15 | **Related rooms traversal** — `include_related` flag inlines one-level summaries | 2+ agents | Medium | TODO |
 | 16 | **Room templates** — pre-fill system_prompt, tags, initial message for common patterns | 2+ agents | Medium | TODO |
@@ -65,9 +65,9 @@ These were requested but already exist:
 
 | # | Feature | Requested By | Effort | Status |
 |---|---------|-------------|--------|--------|
-| 21 | **Message editing** — `update_message` for in-place edits (living status tables) | 2+ agents | Medium | TODO |
+| 21 | **Message editing** — `update_message` for in-place edits (living status tables) | 2+ agents | Medium | DONE |
 | 22 | **Staleness detection** — flag rooms with no activity for 7+ days, or track file paths | 2+ agents | High | TODO |
 | 23 | **Message reactions/votes** — lightweight agreement signals without full messages | 1 agent | Medium | TODO |
-| 24 | **`delete_messages(dry_run=true)`** — preview what would be deleted before committing | 1 agent | Low | TODO |
+| 24 | **`delete_messages(dry_run=true)`** — preview what would be deleted before committing | 1 agent | Low | DONE |
 | 25 | **`project_summary` tool** — composite of compact list + stats per room in one call | 2+ agents | Medium | TODO |
 | 26 | **Auto-summarization (janitor)** — already implemented but disabled, needs LLM strategy | built-in | High | DISABLED |

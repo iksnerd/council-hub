@@ -79,7 +79,21 @@ func formatTranscript(room Room, messages []Message) string {
 		fmt.Fprintf(&b, "*Instructions: %s*\n---\n", room.SystemPrompt)
 	}
 
+	// Render pinned message first if one exists
+	pinnedID := int64(-1)
 	for _, m := range messages {
+		if m.Pinned {
+			pinnedID = m.ID
+			ts := m.Timestamp.Format("2006-01-02 15:04:05")
+			fmt.Fprintf(&b, "\n**PINNED [#%d %s] %s:**\n%s\n---\n", m.ID, ts, m.Author, m.Content)
+			break
+		}
+	}
+
+	for _, m := range messages {
+		if m.ID == pinnedID {
+			continue // already rendered above
+		}
 		ts := m.Timestamp.Format("2006-01-02 15:04:05")
 		replyTag := ""
 		if m.ReplyTo > 0 {

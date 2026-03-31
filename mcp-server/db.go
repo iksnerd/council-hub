@@ -37,7 +37,18 @@ type Message struct {
 	MessageType string
 	IsSummary   bool
 	ReplyTo     int64
+	Pinned      bool
 	Timestamp   time.Time
+}
+
+// messageColumns is the canonical column list for SELECT queries on messages.
+const messageColumns = `id, room_id, author, content, message_type, is_summary, reply_to, pinned, timestamp`
+
+// scanMessage scans a single row into a Message struct. Use with messageColumns.
+func scanMessage(scanner interface{ Scan(...any) error }) (Message, error) {
+	var m Message
+	err := scanner.Scan(&m.ID, &m.RoomID, &m.Author, &m.Content, &m.MessageType, &m.IsSummary, &m.ReplyTo, &m.Pinned, &m.Timestamp)
+	return m, err
 }
 
 // CouncilServer holds the database, mutex, MCP server, and logger.
@@ -125,6 +136,7 @@ func initSchema(db *sql.DB) error {
 	migrations := []string{
 		`ALTER TABLE rooms ADD COLUMN related_rooms TEXT DEFAULT ''`,
 		`ALTER TABLE messages ADD COLUMN reply_to INTEGER DEFAULT 0`,
+		`ALTER TABLE messages ADD COLUMN pinned BOOLEAN DEFAULT 0`,
 	}
 	for _, m := range migrations {
 		db.Exec(m) // Ignore "duplicate column" errors for already-migrated DBs
@@ -165,6 +177,89 @@ func (cs *CouncilServer) postMessage(roomID, author, content, messageType string
 
 	id, err := result.LastInsertId()
 	return id, err
+}
+
+func (cs *CouncilServer) updateMessage(messageID int64, newContent, newMessageType string) (*Message, error) {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+
+	if newMessageType != "" {
+		_, err := cs.db.Exec(
+			`UPDATE messages SET content = ?, message_type = ? WHERE id = ?`,
+			newContent, newMessageType, messageID,
+		)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		_, err := cs.db.Exec(
+			`UPDATE messages SET content = ? WHERE id = ?`,
+			newContent, messageID,
+		)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	m, err := scanMessage(cs.db.QueryRow(
+		fmt.Sprintf(`SELECT %s FROM messages WHERE id = ?`, messageColumns),
+		messageID,
+	))
+	if err != nil {
+		return nil, err
+	}
+
+	// Update room's updated_at
+	_, _ = cs.db.Exec(`UPDATE rooms SET updated_at = CURRENT_TIMESTAMP WHERE id = ?`, m.RoomID)
+
+	return &m, nil
+}
+
+func (cs *CouncilServer) pinMessage(roomID string, messageID int64) (bool, error) {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+
+	// Verify message exists and belongs to the room
+	var currentlyPinned bool
+	var actualRoomID string
+	err := cs.db.QueryRow(`SELECT room_id, pinned FROM messages WHERE id = ?`, messageID).Scan(&actualRoomID, &currentlyPinned)
+	if err != nil {
+		return false, err
+	}
+	if actualRoomID != roomID {
+		return false, fmt.Errorf("message #%d belongs to room '%s', not '%s'", messageID, actualRoomID, roomID)
+	}
+
+	if currentlyPinned {
+		// Toggle off
+		_, err := cs.db.Exec(`UPDATE messages SET pinned = 0 WHERE id = ?`, messageID)
+		return false, err
+	}
+
+	// Unpin any existing pinned message in this room
+	_, _ = cs.db.Exec(`UPDATE messages SET pinned = 0 WHERE room_id = ? AND pinned = 1`, roomID)
+
+	// Pin the target
+	_, err = cs.db.Exec(`UPDATE messages SET pinned = 1 WHERE id = ?`, messageID)
+	if err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
+
+func (cs *CouncilServer) getPinnedMessage(roomID string) (*Message, error) {
+	m, err := scanMessage(cs.db.QueryRow(
+		fmt.Sprintf(`SELECT %s FROM messages WHERE room_id = ? AND pinned = 1 LIMIT 1`, messageColumns),
+		roomID,
+	))
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &m, nil
 }
 
 func (cs *CouncilServer) updateStatus(roomID, status string) error {
@@ -244,7 +339,7 @@ func (cs *CouncilServer) getMessagesByIDs(ids []int64) ([]Message, error) {
 		args[i] = id
 	}
 
-	query := fmt.Sprintf(`SELECT id, room_id, author, content, message_type, is_summary, reply_to, timestamp FROM messages WHERE id IN (%s) ORDER BY id ASC`, strings.Join(placeholders, ","))
+	query := fmt.Sprintf(`SELECT %s FROM messages WHERE id IN (%s) ORDER BY id ASC`, messageColumns, strings.Join(placeholders, ","))
 	rows, err := cs.db.Query(query, args...)
 	if err != nil {
 		return nil, err
@@ -253,8 +348,8 @@ func (cs *CouncilServer) getMessagesByIDs(ids []int64) ([]Message, error) {
 
 	var msgs []Message
 	for rows.Next() {
-		var m Message
-		if err := rows.Scan(&m.ID, &m.RoomID, &m.Author, &m.Content, &m.MessageType, &m.IsSummary, &m.ReplyTo, &m.Timestamp); err != nil {
+		m, err := scanMessage(rows)
+		if err != nil {
 			return nil, err
 		}
 		msgs = append(msgs, m)
@@ -277,7 +372,7 @@ func (cs *CouncilServer) getRecentMessages(roomID string, limit int) ([]Message,
 	}
 
 	// Get last N messages in reverse, then flip to chronological
-	rows, err := cs.db.Query(`SELECT id, room_id, author, content, message_type, is_summary, reply_to, timestamp FROM messages WHERE room_id = ? ORDER BY id DESC LIMIT ?`, roomID, limit)
+	rows, err := cs.db.Query(fmt.Sprintf(`SELECT %s FROM messages WHERE room_id = ? ORDER BY id DESC LIMIT ?`, messageColumns), roomID, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -285,8 +380,8 @@ func (cs *CouncilServer) getRecentMessages(roomID string, limit int) ([]Message,
 
 	var msgs []Message
 	for rows.Next() {
-		var m Message
-		if err := rows.Scan(&m.ID, &m.RoomID, &m.Author, &m.Content, &m.MessageType, &m.IsSummary, &m.ReplyTo, &m.Timestamp); err != nil {
+		m, err := scanMessage(rows)
+		if err != nil {
 			return nil, err
 		}
 		msgs = append(msgs, m)
@@ -364,7 +459,7 @@ func (cs *CouncilServer) searchMessages(query, author, messageType, roomID, proj
 		limit = 20
 	}
 
-	q := fmt.Sprintf(`SELECT m.id, m.room_id, m.author, m.content, m.message_type, m.is_summary, m.reply_to, m.timestamp FROM messages m%s %s ORDER BY m.timestamp DESC LIMIT ?`, join, where)
+	q := fmt.Sprintf(`SELECT m.id, m.room_id, m.author, m.content, m.message_type, m.is_summary, m.reply_to, m.pinned, m.timestamp FROM messages m%s %s ORDER BY m.timestamp DESC LIMIT ?`, join, where)
 	args = append(args, limit)
 
 	rows, err := cs.db.Query(q, args...)
@@ -375,8 +470,8 @@ func (cs *CouncilServer) searchMessages(query, author, messageType, roomID, proj
 
 	var msgs []Message
 	for rows.Next() {
-		var m Message
-		if err := rows.Scan(&m.ID, &m.RoomID, &m.Author, &m.Content, &m.MessageType, &m.IsSummary, &m.ReplyTo, &m.Timestamp); err != nil {
+		m, err := scanMessage(rows)
+		if err != nil {
 			return nil, err
 		}
 		msgs = append(msgs, m)
@@ -523,14 +618,14 @@ func (cs *CouncilServer) getRoom(roomID string) (Room, error) {
 
 // getTranscript returns summaries + all individual messages after the latest summary.
 func (cs *CouncilServer) getTranscript(roomID string) ([]Message, error) {
-	rows, err := cs.db.Query(`
-		SELECT id, room_id, author, content, message_type, is_summary, reply_to, timestamp
+	rows, err := cs.db.Query(fmt.Sprintf(`
+		SELECT %s
 		FROM messages
 		WHERE room_id = ?
 		  AND (is_summary = 1 OR id > COALESCE(
 		      (SELECT MAX(id) FROM messages WHERE room_id = ? AND is_summary = 1), 0
 		  ))
-		ORDER BY timestamp ASC`,
+		ORDER BY timestamp ASC`, messageColumns),
 		roomID, roomID,
 	)
 	if err != nil {
@@ -540,8 +635,8 @@ func (cs *CouncilServer) getTranscript(roomID string) ([]Message, error) {
 
 	var msgs []Message
 	for rows.Next() {
-		var m Message
-		if err := rows.Scan(&m.ID, &m.RoomID, &m.Author, &m.Content, &m.MessageType, &m.IsSummary, &m.ReplyTo, &m.Timestamp); err != nil {
+		m, err := scanMessage(rows)
+		if err != nil {
 			return nil, err
 		}
 		msgs = append(msgs, m)
@@ -551,11 +646,11 @@ func (cs *CouncilServer) getTranscript(roomID string) ([]Message, error) {
 
 // getMessagesAfterID returns messages with ID > afterID for a room, in chronological order.
 func (cs *CouncilServer) getMessagesAfterID(roomID string, afterID int64) ([]Message, error) {
-	rows, err := cs.db.Query(`
-		SELECT id, room_id, author, content, message_type, is_summary, reply_to, timestamp
+	rows, err := cs.db.Query(fmt.Sprintf(`
+		SELECT %s
 		FROM messages
 		WHERE room_id = ? AND id > ?
-		ORDER BY timestamp ASC`,
+		ORDER BY timestamp ASC`, messageColumns),
 		roomID, afterID,
 	)
 	if err != nil {
@@ -565,8 +660,8 @@ func (cs *CouncilServer) getMessagesAfterID(roomID string, afterID int64) ([]Mes
 
 	var msgs []Message
 	for rows.Next() {
-		var m Message
-		if err := rows.Scan(&m.ID, &m.RoomID, &m.Author, &m.Content, &m.MessageType, &m.IsSummary, &m.ReplyTo, &m.Timestamp); err != nil {
+		m, err := scanMessage(rows)
+		if err != nil {
 			return nil, err
 		}
 		msgs = append(msgs, m)
@@ -577,7 +672,7 @@ func (cs *CouncilServer) getMessagesAfterID(roomID string, afterID int64) ([]Mes
 // getLatestPerType returns the most recent message for each message_type in a room.
 func (cs *CouncilServer) getLatestPerType(roomID string) ([]Message, error) {
 	rows, err := cs.db.Query(`
-		SELECT m.id, m.room_id, m.author, m.content, m.message_type, m.is_summary, m.reply_to, m.timestamp
+		SELECT m.id, m.room_id, m.author, m.content, m.message_type, m.is_summary, m.reply_to, m.pinned, m.timestamp
 		FROM messages m
 		INNER JOIN (
 			SELECT message_type, MAX(id) as max_id
@@ -595,8 +690,8 @@ func (cs *CouncilServer) getLatestPerType(roomID string) ([]Message, error) {
 
 	var msgs []Message
 	for rows.Next() {
-		var m Message
-		if err := rows.Scan(&m.ID, &m.RoomID, &m.Author, &m.Content, &m.MessageType, &m.IsSummary, &m.ReplyTo, &m.Timestamp); err != nil {
+		m, err := scanMessage(rows)
+		if err != nil {
 			return nil, err
 		}
 		msgs = append(msgs, m)
@@ -635,15 +730,15 @@ func (cs *CouncilServer) getRoomsNeedingSummary(threshold int) ([]string, error)
 
 // getUnsummarizedMessages returns messages after the latest summary for a room.
 func (cs *CouncilServer) getUnsummarizedMessages(roomID string) ([]Message, error) {
-	rows, err := cs.db.Query(`
-		SELECT id, room_id, author, content, message_type, is_summary, reply_to, timestamp
+	rows, err := cs.db.Query(fmt.Sprintf(`
+		SELECT %s
 		FROM messages
 		WHERE room_id = ?
 		  AND is_summary = 0
 		  AND id > COALESCE(
 		      (SELECT MAX(id) FROM messages WHERE room_id = ? AND is_summary = 1), 0
 		  )
-		ORDER BY timestamp ASC`,
+		ORDER BY timestamp ASC`, messageColumns),
 		roomID, roomID,
 	)
 	if err != nil {
@@ -653,8 +748,8 @@ func (cs *CouncilServer) getUnsummarizedMessages(roomID string) ([]Message, erro
 
 	var msgs []Message
 	for rows.Next() {
-		var m Message
-		if err := rows.Scan(&m.ID, &m.RoomID, &m.Author, &m.Content, &m.MessageType, &m.IsSummary, &m.ReplyTo, &m.Timestamp); err != nil {
+		m, err := scanMessage(rows)
+		if err != nil {
 			return nil, err
 		}
 		msgs = append(msgs, m)

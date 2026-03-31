@@ -22,6 +22,7 @@ defmodule CouncilHubUi.Repo.Migrations.CreateTables do
       add :message_type, :string, default: "message"
       add :is_summary, :boolean, default: false
       add :reply_to, :integer, default: 0
+      add :pinned, :boolean, default: false
       add :timestamp, :naive_datetime, default: fragment("CURRENT_TIMESTAMP")
     end
   end

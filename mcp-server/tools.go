@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"strings"
 
@@ -93,9 +94,23 @@ type RoomStatsInput struct {
 	RoomID string `json:"room_id"`
 }
 
+// PinMessageInput represents the parameters for pinning/unpinning a message.
+type PinMessageInput struct {
+	RoomID    string `json:"room_id"`
+	MessageID string `json:"message_id"`
+}
+
+// UpdateMessageInput represents the parameters for editing a message in-place.
+type UpdateMessageInput struct {
+	MessageID   string `json:"message_id"`
+	Content     string `json:"content"`
+	MessageType string `json:"message_type"`
+}
+
 // DeleteMessagesInput represents the parameters for deleting messages.
 type DeleteMessagesInput struct {
 	MessageIDs string `json:"message_ids"`
+	DryRun     string `json:"dry_run"`
 }
 
 // ArchiveRoomInput represents the parameters for archiving a room.
@@ -304,17 +319,37 @@ func registerTools(cs *CouncilServer) {
 
 	mcp.AddTool(cs.mcp, &mcp.Tool{
 		Name:        "room_stats",
-		Description: "Get statistics for a room: message count, participants with message counts, and activity timestamps.",
+		Description: "Get lightweight statistics for a room: message count, latest_message_id (for after_id cursor), participants with per-author counts, type breakdown, and first/last activity timestamps. Use before read_transcript to decide whether to read.",
 		InputSchema: schema([]string{"room_id"}, map[string]map[string]any{
 			"room_id": prop("string", "Target room ID"),
 		}),
 	}, cs.handleRoomStats)
 
 	mcp.AddTool(cs.mcp, &mcp.Tool{
+		Name:        "update_message",
+		Description: "Edit a message's content in-place. Useful for maintaining living status tables or correcting mistakes. Preserves author, timestamp, room, and other fields.",
+		InputSchema: schema([]string{"message_id", "content"}, map[string]map[string]any{
+			"message_id":   prop("string", "ID of the message to update"),
+			"content":      prop("string", "New message content (replaces existing)"),
+			"message_type": prop("string", "Optionally change message type (message, thought, decision, code, review, action, critique)"),
+		}),
+	}, cs.handleUpdateMessage)
+
+	mcp.AddTool(cs.mcp, &mcp.Tool{
+		Name:        "pin_message",
+		Description: "Pin a message as the living TL;DR for a room. Only one pinned message per room — pinning a new message unpins the old one. Pinning an already-pinned message unpins it (toggle). Pinned messages appear first in transcripts.",
+		InputSchema: schema([]string{"room_id", "message_id"}, map[string]map[string]any{
+			"room_id":    prop("string", "Target room ID"),
+			"message_id": prop("string", "ID of the message to pin/unpin"),
+		}),
+	}, cs.handlePinMessage)
+
+	mcp.AddTool(cs.mcp, &mcp.Tool{
 		Name:        "delete_messages",
-		Description: "Delete specific messages by their IDs. Provide a comma-separated list of message IDs.",
+		Description: "Delete specific messages by their IDs. Provide a comma-separated list of message IDs. Use dry_run=true to preview what would be deleted without actually deleting.",
 		InputSchema: schema([]string{"message_ids"}, map[string]map[string]any{
 			"message_ids": prop("string", "Comma-separated message IDs to delete"),
+			"dry_run":     prop("string", "Set to 'true' to preview deletions without executing. Returns message details (id, author, timestamp, room, excerpt)."),
 		}),
 	}, cs.handleDeleteMessages)
 
@@ -329,7 +364,7 @@ func registerTools(cs *CouncilServer) {
 
 	mcp.AddTool(cs.mcp, &mcp.Tool{
 		Name:        "read_transcript",
-		Description: "Read a room's transcript with full context (room header, system_prompt, messages). The primary tool for reading rooms. Supports: last_n for recent messages, after_id for delta reads, mode=summary for orientation, mode=changelog for decisions+actions only.",
+		Description: "Read a room's transcript with full context (room header, system_prompt, pinned message, messages). The primary tool for reading rooms. Supports: last_n for recent messages, after_id for delta reads (includes pinned message for context), mode=summary for orientation (pinned + latest per type), mode=changelog for decisions+actions only.",
 		InputSchema: schema([]string{"room_id"}, map[string]map[string]any{
 			"room_id":  prop("string", "Target room ID"),
 			"last_n":   prop("string", "Return only the last N messages (default: all). Keeps room header and system prompt."),
@@ -925,6 +960,78 @@ func (cs *CouncilServer) handleRoomStats(ctx context.Context, req *mcp.CallToolR
 	return msg(b.String())
 }
 
+func (cs *CouncilServer) handlePinMessage(ctx context.Context, req *mcp.CallToolRequest, args PinMessageInput) (*mcp.CallToolResult, ToolOutput, error) {
+	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: text}},
+		}, ToolOutput{Message: text}, nil
+	}
+
+	if args.RoomID == "" {
+		return msg("Error: room_id is required.")
+	}
+	if args.MessageID == "" {
+		return msg("Error: message_id is required.")
+	}
+
+	var id int64
+	if _, err := fmt.Sscanf(args.MessageID, "%d", &id); err != nil {
+		return msg(fmt.Sprintf("Error: '%s' is not a valid message ID.", args.MessageID))
+	}
+
+	pinned, err := cs.pinMessage(args.RoomID, id)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return msg(fmt.Sprintf("Error: message #%d not found.", id))
+		}
+		cs.logger.Error("Failed to pin message", "id", id, "error", err)
+		return msg(fmt.Sprintf("Error: %s", err.Error()))
+	}
+
+	if pinned {
+		cs.logger.Info("Message pinned", "id", id, "room", args.RoomID)
+		return msg(fmt.Sprintf("Message #%d pinned in room '%s'. It will appear first in transcripts.", id, args.RoomID))
+	}
+	cs.logger.Info("Message unpinned", "id", id, "room", args.RoomID)
+	return msg(fmt.Sprintf("Message #%d unpinned in room '%s'.", id, args.RoomID))
+}
+
+func (cs *CouncilServer) handleUpdateMessage(ctx context.Context, req *mcp.CallToolRequest, args UpdateMessageInput) (*mcp.CallToolResult, ToolOutput, error) {
+	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: text}},
+		}, ToolOutput{Message: text}, nil
+	}
+
+	if args.MessageID == "" {
+		return msg("Error: message_id is required.")
+	}
+	if args.Content == "" {
+		return msg("Error: content is required.")
+	}
+
+	var id int64
+	if _, err := fmt.Sscanf(args.MessageID, "%d", &id); err != nil {
+		return msg(fmt.Sprintf("Error: '%s' is not a valid message ID.", args.MessageID))
+	}
+
+	if args.MessageType != "" && !validMessageTypes[args.MessageType] {
+		return msg(fmt.Sprintf("Error: invalid message_type '%s'. Valid types: message, thought, decision, code, review, action, critique.", args.MessageType))
+	}
+
+	m, err := cs.updateMessage(id, args.Content, args.MessageType)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return msg(fmt.Sprintf("Error: message #%d not found.", id))
+		}
+		cs.logger.Error("Failed to update message", "id", id, "error", err)
+		return nil, ToolOutput{}, err
+	}
+
+	cs.logger.Info("Message updated", "id", id, "room", m.RoomID)
+	return msg(fmt.Sprintf("Message #%d updated. Author: %s, Room: %s, Type: %s.", m.ID, m.Author, m.RoomID, m.MessageType))
+}
+
 func (cs *CouncilServer) handleDeleteMessages(ctx context.Context, req *mcp.CallToolRequest, args DeleteMessagesInput) (*mcp.CallToolResult, ToolOutput, error) {
 	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
 		return &mcp.CallToolResult{
@@ -945,6 +1052,34 @@ func (cs *CouncilServer) handleDeleteMessages(ctx context.Context, req *mcp.Call
 			return msg(fmt.Sprintf("Error: '%s' is not a valid message ID.", p))
 		}
 		ids = append(ids, id)
+	}
+
+	if args.DryRun == "true" {
+		msgs, err := cs.getMessagesByIDs(ids)
+		if err != nil {
+			cs.logger.Error("Failed to fetch messages for dry run", "error", err)
+			return nil, ToolOutput{}, err
+		}
+
+		var b strings.Builder
+		fmt.Fprintf(&b, "DRY RUN — %d message(s) would be deleted:\n\n", len(msgs))
+		foundIDs := make(map[int64]bool)
+		for _, m := range msgs {
+			foundIDs[m.ID] = true
+			excerpt := m.Content
+			if len(excerpt) > 120 {
+				excerpt = excerpt[:120] + "..."
+			}
+			excerpt = strings.ReplaceAll(excerpt, "\n", " ")
+			fmt.Fprintf(&b, "  #%d | %s | %s | %s | %s\n",
+				m.ID, m.Author, m.Timestamp.Format("2006-01-02 15:04:05"), m.RoomID, excerpt)
+		}
+		for _, id := range ids {
+			if !foundIDs[id] {
+				fmt.Fprintf(&b, "  #%d — not found\n", id)
+			}
+		}
+		return msg(b.String())
 	}
 
 	count, err := cs.deleteMessages(ids)
@@ -1019,10 +1154,21 @@ func (cs *CouncilServer) handleReadTranscript(ctx context.Context, req *mcp.Call
 			fmt.Fprintf(&b, "**System Prompt:** %s\n", room.SystemPrompt)
 		}
 		b.WriteString("---\n")
+
+		// Show pinned message prominently in summary
+		pinned, _ := cs.getPinnedMessage(args.RoomID)
+		if pinned != nil {
+			ts := pinned.Timestamp.Format("2006-01-02 15:04:05")
+			fmt.Fprintf(&b, "**PINNED [#%d %s] %s:**\n%s\n---\n", pinned.ID, ts, pinned.Author, pinned.Content)
+		}
+
 		if len(latestMsgs) == 0 {
 			b.WriteString("No messages yet.\n")
 		} else {
 			for _, m := range latestMsgs {
+				if pinned != nil && m.ID == pinned.ID {
+					continue // already shown above
+				}
 				ts := m.Timestamp.Format("2006-01-02 15:04:05")
 				snippet := m.Content
 				if len(snippet) > 200 {
@@ -1091,6 +1237,14 @@ func (cs *CouncilServer) handleReadTranscript(ctx context.Context, req *mcp.Call
 			fmt.Fprintf(&b, " (latest: #%d)", latestID)
 		}
 		b.WriteString("\n---\n")
+
+		// Include pinned message at top of delta reads for context
+		pinned, _ := cs.getPinnedMessage(args.RoomID)
+		if pinned != nil {
+			ts := pinned.Timestamp.Format("2006-01-02 15:04:05")
+			fmt.Fprintf(&b, "\n**PINNED [#%d %s] %s:**\n%s\n---\n", pinned.ID, ts, pinned.Author, pinned.Content)
+		}
+
 		for _, m := range messages {
 			ts := m.Timestamp.Format("2006-01-02 15:04:05")
 			replyTag := ""
