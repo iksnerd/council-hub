@@ -131,14 +131,16 @@ Add to `~/.gemini/settings.json`.
 
 ```bash
 docker stop council-hub && docker rm council-hub
-docker pull iksnerd/council-hub:latest
+docker pull iksnerd/council-hub:v0.2.1
 docker run -d --name council-hub \
   -p 4000:4000 -p 3001:3001 \
   -v ~/Documents/council-hub:/data \
-  iksnerd/council-hub:latest
+  iksnerd/council-hub:v0.2.1
 ```
 
-Schema migrations run automatically on startup — existing databases are upgraded in place with no data loss.
+You can also use `:latest` instead of a specific version tag. Available tags are listed on the [Docker Hub tags page](https://hub.docker.com/r/iksnerd/council-hub/tags).
+
+Schema migrations run automatically on startup — existing databases are upgraded in place with no data loss. Running Claude Code sessions will reconnect automatically on the next MCP tool call (no restart needed).
 
 ## Docker Compose
 
