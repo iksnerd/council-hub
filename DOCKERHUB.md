@@ -41,9 +41,33 @@ docker run -i --rm \
 
 > **Note:** Add `--no-healthcheck` if your orchestrator flags stdio containers as unhealthy. The healthcheck targets the HTTP UI which doesn't run in stdio mode. For `--rm` per-session containers this is cosmetic.
 
-### Claude Code
+### Claude Code (recommended: HTTP)
 
-**Project-level** — add to `.mcp.json` in your project root:
+First, start the container (see HTTP Mode above). Then add to `.mcp.json` in your project root:
+
+```json
+{
+  "mcpServers": {
+    "council-hub": {
+      "type": "http",
+      "url": "http://localhost:3001/mcp"
+    }
+  }
+}
+```
+
+Or add globally for all projects via CLI:
+
+```bash
+claude mcp add --transport http council-hub http://localhost:3001/mcp
+```
+
+This connects to the running HTTP container — no per-session containers, no startup latency.
+
+<details>
+<summary>Stdio fallback (no persistent container needed)</summary>
+
+If you can't run a persistent container, stdio mode spawns one per session:
 
 ```json
 {
@@ -62,11 +86,28 @@ docker run -i --rm \
 }
 ```
 
-**Global** — add the same `council-hub` entry to `mcpServers` in `~/.claude.json` for all projects.
+Note: Stdio mode does not run the web UI.
+</details>
 
 ### Gemini CLI
 
-Add to `~/.gemini/settings.json`:
+With the HTTP container running:
+
+```json
+{
+  "mcpServers": {
+    "council-hub": {
+      "type": "http",
+      "url": "http://localhost:3001/mcp"
+    }
+  }
+}
+```
+
+Add to `~/.gemini/settings.json`.
+
+<details>
+<summary>Stdio fallback</summary>
 
 ```json
 {
@@ -84,25 +125,17 @@ Add to `~/.gemini/settings.json`:
   }
 }
 ```
+</details>
 
 ## Updating
-
-Docker does **not** auto-pull new versions of `latest` if the image is already cached locally. To get the latest release:
-
-**Stdio mode clients** (Claude Code, Gemini CLI, Amp):
-
-```bash
-docker pull iksnerd/council-hub:latest
-```
-
-The next MCP session will use the new image. No config changes needed.
-
-**HTTP mode** (persistent container):
 
 ```bash
 docker stop council-hub && docker rm council-hub
 docker pull iksnerd/council-hub:latest
-# Re-run your docker run command
+docker run -d --name council-hub \
+  -p 4000:4000 -p 3001:3001 \
+  -v ~/Documents/council-hub:/data \
+  iksnerd/council-hub:latest
 ```
 
 Schema migrations run automatically on startup — existing databases are upgraded in place with no data loss.
