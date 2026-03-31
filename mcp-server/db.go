@@ -74,7 +74,7 @@ func NewCouncilServer(dbPath string, logger *slog.Logger) (*CouncilServer, error
 
 	mcpServer := mcp.NewServer(&mcp.Implementation{
 		Name:    "council-hub",
-		Version: "0.2.1",
+		Version: "0.3.0",
 	}, &mcp.ServerOptions{
 		Logger:       logger,
 		Capabilities: &mcp.ServerCapabilities{},
@@ -500,6 +500,61 @@ func (cs *CouncilServer) getTranscript(roomID string) ([]Message, error) {
 		  ))
 		ORDER BY timestamp ASC`,
 		roomID, roomID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var msgs []Message
+	for rows.Next() {
+		var m Message
+		if err := rows.Scan(&m.ID, &m.RoomID, &m.Author, &m.Content, &m.MessageType, &m.IsSummary, &m.ReplyTo, &m.Timestamp); err != nil {
+			return nil, err
+		}
+		msgs = append(msgs, m)
+	}
+	return msgs, rows.Err()
+}
+
+// getMessagesAfterID returns messages with ID > afterID for a room, in chronological order.
+func (cs *CouncilServer) getMessagesAfterID(roomID string, afterID int64) ([]Message, error) {
+	rows, err := cs.db.Query(`
+		SELECT id, room_id, author, content, message_type, is_summary, reply_to, timestamp
+		FROM messages
+		WHERE room_id = ? AND id > ?
+		ORDER BY timestamp ASC`,
+		roomID, afterID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var msgs []Message
+	for rows.Next() {
+		var m Message
+		if err := rows.Scan(&m.ID, &m.RoomID, &m.Author, &m.Content, &m.MessageType, &m.IsSummary, &m.ReplyTo, &m.Timestamp); err != nil {
+			return nil, err
+		}
+		msgs = append(msgs, m)
+	}
+	return msgs, rows.Err()
+}
+
+// getLatestPerType returns the most recent message for each message_type in a room.
+func (cs *CouncilServer) getLatestPerType(roomID string) ([]Message, error) {
+	rows, err := cs.db.Query(`
+		SELECT m.id, m.room_id, m.author, m.content, m.message_type, m.is_summary, m.reply_to, m.timestamp
+		FROM messages m
+		INNER JOIN (
+			SELECT message_type, MAX(id) as max_id
+			FROM messages
+			WHERE room_id = ? AND is_summary = 0
+			GROUP BY message_type
+		) latest ON m.id = latest.max_id
+		ORDER BY m.timestamp DESC`,
+		roomID,
 	)
 	if err != nil {
 		return nil, err

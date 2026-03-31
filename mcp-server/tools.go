@@ -44,6 +44,7 @@ type ListRoomsInput struct {
 	Project string `json:"project"`
 	Tag     string `json:"tag"`
 	Status  string `json:"status"`
+	Compact string `json:"compact"`
 }
 
 // UpdateRoomInput represents the parameters for updating a room's metadata.
@@ -69,7 +70,10 @@ type DeleteRoomInput struct {
 
 // ReadTranscriptInput represents the parameters for reading a room transcript.
 type ReadTranscriptInput struct {
-	RoomID string `json:"room_id"`
+	RoomID  string `json:"room_id"`
+	LastN   string `json:"last_n"`
+	AfterID string `json:"after_id"`
+	Mode    string `json:"mode"`
 }
 
 // SearchMessagesInput represents the parameters for searching messages.
@@ -79,6 +83,7 @@ type SearchMessagesInput struct {
 	MessageType string `json:"message_type"`
 	RoomID      string `json:"room_id"`
 	Limit       string `json:"limit"`
+	SummaryOnly string `json:"summary_only"`
 }
 
 // RoomStatsInput represents the parameters for getting room statistics.
@@ -97,9 +102,17 @@ type ArchiveRoomInput struct {
 	Delete string `json:"delete"`
 }
 
-// GetMessagesInput represents the parameters for fetching messages by ID.
+// GetMessagesInput represents the parameters for fetching messages by ID or by room.
 type GetMessagesInput struct {
 	MessageIDs string `json:"message_ids"`
+	RoomID     string `json:"room_id"`
+	LastN      string `json:"last_n"`
+}
+
+// BulkStatusInput represents the parameters for updating multiple rooms' status at once.
+type BulkStatusInput struct {
+	RoomIDs string `json:"room_ids"`
+	Status  string `json:"status"`
 }
 
 // ReadRecentInput represents the parameters for reading recent messages.
@@ -173,12 +186,22 @@ func registerTools(cs *CouncilServer) {
 	}, cs.handleSignalStatus)
 
 	mcp.AddTool(cs.mcp, &mcp.Tool{
+		Name:        "bulk_status_update",
+		Description: "Update the status of multiple rooms in one call. Useful for closing out a sprint or batch-resolving rooms.",
+		InputSchema: schema([]string{"room_ids", "status"}, map[string]map[string]any{
+			"room_ids": prop("string", "Comma-separated room IDs (e.g. bug-123,bug-456,feature-x)"),
+			"status":   prop("string", "One of: active, paused, resolved"),
+		}),
+	}, cs.handleBulkStatusUpdate)
+
+	mcp.AddTool(cs.mcp, &mcp.Tool{
 		Name:        "list_rooms",
-		Description: "List council rooms, optionally filtered by project, tag, or status. Returns room metadata sorted by recent activity.",
+		Description: "List council rooms, optionally filtered by project, tag, or status. Returns room metadata sorted by recent activity. Use compact=true for a one-line-per-room summary (saves ~60-80% tokens).",
 		InputSchema: schema(nil, map[string]map[string]any{
 			"project": prop("string", "Filter by project name"),
 			"tag":     prop("string", "Filter by tag"),
 			"status":  prop("string", "Filter by status (active, paused, resolved)"),
+			"compact": prop("string", "Set to 'true' for one-line-per-room output (id | project | status | topic | last_activity)"),
 		}),
 	}, cs.handleListRooms)
 
@@ -214,21 +237,24 @@ func registerTools(cs *CouncilServer) {
 
 	mcp.AddTool(cs.mcp, &mcp.Tool{
 		Name:        "search_messages",
-		Description: "Search messages across rooms. All filter params are optional — omit or leave empty to skip. Returns snippets with message IDs; use get_messages to fetch full content.",
+		Description: "Search messages across rooms. All filter params are optional — omit or leave empty to skip. Returns snippets with message IDs; use get_messages to fetch full content. Use summary_only=true for compact results (id, author, timestamp, 120-char excerpt).",
 		InputSchema: schema(nil, map[string]map[string]any{
 			"query":        prop("string", "Text to search for in message content"),
 			"author":       prop("string", "Filter by author name"),
 			"message_type": prop("string", "Filter by type (message, thought, decision, code, review, action, critique)"),
 			"room_id":      prop("string", "Scope search to a specific room"),
 			"limit":        prop("string", "Max results to return (default 20, max 100)"),
+			"summary_only": prop("string", "Set to 'true' for compact output: id, author, timestamp, room, type, and 120-char excerpt"),
 		}),
 	}, cs.handleSearchMessages)
 
 	mcp.AddTool(cs.mcp, &mcp.Tool{
 		Name:        "get_messages",
-		Description: "Fetch the full content of specific messages by their IDs. Use this after search_messages to retrieve complete message text without loading entire transcripts.",
-		InputSchema: schema([]string{"message_ids"}, map[string]map[string]any{
+		Description: "Fetch full message content by IDs, or browse a room's messages. Provide message_ids for specific messages, or room_id + optional last_n to browse (default 10, max 50).",
+		InputSchema: schema(nil, map[string]map[string]any{
 			"message_ids": prop("string", "Comma-separated message IDs (e.g. 48,52,55)"),
+			"room_id":     prop("string", "Browse messages from this room (alternative to message_ids)"),
+			"last_n":      prop("string", "Number of recent messages to fetch when using room_id (default 10, max 50)"),
 		}),
 	}, cs.handleGetMessages)
 
@@ -268,9 +294,12 @@ func registerTools(cs *CouncilServer) {
 
 	mcp.AddTool(cs.mcp, &mcp.Tool{
 		Name:        "read_transcript",
-		Description: "Read the full transcript of a council room. Returns the prompt-optimized markdown with room metadata, system instructions, and all messages.",
+		Description: "Read the transcript of a council room. Returns prompt-optimized markdown with room metadata, system instructions, and messages. Use last_n to limit to recent messages, after_id for delta reads (messages after a known ID), or mode=summary for a quick orientation (system_prompt + latest message per type).",
 		InputSchema: schema([]string{"room_id"}, map[string]map[string]any{
-			"room_id": prop("string", "Target room ID"),
+			"room_id":  prop("string", "Target room ID"),
+			"last_n":   prop("string", "Return only the last N messages (default: all). Keeps room header and system prompt."),
+			"after_id": prop("string", "Return only messages with ID greater than this value. For delta reads after context compaction."),
+			"mode":     prop("string", "Set to 'summary' to return system_prompt + latest message per message_type (thought, decision, action, etc). Ideal for start-of-session orientation."),
 		}),
 	}, cs.handleReadTranscript)
 }
@@ -355,6 +384,54 @@ func (cs *CouncilServer) handleSignalStatus(ctx context.Context, req *mcp.CallTo
 	return msg(fmt.Sprintf("Room '%s' status updated to '%s'.", args.RoomID, args.Status))
 }
 
+func (cs *CouncilServer) handleBulkStatusUpdate(ctx context.Context, req *mcp.CallToolRequest, args BulkStatusInput) (*mcp.CallToolResult, ToolOutput, error) {
+	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: text}},
+		}, ToolOutput{Message: text}, nil
+	}
+
+	validStatuses := map[string]bool{"active": true, "paused": true, "resolved": true}
+	if !validStatuses[args.Status] {
+		return msg(fmt.Sprintf("Error: Invalid status '%s'. Must be one of: active, paused, resolved.", args.Status))
+	}
+
+	if args.RoomIDs == "" {
+		return msg("Error: room_ids is required (comma-separated list of room IDs).")
+	}
+
+	parts := strings.Split(args.RoomIDs, ",")
+	var updated, notFound []string
+	for _, p := range parts {
+		roomID := strings.TrimSpace(p)
+		if roomID == "" {
+			continue
+		}
+		if err := cs.updateStatus(roomID, args.Status); err != nil {
+			notFound = append(notFound, roomID)
+		} else {
+			updated = append(updated, roomID)
+		}
+	}
+
+	var b strings.Builder
+	if len(updated) > 0 {
+		fmt.Fprintf(&b, "Updated %d room(s) to '%s': %s", len(updated), args.Status, strings.Join(updated, ", "))
+	}
+	if len(notFound) > 0 {
+		if b.Len() > 0 {
+			b.WriteString("\n")
+		}
+		fmt.Fprintf(&b, "Not found: %s", strings.Join(notFound, ", "))
+	}
+	if b.Len() == 0 {
+		return msg("No valid room IDs provided.")
+	}
+
+	cs.logger.Info("Bulk status update", "status", args.Status, "updated", len(updated), "not_found", len(notFound))
+	return msg(b.String())
+}
+
 func (cs *CouncilServer) handleListRooms(ctx context.Context, req *mcp.CallToolRequest, args ListRoomsInput) (*mcp.CallToolResult, ToolOutput, error) {
 	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
 		return &mcp.CallToolResult{
@@ -374,22 +451,37 @@ func (cs *CouncilServer) handleListRooms(ctx context.Context, req *mcp.CallToolR
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "Found %d room(s):\n\n", len(rooms))
-	for _, r := range rooms {
-		fmt.Fprintf(&b, "- **%s** [%s]", r.ID, r.Status)
-		if r.Project != "" {
-			fmt.Fprintf(&b, " | project: %s", r.Project)
+
+	if args.Compact == "true" {
+		for _, r := range rooms {
+			topic := r.Description
+			if len(topic) > 60 {
+				topic = topic[:60] + "..."
+			}
+			project := r.Project
+			if project == "" {
+				project = "-"
+			}
+			fmt.Fprintf(&b, "- **%s** | %s | %s | %s | %s\n", r.ID, project, r.Status, topic, r.UpdatedAt.Format("2006-01-02 15:04"))
 		}
-		if r.Tags != "" {
-			fmt.Fprintf(&b, " | tags: %s", r.Tags)
+	} else {
+		for _, r := range rooms {
+			fmt.Fprintf(&b, "- **%s** [%s]", r.ID, r.Status)
+			if r.Project != "" {
+				fmt.Fprintf(&b, " | project: %s", r.Project)
+			}
+			if r.Tags != "" {
+				fmt.Fprintf(&b, " | tags: %s", r.Tags)
+			}
+			fmt.Fprintf(&b, "\n  %s\n", r.Description)
+			if r.TechStack != "" {
+				fmt.Fprintf(&b, "  Tech: %s\n", r.TechStack)
+			}
+			if r.RelatedRooms != "" {
+				fmt.Fprintf(&b, "  Related: %s\n", r.RelatedRooms)
+			}
+			fmt.Fprintf(&b, "  Last activity: %s\n", r.UpdatedAt.Format("2006-01-02 15:04:05"))
 		}
-		fmt.Fprintf(&b, "\n  %s\n", r.Description)
-		if r.TechStack != "" {
-			fmt.Fprintf(&b, "  Tech: %s\n", r.TechStack)
-		}
-		if r.RelatedRooms != "" {
-			fmt.Fprintf(&b, "  Related: %s\n", r.RelatedRooms)
-		}
-		fmt.Fprintf(&b, "  Last activity: %s\n", r.UpdatedAt.Format("2006-01-02 15:04:05"))
 	}
 
 	text := b.String()
@@ -528,13 +620,27 @@ func (cs *CouncilServer) handleSearchMessages(ctx context.Context, req *mcp.Call
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "Found %d message(s):\n\n", len(messages))
-	for _, m := range messages {
-		ts := m.Timestamp.Format("2006-01-02 15:04:05")
-		snippet := m.Content
-		if len(snippet) > 300 {
-			snippet = snippet[:300] + "..."
+
+	if args.SummaryOnly == "true" {
+		for _, m := range messages {
+			ts := m.Timestamp.Format("2006-01-02 15:04")
+			excerpt := m.Content
+			if len(excerpt) > 120 {
+				excerpt = excerpt[:120] + "..."
+			}
+			// Replace newlines in excerpt for single-line display
+			excerpt = strings.ReplaceAll(excerpt, "\n", " ")
+			fmt.Fprintf(&b, "- #%d | %s | %s | %s | %s | %s\n", m.ID, ts, m.Author, m.RoomID, m.MessageType, excerpt)
 		}
-		fmt.Fprintf(&b, "- **#%d** [%s] %s in **%s** (%s):\n  %s\n\n", m.ID, ts, m.Author, m.RoomID, m.MessageType, snippet)
+	} else {
+		for _, m := range messages {
+			ts := m.Timestamp.Format("2006-01-02 15:04:05")
+			snippet := m.Content
+			if len(snippet) > 300 {
+				snippet = snippet[:300] + "..."
+			}
+			fmt.Fprintf(&b, "- **#%d** [%s] %s in **%s** (%s):\n  %s\n\n", m.ID, ts, m.Author, m.RoomID, m.MessageType, snippet)
+		}
 	}
 
 	return msg(b.String())
@@ -547,29 +653,53 @@ func (cs *CouncilServer) handleGetMessages(ctx context.Context, req *mcp.CallToo
 		}, ToolOutput{Message: text}, nil
 	}
 
-	if args.MessageIDs == "" {
-		return msg("Error: message_ids is required (comma-separated list of message IDs).")
-	}
+	var messages []Message
 
-	parts := strings.Split(args.MessageIDs, ",")
-	var ids []int64
-	for _, p := range parts {
-		p = strings.TrimSpace(p)
-		var id int64
-		if _, err := fmt.Sscanf(p, "%d", &id); err != nil {
-			return msg(fmt.Sprintf("Error: '%s' is not a valid message ID.", p))
+	if args.MessageIDs != "" {
+		// Mode 1: fetch by explicit IDs
+		parts := strings.Split(args.MessageIDs, ",")
+		var ids []int64
+		for _, p := range parts {
+			p = strings.TrimSpace(p)
+			var id int64
+			if _, err := fmt.Sscanf(p, "%d", &id); err != nil {
+				return msg(fmt.Sprintf("Error: '%s' is not a valid message ID.", p))
+			}
+			ids = append(ids, id)
 		}
-		ids = append(ids, id)
-	}
 
-	messages, err := cs.getMessagesByIDs(ids)
-	if err != nil {
-		cs.logger.Error("Failed to get messages", "error", err)
-		return nil, ToolOutput{}, err
+		var err error
+		messages, err = cs.getMessagesByIDs(ids)
+		if err != nil {
+			cs.logger.Error("Failed to get messages", "error", err)
+			return nil, ToolOutput{}, err
+		}
+	} else if args.RoomID != "" {
+		// Mode 2: browse room messages by last_n
+		limit := 10
+		if args.LastN != "" {
+			if _, err := fmt.Sscanf(args.LastN, "%d", &limit); err != nil {
+				limit = 10
+			}
+		}
+		if limit <= 0 {
+			limit = 10
+		}
+		if limit > 50 {
+			limit = 50
+		}
+
+		var err error
+		messages, err = cs.getRecentMessages(args.RoomID, limit)
+		if err != nil {
+			return msg(fmt.Sprintf("Error: %s", err.Error()))
+		}
+	} else {
+		return msg("Error: provide either message_ids or room_id.")
 	}
 
 	if len(messages) == 0 {
-		return msg("No messages found with the given IDs.")
+		return msg("No messages found.")
 	}
 
 	var b strings.Builder
@@ -746,10 +876,92 @@ func (cs *CouncilServer) handleReadTranscript(ctx context.Context, req *mcp.Call
 		return msg(fmt.Sprintf("Error: Room '%s' not found.", args.RoomID))
 	}
 
+	// Mode: summary — return system_prompt + latest message per type
+	if args.Mode == "summary" {
+		latestMsgs, err := cs.getLatestPerType(args.RoomID)
+		if err != nil {
+			cs.logger.Error("Failed to get summary", "room_id", args.RoomID, "error", err)
+			return nil, ToolOutput{}, err
+		}
+
+		var b strings.Builder
+		fmt.Fprintf(&b, "# %s [%s] — summary\n", room.ID, room.Status)
+		fmt.Fprintf(&b, "**Topic:** %s\n", room.Description)
+		if room.SystemPrompt != "" {
+			fmt.Fprintf(&b, "**System Prompt:** %s\n", room.SystemPrompt)
+		}
+		b.WriteString("---\n")
+		if len(latestMsgs) == 0 {
+			b.WriteString("No messages yet.\n")
+		} else {
+			for _, m := range latestMsgs {
+				ts := m.Timestamp.Format("2006-01-02 15:04:05")
+				snippet := m.Content
+				if len(snippet) > 200 {
+					snippet = snippet[:200] + "..."
+				}
+				fmt.Fprintf(&b, "**Latest %s** [#%d %s] %s:\n  %s\n\n", m.MessageType, m.ID, ts, m.Author, snippet)
+			}
+		}
+		return msg(b.String())
+	}
+
+	// Mode: after_id — delta read
+	if args.AfterID != "" {
+		var afterID int64
+		if _, err := fmt.Sscanf(args.AfterID, "%d", &afterID); err != nil {
+			return msg(fmt.Sprintf("Error: after_id '%s' is not a valid message ID.", args.AfterID))
+		}
+
+		messages, err := cs.getMessagesAfterID(args.RoomID, afterID)
+		if err != nil {
+			cs.logger.Error("Failed to get messages after ID", "room_id", args.RoomID, "after_id", afterID, "error", err)
+			return nil, ToolOutput{}, err
+		}
+
+		var b strings.Builder
+		fmt.Fprintf(&b, "# %s — %d message(s) after #%d\n---\n", room.ID, len(messages), afterID)
+		for _, m := range messages {
+			ts := m.Timestamp.Format("2006-01-02 15:04:05")
+			replyTag := ""
+			if m.ReplyTo > 0 {
+				replyTag = fmt.Sprintf(", re: #%d", m.ReplyTo)
+			}
+			if m.IsSummary {
+				fmt.Fprintf(&b, "\n**[%s] SUMMARY:**\n%s\n", ts, m.Content)
+			} else if m.MessageType != "" && m.MessageType != "message" {
+				fmt.Fprintf(&b, "\n**[#%d %s] %s (%s%s):**\n%s\n", m.ID, ts, m.Author, m.MessageType, replyTag, m.Content)
+			} else {
+				fmt.Fprintf(&b, "\n**[#%d %s] %s:**\n%s\n", m.ID, ts, m.Author, m.Content)
+			}
+		}
+		return msg(b.String())
+	}
+
+	// Default: full transcript (with optional last_n)
 	messages, err := cs.getTranscript(args.RoomID)
 	if err != nil {
 		cs.logger.Error("Failed to get transcript", "room_id", args.RoomID, "error", err)
 		return nil, ToolOutput{}, err
+	}
+
+	// Apply last_n: keep only the last N non-summary messages (summaries always included)
+	if args.LastN != "" {
+		var lastN int
+		if _, err := fmt.Sscanf(args.LastN, "%d", &lastN); err == nil && lastN > 0 {
+			var summaries, regular []Message
+			for _, m := range messages {
+				if m.IsSummary {
+					summaries = append(summaries, m)
+				} else {
+					regular = append(regular, m)
+				}
+			}
+			if lastN < len(regular) {
+				regular = regular[len(regular)-lastN:]
+			}
+			messages = append(summaries, regular...)
+		}
 	}
 
 	transcript := formatTranscript(room, messages)
