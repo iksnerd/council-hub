@@ -1,4 +1,4 @@
-package main
+package council
 
 import (
 	"context"
@@ -12,45 +12,45 @@ const (
 	summaryMessageThreshold = 20
 )
 
-func (cs *CouncilServer) runJanitor(ctx context.Context) {
+func (s *Server) RunJanitor(ctx context.Context) {
 	ticker := time.NewTicker(janitorInterval)
 	defer ticker.Stop()
 
-	cs.logger.Info("Janitor started", "interval", janitorInterval, "threshold", summaryMessageThreshold)
+	s.Logger.Info("Janitor started", "interval", janitorInterval, "threshold", summaryMessageThreshold)
 
 	for {
 		select {
 		case <-ctx.Done():
-			cs.logger.Info("Janitor stopped")
+			s.Logger.Info("Janitor stopped")
 			return
 		case <-ticker.C:
-			cs.janitorSweep()
+			s.JanitorSweep()
 		}
 	}
 }
 
-func (cs *CouncilServer) janitorSweep() {
-	rooms, err := cs.getRoomsNeedingSummary(summaryMessageThreshold)
+func (s *Server) JanitorSweep() {
+	rooms, err := s.GetRoomsNeedingSummary(summaryMessageThreshold)
 	if err != nil {
-		cs.logger.Error("Janitor: failed to find rooms needing summary", "error", err)
+		s.Logger.Error("Janitor: failed to find rooms needing summary", "error", err)
 		return
 	}
 
 	for _, roomID := range rooms {
-		msgs, err := cs.getUnsummarizedMessages(roomID)
+		msgs, err := s.GetUnsummarizedMessages(roomID)
 		if err != nil {
-			cs.logger.Error("Janitor: failed to get unsummarized messages", "room_id", roomID, "error", err)
+			s.Logger.Error("Janitor: failed to get unsummarized messages", "room_id", roomID, "error", err)
 			continue
 		}
 
 		summary := summarize(msgs)
 
-		if err := cs.insertSummary(roomID, summary); err != nil {
-			cs.logger.Error("Janitor: failed to insert summary", "room_id", roomID, "error", err)
+		if err := s.InsertSummary(roomID, summary); err != nil {
+			s.Logger.Error("Janitor: failed to insert summary", "room_id", roomID, "error", err)
 			continue
 		}
 
-		cs.logger.Info("Janitor: summarized room", "room_id", roomID, "messages_summarized", len(msgs))
+		s.Logger.Info("Janitor: summarized room", "room_id", roomID, "messages_summarized", len(msgs))
 	}
 }
 

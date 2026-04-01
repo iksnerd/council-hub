@@ -1,4 +1,4 @@
-package main
+package handlers
 
 import (
 	"context"
@@ -9,12 +9,12 @@ import (
 )
 
 func TestHandleTranscriptResource(t *testing.T) {
-	cs := setupTestServer(t)
-	registerResources(cs)
-	mustCreateRoom(t, cs, "res-room", withProject("proj"), withTechStack("Go"), withTags("tag"), withSystemPrompt("Be helpful"), withRelatedRooms("related-a"))
-	mustPostTyped(t, cs, "res-room", "Claude", "Hello", "thought")
+	reg := setupHandlerTest(t)
+	reg.RegisterResources()
+	mustCreateRoom(t, reg.Server, "res-room", withProject("proj"), withTechStack("Go"), withTags("tag"), withSystemPrompt("Be helpful"), withRelatedRooms("related-a"))
+	mustPostTyped(t, reg.Server, "res-room", "Claude", "Hello", "thought")
 
-	result, err := cs.handleTranscript(context.Background(), &mcp.ReadResourceRequest{
+	result, err := reg.handleTranscript(context.Background(), &mcp.ReadResourceRequest{
 		Params: &mcp.ReadResourceParams{URI: "council://room/res-room/transcript"},
 	})
 	if err != nil {
@@ -33,9 +33,9 @@ func TestHandleTranscriptResource(t *testing.T) {
 }
 
 func TestHandleTranscriptResourceNotFound(t *testing.T) {
-	cs := setupTestServer(t)
+	reg := setupHandlerTest(t)
 
-	result, err := cs.handleTranscript(context.Background(), &mcp.ReadResourceRequest{
+	result, err := reg.handleTranscript(context.Background(), &mcp.ReadResourceRequest{
 		Params: &mcp.ReadResourceParams{URI: "council://room/nonexistent/transcript"},
 	})
 	if err != nil {
@@ -48,9 +48,9 @@ func TestHandleTranscriptResourceNotFound(t *testing.T) {
 }
 
 func TestHandleTranscriptResourceEmptyURI(t *testing.T) {
-	cs := setupTestServer(t)
+	reg := setupHandlerTest(t)
 
-	_, err := cs.handleTranscript(context.Background(), &mcp.ReadResourceRequest{
+	_, err := reg.handleTranscript(context.Background(), &mcp.ReadResourceRequest{
 		Params: &mcp.ReadResourceParams{URI: "council://room//transcript"},
 	})
 	if err == nil {

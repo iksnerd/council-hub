@@ -1,4 +1,4 @@
-package main
+package handlers
 
 import (
 	"context"
@@ -10,9 +10,9 @@ import (
 // ========== search_messages ==========
 
 func TestHandleSearchMessagesNoFilter(t *testing.T) {
-	cs := setupTestServer(t)
+	reg := setupHandlerTest(t)
 
-	res, _, _ := cs.handleSearchMessages(context.Background(), nil, SearchMessagesInput{})
+	res, _, _ := reg.handleSearchMessages(context.Background(), nil, SearchMessagesInput{})
 	text := resultText(res)
 	if !strings.Contains(text, "Error") {
 		t.Errorf("expected error for no filters, got: %s", text)
@@ -20,13 +20,13 @@ func TestHandleSearchMessagesNoFilter(t *testing.T) {
 }
 
 func TestHandleSearchMessagesWithLimit(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "h-search-lim")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-search-lim")
 	for i := 0; i < 5; i++ {
-		mustPost(t, cs, "h-search-lim", "Claude", "keyword match")
+		mustPost(t, reg.Server, "h-search-lim", "Claude", "keyword match")
 	}
 
-	res, _, _ := cs.handleSearchMessages(context.Background(), nil, SearchMessagesInput{
+	res, _, _ := reg.handleSearchMessages(context.Background(), nil, SearchMessagesInput{
 		Query: "keyword", Limit: "2",
 	})
 	text := resultText(res)
@@ -36,12 +36,12 @@ func TestHandleSearchMessagesWithLimit(t *testing.T) {
 }
 
 func TestHandleSearchMessagesSnippetTruncation(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "h-search-trunc")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-search-trunc")
 	longContent := strings.Repeat("X", 500)
-	mustPost(t, cs, "h-search-trunc", "Claude", longContent)
+	mustPost(t, reg.Server, "h-search-trunc", "Claude", longContent)
 
-	res, _, _ := cs.handleSearchMessages(context.Background(), nil, SearchMessagesInput{
+	res, _, _ := reg.handleSearchMessages(context.Background(), nil, SearchMessagesInput{
 		Query: "XXX",
 	})
 	text := resultText(res)
@@ -51,12 +51,12 @@ func TestHandleSearchMessagesSnippetTruncation(t *testing.T) {
 }
 
 func TestHandleSearchMessagesBadLimit(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "h-search-bad-lim")
-	mustPost(t, cs, "h-search-bad-lim", "Claude", "findme")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-search-bad-lim")
+	mustPost(t, reg.Server, "h-search-bad-lim", "Claude", "findme")
 
 	// Invalid limit falls back to 20
-	res, _, _ := cs.handleSearchMessages(context.Background(), nil, SearchMessagesInput{
+	res, _, _ := reg.handleSearchMessages(context.Background(), nil, SearchMessagesInput{
 		Query: "findme", Limit: "not-a-number",
 	})
 	text := resultText(res)
@@ -66,10 +66,10 @@ func TestHandleSearchMessagesBadLimit(t *testing.T) {
 }
 
 func TestHandleSearchMessagesNoResults(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "h-search-empty")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-search-empty")
 
-	res, _, _ := cs.handleSearchMessages(context.Background(), nil, SearchMessagesInput{
+	res, _, _ := reg.handleSearchMessages(context.Background(), nil, SearchMessagesInput{
 		Query: "zzz-no-match",
 	})
 	text := resultText(res)
@@ -79,12 +79,12 @@ func TestHandleSearchMessagesNoResults(t *testing.T) {
 }
 
 func TestHandleSearchByAuthorOnly(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "h-search-auth")
-	mustPost(t, cs, "h-search-auth", "Claude", "hello")
-	mustPost(t, cs, "h-search-auth", "Gemini", "world")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-search-auth")
+	mustPost(t, reg.Server, "h-search-auth", "Claude", "hello")
+	mustPost(t, reg.Server, "h-search-auth", "Gemini", "world")
 
-	res, _, _ := cs.handleSearchMessages(context.Background(), nil, SearchMessagesInput{
+	res, _, _ := reg.handleSearchMessages(context.Background(), nil, SearchMessagesInput{
 		Author: "Gemini",
 	})
 	text := resultText(res)
@@ -94,12 +94,12 @@ func TestHandleSearchByAuthorOnly(t *testing.T) {
 }
 
 func TestHandleSearchByTypeOnly(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "h-search-type")
-	mustPostTyped(t, cs, "h-search-type", "Claude", "thought1", "thought")
-	mustPostTyped(t, cs, "h-search-type", "Claude", "decision1", "decision")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-search-type")
+	mustPostTyped(t, reg.Server, "h-search-type", "Claude", "thought1", "thought")
+	mustPostTyped(t, reg.Server, "h-search-type", "Claude", "decision1", "decision")
 
-	res, _, _ := cs.handleSearchMessages(context.Background(), nil, SearchMessagesInput{
+	res, _, _ := reg.handleSearchMessages(context.Background(), nil, SearchMessagesInput{
 		MessageType: "decision",
 	})
 	text := resultText(res)
@@ -109,11 +109,11 @@ func TestHandleSearchByTypeOnly(t *testing.T) {
 }
 
 func TestHandleSearchByRoomOnly(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "h-search-room-only")
-	mustPost(t, cs, "h-search-room-only", "Claude", "in room")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-search-room-only")
+	mustPost(t, reg.Server, "h-search-room-only", "Claude", "in room")
 
-	res, _, _ := cs.handleSearchMessages(context.Background(), nil, SearchMessagesInput{
+	res, _, _ := reg.handleSearchMessages(context.Background(), nil, SearchMessagesInput{
 		RoomID: "h-search-room-only",
 	})
 	text := resultText(res)
@@ -123,13 +123,13 @@ func TestHandleSearchByRoomOnly(t *testing.T) {
 }
 
 func TestHandleSearchMessagesSummaryOnly(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "h-search-sumonly")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-search-sumonly")
 	longContent := "This is a long message " + strings.Repeat("that goes on and on ", 10)
-	mustPostTyped(t, cs, "h-search-sumonly", "Claude", longContent, "thought")
-	mustPostTyped(t, cs, "h-search-sumonly", "Gemini", "Short reply", "review")
+	mustPostTyped(t, reg.Server, "h-search-sumonly", "Claude", longContent, "thought")
+	mustPostTyped(t, reg.Server, "h-search-sumonly", "Gemini", "Short reply", "review")
 
-	res, _, _ := cs.handleSearchMessages(context.Background(), nil, SearchMessagesInput{
+	res, _, _ := reg.handleSearchMessages(context.Background(), nil, SearchMessagesInput{
 		RoomID: "h-search-sumonly", SummaryOnly: "true",
 	})
 	text := resultText(res)
@@ -149,18 +149,18 @@ func TestHandleSearchMessagesSummaryOnly(t *testing.T) {
 }
 
 func TestHandleSearchMessagesSummaryOnlyVsDefault(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "h-search-compare")
-	mustPost(t, cs, "h-search-compare", "Claude", "Test content here")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-search-compare")
+	mustPost(t, reg.Server, "h-search-compare", "Claude", "Test content here")
 
 	// Default (non-summary) should use bold formatting
-	res1, _, _ := cs.handleSearchMessages(context.Background(), nil, SearchMessagesInput{
+	res1, _, _ := reg.handleSearchMessages(context.Background(), nil, SearchMessagesInput{
 		RoomID: "h-search-compare",
 	})
 	text1 := resultText(res1)
 
 	// Summary mode should NOT use bold formatting
-	res2, _, _ := cs.handleSearchMessages(context.Background(), nil, SearchMessagesInput{
+	res2, _, _ := reg.handleSearchMessages(context.Background(), nil, SearchMessagesInput{
 		RoomID: "h-search-compare", SummaryOnly: "true",
 	})
 	text2 := resultText(res2)
@@ -174,14 +174,14 @@ func TestHandleSearchMessagesSummaryOnlyVsDefault(t *testing.T) {
 }
 
 func TestHandleSearchMessagesProjectFilter(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "h-search-proj-a", withProject("alpha"))
-	mustCreateRoom(t, cs, "h-search-proj-b", withProject("beta"))
-	mustPost(t, cs, "h-search-proj-a", "Claude", "keyword match")
-	mustPost(t, cs, "h-search-proj-b", "Gemini", "keyword match")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-search-proj-a", withProject("alpha"))
+	mustCreateRoom(t, reg.Server, "h-search-proj-b", withProject("beta"))
+	mustPost(t, reg.Server, "h-search-proj-a", "Claude", "keyword match")
+	mustPost(t, reg.Server, "h-search-proj-b", "Gemini", "keyword match")
 
 	// Search with project filter should only return results from "alpha"
-	res, _, _ := cs.handleSearchMessages(context.Background(), nil, SearchMessagesInput{
+	res, _, _ := reg.handleSearchMessages(context.Background(), nil, SearchMessagesInput{
 		Query: "keyword", Project: "alpha",
 	})
 	text := resultText(res)
@@ -198,12 +198,12 @@ func TestHandleSearchMessagesProjectFilter(t *testing.T) {
 }
 
 func TestHandleSearchMessagesProjectFilterOnly(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "h-search-projonly", withProject("gamma"))
-	mustPost(t, cs, "h-search-projonly", "Claude", "Hello world")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-search-projonly", withProject("gamma"))
+	mustPost(t, reg.Server, "h-search-projonly", "Claude", "Hello world")
 
 	// Using project as the only filter should work
-	res, _, _ := cs.handleSearchMessages(context.Background(), nil, SearchMessagesInput{
+	res, _, _ := reg.handleSearchMessages(context.Background(), nil, SearchMessagesInput{
 		Project: "gamma",
 	})
 	text := resultText(res)
@@ -214,11 +214,11 @@ func TestHandleSearchMessagesProjectFilterOnly(t *testing.T) {
 }
 
 func TestHandleSearchMessagesProjectFilterNoResults(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "h-search-proj-nr", withProject("delta"))
-	mustPost(t, cs, "h-search-proj-nr", "Claude", "Hello")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-search-proj-nr", withProject("delta"))
+	mustPost(t, reg.Server, "h-search-proj-nr", "Claude", "Hello")
 
-	res, _, _ := cs.handleSearchMessages(context.Background(), nil, SearchMessagesInput{
+	res, _, _ := reg.handleSearchMessages(context.Background(), nil, SearchMessagesInput{
 		Project: "nonexistent-project",
 	})
 	text := resultText(res)
@@ -229,10 +229,10 @@ func TestHandleSearchMessagesProjectFilterNoResults(t *testing.T) {
 }
 
 func TestHandleSearchMessagesDBError(t *testing.T) {
-	cs := setupHandlerServer(t)
-	cs.db.Close()
+	reg := setupHandlerServer(t)
+	reg.Server.DB.Close()
 
-	_, _, err := cs.handleSearchMessages(context.Background(), nil, SearchMessagesInput{Query: "test"})
+	_, _, err := reg.handleSearchMessages(context.Background(), nil, SearchMessagesInput{Query: "test"})
 	if err == nil {
 		t.Error("expected error")
 	}
@@ -241,18 +241,18 @@ func TestHandleSearchMessagesDBError(t *testing.T) {
 // ========== room_stats ==========
 
 func TestHandleRoomStatsMissing(t *testing.T) {
-	cs := setupTestServer(t)
+	reg := setupHandlerTest(t)
 
-	res, _, _ := cs.handleRoomStats(context.Background(), nil, RoomStatsInput{})
+	res, _, _ := reg.handleRoomStats(context.Background(), nil, RoomStatsInput{})
 	if !strings.Contains(resultText(res), "Error") {
 		t.Error("expected error")
 	}
 }
 
 func TestHandleRoomStatsNotFound(t *testing.T) {
-	cs := setupTestServer(t)
+	reg := setupHandlerTest(t)
 
-	res, _, _ := cs.handleRoomStats(context.Background(), nil, RoomStatsInput{RoomID: "ghost"})
+	res, _, _ := reg.handleRoomStats(context.Background(), nil, RoomStatsInput{RoomID: "ghost"})
 	text := resultText(res)
 	if !strings.Contains(text, "Error") {
 		t.Errorf("expected error, got: %s", text)
@@ -260,12 +260,12 @@ func TestHandleRoomStatsNotFound(t *testing.T) {
 }
 
 func TestHandleRoomStatsLatestMessageID(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "h-stats-latest")
-	mustPostTyped(t, cs, "h-stats-latest", "Claude", "First", "thought")
-	id2 := mustPostTyped(t, cs, "h-stats-latest", "Gemini", "Second", "decision")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-stats-latest")
+	mustPostTyped(t, reg.Server, "h-stats-latest", "Claude", "First", "thought")
+	id2 := mustPostTyped(t, reg.Server, "h-stats-latest", "Gemini", "Second", "decision")
 
-	res, _, _ := cs.handleRoomStats(context.Background(), nil, RoomStatsInput{RoomID: "h-stats-latest"})
+	res, _, _ := reg.handleRoomStats(context.Background(), nil, RoomStatsInput{RoomID: "h-stats-latest"})
 	text := resultText(res)
 
 	expected := fmt.Sprintf("Latest message ID:** %d", id2)
@@ -275,14 +275,14 @@ func TestHandleRoomStatsLatestMessageID(t *testing.T) {
 }
 
 func TestHandleRoomStatsTypeCounts(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "h-stats-types")
-	mustPostTyped(t, cs, "h-stats-types", "Claude", "T1", "thought")
-	mustPostTyped(t, cs, "h-stats-types", "Claude", "T2", "thought")
-	mustPostTyped(t, cs, "h-stats-types", "Gemini", "D1", "decision")
-	mustPostTyped(t, cs, "h-stats-types", "Claude", "A1", "action")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-stats-types")
+	mustPostTyped(t, reg.Server, "h-stats-types", "Claude", "T1", "thought")
+	mustPostTyped(t, reg.Server, "h-stats-types", "Claude", "T2", "thought")
+	mustPostTyped(t, reg.Server, "h-stats-types", "Gemini", "D1", "decision")
+	mustPostTyped(t, reg.Server, "h-stats-types", "Claude", "A1", "action")
 
-	res, _, _ := cs.handleRoomStats(context.Background(), nil, RoomStatsInput{RoomID: "h-stats-types"})
+	res, _, _ := reg.handleRoomStats(context.Background(), nil, RoomStatsInput{RoomID: "h-stats-types"})
 	text := resultText(res)
 
 	if !strings.Contains(text, "Types:") {
@@ -300,10 +300,10 @@ func TestHandleRoomStatsTypeCounts(t *testing.T) {
 }
 
 func TestHandleRoomStatsEmptyNoLatestID(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "h-stats-empty")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-stats-empty")
 
-	res, _, _ := cs.handleRoomStats(context.Background(), nil, RoomStatsInput{RoomID: "h-stats-empty"})
+	res, _, _ := reg.handleRoomStats(context.Background(), nil, RoomStatsInput{RoomID: "h-stats-empty"})
 	text := resultText(res)
 
 	if strings.Contains(text, "Latest message ID") {
@@ -315,10 +315,10 @@ func TestHandleRoomStatsEmptyNoLatestID(t *testing.T) {
 }
 
 func TestHandleRoomStatsDBError(t *testing.T) {
-	cs := setupHandlerServer(t)
-	cs.db.Close()
+	reg := setupHandlerServer(t)
+	reg.Server.DB.Close()
 
-	res, _, _ := cs.handleRoomStats(context.Background(), nil, RoomStatsInput{RoomID: "hdb-room"})
+	res, _, _ := reg.handleRoomStats(context.Background(), nil, RoomStatsInput{RoomID: "hdb-room"})
 	text := resultText(res)
 	if !strings.Contains(text, "Error") {
 		t.Errorf("expected error, got: %s", text)

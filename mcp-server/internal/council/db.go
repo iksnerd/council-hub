@@ -1,4 +1,4 @@
-package main
+package council
 
 import (
 	"database/sql"
@@ -51,17 +51,17 @@ func scanMessage(scanner interface{ Scan(...any) error }) (Message, error) {
 	return m, err
 }
 
-// CouncilServer holds the database, mutex, MCP server, and logger.
-type CouncilServer struct {
-	db     *sql.DB
-	dbPath string
-	mu     sync.RWMutex
-	mcp    *mcp.Server
-	logger *slog.Logger
+// Server holds the database, mutex, MCP server, and logger.
+type Server struct {
+	DB     *sql.DB
+	DBPath string
+	Mu     sync.RWMutex
+	MCP    *mcp.Server
+	Logger *slog.Logger
 }
 
-// NewCouncilServer creates a new CouncilServer with an initialized SQLite database.
-func NewCouncilServer(dbPath string, logger *slog.Logger) (*CouncilServer, error) {
+// NewServer creates a new Server with an initialized SQLite database.
+func NewServer(dbPath string, logger *slog.Logger) (*Server, error) {
 	dsn := dbPath + "?_journal=WAL&_busy_timeout=5000"
 	if dbPath == ":memory:" {
 		dsn = ":memory:"
@@ -91,11 +91,11 @@ func NewCouncilServer(dbPath string, logger *slog.Logger) (*CouncilServer, error
 		Capabilities: &mcp.ServerCapabilities{},
 	})
 
-	return &CouncilServer{
-		db:     db,
-		dbPath: dbPath,
-		mcp:    mcpServer,
-		logger: logger,
+	return &Server{
+		DB:     db,
+		DBPath: dbPath,
+		MCP:    mcpServer,
+		Logger: logger,
 	}, nil
 }
 
@@ -145,11 +145,11 @@ func initSchema(db *sql.DB) error {
 	return nil
 }
 
-func (cs *CouncilServer) createRoom(id, description, project, techStack, tags, systemPrompt, relatedRooms string) error {
-	cs.mu.Lock()
-	defer cs.mu.Unlock()
+func (s *Server) CreateRoom(id, description, project, techStack, tags, systemPrompt, relatedRooms string) error {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
 
-	_, err := cs.db.Exec(
+	_, err := s.DB.Exec(
 		`INSERT OR IGNORE INTO rooms (id, description, project, tech_stack, tags, system_prompt, related_rooms) VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		id, description, project, techStack, tags, systemPrompt, relatedRooms,
 	)
@@ -157,13 +157,13 @@ func (cs *CouncilServer) createRoom(id, description, project, techStack, tags, s
 		return err
 	}
 
-	cs.syncReverseLinks(id, relatedRooms)
+	s.syncReverseLinks(id, relatedRooms)
 	return nil
 }
 
 // syncReverseLinks ensures that if room A lists B in related_rooms, B also lists A.
-// Must be called while cs.mu is held.
-func (cs *CouncilServer) syncReverseLinks(roomID, relatedRooms string) {
+// Must be called while s.Mu is held.
+func (s *Server) syncReverseLinks(roomID, relatedRooms string) {
 	if relatedRooms == "" {
 		return
 	}
@@ -173,7 +173,7 @@ func (cs *CouncilServer) syncReverseLinks(roomID, relatedRooms string) {
 			continue
 		}
 		var existing string
-		err := cs.db.QueryRow(`SELECT related_rooms FROM rooms WHERE id = ?`, rel).Scan(&existing)
+		err := s.DB.QueryRow(`SELECT related_rooms FROM rooms WHERE id = ?`, rel).Scan(&existing)
 		if err != nil {
 			continue // target room doesn't exist, skip
 		}
@@ -192,20 +192,20 @@ func (cs *CouncilServer) syncReverseLinks(roomID, relatedRooms string) {
 			} else {
 				updated = updated + ", " + roomID
 			}
-			cs.db.Exec(`UPDATE rooms SET related_rooms = ? WHERE id = ?`, updated, rel)
+			s.DB.Exec(`UPDATE rooms SET related_rooms = ? WHERE id = ?`, updated, rel)
 		}
 	}
 }
 
-func (cs *CouncilServer) postMessage(roomID, author, content, messageType string, replyTo int64) (int64, error) {
-	cs.mu.Lock()
-	defer cs.mu.Unlock()
+func (s *Server) PostMessage(roomID, author, content, messageType string, replyTo int64) (int64, error) {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
 
 	if messageType == "" {
 		messageType = "message"
 	}
 
-	result, err := cs.db.Exec(
+	result, err := s.DB.Exec(
 		`INSERT INTO messages (room_id, author, content, message_type, reply_to) VALUES (?, ?, ?, ?, ?)`,
 		roomID, author, content, messageType, replyTo,
 	)
@@ -214,18 +214,18 @@ func (cs *CouncilServer) postMessage(roomID, author, content, messageType string
 	}
 
 	// Update room's updated_at — best-effort, don't fail the post on this
-	_, _ = cs.db.Exec(`UPDATE rooms SET updated_at = CURRENT_TIMESTAMP WHERE id = ?`, roomID)
+	_, _ = s.DB.Exec(`UPDATE rooms SET updated_at = CURRENT_TIMESTAMP WHERE id = ?`, roomID)
 
 	id, err := result.LastInsertId()
 	return id, err
 }
 
-func (cs *CouncilServer) updateMessage(messageID int64, newContent, newMessageType string) (*Message, error) {
-	cs.mu.Lock()
-	defer cs.mu.Unlock()
+func (s *Server) UpdateMessage(messageID int64, newContent, newMessageType string) (*Message, error) {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
 
 	if newMessageType != "" {
-		_, err := cs.db.Exec(
+		_, err := s.DB.Exec(
 			`UPDATE messages SET content = ?, message_type = ? WHERE id = ?`,
 			newContent, newMessageType, messageID,
 		)
@@ -233,7 +233,7 @@ func (cs *CouncilServer) updateMessage(messageID int64, newContent, newMessageTy
 			return nil, err
 		}
 	} else {
-		_, err := cs.db.Exec(
+		_, err := s.DB.Exec(
 			`UPDATE messages SET content = ? WHERE id = ?`,
 			newContent, messageID,
 		)
@@ -242,7 +242,7 @@ func (cs *CouncilServer) updateMessage(messageID int64, newContent, newMessageTy
 		}
 	}
 
-	m, err := scanMessage(cs.db.QueryRow(
+	m, err := scanMessage(s.DB.QueryRow(
 		fmt.Sprintf(`SELECT %s FROM messages WHERE id = ?`, messageColumns),
 		messageID,
 	))
@@ -251,19 +251,19 @@ func (cs *CouncilServer) updateMessage(messageID int64, newContent, newMessageTy
 	}
 
 	// Update room's updated_at
-	_, _ = cs.db.Exec(`UPDATE rooms SET updated_at = CURRENT_TIMESTAMP WHERE id = ?`, m.RoomID)
+	_, _ = s.DB.Exec(`UPDATE rooms SET updated_at = CURRENT_TIMESTAMP WHERE id = ?`, m.RoomID)
 
 	return &m, nil
 }
 
-func (cs *CouncilServer) pinMessage(roomID string, messageID int64) (bool, error) {
-	cs.mu.Lock()
-	defer cs.mu.Unlock()
+func (s *Server) PinMessage(roomID string, messageID int64) (bool, error) {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
 
 	// Verify message exists and belongs to the room
 	var currentlyPinned bool
 	var actualRoomID string
-	err := cs.db.QueryRow(`SELECT room_id, pinned FROM messages WHERE id = ?`, messageID).Scan(&actualRoomID, &currentlyPinned)
+	err := s.DB.QueryRow(`SELECT room_id, pinned FROM messages WHERE id = ?`, messageID).Scan(&actualRoomID, &currentlyPinned)
 	if err != nil {
 		return false, err
 	}
@@ -273,15 +273,15 @@ func (cs *CouncilServer) pinMessage(roomID string, messageID int64) (bool, error
 
 	if currentlyPinned {
 		// Toggle off
-		_, err := cs.db.Exec(`UPDATE messages SET pinned = 0 WHERE id = ?`, messageID)
+		_, err := s.DB.Exec(`UPDATE messages SET pinned = 0 WHERE id = ?`, messageID)
 		return false, err
 	}
 
 	// Unpin any existing pinned message in this room
-	_, _ = cs.db.Exec(`UPDATE messages SET pinned = 0 WHERE room_id = ? AND pinned = 1`, roomID)
+	_, _ = s.DB.Exec(`UPDATE messages SET pinned = 0 WHERE room_id = ? AND pinned = 1`, roomID)
 
 	// Pin the target
-	_, err = cs.db.Exec(`UPDATE messages SET pinned = 1 WHERE id = ?`, messageID)
+	_, err = s.DB.Exec(`UPDATE messages SET pinned = 1 WHERE id = ?`, messageID)
 	if err != nil {
 		return false, err
 	}
@@ -289,8 +289,8 @@ func (cs *CouncilServer) pinMessage(roomID string, messageID int64) (bool, error
 	return true, nil
 }
 
-func (cs *CouncilServer) getPinnedMessage(roomID string) (*Message, error) {
-	m, err := scanMessage(cs.db.QueryRow(
+func (s *Server) GetPinnedMessage(roomID string) (*Message, error) {
+	m, err := scanMessage(s.DB.QueryRow(
 		fmt.Sprintf(`SELECT %s FROM messages WHERE room_id = ? AND pinned = 1 LIMIT 1`, messageColumns),
 		roomID,
 	))
@@ -303,11 +303,11 @@ func (cs *CouncilServer) getPinnedMessage(roomID string) (*Message, error) {
 	return &m, nil
 }
 
-func (cs *CouncilServer) updateStatus(roomID, status string) error {
-	cs.mu.Lock()
-	defer cs.mu.Unlock()
+func (s *Server) UpdateStatus(roomID, status string) error {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
 
-	res, err := cs.db.Exec(
+	res, err := s.DB.Exec(
 		`UPDATE rooms SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
 		status, roomID,
 	)
@@ -321,9 +321,9 @@ func (cs *CouncilServer) updateStatus(roomID, status string) error {
 	return nil
 }
 
-func (cs *CouncilServer) updateRoom(roomID, description, project, techStack, tags, systemPrompt, relatedRooms string) error {
-	cs.mu.Lock()
-	defer cs.mu.Unlock()
+func (s *Server) UpdateRoom(roomID, description, project, techStack, tags, systemPrompt, relatedRooms string) error {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
 
 	// Build dynamic UPDATE — only set fields that are non-empty.
 	setClauses := []string{"updated_at = CURRENT_TIMESTAMP"}
@@ -357,7 +357,7 @@ func (cs *CouncilServer) updateRoom(roomID, description, project, techStack, tag
 	query := fmt.Sprintf("UPDATE rooms SET %s WHERE id = ?", strings.Join(setClauses, ", "))
 	args = append(args, roomID)
 
-	res, err := cs.db.Exec(query, args...)
+	res, err := s.DB.Exec(query, args...)
 	if err != nil {
 		return err
 	}
@@ -366,11 +366,11 @@ func (cs *CouncilServer) updateRoom(roomID, description, project, techStack, tag
 		return fmt.Errorf("room '%s' not found", roomID)
 	}
 
-	cs.syncReverseLinks(roomID, relatedRooms)
+	s.syncReverseLinks(roomID, relatedRooms)
 	return nil
 }
 
-func (cs *CouncilServer) getMessagesByIDs(ids []int64) ([]Message, error) {
+func (s *Server) GetMessagesByIDs(ids []int64) ([]Message, error) {
 	if len(ids) == 0 {
 		return nil, nil
 	}
@@ -383,7 +383,7 @@ func (cs *CouncilServer) getMessagesByIDs(ids []int64) ([]Message, error) {
 	}
 
 	query := fmt.Sprintf(`SELECT %s FROM messages WHERE id IN (%s) ORDER BY id ASC`, messageColumns, strings.Join(placeholders, ","))
-	rows, err := cs.db.Query(query, args...)
+	rows, err := s.DB.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -400,7 +400,7 @@ func (cs *CouncilServer) getMessagesByIDs(ids []int64) ([]Message, error) {
 	return msgs, rows.Err()
 }
 
-func (cs *CouncilServer) getRecentMessages(roomID string, limit int) ([]Message, error) {
+func (s *Server) GetRecentMessages(roomID string, limit int) ([]Message, error) {
 	if limit <= 0 {
 		limit = 10
 	}
@@ -409,13 +409,13 @@ func (cs *CouncilServer) getRecentMessages(roomID string, limit int) ([]Message,
 	}
 
 	// Verify room exists
-	_, err := cs.getRoom(roomID)
+	_, err := s.GetRoom(roomID)
 	if err != nil {
 		return nil, fmt.Errorf("room '%s' not found", roomID)
 	}
 
 	// Get last N messages in reverse, then flip to chronological
-	rows, err := cs.db.Query(fmt.Sprintf(`SELECT %s FROM messages WHERE room_id = ? ORDER BY id DESC LIMIT ?`, messageColumns), roomID, limit)
+	rows, err := s.DB.Query(fmt.Sprintf(`SELECT %s FROM messages WHERE room_id = ? ORDER BY id DESC LIMIT ?`, messageColumns), roomID, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -440,11 +440,11 @@ func (cs *CouncilServer) getRecentMessages(roomID string, limit int) ([]Message,
 	return msgs, nil
 }
 
-func (cs *CouncilServer) deleteRoom(roomID string) error {
-	cs.mu.Lock()
-	defer cs.mu.Unlock()
+func (s *Server) DeleteRoom(roomID string) error {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
 
-	res, err := cs.db.Exec(`DELETE FROM rooms WHERE id = ?`, roomID)
+	res, err := s.DB.Exec(`DELETE FROM rooms WHERE id = ?`, roomID)
 	if err != nil {
 		return fmt.Errorf("delete room '%s': %w", roomID, err)
 	}
@@ -453,7 +453,7 @@ func (cs *CouncilServer) deleteRoom(roomID string) error {
 		return fmt.Errorf("room '%s' not found", roomID)
 	}
 
-	if _, err := cs.db.Exec(`DELETE FROM messages WHERE room_id = ?`, roomID); err != nil {
+	if _, err := s.DB.Exec(`DELETE FROM messages WHERE room_id = ?`, roomID); err != nil {
 		return fmt.Errorf("delete messages for room '%s': %w", roomID, err)
 	}
 	return nil
@@ -471,7 +471,7 @@ type RoomStats struct {
 	LastMessage     time.Time
 }
 
-func (cs *CouncilServer) searchMessages(query, author, messageType, roomID, project string, limit int) ([]Message, error) {
+func (s *Server) SearchMessages(query, author, messageType, roomID, project string, limit int) ([]Message, error) {
 	where := `WHERE 1=1`
 	var args []any
 	join := ""
@@ -505,7 +505,7 @@ func (cs *CouncilServer) searchMessages(query, author, messageType, roomID, proj
 	q := fmt.Sprintf(`SELECT m.id, m.room_id, m.author, m.content, m.message_type, m.is_summary, m.reply_to, m.pinned, m.timestamp FROM messages m%s %s ORDER BY m.timestamp DESC LIMIT ?`, join, where)
 	args = append(args, limit)
 
-	rows, err := cs.db.Query(q, args...)
+	rows, err := s.DB.Query(q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -522,7 +522,7 @@ func (cs *CouncilServer) searchMessages(query, author, messageType, roomID, proj
 	return msgs, rows.Err()
 }
 
-func (cs *CouncilServer) getRoomStats(roomID string) (RoomStats, error) {
+func (s *Server) GetRoomStats(roomID string) (RoomStats, error) {
 	var stats RoomStats
 	stats.RoomID = roomID
 	stats.Participants = make(map[string]int)
@@ -530,7 +530,7 @@ func (cs *CouncilServer) getRoomStats(roomID string) (RoomStats, error) {
 
 	// Verify room exists and get status
 	var status string
-	err := cs.db.QueryRow(`SELECT status FROM rooms WHERE id = ?`, roomID).Scan(&status)
+	err := s.DB.QueryRow(`SELECT status FROM rooms WHERE id = ?`, roomID).Scan(&status)
 	if err != nil {
 		return stats, fmt.Errorf("room '%s' not found", roomID)
 	}
@@ -539,7 +539,7 @@ func (cs *CouncilServer) getRoomStats(roomID string) (RoomStats, error) {
 	// Get aggregate stats + latest message ID
 	var firstMsg, lastMsg sql.NullString
 	var latestID sql.NullInt64
-	err = cs.db.QueryRow(`SELECT COUNT(*), MIN(timestamp), MAX(timestamp), MAX(id) FROM messages WHERE room_id = ?`, roomID).
+	err = s.DB.QueryRow(`SELECT COUNT(*), MIN(timestamp), MAX(timestamp), MAX(id) FROM messages WHERE room_id = ?`, roomID).
 		Scan(&stats.MessageCount, &firstMsg, &lastMsg, &latestID)
 	if err != nil {
 		return stats, err
@@ -555,7 +555,7 @@ func (cs *CouncilServer) getRoomStats(roomID string) (RoomStats, error) {
 	}
 
 	// Get per-author counts
-	rows, err := cs.db.Query(`SELECT author, COUNT(*) FROM messages WHERE room_id = ? GROUP BY author ORDER BY COUNT(*) DESC`, roomID)
+	rows, err := s.DB.Query(`SELECT author, COUNT(*) FROM messages WHERE room_id = ? GROUP BY author ORDER BY COUNT(*) DESC`, roomID)
 	if err != nil {
 		return stats, err
 	}
@@ -574,7 +574,7 @@ func (cs *CouncilServer) getRoomStats(roomID string) (RoomStats, error) {
 	}
 
 	// Get per-type counts
-	typeRows, err := cs.db.Query(`SELECT message_type, COUNT(*) FROM messages WHERE room_id = ? AND is_summary = 0 GROUP BY message_type ORDER BY COUNT(*) DESC`, roomID)
+	typeRows, err := s.DB.Query(`SELECT message_type, COUNT(*) FROM messages WHERE room_id = ? AND is_summary = 0 GROUP BY message_type ORDER BY COUNT(*) DESC`, roomID)
 	if err != nil {
 		return stats, err
 	}
@@ -592,9 +592,9 @@ func (cs *CouncilServer) getRoomStats(roomID string) (RoomStats, error) {
 	return stats, typeRows.Err()
 }
 
-func (cs *CouncilServer) deleteMessages(ids []int64) (int64, error) {
-	cs.mu.Lock()
-	defer cs.mu.Unlock()
+func (s *Server) DeleteMessages(ids []int64) (int64, error) {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
 
 	if len(ids) == 0 {
 		return 0, nil
@@ -608,7 +608,7 @@ func (cs *CouncilServer) deleteMessages(ids []int64) (int64, error) {
 	}
 
 	query := fmt.Sprintf(`DELETE FROM messages WHERE id IN (%s)`, strings.Join(placeholders, ","))
-	res, err := cs.db.Exec(query, args...)
+	res, err := s.DB.Exec(query, args...)
 	if err != nil {
 		return 0, err
 	}
@@ -616,22 +616,22 @@ func (cs *CouncilServer) deleteMessages(ids []int64) (int64, error) {
 	return res.RowsAffected()
 }
 
-func (cs *CouncilServer) archiveRoom(roomID string) (string, error) {
-	room, err := cs.getRoom(roomID)
+func (s *Server) ArchiveRoom(roomID string) (string, error) {
+	room, err := s.GetRoom(roomID)
 	if err != nil {
 		return "", fmt.Errorf("room '%s' not found", roomID)
 	}
 
-	messages, err := cs.getTranscript(roomID)
+	messages, err := s.GetTranscript(roomID)
 	if err != nil {
 		return "", fmt.Errorf("failed to read transcript: %w", err)
 	}
 
-	transcript := formatTranscript(room, messages)
+	transcript := FormatTranscript(room, messages)
 
 	// Derive archive dir from DB path
-	archiveDir := filepath.Join(filepath.Dir(cs.dbPath), "archives")
-	if cs.dbPath == ":memory:" {
+	archiveDir := filepath.Join(filepath.Dir(s.DBPath), "archives")
+	if s.DBPath == ":memory:" {
 		archiveDir = "archives"
 	}
 
@@ -647,9 +647,9 @@ func (cs *CouncilServer) archiveRoom(roomID string) (string, error) {
 	return archivePath, nil
 }
 
-func (cs *CouncilServer) getRoom(roomID string) (Room, error) {
+func (s *Server) GetRoom(roomID string) (Room, error) {
 	var r Room
-	err := cs.db.QueryRow(
+	err := s.DB.QueryRow(
 		`SELECT id, description, status, project, tech_stack, tags, system_prompt, related_rooms, created_at, updated_at FROM rooms WHERE id = ?`,
 		roomID,
 	).Scan(&r.ID, &r.Description, &r.Status, &r.Project, &r.TechStack, &r.Tags, &r.SystemPrompt, &r.RelatedRooms, &r.CreatedAt, &r.UpdatedAt)
@@ -660,8 +660,8 @@ func (cs *CouncilServer) getRoom(roomID string) (Room, error) {
 }
 
 // getTranscript returns summaries + all individual messages after the latest summary.
-func (cs *CouncilServer) getTranscript(roomID string) ([]Message, error) {
-	rows, err := cs.db.Query(fmt.Sprintf(`
+func (s *Server) GetTranscript(roomID string) ([]Message, error) {
+	rows, err := s.DB.Query(fmt.Sprintf(`
 		SELECT %s
 		FROM messages
 		WHERE room_id = ?
@@ -688,8 +688,8 @@ func (cs *CouncilServer) getTranscript(roomID string) ([]Message, error) {
 }
 
 // getMessagesAfterID returns messages with ID > afterID for a room, in chronological order.
-func (cs *CouncilServer) getMessagesAfterID(roomID string, afterID int64) ([]Message, error) {
-	rows, err := cs.db.Query(fmt.Sprintf(`
+func (s *Server) GetMessagesAfterID(roomID string, afterID int64) ([]Message, error) {
+	rows, err := s.DB.Query(fmt.Sprintf(`
 		SELECT %s
 		FROM messages
 		WHERE room_id = ? AND id > ?
@@ -713,10 +713,10 @@ func (cs *CouncilServer) getMessagesAfterID(roomID string, afterID int64) ([]Mes
 }
 
 // getLatestPerType returns the most recent message for each message_type in a room.
-func (cs *CouncilServer) getLatestPerType(roomID string) ([]Message, error) {
+func (s *Server) GetLatestPerType(roomID string) ([]Message, error) {
 	// Return up to 2 most recent messages per type so agents see both the latest
 	// and its predecessor (useful when the latest superseded an earlier key message).
-	rows, err := cs.db.Query(`
+	rows, err := s.DB.Query(`
 		SELECT id, room_id, author, content, message_type, is_summary, reply_to, pinned, timestamp
 		FROM (
 			SELECT *, ROW_NUMBER() OVER (PARTITION BY message_type ORDER BY id DESC) as rn
@@ -744,8 +744,8 @@ func (cs *CouncilServer) getLatestPerType(roomID string) ([]Message, error) {
 }
 
 // getRoomsNeedingSummary returns room IDs with more than threshold unsummarized messages.
-func (cs *CouncilServer) getRoomsNeedingSummary(threshold int) ([]string, error) {
-	rows, err := cs.db.Query(`
+func (s *Server) GetRoomsNeedingSummary(threshold int) ([]string, error) {
+	rows, err := s.DB.Query(`
 		SELECT room_id
 		FROM messages
 		WHERE is_summary = 0
@@ -773,8 +773,8 @@ func (cs *CouncilServer) getRoomsNeedingSummary(threshold int) ([]string, error)
 }
 
 // getUnsummarizedMessages returns messages after the latest summary for a room.
-func (cs *CouncilServer) getUnsummarizedMessages(roomID string) ([]Message, error) {
-	rows, err := cs.db.Query(fmt.Sprintf(`
+func (s *Server) GetUnsummarizedMessages(roomID string) ([]Message, error) {
+	rows, err := s.DB.Query(fmt.Sprintf(`
 		SELECT %s
 		FROM messages
 		WHERE room_id = ?
@@ -802,11 +802,11 @@ func (cs *CouncilServer) getUnsummarizedMessages(roomID string) ([]Message, erro
 }
 
 // insertSummary inserts a summary message into a room.
-func (cs *CouncilServer) insertSummary(roomID, summary string) error {
-	cs.mu.Lock()
-	defer cs.mu.Unlock()
+func (s *Server) InsertSummary(roomID, summary string) error {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
 
-	_, err := cs.db.Exec(
+	_, err := s.DB.Exec(
 		`INSERT INTO messages (room_id, author, content, message_type, is_summary) VALUES (?, ?, ?, 'message', 1)`,
 		roomID, "System", summary,
 	)
@@ -814,12 +814,12 @@ func (cs *CouncilServer) insertSummary(roomID, summary string) error {
 		return err
 	}
 
-	_, _ = cs.db.Exec(`UPDATE rooms SET updated_at = CURRENT_TIMESTAMP WHERE id = ?`, roomID)
+	_, _ = s.DB.Exec(`UPDATE rooms SET updated_at = CURRENT_TIMESTAMP WHERE id = ?`, roomID)
 	return nil
 }
 
 // listRooms returns rooms matching optional filters.
-func (cs *CouncilServer) listRooms(project, tag, status, search string) ([]Room, error) {
+func (s *Server) ListRooms(project, tag, status, search string) ([]Room, error) {
 	query := `SELECT id, description, status, project, tech_stack, tags, system_prompt, related_rooms, created_at, updated_at FROM rooms WHERE 1=1`
 	var args []any
 
@@ -842,7 +842,7 @@ func (cs *CouncilServer) listRooms(project, tag, status, search string) ([]Room,
 
 	query += ` ORDER BY updated_at DESC`
 
-	rows, err := cs.db.Query(query, args...)
+	rows, err := s.DB.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -868,7 +868,7 @@ type DigestEntry struct {
 }
 
 // getDigest returns rooms with messages since the given timestamp.
-func (cs *CouncilServer) getDigest(project, since string) ([]DigestEntry, error) {
+func (s *Server) GetDigest(project, since string) ([]DigestEntry, error) {
 	// Normalize timestamp — accept both "2026-03-31T12:00:00" and "2026-03-31 12:00:00"
 	since = strings.ReplaceAll(since, "T", " ")
 
@@ -893,7 +893,7 @@ func (cs *CouncilServer) getDigest(project, since string) ([]DigestEntry, error)
 
 	query += ` GROUP BY m.room_id ORDER BY MAX(m.timestamp) DESC`
 
-	rows, err := cs.db.Query(query, args...)
+	rows, err := s.DB.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -911,9 +911,9 @@ func (cs *CouncilServer) getDigest(project, since string) ([]DigestEntry, error)
 }
 
 // getMessageCounts returns a map of room_id -> message count for all rooms.
-func (cs *CouncilServer) getMessageCounts() map[string]int {
+func (s *Server) GetMessageCounts() map[string]int {
 	counts := make(map[string]int)
-	rows, err := cs.db.Query(`SELECT room_id, COUNT(*) FROM messages GROUP BY room_id`)
+	rows, err := s.DB.Query(`SELECT room_id, COUNT(*) FROM messages GROUP BY room_id`)
 	if err != nil {
 		return counts
 	}

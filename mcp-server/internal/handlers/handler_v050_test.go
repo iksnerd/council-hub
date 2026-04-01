@@ -1,4 +1,4 @@
-package main
+package handlers
 
 import (
 	"context"
@@ -10,10 +10,10 @@ import (
 // ========== v0.5.0: bidirectional related_rooms via handlers ==========
 
 func TestHandleCreateRoomBidirectionalLinks(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "bidir-target")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "bidir-target")
 
-	res, _, _ := cs.handleCreateRoom(context.Background(), nil, CreateRoomInput{
+	res, _, _ := reg.handleCreateRoom(context.Background(), nil, CreateRoomInput{
 		ID: "bidir-source", Topic: "Source room", RelatedRooms: "bidir-target",
 	})
 	text := resultText(res)
@@ -22,22 +22,22 @@ func TestHandleCreateRoomBidirectionalLinks(t *testing.T) {
 	}
 
 	// Verify reverse link was created
-	tgt, _ := cs.getRoom("bidir-target")
+	tgt, _ := reg.Server.GetRoom("bidir-target")
 	if !strings.Contains(tgt.RelatedRooms, "bidir-source") {
 		t.Errorf("expected reverse link to bidir-source, got: '%s'", tgt.RelatedRooms)
 	}
 }
 
 func TestHandleUpdateRoomBidirectionalLinks(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "upd-bidir-a")
-	mustCreateRoom(t, cs, "upd-bidir-b")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "upd-bidir-a")
+	mustCreateRoom(t, reg.Server, "upd-bidir-b")
 
-	cs.handleUpdateRoom(context.Background(), nil, UpdateRoomInput{
+	reg.handleUpdateRoom(context.Background(), nil, UpdateRoomInput{
 		RoomID: "upd-bidir-a", RelatedRooms: "upd-bidir-b",
 	})
 
-	b, _ := cs.getRoom("upd-bidir-b")
+	b, _ := reg.Server.GetRoom("upd-bidir-b")
 	if !strings.Contains(b.RelatedRooms, "upd-bidir-a") {
 		t.Errorf("expected reverse link, got: '%s'", b.RelatedRooms)
 	}
@@ -46,9 +46,9 @@ func TestHandleUpdateRoomBidirectionalLinks(t *testing.T) {
 // ========== v0.5.0: enriched create_room response ==========
 
 func TestCreateRoomResponseIncludesMetadata(t *testing.T) {
-	cs := setupTestServer(t)
+	reg := setupHandlerTest(t)
 
-	res, _, _ := cs.handleCreateRoom(context.Background(), nil, CreateRoomInput{
+	res, _, _ := reg.handleCreateRoom(context.Background(), nil, CreateRoomInput{
 		ID: "rich-create", Topic: "My topic", Project: "my-proj", Tags: "alpha,beta",
 	})
 	text := resultText(res)
@@ -67,10 +67,10 @@ func TestCreateRoomResponseIncludesMetadata(t *testing.T) {
 // ========== v0.5.0: enriched signal_status response ==========
 
 func TestSignalStatusResponseIncludesContext(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "status-ctx", withDescription("Bug fix room"), withProject("my-proj"))
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "status-ctx", withDescription("Bug fix room"), withProject("my-proj"))
 
-	res, _, _ := cs.handleSignalStatus(context.Background(), nil, SignalStatusInput{
+	res, _, _ := reg.handleSignalStatus(context.Background(), nil, SignalStatusInput{
 		RoomID: "status-ctx", Status: "resolved",
 	})
 	text := resultText(res)
@@ -89,10 +89,10 @@ func TestSignalStatusResponseIncludesContext(t *testing.T) {
 // ========== v0.5.0: enriched update_room response ==========
 
 func TestUpdateRoomResponseIncludesState(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "upd-state", withProject("proj-a"), withTags("v1"))
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "upd-state", withProject("proj-a"), withTags("v1"))
 
-	res, _, _ := cs.handleUpdateRoom(context.Background(), nil, UpdateRoomInput{
+	res, _, _ := reg.handleUpdateRoom(context.Background(), nil, UpdateRoomInput{
 		RoomID: "upd-state", Tags: "v2,released",
 	})
 	text := resultText(res)
@@ -111,11 +111,11 @@ func TestUpdateRoomResponseIncludesState(t *testing.T) {
 // ========== v0.5.1: compact as default for list_rooms ==========
 
 func TestListRoomsDefaultIsCompact(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "default-compact-1", withTechStack("Go"), withRelatedRooms("x"))
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "default-compact-1", withTechStack("Go"), withRelatedRooms("x"))
 
 	// No args — should be compact (no Tech/Related fields)
-	res, _, _ := cs.handleListRooms(context.Background(), nil, ListRoomsInput{})
+	res, _, _ := reg.handleListRooms(context.Background(), nil, ListRoomsInput{})
 	text := resultText(res)
 	if strings.Contains(text, "Tech:") {
 		t.Error("default list should be compact — no Tech field")
@@ -129,10 +129,10 @@ func TestListRoomsDefaultIsCompact(t *testing.T) {
 }
 
 func TestListRoomsVerboseFlag(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "verbose-flag-room", withTechStack("Go, SQLite"), withRelatedRooms("other-room"))
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "verbose-flag-room", withTechStack("Go, SQLite"), withRelatedRooms("other-room"))
 
-	res, _, _ := cs.handleListRooms(context.Background(), nil, ListRoomsInput{Verbose: "true"})
+	res, _, _ := reg.handleListRooms(context.Background(), nil, ListRoomsInput{Verbose: "true"})
 	text := resultText(res)
 	if !strings.Contains(text, "Tech: Go, SQLite") {
 		t.Errorf("verbose=true should show Tech field, got: %s", text)
@@ -143,11 +143,11 @@ func TestListRoomsVerboseFlag(t *testing.T) {
 }
 
 func TestListRoomsLegacyCompactFalseIsVerbose(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "legacy-compact-false", withTechStack("Elixir"))
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "legacy-compact-false", withTechStack("Elixir"))
 
 	// compact=false should still give verbose output for backwards compat
-	res, _, _ := cs.handleListRooms(context.Background(), nil, ListRoomsInput{Compact: "false"})
+	res, _, _ := reg.handleListRooms(context.Background(), nil, ListRoomsInput{Compact: "false"})
 	text := resultText(res)
 	if !strings.Contains(text, "Tech: Elixir") {
 		t.Errorf("compact=false should show verbose output, got: %s", text)
@@ -157,13 +157,13 @@ func TestListRoomsLegacyCompactFalseIsVerbose(t *testing.T) {
 // ========== v0.5.1: mode=summary returns top 2 per type ==========
 
 func TestSummaryModeTopTwoPerType(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "sum-top2")
-	mustPostTyped(t, cs, "sum-top2", "Claude", "First decision", "decision")
-	mustPostTyped(t, cs, "sum-top2", "Gemini", "Second decision", "decision")
-	mustPostTyped(t, cs, "sum-top2", "Claude", "Only thought", "thought")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "sum-top2")
+	mustPostTyped(t, reg.Server, "sum-top2", "Claude", "First decision", "decision")
+	mustPostTyped(t, reg.Server, "sum-top2", "Gemini", "Second decision", "decision")
+	mustPostTyped(t, reg.Server, "sum-top2", "Claude", "Only thought", "thought")
 
-	res, _, _ := cs.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
+	res, _, _ := reg.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
 		RoomID: "sum-top2", Mode: "summary",
 	})
 	text := resultText(res)
@@ -188,11 +188,11 @@ func TestSummaryModeTopTwoPerType(t *testing.T) {
 }
 
 func TestSummaryModeOnlyOnePerTypeWhenJustOne(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "sum-single")
-	mustPostTyped(t, cs, "sum-single", "Claude", "The only action", "action")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "sum-single")
+	mustPostTyped(t, reg.Server, "sum-single", "Claude", "The only action", "action")
 
-	res, _, _ := cs.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
+	res, _, _ := reg.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
 		RoomID: "sum-single", Mode: "summary",
 	})
 	text := resultText(res)
@@ -241,12 +241,12 @@ func TestDigestExcerptEmpty(t *testing.T) {
 // ========== v0.5.1: after_id includes system_prompt ==========
 
 func TestAfterIDIncludesSystemPrompt(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "after-sp", withSystemPrompt("You are a code reviewer."))
-	id := mustPost(t, cs, "after-sp", "Claude", "First message")
-	mustPost(t, cs, "after-sp", "Gemini", "Second message")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "after-sp", withSystemPrompt("You are a code reviewer."))
+	id := mustPost(t, reg.Server, "after-sp", "Claude", "First message")
+	mustPost(t, reg.Server, "after-sp", "Gemini", "Second message")
 
-	res, _, _ := cs.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
+	res, _, _ := reg.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
 		RoomID:  "after-sp",
 		AfterID: fmt.Sprintf("%d", id),
 	})
@@ -260,12 +260,12 @@ func TestAfterIDIncludesSystemPrompt(t *testing.T) {
 }
 
 func TestAfterIDNoSystemPromptWhenEmpty(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "after-nosp")
-	id := mustPost(t, cs, "after-nosp", "Claude", "First")
-	mustPost(t, cs, "after-nosp", "Claude", "Second")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "after-nosp")
+	id := mustPost(t, reg.Server, "after-nosp", "Claude", "First")
+	mustPost(t, reg.Server, "after-nosp", "Claude", "Second")
 
-	res, _, _ := cs.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
+	res, _, _ := reg.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
 		RoomID:  "after-nosp",
 		AfterID: fmt.Sprintf("%d", id),
 	})
@@ -278,10 +278,10 @@ func TestAfterIDNoSystemPromptWhenEmpty(t *testing.T) {
 // ========== v0.5.0: post_to_room JSON cursor ==========
 
 func TestPostToRoomJSONCursor(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "json-cursor")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "json-cursor")
 
-	res, _, _ := cs.handlePostToRoom(context.Background(), nil, PostToRoomInput{
+	res, _, _ := reg.handlePostToRoom(context.Background(), nil, PostToRoomInput{
 		RoomID: "json-cursor", Author: "Claude", Message: "Test",
 	})
 	text := resultText(res)

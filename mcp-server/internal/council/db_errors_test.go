@@ -1,4 +1,4 @@
-package main
+package council
 
 import (
 	"database/sql"
@@ -12,146 +12,146 @@ import (
 // Tests that exercise DB error paths by closing the database before operations.
 // This covers the `if err != nil { return ..., err }` branches after DB calls.
 
-func setupAndClose(t *testing.T) *CouncilServer {
+func setupAndClose(t *testing.T) *Server {
 	t.Helper()
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "pre-close", withProject("proj"), withTechStack("Go"), withTags("tag"), withSystemPrompt("prompt"), withRelatedRooms("related"))
-	mustPost(t, cs, "pre-close", "Claude", "Before close")
-	cs.db.Close()
-	return cs
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "pre-close", withProject("proj"), withTechStack("Go"), withTags("tag"), withSystemPrompt("prompt"), withRelatedRooms("related"))
+	mustPost(t, s, "pre-close", "Claude", "Before close")
+	s.DB.Close()
+	return s
 }
 
 func TestCreateRoomDBClosed(t *testing.T) {
-	cs := setupAndClose(t)
-	err := cs.createRoom("fail", "fail", "", "", "", "", "")
+	s := setupAndClose(t)
+	err := s.CreateRoom("fail", "fail", "", "", "", "", "")
 	if err == nil {
 		t.Error("expected error on closed DB")
 	}
 }
 
 func TestPostMessageDBClosed(t *testing.T) {
-	cs := setupAndClose(t)
-	_, err := cs.postMessage("pre-close", "Claude", "fail", "message", 0)
+	s := setupAndClose(t)
+	_, err := s.PostMessage("pre-close", "Claude", "fail", "message", 0)
 	if err == nil {
 		t.Error("expected error on closed DB")
 	}
 }
 
 func TestUpdateStatusDBClosed(t *testing.T) {
-	cs := setupAndClose(t)
-	err := cs.updateStatus("pre-close", "paused")
+	s := setupAndClose(t)
+	err := s.UpdateStatus("pre-close", "paused")
 	if err == nil {
 		t.Error("expected error on closed DB")
 	}
 }
 
 func TestUpdateRoomDBClosed(t *testing.T) {
-	cs := setupAndClose(t)
-	err := cs.updateRoom("pre-close", "new topic", "", "", "", "", "")
+	s := setupAndClose(t)
+	err := s.UpdateRoom("pre-close", "new topic", "", "", "", "", "")
 	if err == nil {
 		t.Error("expected error on closed DB")
 	}
 }
 
 func TestGetRoomDBClosed(t *testing.T) {
-	cs := setupAndClose(t)
-	_, err := cs.getRoom("pre-close")
+	s := setupAndClose(t)
+	_, err := s.GetRoom("pre-close")
 	if err == nil {
 		t.Error("expected error on closed DB")
 	}
 }
 
 func TestGetTranscriptDBClosed(t *testing.T) {
-	cs := setupAndClose(t)
-	_, err := cs.getTranscript("pre-close")
+	s := setupAndClose(t)
+	_, err := s.GetTranscript("pre-close")
 	if err == nil {
 		t.Error("expected error on closed DB")
 	}
 }
 
 func TestListRoomsDBClosed(t *testing.T) {
-	cs := setupAndClose(t)
-	_, err := cs.listRooms("", "", "", "")
+	s := setupAndClose(t)
+	_, err := s.ListRooms("", "", "", "")
 	if err == nil {
 		t.Error("expected error on closed DB")
 	}
 }
 
 func TestSearchMessagesDBClosed(t *testing.T) {
-	cs := setupAndClose(t)
-	_, err := cs.searchMessages("test", "", "", "", "", 10)
+	s := setupAndClose(t)
+	_, err := s.SearchMessages("test", "", "", "", "", 10)
 	if err == nil {
 		t.Error("expected error on closed DB")
 	}
 }
 
 func TestGetMessagesByIDsDBClosed(t *testing.T) {
-	cs := setupAndClose(t)
-	_, err := cs.getMessagesByIDs([]int64{1})
+	s := setupAndClose(t)
+	_, err := s.GetMessagesByIDs([]int64{1})
 	if err == nil {
 		t.Error("expected error on closed DB")
 	}
 }
 
 func TestGetRecentMessagesDBClosed(t *testing.T) {
-	cs := setupAndClose(t)
-	_, err := cs.getRecentMessages("pre-close", 5)
+	s := setupAndClose(t)
+	_, err := s.GetRecentMessages("pre-close", 5)
 	if err == nil {
 		t.Error("expected error on closed DB")
 	}
 }
 
 func TestDeleteRoomDBClosed(t *testing.T) {
-	cs := setupAndClose(t)
-	err := cs.deleteRoom("pre-close")
+	s := setupAndClose(t)
+	err := s.DeleteRoom("pre-close")
 	if err == nil {
 		t.Error("expected error on closed DB")
 	}
 }
 
 func TestDeleteMessagesDBClosed(t *testing.T) {
-	cs := setupAndClose(t)
-	_, err := cs.deleteMessages([]int64{1})
+	s := setupAndClose(t)
+	_, err := s.DeleteMessages([]int64{1})
 	if err == nil {
 		t.Error("expected error on closed DB")
 	}
 }
 
 func TestGetRoomStatsDBClosed(t *testing.T) {
-	cs := setupAndClose(t)
-	_, err := cs.getRoomStats("pre-close")
+	s := setupAndClose(t)
+	_, err := s.GetRoomStats("pre-close")
 	if err == nil {
 		t.Error("expected error on closed DB")
 	}
 }
 
 func TestGetRoomsNeedingSummaryDBClosed(t *testing.T) {
-	cs := setupAndClose(t)
-	_, err := cs.getRoomsNeedingSummary(20)
+	s := setupAndClose(t)
+	_, err := s.GetRoomsNeedingSummary(20)
 	if err == nil {
 		t.Error("expected error on closed DB")
 	}
 }
 
 func TestGetUnsummarizedMessagesDBClosed(t *testing.T) {
-	cs := setupAndClose(t)
-	_, err := cs.getUnsummarizedMessages("pre-close")
+	s := setupAndClose(t)
+	_, err := s.GetUnsummarizedMessages("pre-close")
 	if err == nil {
 		t.Error("expected error on closed DB")
 	}
 }
 
 func TestInsertSummaryDBClosed(t *testing.T) {
-	cs := setupAndClose(t)
-	err := cs.insertSummary("pre-close", "summary text")
+	s := setupAndClose(t)
+	err := s.InsertSummary("pre-close", "summary text")
 	if err == nil {
 		t.Error("expected error on closed DB")
 	}
 }
 
 func TestArchiveRoomDBClosed(t *testing.T) {
-	cs := setupAndClose(t)
-	_, err := cs.archiveRoom("pre-close")
+	s := setupAndClose(t)
+	_, err := s.ArchiveRoom("pre-close")
 	if err == nil {
 		t.Error("expected error on closed DB")
 	}
@@ -160,20 +160,20 @@ func TestArchiveRoomDBClosed(t *testing.T) {
 // -- archiveRoom filesystem error paths --
 
 func TestArchiveRoomBadDirectory(t *testing.T) {
-	cs := setupTestServer(t)
+	s := setupTestServer(t)
 	// Point dbPath to a location where we can't create the archives dir
-	cs.dbPath = "/dev/null/impossible/path/council.db"
-	mustCreateRoom(t, cs, "arch-bad-dir")
-	mustPost(t, cs, "arch-bad-dir", "Claude", "Message")
+	s.DBPath = "/dev/null/impossible/path/council.DB"
+	mustCreateRoom(t, s, "arch-bad-dir")
+	mustPost(t, s, "arch-bad-dir", "Claude", "Message")
 
-	_, err := cs.archiveRoom("arch-bad-dir")
+	_, err := s.ArchiveRoom("arch-bad-dir")
 	if err == nil {
 		t.Error("expected error for bad archive directory")
 	}
 }
 
 func TestArchiveRoomBadWritePath(t *testing.T) {
-	cs := setupTestServer(t)
+	s := setupTestServer(t)
 
 	// Create a directory where archives subdir exists but is not writable
 	tmpDir := t.TempDir()
@@ -184,51 +184,51 @@ func TestArchiveRoomBadWritePath(t *testing.T) {
 	os.RemoveAll(archiveDir)
 	os.WriteFile(archiveDir, []byte("not a dir"), 0644)
 
-	cs.dbPath = filepath.Join(tmpDir, "council.db")
-	mustCreateRoom(t, cs, "arch-bad-write")
-	mustPost(t, cs, "arch-bad-write", "Claude", "Message")
+	s.DBPath = filepath.Join(tmpDir, "council.DB")
+	mustCreateRoom(t, s, "arch-bad-write")
+	mustPost(t, s, "arch-bad-write", "Claude", "Message")
 
-	_, err := cs.archiveRoom("arch-bad-write")
+	_, err := s.ArchiveRoom("arch-bad-write")
 	if err == nil {
 		t.Error("expected error when archive path is a file not a directory")
 	}
 }
 
-// -- NewCouncilServer error path --
+// -- NewServer error path --
 
-func TestNewCouncilServerInitSchemaFail(t *testing.T) {
+func TestNewServerInitSchemaFail(t *testing.T) {
 	// A path like /dev/null can't be used as a SQLite DB with tables
-	_, err := NewCouncilServer("/dev/null", testLogger())
+	_, err := NewServer("/dev/null", testLogger())
 	if err == nil {
 		t.Error("expected error for /dev/null as DB path")
 	}
 }
 
-// -- NewCouncilServer bad path --
+// -- NewServer bad path --
 
-func TestNewCouncilServerBadPath(t *testing.T) {
-	_, err := NewCouncilServer("/nonexistent/path/to/db.sqlite", testLogger())
+func TestNewServerBadPath(t *testing.T) {
+	_, err := NewServer("/nonexistent/path/to/db.sqlite", testLogger())
 	// SQLite may or may not error on open (it creates the file),
 	// but if it errors on schema init that's also fine
 	_ = err
 }
 
-// -- NewCouncilServer bad DSN --
+// -- NewServer bad DSN --
 
-func TestNewCouncilServerBadDSN(t *testing.T) {
+func TestNewServerBadDSN(t *testing.T) {
 	// An invalid driver-level path that sql.Open itself rejects is hard to
 	// trigger with sqlite3 (it defers errors to first use), but initSchema
 	// will fail if the DB is unusable.
-	_, err := NewCouncilServer("file:///dev/null?mode=ro&_journal=OFF", testLogger())
+	_, err := NewServer("file:///dev/null?mode=ro&_journal=OFF", testLogger())
 	// Whether this errors depends on driver — we just exercise the path.
 	_ = err
 }
 
-// -- NewCouncilServer invalid driver --
+// -- NewServer invalid driver --
 
-func TestNewCouncilServerInvalidDriver(t *testing.T) {
+func TestNewServerInvalidDriver(t *testing.T) {
 	// Use a path with null bytes which should fail
-	_, err := NewCouncilServer("file:\x00invalid", testLogger())
+	_, err := NewServer("file:\x00invalid", testLogger())
 	if err == nil {
 		// Some drivers may not error — that's OK, we're just exercising the path
 		t.Log("no error on null byte path — driver-specific behavior")
@@ -432,100 +432,100 @@ func TestMigrationPreservesMultipleRows(t *testing.T) {
 
 // -- Scan error paths via corrupted tables --
 
-func corruptMessages(t *testing.T) *CouncilServer {
+func corruptMessages(t *testing.T) *Server {
 	t.Helper()
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "corrupt-room")
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "corrupt-room")
 	for i := 0; i < 5; i++ {
-		mustPost(t, cs, "corrupt-room", "Claude", "msg")
+		mustPost(t, s, "corrupt-room", "Claude", "msg")
 	}
 	// Replace messages table with incompatible schema
-	cs.db.Exec("ALTER TABLE messages RENAME TO messages_old")
-	cs.db.Exec("CREATE TABLE messages AS SELECT id, room_id FROM messages_old")
-	return cs
+	s.DB.Exec("ALTER TABLE messages RENAME TO messages_old")
+	s.DB.Exec("CREATE TABLE messages AS SELECT id, room_id FROM messages_old")
+	return s
 }
 
 func TestGetMessagesByIDsScanError(t *testing.T) {
-	cs := corruptMessages(t)
-	_, err := cs.getMessagesByIDs([]int64{1, 2})
+	s := corruptMessages(t)
+	_, err := s.GetMessagesByIDs([]int64{1, 2})
 	if err == nil {
 		t.Error("expected scan error")
 	}
 }
 
 func TestGetRecentMessagesScanError(t *testing.T) {
-	cs := corruptMessages(t)
-	_, err := cs.getRecentMessages("corrupt-room", 5)
+	s := corruptMessages(t)
+	_, err := s.GetRecentMessages("corrupt-room", 5)
 	if err == nil {
 		t.Error("expected scan error")
 	}
 }
 
 func TestSearchMessagesScanError(t *testing.T) {
-	cs := corruptMessages(t)
-	_, err := cs.searchMessages("msg", "", "", "", "", 10)
+	s := corruptMessages(t)
+	_, err := s.SearchMessages("msg", "", "", "", "", 10)
 	if err == nil {
 		t.Error("expected scan error")
 	}
 }
 
 func TestGetTranscriptScanError(t *testing.T) {
-	cs := corruptMessages(t)
-	_, err := cs.getTranscript("corrupt-room")
+	s := corruptMessages(t)
+	_, err := s.GetTranscript("corrupt-room")
 	if err == nil {
 		t.Error("expected scan error")
 	}
 }
 
 func TestGetUnsummarizedMessagesScanError(t *testing.T) {
-	cs := corruptMessages(t)
-	_, err := cs.getUnsummarizedMessages("corrupt-room")
+	s := corruptMessages(t)
+	_, err := s.GetUnsummarizedMessages("corrupt-room")
 	if err == nil {
 		t.Error("expected scan error")
 	}
 }
 
 func TestGetRoomStatsScanError(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "stats-corrupt")
-	mustPost(t, cs, "stats-corrupt", "Claude", "msg")
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "stats-corrupt")
+	mustPost(t, s, "stats-corrupt", "Claude", "msg")
 	// Corrupt the per-author GROUP BY query by replacing messages
-	cs.db.Exec("ALTER TABLE messages RENAME TO messages_old")
-	cs.db.Exec("CREATE TABLE messages AS SELECT id, room_id FROM messages_old")
+	s.DB.Exec("ALTER TABLE messages RENAME TO messages_old")
+	s.DB.Exec("CREATE TABLE messages AS SELECT id, room_id FROM messages_old")
 
-	_, err := cs.getRoomStats("stats-corrupt")
+	_, err := s.GetRoomStats("stats-corrupt")
 	if err == nil {
 		t.Error("expected scan error")
 	}
 }
 
 func TestGetRoomsNeedingSummaryScanError(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "summary-corrupt")
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "summary-corrupt")
 	for i := 0; i < 25; i++ {
-		mustPost(t, cs, "summary-corrupt", "Claude", "msg")
+		mustPost(t, s, "summary-corrupt", "Claude", "msg")
 	}
-	cs.db.Exec("ALTER TABLE messages RENAME TO messages_old")
-	cs.db.Exec("CREATE TABLE messages AS SELECT id, room_id FROM messages_old")
+	s.DB.Exec("ALTER TABLE messages RENAME TO messages_old")
+	s.DB.Exec("CREATE TABLE messages AS SELECT id, room_id FROM messages_old")
 
-	_, err := cs.getRoomsNeedingSummary(20)
+	_, err := s.GetRoomsNeedingSummary(20)
 	if err == nil {
 		t.Error("expected scan error")
 	}
 }
 
-func corruptRooms(t *testing.T) *CouncilServer {
+func corruptRooms(t *testing.T) *Server {
 	t.Helper()
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "corrupt-list", withProject("proj"), withTechStack("Go"), withTags("tag"), withRelatedRooms("related"))
-	cs.db.Exec("ALTER TABLE rooms RENAME TO rooms_old")
-	cs.db.Exec("CREATE TABLE rooms AS SELECT id FROM rooms_old")
-	return cs
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "corrupt-list", withProject("proj"), withTechStack("Go"), withTags("tag"), withRelatedRooms("related"))
+	s.DB.Exec("ALTER TABLE rooms RENAME TO rooms_old")
+	s.DB.Exec("CREATE TABLE rooms AS SELECT id FROM rooms_old")
+	return s
 }
 
 func TestListRoomsScanError(t *testing.T) {
-	cs := corruptRooms(t)
-	_, err := cs.listRooms("", "", "", "")
+	s := corruptRooms(t)
+	_, err := s.ListRooms("", "", "", "")
 	if err == nil {
 		t.Error("expected scan error")
 	}
@@ -534,13 +534,13 @@ func TestListRoomsScanError(t *testing.T) {
 // -- getRecentMessages: query error (not getRoom error) --
 
 func TestGetRecentMessagesQueryError(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "recent-qerr")
-	mustPost(t, cs, "recent-qerr", "Claude", "msg")
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "recent-qerr")
+	mustPost(t, s, "recent-qerr", "Claude", "msg")
 	// Drop messages but keep rooms so getRoom succeeds, query fails
-	cs.db.Exec("DROP TABLE messages")
+	s.DB.Exec("DROP TABLE messages")
 
-	_, err := cs.getRecentMessages("recent-qerr", 5)
+	_, err := s.GetRecentMessages("recent-qerr", 5)
 	if err == nil {
 		t.Error("expected query error")
 	}
@@ -549,12 +549,12 @@ func TestGetRecentMessagesQueryError(t *testing.T) {
 // -- getRoomStats: first QueryRow error (aggregate stats) --
 
 func TestGetRoomStatsAggregateError(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "stats-agg-err")
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "stats-agg-err")
 	// Drop messages to make the COUNT query target a missing table
-	cs.db.Exec("DROP TABLE messages")
+	s.DB.Exec("DROP TABLE messages")
 
-	_, err := cs.getRoomStats("stats-agg-err")
+	_, err := s.GetRoomStats("stats-agg-err")
 	if err == nil {
 		t.Error("expected aggregate stats error")
 	}

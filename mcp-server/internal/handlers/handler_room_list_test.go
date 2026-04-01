@@ -1,4 +1,4 @@
-package main
+package handlers
 
 import (
 	"context"
@@ -9,10 +9,10 @@ import (
 // ========== signal_status ==========
 
 func TestHandleSignalStatus(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "h-status")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-status")
 
-	res, _, _ := cs.handleSignalStatus(context.Background(), nil, SignalStatusInput{
+	res, _, _ := reg.handleSignalStatus(context.Background(), nil, SignalStatusInput{
 		RoomID: "h-status", Status: "resolved",
 	})
 	text := resultText(res)
@@ -22,9 +22,9 @@ func TestHandleSignalStatus(t *testing.T) {
 }
 
 func TestHandleSignalStatusInvalid(t *testing.T) {
-	cs := setupTestServer(t)
+	reg := setupHandlerTest(t)
 
-	res, _, _ := cs.handleSignalStatus(context.Background(), nil, SignalStatusInput{
+	res, _, _ := reg.handleSignalStatus(context.Background(), nil, SignalStatusInput{
 		RoomID: "whatever", Status: "invalid",
 	})
 	text := resultText(res)
@@ -34,9 +34,9 @@ func TestHandleSignalStatusInvalid(t *testing.T) {
 }
 
 func TestHandleSignalStatusNotFound(t *testing.T) {
-	cs := setupTestServer(t)
+	reg := setupHandlerTest(t)
 
-	res, _, _ := cs.handleSignalStatus(context.Background(), nil, SignalStatusInput{
+	res, _, _ := reg.handleSignalStatus(context.Background(), nil, SignalStatusInput{
 		RoomID: "nonexistent", Status: "active",
 	})
 	text := resultText(res)
@@ -46,10 +46,10 @@ func TestHandleSignalStatusNotFound(t *testing.T) {
 }
 
 func TestHandleSignalStatusDBError(t *testing.T) {
-	cs := setupHandlerServer(t)
-	cs.db.Close()
+	reg := setupHandlerServer(t)
+	reg.Server.DB.Close()
 
-	res, _, _ := cs.handleSignalStatus(context.Background(), nil, SignalStatusInput{
+	res, _, _ := reg.handleSignalStatus(context.Background(), nil, SignalStatusInput{
 		RoomID: "hdb-room", Status: "paused",
 	})
 	text := resultText(res)
@@ -61,11 +61,11 @@ func TestHandleSignalStatusDBError(t *testing.T) {
 // ========== list_rooms ==========
 
 func TestHandleListRooms(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "h-list-1", withProject("proj-a"), withTags("tag1"))
-	mustCreateRoom(t, cs, "h-list-2", withProject("proj-b"), withTags("tag2"), withRelatedRooms("related-room"))
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-list-1", withProject("proj-a"), withTags("tag1"))
+	mustCreateRoom(t, reg.Server, "h-list-2", withProject("proj-b"), withTags("tag2"), withRelatedRooms("related-room"))
 
-	res, _, _ := cs.handleListRooms(context.Background(), nil, ListRoomsInput{})
+	res, _, _ := reg.handleListRooms(context.Background(), nil, ListRoomsInput{})
 	text := resultText(res)
 	if !strings.Contains(text, "2 room(s)") {
 		t.Errorf("expected 2 rooms, got: %s", text)
@@ -77,9 +77,9 @@ func TestHandleListRooms(t *testing.T) {
 }
 
 func TestHandleListRoomsEmpty(t *testing.T) {
-	cs := setupTestServer(t)
+	reg := setupHandlerTest(t)
 
-	res, _, _ := cs.handleListRooms(context.Background(), nil, ListRoomsInput{})
+	res, _, _ := reg.handleListRooms(context.Background(), nil, ListRoomsInput{})
 	text := resultText(res)
 	if !strings.Contains(text, "No rooms found") {
 		t.Errorf("expected no rooms, got: %s", text)
@@ -87,11 +87,11 @@ func TestHandleListRoomsEmpty(t *testing.T) {
 }
 
 func TestHandleListRoomsCompact(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "h-compact-1", withDescription("Short topic"), withProject("proj-a"), withTechStack("Go"), withTags("tag1"))
-	mustCreateRoom(t, cs, "h-compact-2", withDescription("Another topic that is a bit longer and should be shown"), withProject("proj-b"), withTags("tag2"), withRelatedRooms("related-x"))
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-compact-1", withDescription("Short topic"), withProject("proj-a"), withTechStack("Go"), withTags("tag1"))
+	mustCreateRoom(t, reg.Server, "h-compact-2", withDescription("Another topic that is a bit longer and should be shown"), withProject("proj-b"), withTags("tag2"), withRelatedRooms("related-x"))
 
-	res, _, _ := cs.handleListRooms(context.Background(), nil, ListRoomsInput{Compact: "true"})
+	res, _, _ := reg.handleListRooms(context.Background(), nil, ListRoomsInput{Compact: "true"})
 	text := resultText(res)
 
 	if !strings.Contains(text, "2 room(s)") {
@@ -112,10 +112,10 @@ func TestHandleListRoomsCompact(t *testing.T) {
 }
 
 func TestHandleListRoomsCompactNoProject(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "h-compact-noproj")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-compact-noproj")
 
-	res, _, _ := cs.handleListRooms(context.Background(), nil, ListRoomsInput{Compact: "true"})
+	res, _, _ := reg.handleListRooms(context.Background(), nil, ListRoomsInput{Compact: "true"})
 	text := resultText(res)
 	if !strings.Contains(text, "- |") {
 		t.Error("expected dash for empty project in compact mode")
@@ -123,11 +123,11 @@ func TestHandleListRoomsCompactNoProject(t *testing.T) {
 }
 
 func TestHandleListRoomsCompactLongTopic(t *testing.T) {
-	cs := setupTestServer(t)
+	reg := setupHandlerTest(t)
 	longTopic := strings.Repeat("A", 80)
-	mustCreateRoom(t, cs, "h-compact-long", withDescription(longTopic), withProject("proj"))
+	mustCreateRoom(t, reg.Server, "h-compact-long", withDescription(longTopic), withProject("proj"))
 
-	res, _, _ := cs.handleListRooms(context.Background(), nil, ListRoomsInput{Compact: "true"})
+	res, _, _ := reg.handleListRooms(context.Background(), nil, ListRoomsInput{Compact: "true"})
 	text := resultText(res)
 	if !strings.Contains(text, "...") {
 		t.Error("expected truncated topic in compact mode")
@@ -138,10 +138,10 @@ func TestHandleListRoomsCompactLongTopic(t *testing.T) {
 }
 
 func TestHandleListRoomsNonCompact(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "h-verbose-1", withDescription("Full detail room"), withProject("proj"), withTechStack("Go, Docker"), withTags("auth"), withRelatedRooms("related-a"))
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-verbose-1", withDescription("Full detail room"), withProject("proj"), withTechStack("Go, Docker"), withTags("auth"), withRelatedRooms("related-a"))
 
-	res, _, _ := cs.handleListRooms(context.Background(), nil, ListRoomsInput{Verbose: "true"})
+	res, _, _ := reg.handleListRooms(context.Background(), nil, ListRoomsInput{Verbose: "true"})
 	text := resultText(res)
 	if !strings.Contains(text, "Tech: Go, Docker") {
 		t.Error("verbose mode should include Tech field")
@@ -152,11 +152,11 @@ func TestHandleListRoomsNonCompact(t *testing.T) {
 }
 
 func TestHandleListRoomsFiltered(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "h-filt-1", withProject("proj-a"))
-	mustCreateRoom(t, cs, "h-filt-2", withProject("proj-b"))
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-filt-1", withProject("proj-a"))
+	mustCreateRoom(t, reg.Server, "h-filt-2", withProject("proj-b"))
 
-	res, _, _ := cs.handleListRooms(context.Background(), nil, ListRoomsInput{Project: "proj-a"})
+	res, _, _ := reg.handleListRooms(context.Background(), nil, ListRoomsInput{Project: "proj-a"})
 	text := resultText(res)
 	if !strings.Contains(text, "1 room(s)") {
 		t.Errorf("expected 1 room, got: %s", text)
@@ -164,10 +164,10 @@ func TestHandleListRoomsFiltered(t *testing.T) {
 }
 
 func TestHandleListRoomsWithTechStack(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "h-list-tech", withTechStack("Go, SQLite"))
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-list-tech", withTechStack("Go, SQLite"))
 
-	res, _, _ := cs.handleListRooms(context.Background(), nil, ListRoomsInput{Verbose: "true"})
+	res, _, _ := reg.handleListRooms(context.Background(), nil, ListRoomsInput{Verbose: "true"})
 	text := resultText(res)
 	if !strings.Contains(text, "Tech: Go, SQLite") {
 		t.Errorf("expected tech stack in verbose listing, got: %s", text)
@@ -175,14 +175,14 @@ func TestHandleListRoomsWithTechStack(t *testing.T) {
 }
 
 func TestHandleListRoomsCompactMessageCount(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "h-compact-cnt1", withProject("proj"))
-	mustCreateRoom(t, cs, "h-compact-cnt2", withProject("proj"))
-	mustPost(t, cs, "h-compact-cnt1", "Claude", "M1")
-	mustPostTyped(t, cs, "h-compact-cnt1", "Gemini", "M2", "thought")
-	mustPostTyped(t, cs, "h-compact-cnt1", "Claude", "M3", "decision")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-compact-cnt1", withProject("proj"))
+	mustCreateRoom(t, reg.Server, "h-compact-cnt2", withProject("proj"))
+	mustPost(t, reg.Server, "h-compact-cnt1", "Claude", "M1")
+	mustPostTyped(t, reg.Server, "h-compact-cnt1", "Gemini", "M2", "thought")
+	mustPostTyped(t, reg.Server, "h-compact-cnt1", "Claude", "M3", "decision")
 
-	res, _, _ := cs.handleListRooms(context.Background(), nil, ListRoomsInput{Compact: "true"})
+	res, _, _ := reg.handleListRooms(context.Background(), nil, ListRoomsInput{Compact: "true"})
 	text := resultText(res)
 	if !strings.Contains(text, "3 msgs") {
 		t.Errorf("expected '3 msgs' in compact output, got: %s", text)
@@ -193,30 +193,30 @@ func TestHandleListRoomsCompactMessageCount(t *testing.T) {
 }
 
 func TestHandleListRoomsSearch(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "auth-migration", withDescription("JWT auth migration"), withProject("proj-a"), withTags("auth,security"))
-	mustCreateRoom(t, cs, "frontend-ui", withDescription("React dashboard"), withProject("proj-b"), withTags("ui,react"))
-	mustCreateRoom(t, cs, "auth-review", withDescription("Auth code review"), withProject("proj-a"), withTags("auth"))
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "auth-migration", withDescription("JWT auth migration"), withProject("proj-a"), withTags("auth,security"))
+	mustCreateRoom(t, reg.Server, "frontend-ui", withDescription("React dashboard"), withProject("proj-b"), withTags("ui,react"))
+	mustCreateRoom(t, reg.Server, "auth-review", withDescription("Auth code review"), withProject("proj-a"), withTags("auth"))
 
-	res, _, _ := cs.handleListRooms(context.Background(), nil, ListRoomsInput{Search: "auth"})
+	res, _, _ := reg.handleListRooms(context.Background(), nil, ListRoomsInput{Search: "auth"})
 	text := resultText(res)
 	if !strings.Contains(text, "2 room(s)") {
 		t.Errorf("expected 2 rooms matching 'auth', got: %s", text)
 	}
 
-	res, _, _ = cs.handleListRooms(context.Background(), nil, ListRoomsInput{Search: "React"})
+	res, _, _ = reg.handleListRooms(context.Background(), nil, ListRoomsInput{Search: "React"})
 	text = resultText(res)
 	if !strings.Contains(text, "1 room(s)") {
 		t.Errorf("expected 1 room matching 'React', got: %s", text)
 	}
 
-	res, _, _ = cs.handleListRooms(context.Background(), nil, ListRoomsInput{Search: "security"})
+	res, _, _ = reg.handleListRooms(context.Background(), nil, ListRoomsInput{Search: "security"})
 	text = resultText(res)
 	if !strings.Contains(text, "1 room(s)") {
 		t.Errorf("expected 1 room matching tag 'security', got: %s", text)
 	}
 
-	res, _, _ = cs.handleListRooms(context.Background(), nil, ListRoomsInput{Search: "zzz-nope"})
+	res, _, _ = reg.handleListRooms(context.Background(), nil, ListRoomsInput{Search: "zzz-nope"})
 	text = resultText(res)
 	if !strings.Contains(text, "No rooms found") {
 		t.Errorf("expected no rooms, got: %s", text)
@@ -224,12 +224,12 @@ func TestHandleListRoomsSearch(t *testing.T) {
 }
 
 func TestHandleListRoomsSearchWithCompact(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "search-compact-1", withDescription("Bug tracker"), withProject("proj"), withTags("bug"))
-	mustCreateRoom(t, cs, "search-compact-2", withDescription("Feature design"), withProject("proj"), withTags("feature"))
-	mustPost(t, cs, "search-compact-1", "Claude", "A message")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "search-compact-1", withDescription("Bug tracker"), withProject("proj"), withTags("bug"))
+	mustCreateRoom(t, reg.Server, "search-compact-2", withDescription("Feature design"), withProject("proj"), withTags("feature"))
+	mustPost(t, reg.Server, "search-compact-1", "Claude", "A message")
 
-	res, _, _ := cs.handleListRooms(context.Background(), nil, ListRoomsInput{
+	res, _, _ := reg.handleListRooms(context.Background(), nil, ListRoomsInput{
 		Search: "Bug", Compact: "true",
 	})
 	text := resultText(res)
@@ -242,10 +242,10 @@ func TestHandleListRoomsSearchWithCompact(t *testing.T) {
 }
 
 func TestHandleListRoomsDBError(t *testing.T) {
-	cs := setupHandlerServer(t)
-	cs.db.Close()
+	reg := setupHandlerServer(t)
+	reg.Server.DB.Close()
 
-	_, _, err := cs.handleListRooms(context.Background(), nil, ListRoomsInput{})
+	_, _, err := reg.handleListRooms(context.Background(), nil, ListRoomsInput{})
 	if err == nil {
 		t.Error("expected error")
 	}

@@ -1,4 +1,4 @@
-package main
+package handlers
 
 import (
 	"context"
@@ -10,11 +10,11 @@ import (
 // ========== pin_message ==========
 
 func TestHandlePinMessage(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "pin-room")
-	id := mustPostTyped(t, cs, "pin-room", "Claude", "Important TL;DR", "decision")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "pin-room")
+	id := mustPostTyped(t, reg.Server, "pin-room", "Claude", "Important TL;DR", "decision")
 
-	res, _, err := cs.handlePinMessage(context.Background(), nil, PinMessageInput{
+	res, _, err := reg.handlePinMessage(context.Background(), nil, PinMessageInput{
 		RoomID:    "pin-room",
 		MessageID: fmt.Sprintf("%d", id),
 	})
@@ -27,7 +27,7 @@ func TestHandlePinMessage(t *testing.T) {
 	}
 
 	// Verify message is actually pinned in DB
-	pinned, err := cs.getPinnedMessage("pin-room")
+	pinned, err := reg.Server.GetPinnedMessage("pin-room")
 	if err != nil {
 		t.Fatalf("getPinnedMessage error: %v", err)
 	}
@@ -40,15 +40,15 @@ func TestHandlePinMessage(t *testing.T) {
 }
 
 func TestHandlePinMessageToggle(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "pin-toggle")
-	id := mustPost(t, cs, "pin-toggle", "Claude", "Pin/Unpin")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "pin-toggle")
+	id := mustPost(t, reg.Server, "pin-toggle", "Claude", "Pin/Unpin")
 
 	// Pin it
-	cs.handlePinMessage(context.Background(), nil, PinMessageInput{RoomID: "pin-toggle", MessageID: fmt.Sprintf("%d", id)})
+	reg.handlePinMessage(context.Background(), nil, PinMessageInput{RoomID: "pin-toggle", MessageID: fmt.Sprintf("%d", id)})
 
 	// Unpin it (toggle)
-	res, _, _ := cs.handlePinMessage(context.Background(), nil, PinMessageInput{
+	res, _, _ := reg.handlePinMessage(context.Background(), nil, PinMessageInput{
 		RoomID:    "pin-toggle",
 		MessageID: fmt.Sprintf("%d", id),
 	})
@@ -57,38 +57,38 @@ func TestHandlePinMessageToggle(t *testing.T) {
 		t.Errorf("expected 'unpinned' in result, got: %s", text)
 	}
 
-	pinned, _ := cs.getPinnedMessage("pin-toggle")
+	pinned, _ := reg.Server.GetPinnedMessage("pin-toggle")
 	if pinned != nil {
 		t.Error("expected no pinned message after toggle")
 	}
 }
 
 func TestHandlePinMessageReplacesExisting(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "pin-replace")
-	id1 := mustPost(t, cs, "pin-replace", "Claude", "First")
-	id2 := mustPost(t, cs, "pin-replace", "Gemini", "Second")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "pin-replace")
+	id1 := mustPost(t, reg.Server, "pin-replace", "Claude", "First")
+	id2 := mustPost(t, reg.Server, "pin-replace", "Gemini", "Second")
 
 	// Pin first
-	cs.handlePinMessage(context.Background(), nil, PinMessageInput{RoomID: "pin-replace", MessageID: fmt.Sprintf("%d", id1)})
+	reg.handlePinMessage(context.Background(), nil, PinMessageInput{RoomID: "pin-replace", MessageID: fmt.Sprintf("%d", id1)})
 
 	// Pin second — should replace first
-	cs.handlePinMessage(context.Background(), nil, PinMessageInput{RoomID: "pin-replace", MessageID: fmt.Sprintf("%d", id2)})
+	reg.handlePinMessage(context.Background(), nil, PinMessageInput{RoomID: "pin-replace", MessageID: fmt.Sprintf("%d", id2)})
 
-	pinned, _ := cs.getPinnedMessage("pin-replace")
+	pinned, _ := reg.Server.GetPinnedMessage("pin-replace")
 	if pinned == nil || pinned.ID != id2 {
 		t.Errorf("expected message %d to be pinned, got %v", id2, pinned)
 	}
 }
 
 func TestHandlePinMessageWrongRoom(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "room-a")
-	mustCreateRoom(t, cs, "room-b")
-	id := mustPost(t, cs, "room-a", "Claude", "Msg A")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "room-a")
+	mustCreateRoom(t, reg.Server, "room-b")
+	id := mustPost(t, reg.Server, "room-a", "Claude", "Msg A")
 
 	// Try to pin room-a's message in room-b
-	res, _, _ := cs.handlePinMessage(context.Background(), nil, PinMessageInput{
+	res, _, _ := reg.handlePinMessage(context.Background(), nil, PinMessageInput{
 		RoomID:    "room-b",
 		MessageID: fmt.Sprintf("%d", id),
 	})
@@ -99,17 +99,17 @@ func TestHandlePinMessageWrongRoom(t *testing.T) {
 }
 
 func TestHandlePinMessageMissingFields(t *testing.T) {
-	cs := setupTestServer(t)
-	res, _, _ := cs.handlePinMessage(context.Background(), nil, PinMessageInput{})
+	reg := setupHandlerTest(t)
+	res, _, _ := reg.handlePinMessage(context.Background(), nil, PinMessageInput{})
 	if !strings.Contains(resultText(res), "Error") {
 		t.Error("expected error for missing fields")
 	}
 }
 
 func TestHandlePinMessageNotFound(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "pin-nf")
-	res, _, _ := cs.handlePinMessage(context.Background(), nil, PinMessageInput{
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "pin-nf")
+	res, _, _ := reg.handlePinMessage(context.Background(), nil, PinMessageInput{
 		RoomID: "pin-nf", MessageID: "99999",
 	})
 	if !strings.Contains(resultText(res), "not found") {
@@ -120,11 +120,11 @@ func TestHandlePinMessageNotFound(t *testing.T) {
 // ========== update_message ==========
 
 func TestHandleUpdateMessage(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "h-upd-msg")
-	id := mustPost(t, cs, "h-upd-msg", "Claude", "Old content")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-upd-msg")
+	id := mustPost(t, reg.Server, "h-upd-msg", "Claude", "Old content")
 
-	res, _, err := cs.handleUpdateMessage(context.Background(), nil, UpdateMessageInput{
+	res, _, err := reg.handleUpdateMessage(context.Background(), nil, UpdateMessageInput{
 		MessageID: fmt.Sprintf("%d", id),
 		Content:   "New content",
 	})
@@ -137,40 +137,40 @@ func TestHandleUpdateMessage(t *testing.T) {
 	}
 
 	// Verify in DB
-	msgs, _ := cs.getMessagesByIDs([]int64{id})
+	msgs, _ := reg.Server.GetMessagesByIDs([]int64{id})
 	if len(msgs) == 0 || msgs[0].Content != "New content" {
 		t.Errorf("expected content update, got: %v", msgs)
 	}
 }
 
 func TestHandleUpdateMessageWithType(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "h-upd-type")
-	id := mustPost(t, cs, "h-upd-type", "Claude", "Msg")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-upd-type")
+	id := mustPost(t, reg.Server, "h-upd-type", "Claude", "Msg")
 
-	cs.handleUpdateMessage(context.Background(), nil, UpdateMessageInput{
+	reg.handleUpdateMessage(context.Background(), nil, UpdateMessageInput{
 		MessageID:   fmt.Sprintf("%d", id),
 		Content:     "Msg",
 		MessageType: "decision",
 	})
 
-	msgs, _ := cs.getMessagesByIDs([]int64{id})
+	msgs, _ := reg.Server.GetMessagesByIDs([]int64{id})
 	if len(msgs) == 0 || msgs[0].MessageType != "decision" {
 		t.Errorf("expected type update, got: %v", msgs)
 	}
 }
 
 func TestHandleUpdateMessagePreservesFields(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "h-upd-pres")
-	id := mustPost(t, cs, "h-upd-pres", "Claude", "Original")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-upd-pres")
+	id := mustPost(t, reg.Server, "h-upd-pres", "Claude", "Original")
 
-	cs.handleUpdateMessage(context.Background(), nil, UpdateMessageInput{
+	reg.handleUpdateMessage(context.Background(), nil, UpdateMessageInput{
 		MessageID: fmt.Sprintf("%d", id),
 		Content:   "Updated",
 	})
 
-	msgs, _ := cs.getMessagesByIDs([]int64{id})
+	msgs, _ := reg.Server.GetMessagesByIDs([]int64{id})
 	if len(msgs) == 0 {
 		t.Fatal("message lost")
 	}
@@ -184,8 +184,8 @@ func TestHandleUpdateMessagePreservesFields(t *testing.T) {
 }
 
 func TestHandleUpdateMessageNotFound(t *testing.T) {
-	cs := setupTestServer(t)
-	res, _, _ := cs.handleUpdateMessage(context.Background(), nil, UpdateMessageInput{
+	reg := setupHandlerTest(t)
+	res, _, _ := reg.handleUpdateMessage(context.Background(), nil, UpdateMessageInput{
 		MessageID: "99999",
 		Content:   "New",
 	})
@@ -195,11 +195,11 @@ func TestHandleUpdateMessageNotFound(t *testing.T) {
 }
 
 func TestHandleUpdateMessageInvalidType(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "h-upd-bad-type")
-	id := mustPost(t, cs, "h-upd-bad-type", "Claude", "Msg")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-upd-bad-type")
+	id := mustPost(t, reg.Server, "h-upd-bad-type", "Claude", "Msg")
 
-	res, _, _ := cs.handleUpdateMessage(context.Background(), nil, UpdateMessageInput{
+	res, _, _ := reg.handleUpdateMessage(context.Background(), nil, UpdateMessageInput{
 		MessageID:   fmt.Sprintf("%d", id),
 		Content:     "Msg",
 		MessageType: "invalid",
@@ -210,8 +210,8 @@ func TestHandleUpdateMessageInvalidType(t *testing.T) {
 }
 
 func TestHandleUpdateMessageMissingFields(t *testing.T) {
-	cs := setupTestServer(t)
-	res, _, _ := cs.handleUpdateMessage(context.Background(), nil, UpdateMessageInput{})
+	reg := setupHandlerTest(t)
+	res, _, _ := reg.handleUpdateMessage(context.Background(), nil, UpdateMessageInput{})
 	if !strings.Contains(resultText(res), "Error") {
 		t.Error("expected error for missing fields")
 	}
@@ -220,11 +220,11 @@ func TestHandleUpdateMessageMissingFields(t *testing.T) {
 // ========== delete_messages ==========
 
 func TestHandleDeleteMessages(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "h-delmsg")
-	mustPost(t, cs, "h-delmsg", "Claude", "Delete me")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-delmsg")
+	mustPost(t, reg.Server, "h-delmsg", "Claude", "Delete me")
 
-	res, _, _ := cs.handleDeleteMessages(context.Background(), nil, DeleteMessagesInput{MessageIDs: "1"})
+	res, _, _ := reg.handleDeleteMessages(context.Background(), nil, DeleteMessagesInput{MessageIDs: "1"})
 	text := resultText(res)
 	if !strings.Contains(text, "Deleted 1") {
 		t.Errorf("expected 1 deleted, got: %s", text)
@@ -232,40 +232,40 @@ func TestHandleDeleteMessages(t *testing.T) {
 }
 
 func TestHandleDeleteMessagesMissing(t *testing.T) {
-	cs := setupTestServer(t)
+	reg := setupHandlerTest(t)
 
-	res, _, _ := cs.handleDeleteMessages(context.Background(), nil, DeleteMessagesInput{})
+	res, _, _ := reg.handleDeleteMessages(context.Background(), nil, DeleteMessagesInput{})
 	if !strings.Contains(resultText(res), "Error") {
 		t.Error("expected error")
 	}
 }
 
 func TestHandleDeleteMessagesInvalidID(t *testing.T) {
-	cs := setupTestServer(t)
+	reg := setupHandlerTest(t)
 
-	res, _, _ := cs.handleDeleteMessages(context.Background(), nil, DeleteMessagesInput{MessageIDs: "abc"})
+	res, _, _ := reg.handleDeleteMessages(context.Background(), nil, DeleteMessagesInput{MessageIDs: "abc"})
 	if !strings.Contains(resultText(res), "not a valid") {
 		t.Error("expected invalid ID error")
 	}
 }
 
 func TestHandleDeleteMessagesDBError(t *testing.T) {
-	cs := setupHandlerServer(t)
-	cs.db.Close()
+	reg := setupHandlerServer(t)
+	reg.Server.DB.Close()
 
-	_, _, err := cs.handleDeleteMessages(context.Background(), nil, DeleteMessagesInput{MessageIDs: "1"})
+	_, _, err := reg.handleDeleteMessages(context.Background(), nil, DeleteMessagesInput{MessageIDs: "1"})
 	if err == nil {
 		t.Error("expected error")
 	}
 }
 
 func TestHandleDeleteMessagesDryRun(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "dry-room")
-	id1 := mustPost(t, cs, "dry-room", "Claude", "Message one")
-	id2 := mustPostTyped(t, cs, "dry-room", "Gemini", "Message two", "thought")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "dry-room")
+	id1 := mustPost(t, reg.Server, "dry-room", "Claude", "Message one")
+	id2 := mustPostTyped(t, reg.Server, "dry-room", "Gemini", "Message two", "thought")
 
-	res, _, err := cs.handleDeleteMessages(context.Background(), nil, DeleteMessagesInput{
+	res, _, err := reg.handleDeleteMessages(context.Background(), nil, DeleteMessagesInput{
 		MessageIDs: fmt.Sprintf("%d,%d", id1, id2),
 		DryRun:     "true",
 	})
@@ -291,18 +291,18 @@ func TestHandleDeleteMessagesDryRun(t *testing.T) {
 	}
 
 	// Verify messages still exist
-	msgs, _ := cs.getMessagesByIDs([]int64{id1, id2})
+	msgs, _ := reg.Server.GetMessagesByIDs([]int64{id1, id2})
 	if len(msgs) != 2 {
 		t.Errorf("expected 2 messages to still exist, got %d", len(msgs))
 	}
 }
 
 func TestHandleDeleteMessagesDryRunNotFound(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "dry-nf")
-	id := mustPost(t, cs, "dry-nf", "Claude", "Exists")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "dry-nf")
+	id := mustPost(t, reg.Server, "dry-nf", "Claude", "Exists")
 
-	res, _, _ := cs.handleDeleteMessages(context.Background(), nil, DeleteMessagesInput{
+	res, _, _ := reg.handleDeleteMessages(context.Background(), nil, DeleteMessagesInput{
 		MessageIDs: fmt.Sprintf("%d,99999", id),
 		DryRun:     "true",
 	})
@@ -317,12 +317,12 @@ func TestHandleDeleteMessagesDryRunNotFound(t *testing.T) {
 }
 
 func TestHandleDeleteMessagesDryRunFalse(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "dry-false")
-	id := mustPost(t, cs, "dry-false", "Claude", "Delete me")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "dry-false")
+	id := mustPost(t, reg.Server, "dry-false", "Claude", "Delete me")
 
 	// dry_run=false should still delete
-	res, _, _ := cs.handleDeleteMessages(context.Background(), nil, DeleteMessagesInput{
+	res, _, _ := reg.handleDeleteMessages(context.Background(), nil, DeleteMessagesInput{
 		MessageIDs: fmt.Sprintf("%d", id),
 		DryRun:     "false",
 	})
@@ -331,19 +331,19 @@ func TestHandleDeleteMessagesDryRunFalse(t *testing.T) {
 		t.Errorf("expected deletion confirmation, got: %s", text)
 	}
 
-	msgs, _ := cs.getMessagesByIDs([]int64{id})
+	msgs, _ := reg.Server.GetMessagesByIDs([]int64{id})
 	if len(msgs) != 0 {
 		t.Error("message should be deleted when dry_run=false")
 	}
 }
 
 func TestHandleDeleteMessagesDryRunOmitted(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "dry-omit")
-	id := mustPost(t, cs, "dry-omit", "Claude", "Delete me too")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "dry-omit")
+	id := mustPost(t, reg.Server, "dry-omit", "Claude", "Delete me too")
 
 	// No dry_run param — should delete (backward compatible)
-	res, _, _ := cs.handleDeleteMessages(context.Background(), nil, DeleteMessagesInput{
+	res, _, _ := reg.handleDeleteMessages(context.Background(), nil, DeleteMessagesInput{
 		MessageIDs: fmt.Sprintf("%d", id),
 	})
 	text := resultText(res)
@@ -353,12 +353,12 @@ func TestHandleDeleteMessagesDryRunOmitted(t *testing.T) {
 }
 
 func TestHandleDeleteMessagesDryRunExcerptTruncation(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "dry-trunc")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "dry-trunc")
 	longContent := strings.Repeat("A", 200)
-	id := mustPost(t, cs, "dry-trunc", "Claude", longContent)
+	id := mustPost(t, reg.Server, "dry-trunc", "Claude", longContent)
 
-	res, _, _ := cs.handleDeleteMessages(context.Background(), nil, DeleteMessagesInput{
+	res, _, _ := reg.handleDeleteMessages(context.Background(), nil, DeleteMessagesInput{
 		MessageIDs: fmt.Sprintf("%d", id),
 		DryRun:     "true",
 	})

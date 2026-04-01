@@ -1,4 +1,4 @@
-package main
+package handlers
 
 import (
 	"context"
@@ -10,13 +10,13 @@ import (
 // ========== bulk_status_update ==========
 
 func TestHandleBulkStatusUpdate(t *testing.T) {
-	cs := setupTestServer(t)
-	registerTools(cs)
-	mustCreateRoom(t, cs, "bulk-1")
-	mustCreateRoom(t, cs, "bulk-2")
-	mustCreateRoom(t, cs, "bulk-3")
+	reg := setupHandlerTest(t)
+	reg.RegisterTools()
+	mustCreateRoom(t, reg.Server, "bulk-1")
+	mustCreateRoom(t, reg.Server, "bulk-2")
+	mustCreateRoom(t, reg.Server, "bulk-3")
 
-	res, _, _ := cs.handleBulkStatusUpdate(context.Background(), nil, BulkStatusInput{
+	res, _, _ := reg.handleBulkStatusUpdate(context.Background(), nil, BulkStatusInput{
 		RoomIDs: "bulk-1,bulk-2,bulk-3", Status: "resolved",
 	})
 	text := resultText(res)
@@ -25,7 +25,7 @@ func TestHandleBulkStatusUpdate(t *testing.T) {
 		t.Errorf("expected 3 updated, got: %s", text)
 	}
 	for _, id := range []string{"bulk-1", "bulk-2", "bulk-3"} {
-		room, _ := cs.getRoom(id)
+		room, _ := reg.Server.GetRoom(id)
 		if room.Status != "resolved" {
 			t.Errorf("room '%s' should be resolved, got '%s'", id, room.Status)
 		}
@@ -33,10 +33,10 @@ func TestHandleBulkStatusUpdate(t *testing.T) {
 }
 
 func TestHandleBulkStatusUpdatePartialFailure(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "bulk-ok")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "bulk-ok")
 
-	res, _, _ := cs.handleBulkStatusUpdate(context.Background(), nil, BulkStatusInput{
+	res, _, _ := reg.handleBulkStatusUpdate(context.Background(), nil, BulkStatusInput{
 		RoomIDs: "bulk-ok,nonexistent-room", Status: "paused",
 	})
 	text := resultText(res)
@@ -49,9 +49,9 @@ func TestHandleBulkStatusUpdatePartialFailure(t *testing.T) {
 }
 
 func TestHandleBulkStatusUpdateInvalidStatus(t *testing.T) {
-	cs := setupTestServer(t)
+	reg := setupHandlerTest(t)
 
-	res, _, _ := cs.handleBulkStatusUpdate(context.Background(), nil, BulkStatusInput{
+	res, _, _ := reg.handleBulkStatusUpdate(context.Background(), nil, BulkStatusInput{
 		RoomIDs: "x", Status: "invalid",
 	})
 	text := resultText(res)
@@ -61,9 +61,9 @@ func TestHandleBulkStatusUpdateInvalidStatus(t *testing.T) {
 }
 
 func TestHandleBulkStatusUpdateMissingIDs(t *testing.T) {
-	cs := setupTestServer(t)
+	reg := setupHandlerTest(t)
 
-	res, _, _ := cs.handleBulkStatusUpdate(context.Background(), nil, BulkStatusInput{
+	res, _, _ := reg.handleBulkStatusUpdate(context.Background(), nil, BulkStatusInput{
 		RoomIDs: "", Status: "active",
 	})
 	text := resultText(res)
@@ -73,9 +73,9 @@ func TestHandleBulkStatusUpdateMissingIDs(t *testing.T) {
 }
 
 func TestHandleBulkStatusUpdateEmptyIDs(t *testing.T) {
-	cs := setupTestServer(t)
+	reg := setupHandlerTest(t)
 
-	res, _, _ := cs.handleBulkStatusUpdate(context.Background(), nil, BulkStatusInput{
+	res, _, _ := reg.handleBulkStatusUpdate(context.Background(), nil, BulkStatusInput{
 		RoomIDs: ",,,", Status: "active",
 	})
 	text := resultText(res)
@@ -85,11 +85,11 @@ func TestHandleBulkStatusUpdateEmptyIDs(t *testing.T) {
 }
 
 func TestHandleBulkStatusUpdateWithMessage(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "bulk-msg-1")
-	mustCreateRoom(t, cs, "bulk-msg-2")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "bulk-msg-1")
+	mustCreateRoom(t, reg.Server, "bulk-msg-2")
 
-	res, _, _ := cs.handleBulkStatusUpdate(context.Background(), nil, BulkStatusInput{
+	res, _, _ := reg.handleBulkStatusUpdate(context.Background(), nil, BulkStatusInput{
 		RoomIDs: "bulk-msg-1,bulk-msg-2",
 		Status:  "resolved",
 		Message: "Closed: all issues fixed in PR #42.",
@@ -100,7 +100,7 @@ func TestHandleBulkStatusUpdateWithMessage(t *testing.T) {
 		t.Errorf("expected 2 updated, got: %s", text)
 	}
 
-	msgs1, _ := cs.getRecentMessages("bulk-msg-1", 1)
+	msgs1, _ := reg.Server.GetRecentMessages("bulk-msg-1", 1)
 	if len(msgs1) != 1 || !strings.Contains(msgs1[0].Content, "PR #42") {
 		t.Error("expected closing message in room 1")
 	}
@@ -110,9 +110,9 @@ func TestHandleBulkStatusUpdateWithMessage(t *testing.T) {
 }
 
 func TestHandleBulkStatusUpdateMessageWithoutAuthor(t *testing.T) {
-	cs := setupTestServer(t)
+	reg := setupHandlerTest(t)
 
-	res, _, _ := cs.handleBulkStatusUpdate(context.Background(), nil, BulkStatusInput{
+	res, _, _ := reg.handleBulkStatusUpdate(context.Background(), nil, BulkStatusInput{
 		RoomIDs: "x", Status: "resolved", Message: "Closing",
 	})
 	text := resultText(res)
@@ -124,9 +124,9 @@ func TestHandleBulkStatusUpdateMessageWithoutAuthor(t *testing.T) {
 // ========== get_or_create_room ==========
 
 func TestHandleGetOrCreateRoomNew(t *testing.T) {
-	cs := setupHandlerTest(t)
+	reg := setupHandlerTest(t)
 
-	res, _, _ := cs.handleGetOrCreateRoom(context.Background(), nil, GetOrCreateRoomInput{
+	res, _, _ := reg.handleGetOrCreateRoom(context.Background(), nil, GetOrCreateRoomInput{
 		ID: "upsert-new", Topic: "New room", Project: "proj", SystemPrompt: "Be helpful.",
 	})
 	text := resultText(res)
@@ -138,7 +138,7 @@ func TestHandleGetOrCreateRoomNew(t *testing.T) {
 		t.Error("expected system prompt in response")
 	}
 
-	room, err := cs.getRoom("upsert-new")
+	room, err := reg.Server.GetRoom("upsert-new")
 	if err != nil {
 		t.Fatalf("room should exist: %v", err)
 	}
@@ -148,12 +148,12 @@ func TestHandleGetOrCreateRoomNew(t *testing.T) {
 }
 
 func TestHandleGetOrCreateRoomExisting(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "upsert-existing", withDescription("Already here"), withProject("proj"), withSystemPrompt("Prompt text."))
-	mustPostTyped(t, cs, "upsert-existing", "Claude", "First message", "decision")
-	mustPostTyped(t, cs, "upsert-existing", "Gemini", "Second message", "action")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "upsert-existing", withDescription("Already here"), withProject("proj"), withSystemPrompt("Prompt text."))
+	mustPostTyped(t, reg.Server, "upsert-existing", "Claude", "First message", "decision")
+	mustPostTyped(t, reg.Server, "upsert-existing", "Gemini", "Second message", "action")
 
-	res, _, _ := cs.handleGetOrCreateRoom(context.Background(), nil, GetOrCreateRoomInput{
+	res, _, _ := reg.handleGetOrCreateRoom(context.Background(), nil, GetOrCreateRoomInput{
 		ID: "upsert-existing",
 	})
 	text := resultText(res)
@@ -170,10 +170,10 @@ func TestHandleGetOrCreateRoomExisting(t *testing.T) {
 }
 
 func TestHandleGetOrCreateRoomExistingEmpty(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "upsert-empty")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "upsert-empty")
 
-	res, _, _ := cs.handleGetOrCreateRoom(context.Background(), nil, GetOrCreateRoomInput{
+	res, _, _ := reg.handleGetOrCreateRoom(context.Background(), nil, GetOrCreateRoomInput{
 		ID: "upsert-empty",
 	})
 	text := resultText(res)
@@ -186,9 +186,9 @@ func TestHandleGetOrCreateRoomExistingEmpty(t *testing.T) {
 }
 
 func TestHandleGetOrCreateRoomMissingID(t *testing.T) {
-	cs := setupTestServer(t)
+	reg := setupHandlerTest(t)
 
-	res, _, _ := cs.handleGetOrCreateRoom(context.Background(), nil, GetOrCreateRoomInput{})
+	res, _, _ := reg.handleGetOrCreateRoom(context.Background(), nil, GetOrCreateRoomInput{})
 	text := resultText(res)
 	if !strings.Contains(text, "Error") {
 		t.Errorf("expected error for missing id, got: %s", text)
@@ -196,13 +196,13 @@ func TestHandleGetOrCreateRoomMissingID(t *testing.T) {
 }
 
 func TestHandleGetOrCreateRoomCustomLastN(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "upsert-lastn")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "upsert-lastn")
 	for i := 0; i < 10; i++ {
-		mustPost(t, cs, "upsert-lastn", "Claude", fmt.Sprintf("Msg %d", i))
+		mustPost(t, reg.Server, "upsert-lastn", "Claude", fmt.Sprintf("Msg %d", i))
 	}
 
-	res, _, _ := cs.handleGetOrCreateRoom(context.Background(), nil, GetOrCreateRoomInput{
+	res, _, _ := reg.handleGetOrCreateRoom(context.Background(), nil, GetOrCreateRoomInput{
 		ID: "upsert-lastn", LastN: "2",
 	})
 	text := resultText(res)

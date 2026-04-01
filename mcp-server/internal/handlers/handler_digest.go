@@ -1,0 +1,107 @@
+package handlers
+
+import (
+	"context"
+	"fmt"
+	"strings"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+)
+
+// DigestInput represents the parameters for the project digest tool.
+type DigestInput struct {
+	Project string `json:"project"`
+	Since   string `json:"since"`
+}
+
+// handleGetDigest returns a project activity digest.
+func (r *Registry) handleGetDigest(ctx context.Context, req *mcp.CallToolRequest, args DigestInput) (*mcp.CallToolResult, ToolOutput, error) {
+	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: text}},
+		}, ToolOutput{Message: text}, nil
+	}
+
+	if args.Since == "" {
+		return msg("Error: since is required (ISO timestamp, e.g. 2026-03-31T12:00:00).")
+	}
+
+	digest, err := r.Server.GetDigest(args.Project, args.Since)
+	if err != nil {
+		r.Server.Logger.Error("Failed to get digest", "project", args.Project, "since", args.Since, "error", err)
+		return msg(fmt.Sprintf("Error: %s", err.Error()))
+	}
+
+	if len(digest) == 0 {
+		projectNote := ""
+		if args.Project != "" {
+			projectNote = fmt.Sprintf(" in project '%s'", args.Project)
+		}
+		return msg(fmt.Sprintf("No new activity%s since %s.", projectNote, args.Since))
+	}
+
+	var b strings.Builder
+	projectNote := ""
+	if args.Project != "" {
+		projectNote = fmt.Sprintf(" [%s]", args.Project)
+	}
+	fmt.Fprintf(&b, "# Activity Digest%s \u2014 since %s\n\n", projectNote, args.Since)
+	fmt.Fprintf(&b, "%d room(s) with new activity:\n\n", len(digest))
+
+	for _, d := range digest {
+		excerpt := digestExcerpt(d.LatestExcerpt)
+		fmt.Fprintf(&b, "- **%s** | %d new msg(s) | %s: %s\n", d.RoomID, d.NewMessages, d.LatestAuthor, excerpt)
+	}
+
+	return msg(b.String())
+}
+
+// digestExcerpt extracts a clean one-line summary from message content.
+// Prefers the first markdown heading, then the first non-empty sentence,
+// then falls back to a word-boundary truncation at 120 chars.
+func digestExcerpt(content string) string {
+	content = strings.TrimSpace(content)
+	if content == "" {
+		return ""
+	}
+
+	// Try first markdown heading (## Heading or # Heading)
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "#") {
+			heading := strings.TrimLeft(line, "# ")
+			if heading != "" {
+				if len(heading) > 120 {
+					heading = heading[:120] + "..."
+				}
+				return heading
+			}
+		}
+		// Stop looking after first non-empty non-heading line
+		if line != "" {
+			break
+		}
+	}
+
+	// Try first sentence (ends with . ! ?)
+	flat := strings.ReplaceAll(content, "\n", " ")
+	for i, ch := range flat {
+		if (ch == '.' || ch == '!' || ch == '?') && i > 10 {
+			sentence := strings.TrimSpace(flat[:i+1])
+			if len(sentence) <= 150 {
+				return sentence
+			}
+			break
+		}
+	}
+
+	// Fallback: word-boundary truncation
+	if len(flat) > 120 {
+		truncated := flat[:120]
+		if i := strings.LastIndex(truncated, " "); i > 80 {
+			truncated = truncated[:i]
+		}
+		return truncated + "..."
+	}
+	return flat
+}

@@ -1,4 +1,4 @@
-package main
+package handlers
 
 import (
 	"context"
@@ -9,10 +9,10 @@ import (
 // ========== post_to_room structured metadata ==========
 
 func TestPostToRoomReturnsCursor(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "cursor-room")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "cursor-room")
 
-	res, _, err := cs.handlePostToRoom(context.Background(), nil, PostToRoomInput{
+	res, _, err := reg.handlePostToRoom(context.Background(), nil, PostToRoomInput{
 		RoomID: "cursor-room", Author: "Claude", Message: "Hello",
 	})
 	if err != nil {
@@ -30,13 +30,13 @@ func TestPostToRoomReturnsCursor(t *testing.T) {
 // ========== search_messages word-boundary truncation ==========
 
 func TestSearchMessagesSummaryWordBoundary(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "wb-room")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "wb-room")
 	// Post a message longer than 120 chars with words
 	longMsg := "This is a very long message that should be truncated at a word boundary rather than cutting in the middle of a word which would be ugly"
-	mustPost(t, cs, "wb-room", "Claude", longMsg)
+	mustPost(t, reg.Server, "wb-room", "Claude", longMsg)
 
-	res, _, err := cs.handleSearchMessages(context.Background(), nil, SearchMessagesInput{
+	res, _, err := reg.handleSearchMessages(context.Background(), nil, SearchMessagesInput{
 		RoomID: "wb-room", SummaryOnly: "true",
 	})
 	if err != nil {
@@ -66,13 +66,13 @@ func TestSearchMessagesSummaryWordBoundary(t *testing.T) {
 // ========== read_transcript batch (room_ids) ==========
 
 func TestReadTranscriptBatchRoomIDs(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "batch-a", withDescription("Room A"))
-	mustCreateRoom(t, cs, "batch-b", withDescription("Room B"))
-	mustPost(t, cs, "batch-a", "Claude", "Message in A")
-	mustPost(t, cs, "batch-b", "Gemini", "Message in B")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "batch-a", withDescription("Room A"))
+	mustCreateRoom(t, reg.Server, "batch-b", withDescription("Room B"))
+	mustPost(t, reg.Server, "batch-a", "Claude", "Message in A")
+	mustPost(t, reg.Server, "batch-b", "Gemini", "Message in B")
 
-	res, _, err := cs.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
+	res, _, err := reg.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
 		RoomIDs: "batch-a,batch-b",
 	})
 	if err != nil {
@@ -94,13 +94,13 @@ func TestReadTranscriptBatchRoomIDs(t *testing.T) {
 }
 
 func TestReadTranscriptBatchWithSummaryMode(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "bs-a", withDescription("Summary A"), withSystemPrompt("Prompt A"))
-	mustCreateRoom(t, cs, "bs-b", withDescription("Summary B"), withSystemPrompt("Prompt B"))
-	mustPostTyped(t, cs, "bs-a", "Claude", "Decision A", "decision")
-	mustPostTyped(t, cs, "bs-b", "Gemini", "Action B", "action")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "bs-a", withDescription("Summary A"), withSystemPrompt("Prompt A"))
+	mustCreateRoom(t, reg.Server, "bs-b", withDescription("Summary B"), withSystemPrompt("Prompt B"))
+	mustPostTyped(t, reg.Server, "bs-a", "Claude", "Decision A", "decision")
+	mustPostTyped(t, reg.Server, "bs-b", "Gemini", "Action B", "action")
 
-	res, _, err := cs.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
+	res, _, err := reg.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
 		RoomIDs: "bs-a,bs-b",
 		Mode:    "summary",
 	})
@@ -120,11 +120,11 @@ func TestReadTranscriptBatchWithSummaryMode(t *testing.T) {
 }
 
 func TestReadTranscriptBatchBadRoom(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "batch-ok")
-	mustPost(t, cs, "batch-ok", "Claude", "OK message")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "batch-ok")
+	mustPost(t, reg.Server, "batch-ok", "Claude", "OK message")
 
-	res, _, err := cs.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
+	res, _, err := reg.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
 		RoomIDs: "batch-ok,nonexistent",
 	})
 	if err != nil {
@@ -140,9 +140,9 @@ func TestReadTranscriptBatchBadRoom(t *testing.T) {
 }
 
 func TestReadTranscriptRequiresRoomIDOrRoomIDs(t *testing.T) {
-	cs := setupTestServer(t)
+	reg := setupHandlerTest(t)
 
-	res, _, _ := cs.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{})
+	res, _, _ := reg.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{})
 	text := resultText(res)
 	if !strings.Contains(text, "required") {
 		t.Errorf("expected error when no room_id or room_ids, got: %s", text)
@@ -152,15 +152,15 @@ func TestReadTranscriptRequiresRoomIDOrRoomIDs(t *testing.T) {
 // ========== read_transcript include_related ==========
 
 func TestReadTranscriptIncludeRelated(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "main-room", withDescription("Main"), withRelatedRooms("rel-a,rel-b"))
-	mustCreateRoom(t, cs, "rel-a", withDescription("Related A"), withSystemPrompt("Context A"))
-	mustCreateRoom(t, cs, "rel-b", withDescription("Related B"), withSystemPrompt("Context B"))
-	mustPost(t, cs, "main-room", "Claude", "Main message")
-	mustPostTyped(t, cs, "rel-a", "Claude", "Decision in A", "decision")
-	mustPostTyped(t, cs, "rel-b", "Gemini", "Action in B", "action")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "main-room", withDescription("Main"), withRelatedRooms("rel-a,rel-b"))
+	mustCreateRoom(t, reg.Server, "rel-a", withDescription("Related A"), withSystemPrompt("Context A"))
+	mustCreateRoom(t, reg.Server, "rel-b", withDescription("Related B"), withSystemPrompt("Context B"))
+	mustPost(t, reg.Server, "main-room", "Claude", "Main message")
+	mustPostTyped(t, reg.Server, "rel-a", "Claude", "Decision in A", "decision")
+	mustPostTyped(t, reg.Server, "rel-b", "Gemini", "Action in B", "action")
 
-	res, _, err := cs.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
+	res, _, err := reg.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
 		RoomID:         "main-room",
 		IncludeRelated: "true",
 	})
@@ -180,11 +180,11 @@ func TestReadTranscriptIncludeRelated(t *testing.T) {
 }
 
 func TestReadTranscriptIncludeRelatedNoRelated(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "solo-room", withDescription("Solo"))
-	mustPost(t, cs, "solo-room", "Claude", "Solo message")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "solo-room", withDescription("Solo"))
+	mustPost(t, reg.Server, "solo-room", "Claude", "Solo message")
 
-	res, _, err := cs.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
+	res, _, err := reg.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
 		RoomID:         "solo-room",
 		IncludeRelated: "true",
 	})
@@ -200,13 +200,13 @@ func TestReadTranscriptIncludeRelatedNoRelated(t *testing.T) {
 // ========== get_digest ==========
 
 func TestGetDigestBasic(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "digest-a", withProject("myproj"))
-	mustCreateRoom(t, cs, "digest-b", withProject("myproj"))
-	mustPost(t, cs, "digest-a", "Claude", "Recent message A")
-	mustPost(t, cs, "digest-b", "Gemini", "Recent message B")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "digest-a", withProject("myproj"))
+	mustCreateRoom(t, reg.Server, "digest-b", withProject("myproj"))
+	mustPost(t, reg.Server, "digest-a", "Claude", "Recent message A")
+	mustPost(t, reg.Server, "digest-b", "Gemini", "Recent message B")
 
-	res, _, err := cs.handleGetDigest(context.Background(), nil, DigestInput{
+	res, _, err := reg.handleGetDigest(context.Background(), nil, DigestInput{
 		Project: "myproj",
 		Since:   "2000-01-01T00:00:00",
 	})
@@ -226,10 +226,10 @@ func TestGetDigestBasic(t *testing.T) {
 }
 
 func TestGetDigestNoActivity(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "digest-empty", withProject("empty-proj"))
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "digest-empty", withProject("empty-proj"))
 
-	res, _, err := cs.handleGetDigest(context.Background(), nil, DigestInput{
+	res, _, err := reg.handleGetDigest(context.Background(), nil, DigestInput{
 		Project: "empty-proj",
 		Since:   "2000-01-01T00:00:00",
 	})
@@ -243,9 +243,9 @@ func TestGetDigestNoActivity(t *testing.T) {
 }
 
 func TestGetDigestMissingSince(t *testing.T) {
-	cs := setupTestServer(t)
+	reg := setupHandlerTest(t)
 
-	res, _, _ := cs.handleGetDigest(context.Background(), nil, DigestInput{})
+	res, _, _ := reg.handleGetDigest(context.Background(), nil, DigestInput{})
 	text := resultText(res)
 	if !strings.Contains(text, "since is required") {
 		t.Errorf("expected error for missing since, got: %s", text)
@@ -253,14 +253,14 @@ func TestGetDigestMissingSince(t *testing.T) {
 }
 
 func TestGetDigestAllProjects(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "d-proj1", withProject("proj1"))
-	mustCreateRoom(t, cs, "d-proj2", withProject("proj2"))
-	mustPost(t, cs, "d-proj1", "Claude", "Msg 1")
-	mustPost(t, cs, "d-proj2", "Gemini", "Msg 2")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "d-proj1", withProject("proj1"))
+	mustCreateRoom(t, reg.Server, "d-proj2", withProject("proj2"))
+	mustPost(t, reg.Server, "d-proj1", "Claude", "Msg 1")
+	mustPost(t, reg.Server, "d-proj2", "Gemini", "Msg 2")
 
 	// No project filter — should return both
-	res, _, err := cs.handleGetDigest(context.Background(), nil, DigestInput{
+	res, _, err := reg.handleGetDigest(context.Background(), nil, DigestInput{
 		Since: "2000-01-01T00:00:00",
 	})
 	if err != nil {
@@ -273,12 +273,12 @@ func TestGetDigestAllProjects(t *testing.T) {
 }
 
 func TestGetDigestFutureTimestamp(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "d-future", withProject("fp"))
-	mustPost(t, cs, "d-future", "Claude", "Old message")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "d-future", withProject("fp"))
+	mustPost(t, reg.Server, "d-future", "Claude", "Old message")
 
 	// Since is in the future — no results
-	res, _, err := cs.handleGetDigest(context.Background(), nil, DigestInput{
+	res, _, err := reg.handleGetDigest(context.Background(), nil, DigestInput{
 		Since: "2099-01-01T00:00:00",
 	})
 	if err != nil {
@@ -293,12 +293,12 @@ func TestGetDigestFutureTimestamp(t *testing.T) {
 // ========== additional edge cases ==========
 
 func TestReadTranscriptBatchWithAfterID(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "ba-room")
-	id1 := mustPost(t, cs, "ba-room", "Claude", "First")
-	mustPost(t, cs, "ba-room", "Gemini", "Second")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "ba-room")
+	id1 := mustPost(t, reg.Server, "ba-room", "Claude", "First")
+	mustPost(t, reg.Server, "ba-room", "Gemini", "Second")
 
-	res, _, err := cs.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
+	res, _, err := reg.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
 		RoomIDs: "ba-room",
 		AfterID: string(rune('0' + int32(id1))),
 	})
@@ -312,13 +312,13 @@ func TestReadTranscriptBatchWithAfterID(t *testing.T) {
 }
 
 func TestReadTranscriptIncludeRelatedMissing(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "ir-main", withRelatedRooms("ir-exists,ir-missing"))
-	mustCreateRoom(t, cs, "ir-exists", withDescription("Exists"))
-	mustPost(t, cs, "ir-main", "Claude", "Main content")
-	mustPost(t, cs, "ir-exists", "Claude", "Exists content")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "ir-main", withRelatedRooms("ir-exists,ir-missing"))
+	mustCreateRoom(t, reg.Server, "ir-exists", withDescription("Exists"))
+	mustPost(t, reg.Server, "ir-main", "Claude", "Main content")
+	mustPost(t, reg.Server, "ir-exists", "Claude", "Exists content")
 
-	res, _, err := cs.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
+	res, _, err := reg.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
 		RoomID:         "ir-main",
 		IncludeRelated: "true",
 	})
@@ -338,12 +338,12 @@ func TestReadTranscriptIncludeRelatedMissing(t *testing.T) {
 }
 
 func TestGetDigestWithLongExcerpt(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "d-long", withProject("lp"))
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "d-long", withProject("lp"))
 	longMsg := "This is a very long message that definitely exceeds one hundred and twenty characters and should be truncated at a proper word boundary instead of mid word"
-	mustPost(t, cs, "d-long", "Claude", longMsg)
+	mustPost(t, reg.Server, "d-long", "Claude", longMsg)
 
-	res, _, err := cs.handleGetDigest(context.Background(), nil, DigestInput{
+	res, _, err := reg.handleGetDigest(context.Background(), nil, DigestInput{
 		Project: "lp",
 		Since:   "2000-01-01T00:00:00",
 	})

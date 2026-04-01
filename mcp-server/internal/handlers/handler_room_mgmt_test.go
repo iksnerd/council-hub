@@ -1,4 +1,4 @@
-package main
+package handlers
 
 import (
 	"context"
@@ -9,9 +9,9 @@ import (
 // ========== create_room ==========
 
 func TestHandleCreateRoom(t *testing.T) {
-	cs := setupHandlerTest(t)
+	reg := setupHandlerTest(t)
 
-	res, _, err := cs.handleCreateRoom(context.Background(), nil, CreateRoomInput{
+	res, _, err := reg.handleCreateRoom(context.Background(), nil, CreateRoomInput{
 		ID: "h-room", Topic: "Handler test", Project: "proj",
 	})
 	if err != nil {
@@ -22,16 +22,16 @@ func TestHandleCreateRoom(t *testing.T) {
 		t.Errorf("unexpected result: %s", text)
 	}
 
-	room, _ := cs.getRoom("h-room")
+	room, _ := reg.Server.GetRoom("h-room")
 	if room.Project != "proj" {
 		t.Errorf("expected project 'proj', got '%s'", room.Project)
 	}
 }
 
 func TestHandleCreateRoomMissingID(t *testing.T) {
-	cs := setupTestServer(t)
+	reg := setupHandlerTest(t)
 
-	res, _, _ := cs.handleCreateRoom(context.Background(), nil, CreateRoomInput{})
+	res, _, _ := reg.handleCreateRoom(context.Background(), nil, CreateRoomInput{})
 	text := resultText(res)
 	if !strings.Contains(text, "Error") {
 		t.Errorf("expected error for missing ID, got: %s", text)
@@ -39,9 +39,9 @@ func TestHandleCreateRoomMissingID(t *testing.T) {
 }
 
 func TestHandleCreateRoomWithRelatedRooms(t *testing.T) {
-	cs := setupTestServer(t)
+	reg := setupHandlerTest(t)
 
-	res, _, err := cs.handleCreateRoom(context.Background(), nil, CreateRoomInput{
+	res, _, err := reg.handleCreateRoom(context.Background(), nil, CreateRoomInput{
 		ID: "h-create-related", Topic: "With links", RelatedRooms: "a,b,c",
 	})
 	if err != nil {
@@ -52,17 +52,17 @@ func TestHandleCreateRoomWithRelatedRooms(t *testing.T) {
 		t.Errorf("expected created, got: %s", text)
 	}
 
-	room, _ := cs.getRoom("h-create-related")
+	room, _ := reg.Server.GetRoom("h-create-related")
 	if room.RelatedRooms != "a,b,c" {
 		t.Errorf("expected related_rooms 'a,b,c', got '%s'", room.RelatedRooms)
 	}
 }
 
 func TestHandleCreateRoomDBError(t *testing.T) {
-	cs := setupHandlerServer(t)
-	cs.db.Close()
+	reg := setupHandlerServer(t)
+	reg.Server.DB.Close()
 
-	_, _, err := cs.handleCreateRoom(context.Background(), nil, CreateRoomInput{ID: "fail"})
+	_, _, err := reg.handleCreateRoom(context.Background(), nil, CreateRoomInput{ID: "fail"})
 	if err == nil {
 		t.Error("expected error")
 	}
@@ -71,10 +71,10 @@ func TestHandleCreateRoomDBError(t *testing.T) {
 // ========== update_room ==========
 
 func TestHandleUpdateRoom(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "h-update")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-update")
 
-	res, _, _ := cs.handleUpdateRoom(context.Background(), nil, UpdateRoomInput{
+	res, _, _ := reg.handleUpdateRoom(context.Background(), nil, UpdateRoomInput{
 		RoomID: "h-update", Topic: "Updated topic", RelatedRooms: "room-x",
 	})
 	text := resultText(res)
@@ -82,7 +82,7 @@ func TestHandleUpdateRoom(t *testing.T) {
 		t.Errorf("expected updated fields listed, got: %s", text)
 	}
 
-	room, _ := cs.getRoom("h-update")
+	room, _ := reg.Server.GetRoom("h-update")
 	if room.Description != "Updated topic" {
 		t.Errorf("expected 'Updated topic', got '%s'", room.Description)
 	}
@@ -92,9 +92,9 @@ func TestHandleUpdateRoom(t *testing.T) {
 }
 
 func TestHandleUpdateRoomMissingID(t *testing.T) {
-	cs := setupTestServer(t)
+	reg := setupHandlerTest(t)
 
-	res, _, _ := cs.handleUpdateRoom(context.Background(), nil, UpdateRoomInput{})
+	res, _, _ := reg.handleUpdateRoom(context.Background(), nil, UpdateRoomInput{})
 	text := resultText(res)
 	if !strings.Contains(text, "Error") {
 		t.Errorf("expected error, got: %s", text)
@@ -102,9 +102,9 @@ func TestHandleUpdateRoomMissingID(t *testing.T) {
 }
 
 func TestHandleUpdateRoomNoFields(t *testing.T) {
-	cs := setupTestServer(t)
+	reg := setupHandlerTest(t)
 
-	res, _, _ := cs.handleUpdateRoom(context.Background(), nil, UpdateRoomInput{RoomID: "x"})
+	res, _, _ := reg.handleUpdateRoom(context.Background(), nil, UpdateRoomInput{RoomID: "x"})
 	text := resultText(res)
 	if !strings.Contains(text, "at least one field") {
 		t.Errorf("expected field error, got: %s", text)
@@ -112,10 +112,10 @@ func TestHandleUpdateRoomNoFields(t *testing.T) {
 }
 
 func TestHandleUpdateRoomAllFields(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "h-update-all")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-update-all")
 
-	res, _, _ := cs.handleUpdateRoom(context.Background(), nil, UpdateRoomInput{
+	res, _, _ := reg.handleUpdateRoom(context.Background(), nil, UpdateRoomInput{
 		RoomID:       "h-update-all",
 		Topic:        "New topic",
 		Project:      "New project",
@@ -133,9 +133,9 @@ func TestHandleUpdateRoomAllFields(t *testing.T) {
 }
 
 func TestHandleUpdateRoomNotFound(t *testing.T) {
-	cs := setupTestServer(t)
+	reg := setupHandlerTest(t)
 
-	res, _, _ := cs.handleUpdateRoom(context.Background(), nil, UpdateRoomInput{
+	res, _, _ := reg.handleUpdateRoom(context.Background(), nil, UpdateRoomInput{
 		RoomID: "ghost", Topic: "X",
 	})
 	text := resultText(res)
@@ -145,10 +145,10 @@ func TestHandleUpdateRoomNotFound(t *testing.T) {
 }
 
 func TestHandleUpdateRoomDBError(t *testing.T) {
-	cs := setupHandlerServer(t)
-	cs.db.Close()
+	reg := setupHandlerServer(t)
+	reg.Server.DB.Close()
 
-	res, _, _ := cs.handleUpdateRoom(context.Background(), nil, UpdateRoomInput{
+	res, _, _ := reg.handleUpdateRoom(context.Background(), nil, UpdateRoomInput{
 		RoomID: "hdb-room", Topic: "new",
 	})
 	text := resultText(res)
@@ -160,10 +160,10 @@ func TestHandleUpdateRoomDBError(t *testing.T) {
 // ========== read_room ==========
 
 func TestHandleReadRoom(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "h-read", withDescription("Read test"), withProject("proj"), withTechStack("Go"), withTags("tag1"), withSystemPrompt("prompt"), withRelatedRooms("related-a"))
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-read", withDescription("Read test"), withProject("proj"), withTechStack("Go"), withTags("tag1"), withSystemPrompt("prompt"), withRelatedRooms("related-a"))
 
-	res, _, _ := cs.handleReadRoom(context.Background(), nil, ReadRoomInput{RoomID: "h-read"})
+	res, _, _ := reg.handleReadRoom(context.Background(), nil, ReadRoomInput{RoomID: "h-read"})
 	text := resultText(res)
 	if !strings.Contains(text, "Read test") {
 		t.Error("missing topic")
@@ -177,9 +177,9 @@ func TestHandleReadRoom(t *testing.T) {
 }
 
 func TestHandleReadRoomMissing(t *testing.T) {
-	cs := setupTestServer(t)
+	reg := setupHandlerTest(t)
 
-	res, _, _ := cs.handleReadRoom(context.Background(), nil, ReadRoomInput{})
+	res, _, _ := reg.handleReadRoom(context.Background(), nil, ReadRoomInput{})
 	text := resultText(res)
 	if !strings.Contains(text, "Error") {
 		t.Errorf("expected error, got: %s", text)
@@ -187,9 +187,9 @@ func TestHandleReadRoomMissing(t *testing.T) {
 }
 
 func TestHandleReadRoomNotFound(t *testing.T) {
-	cs := setupTestServer(t)
+	reg := setupHandlerTest(t)
 
-	res, _, _ := cs.handleReadRoom(context.Background(), nil, ReadRoomInput{RoomID: "ghost"})
+	res, _, _ := reg.handleReadRoom(context.Background(), nil, ReadRoomInput{RoomID: "ghost"})
 	text := resultText(res)
 	if !strings.Contains(text, "not found") {
 		t.Errorf("expected not found, got: %s", text)
@@ -197,10 +197,10 @@ func TestHandleReadRoomNotFound(t *testing.T) {
 }
 
 func TestHandleReadRoomDBError(t *testing.T) {
-	cs := setupHandlerServer(t)
-	cs.db.Close()
+	reg := setupHandlerServer(t)
+	reg.Server.DB.Close()
 
-	res, _, _ := cs.handleReadRoom(context.Background(), nil, ReadRoomInput{RoomID: "hdb-room"})
+	res, _, _ := reg.handleReadRoom(context.Background(), nil, ReadRoomInput{RoomID: "hdb-room"})
 	text := resultText(res)
 	if !strings.Contains(text, "not found") {
 		t.Errorf("expected not found, got: %s", text)
@@ -210,10 +210,10 @@ func TestHandleReadRoomDBError(t *testing.T) {
 // ========== delete_room ==========
 
 func TestHandleDeleteRoom(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "h-del")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-del")
 
-	res, _, _ := cs.handleDeleteRoom(context.Background(), nil, DeleteRoomInput{RoomID: "h-del"})
+	res, _, _ := reg.handleDeleteRoom(context.Background(), nil, DeleteRoomInput{RoomID: "h-del"})
 	text := resultText(res)
 	if !strings.Contains(text, "permanently deleted") {
 		t.Errorf("expected deleted, got: %s", text)
@@ -221,18 +221,18 @@ func TestHandleDeleteRoom(t *testing.T) {
 }
 
 func TestHandleDeleteRoomMissing(t *testing.T) {
-	cs := setupTestServer(t)
+	reg := setupHandlerTest(t)
 
-	res, _, _ := cs.handleDeleteRoom(context.Background(), nil, DeleteRoomInput{})
+	res, _, _ := reg.handleDeleteRoom(context.Background(), nil, DeleteRoomInput{})
 	if !strings.Contains(resultText(res), "Error") {
 		t.Error("expected error for missing room_id")
 	}
 }
 
 func TestHandleDeleteRoomNotFound(t *testing.T) {
-	cs := setupTestServer(t)
+	reg := setupHandlerTest(t)
 
-	res, _, _ := cs.handleDeleteRoom(context.Background(), nil, DeleteRoomInput{RoomID: "ghost"})
+	res, _, _ := reg.handleDeleteRoom(context.Background(), nil, DeleteRoomInput{RoomID: "ghost"})
 	text := resultText(res)
 	if !strings.Contains(text, "Error") {
 		t.Errorf("expected error, got: %s", text)
@@ -240,10 +240,10 @@ func TestHandleDeleteRoomNotFound(t *testing.T) {
 }
 
 func TestHandleDeleteRoomDBError(t *testing.T) {
-	cs := setupHandlerServer(t)
-	cs.db.Close()
+	reg := setupHandlerServer(t)
+	reg.Server.DB.Close()
 
-	res, _, _ := cs.handleDeleteRoom(context.Background(), nil, DeleteRoomInput{RoomID: "hdb-room"})
+	res, _, _ := reg.handleDeleteRoom(context.Background(), nil, DeleteRoomInput{RoomID: "hdb-room"})
 	text := resultText(res)
 	if !strings.Contains(text, "Error") {
 		t.Errorf("expected error, got: %s", text)
@@ -253,11 +253,11 @@ func TestHandleDeleteRoomDBError(t *testing.T) {
 // ========== archive_room ==========
 
 func TestHandleArchiveRoom(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "h-archive")
-	mustPost(t, cs, "h-archive", "Claude", "Archive me")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-archive")
+	mustPost(t, reg.Server, "h-archive", "Claude", "Archive me")
 
-	res, _, _ := cs.handleArchiveRoom(context.Background(), nil, ArchiveRoomInput{RoomID: "h-archive"})
+	res, _, _ := reg.handleArchiveRoom(context.Background(), nil, ArchiveRoomInput{RoomID: "h-archive"})
 	text := resultText(res)
 	if !strings.Contains(text, "archived") {
 		t.Errorf("expected archived, got: %s", text)
@@ -265,11 +265,11 @@ func TestHandleArchiveRoom(t *testing.T) {
 }
 
 func TestHandleArchiveRoomAndDelete(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "h-archive-del")
-	mustPost(t, cs, "h-archive-del", "Claude", "Gone")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-archive-del")
+	mustPost(t, reg.Server, "h-archive-del", "Claude", "Gone")
 
-	res, _, _ := cs.handleArchiveRoom(context.Background(), nil, ArchiveRoomInput{
+	res, _, _ := reg.handleArchiveRoom(context.Background(), nil, ArchiveRoomInput{
 		RoomID: "h-archive-del", Delete: "true",
 	})
 	text := resultText(res)
@@ -277,25 +277,25 @@ func TestHandleArchiveRoomAndDelete(t *testing.T) {
 		t.Errorf("expected deleted, got: %s", text)
 	}
 
-	_, err := cs.getRoom("h-archive-del")
+	_, err := reg.Server.GetRoom("h-archive-del")
 	if err == nil {
 		t.Error("room should be deleted after archive+delete")
 	}
 }
 
 func TestHandleArchiveRoomMissing(t *testing.T) {
-	cs := setupTestServer(t)
+	reg := setupHandlerTest(t)
 
-	res, _, _ := cs.handleArchiveRoom(context.Background(), nil, ArchiveRoomInput{})
+	res, _, _ := reg.handleArchiveRoom(context.Background(), nil, ArchiveRoomInput{})
 	if !strings.Contains(resultText(res), "Error") {
 		t.Error("expected error")
 	}
 }
 
 func TestHandleArchiveRoomNotFound(t *testing.T) {
-	cs := setupTestServer(t)
+	reg := setupHandlerTest(t)
 
-	res, _, _ := cs.handleArchiveRoom(context.Background(), nil, ArchiveRoomInput{RoomID: "ghost"})
+	res, _, _ := reg.handleArchiveRoom(context.Background(), nil, ArchiveRoomInput{RoomID: "ghost"})
 	text := resultText(res)
 	if !strings.Contains(text, "Error") {
 		t.Errorf("expected error, got: %s", text)
@@ -303,10 +303,10 @@ func TestHandleArchiveRoomNotFound(t *testing.T) {
 }
 
 func TestHandleArchiveRoomDBError(t *testing.T) {
-	cs := setupHandlerServer(t)
-	cs.db.Close()
+	reg := setupHandlerServer(t)
+	reg.Server.DB.Close()
 
-	res, _, _ := cs.handleArchiveRoom(context.Background(), nil, ArchiveRoomInput{RoomID: "hdb-room"})
+	res, _, _ := reg.handleArchiveRoom(context.Background(), nil, ArchiveRoomInput{RoomID: "hdb-room"})
 	text := resultText(res)
 	if !strings.Contains(text, "Error") {
 		t.Errorf("expected error, got: %s", text)

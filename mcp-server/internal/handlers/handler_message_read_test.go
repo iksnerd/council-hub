@@ -1,4 +1,4 @@
-package main
+package handlers
 
 import (
 	"context"
@@ -10,14 +10,14 @@ import (
 // ========== get_messages ==========
 
 func TestHandleGetMessagesByRoomID(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "h-get-room")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-get-room")
 	for i := 0; i < 5; i++ {
-		mustPost(t, cs, "h-get-room", "Claude", fmt.Sprintf("Msg %d", i))
+		mustPost(t, reg.Server, "h-get-room", "Claude", fmt.Sprintf("Msg %d", i))
 	}
 
 	// Browse by room_id + last_n
-	res, _, _ := cs.handleGetMessages(context.Background(), nil, GetMessagesInput{
+	res, _, _ := reg.handleGetMessages(context.Background(), nil, GetMessagesInput{
 		RoomID: "h-get-room", LastN: "3",
 	})
 	text := resultText(res)
@@ -33,14 +33,14 @@ func TestHandleGetMessagesByRoomID(t *testing.T) {
 }
 
 func TestHandleGetMessagesByRoomIDDefaultLimit(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "h-get-room-def")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-get-room-def")
 	for i := 0; i < 15; i++ {
-		mustPost(t, cs, "h-get-room-def", "Claude", fmt.Sprintf("Msg %d", i))
+		mustPost(t, reg.Server, "h-get-room-def", "Claude", fmt.Sprintf("Msg %d", i))
 	}
 
 	// room_id without last_n should default to 10
-	res, _, _ := cs.handleGetMessages(context.Background(), nil, GetMessagesInput{
+	res, _, _ := reg.handleGetMessages(context.Background(), nil, GetMessagesInput{
 		RoomID: "h-get-room-def",
 	})
 	text := resultText(res)
@@ -50,9 +50,9 @@ func TestHandleGetMessagesByRoomIDDefaultLimit(t *testing.T) {
 }
 
 func TestHandleGetMessagesByRoomIDNotFound(t *testing.T) {
-	cs := setupTestServer(t)
+	reg := setupHandlerTest(t)
 
-	res, _, _ := cs.handleGetMessages(context.Background(), nil, GetMessagesInput{
+	res, _, _ := reg.handleGetMessages(context.Background(), nil, GetMessagesInput{
 		RoomID: "nonexistent",
 	})
 	text := resultText(res)
@@ -62,9 +62,9 @@ func TestHandleGetMessagesByRoomIDNotFound(t *testing.T) {
 }
 
 func TestHandleGetMessagesNoParams(t *testing.T) {
-	cs := setupTestServer(t)
+	reg := setupHandlerTest(t)
 
-	res, _, _ := cs.handleGetMessages(context.Background(), nil, GetMessagesInput{})
+	res, _, _ := reg.handleGetMessages(context.Background(), nil, GetMessagesInput{})
 	text := resultText(res)
 	if !strings.Contains(text, "provide either message_ids or room_id") {
 		t.Errorf("expected parameter error, got: %s", text)
@@ -72,12 +72,12 @@ func TestHandleGetMessagesNoParams(t *testing.T) {
 }
 
 func TestHandleGetMessagesByRoomIDBadLimit(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "h-get-bad-lim")
-	mustPost(t, cs, "h-get-bad-lim", "Claude", "Hello")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-get-bad-lim")
+	mustPost(t, reg.Server, "h-get-bad-lim", "Claude", "Hello")
 
 	// Invalid last_n should fall back to 10
-	res, _, _ := cs.handleGetMessages(context.Background(), nil, GetMessagesInput{
+	res, _, _ := reg.handleGetMessages(context.Background(), nil, GetMessagesInput{
 		RoomID: "h-get-bad-lim", LastN: "xyz",
 	})
 	text := resultText(res)
@@ -87,13 +87,13 @@ func TestHandleGetMessagesByRoomIDBadLimit(t *testing.T) {
 }
 
 func TestHandleGetMessagesIDsTakePrecedence(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "h-get-prio")
-	mustPost(t, cs, "h-get-prio", "Claude", "Message one")
-	mustPostTyped(t, cs, "h-get-prio", "Gemini", "Message two", "review")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-get-prio")
+	mustPost(t, reg.Server, "h-get-prio", "Claude", "Message one")
+	mustPostTyped(t, reg.Server, "h-get-prio", "Gemini", "Message two", "review")
 
 	// If both message_ids and room_id are provided, message_ids takes precedence
-	res, _, _ := cs.handleGetMessages(context.Background(), nil, GetMessagesInput{
+	res, _, _ := reg.handleGetMessages(context.Background(), nil, GetMessagesInput{
 		MessageIDs: "1", RoomID: "h-get-prio",
 	})
 	text := resultText(res)
@@ -103,39 +103,39 @@ func TestHandleGetMessagesIDsTakePrecedence(t *testing.T) {
 }
 
 func TestHandleGetMessagesMissing(t *testing.T) {
-	cs := setupTestServer(t)
+	reg := setupHandlerTest(t)
 
-	res, _, _ := cs.handleGetMessages(context.Background(), nil, GetMessagesInput{})
+	res, _, _ := reg.handleGetMessages(context.Background(), nil, GetMessagesInput{})
 	if !strings.Contains(resultText(res), "provide either") {
 		t.Error("expected error for missing params")
 	}
 }
 
 func TestHandleGetMessagesInvalidID(t *testing.T) {
-	cs := setupTestServer(t)
+	reg := setupHandlerTest(t)
 
-	res, _, _ := cs.handleGetMessages(context.Background(), nil, GetMessagesInput{MessageIDs: "abc"})
+	res, _, _ := reg.handleGetMessages(context.Background(), nil, GetMessagesInput{MessageIDs: "abc"})
 	if !strings.Contains(resultText(res), "not a valid") {
 		t.Error("expected invalid ID error")
 	}
 }
 
 func TestHandleGetMessagesNotFound(t *testing.T) {
-	cs := setupTestServer(t)
+	reg := setupHandlerTest(t)
 
-	res, _, _ := cs.handleGetMessages(context.Background(), nil, GetMessagesInput{MessageIDs: "99999"})
+	res, _, _ := reg.handleGetMessages(context.Background(), nil, GetMessagesInput{MessageIDs: "99999"})
 	if !strings.Contains(resultText(res), "No messages found") {
 		t.Error("expected no messages found")
 	}
 }
 
 func TestHandleGetMessagesMultiple(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "h-get-multi")
-	mustPost(t, cs, "h-get-multi", "Claude", "First")
-	mustPostTyped(t, cs, "h-get-multi", "Gemini", "Second", "review")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-get-multi")
+	mustPost(t, reg.Server, "h-get-multi", "Claude", "First")
+	mustPostTyped(t, reg.Server, "h-get-multi", "Gemini", "Second", "review")
 
-	res, _, _ := cs.handleGetMessages(context.Background(), nil, GetMessagesInput{MessageIDs: "1,2"})
+	res, _, _ := reg.handleGetMessages(context.Background(), nil, GetMessagesInput{MessageIDs: "1,2"})
 	text := resultText(res)
 	if !strings.Contains(text, "2 message(s)") {
 		t.Errorf("expected 2 messages, got: %s", text)
@@ -143,10 +143,10 @@ func TestHandleGetMessagesMultiple(t *testing.T) {
 }
 
 func TestHandleGetMessagesDBError(t *testing.T) {
-	cs := setupHandlerServer(t)
-	cs.db.Close()
+	reg := setupHandlerServer(t)
+	reg.Server.DB.Close()
 
-	_, _, err := cs.handleGetMessages(context.Background(), nil, GetMessagesInput{MessageIDs: "1"})
+	_, _, err := reg.handleGetMessages(context.Background(), nil, GetMessagesInput{MessageIDs: "1"})
 	if err == nil {
 		t.Error("expected error")
 	}

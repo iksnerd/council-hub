@@ -1,4 +1,4 @@
-package main
+package handlers
 
 import (
 	"context"
@@ -6,17 +6,18 @@ import (
 	"strings"
 	"testing"
 
+	"council-hub/internal/council"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // ========== read_transcript (basic) ==========
 
 func TestHandleReadTranscript(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "h-transcript")
-	mustPost(t, cs, "h-transcript", "Claude", "Hello world")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-transcript")
+	mustPost(t, reg.Server, "h-transcript", "Claude", "Hello world")
 
-	res, _, _ := cs.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{RoomID: "h-transcript"})
+	res, _, _ := reg.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{RoomID: "h-transcript"})
 	text := resultText(res)
 	if !strings.Contains(text, "COUNCIL ROOM: h-transcript") {
 		t.Error("missing room header")
@@ -27,28 +28,28 @@ func TestHandleReadTranscript(t *testing.T) {
 }
 
 func TestHandleReadTranscriptMissing(t *testing.T) {
-	cs := setupTestServer(t)
+	reg := setupHandlerTest(t)
 
-	res, _, _ := cs.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{})
+	res, _, _ := reg.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{})
 	if !strings.Contains(resultText(res), "Error") {
 		t.Error("expected error")
 	}
 }
 
 func TestHandleReadTranscriptNotFound(t *testing.T) {
-	cs := setupTestServer(t)
+	reg := setupHandlerTest(t)
 
-	res, _, _ := cs.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{RoomID: "ghost"})
+	res, _, _ := reg.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{RoomID: "ghost"})
 	if !strings.Contains(resultText(res), "not found") {
 		t.Error("expected not found")
 	}
 }
 
 func TestHandleTranscriptResourceDBError(t *testing.T) {
-	cs := setupHandlerServer(t)
-	cs.db.Exec("DROP TABLE messages")
+	reg := setupHandlerServer(t)
+	reg.Server.DB.Exec("DROP TABLE messages")
 
-	_, err := cs.handleTranscript(context.Background(), &mcp.ReadResourceRequest{
+	_, err := reg.handleTranscript(context.Background(), &mcp.ReadResourceRequest{
 		Params: &mcp.ReadResourceParams{URI: "council://room/hdb-room/transcript"},
 	})
 	if err == nil {
@@ -59,14 +60,14 @@ func TestHandleTranscriptResourceDBError(t *testing.T) {
 // ========== read_transcript (last_n) ==========
 
 func TestHandleReadTranscriptWithLastN(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "h-transcript-ln", withProject("proj"), withSystemPrompt("Be concise."))
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-transcript-ln", withProject("proj"), withSystemPrompt("Be concise."))
 	for i := 0; i < 10; i++ {
-		mustPost(t, cs, "h-transcript-ln", "Claude", fmt.Sprintf("Message %d", i))
+		mustPost(t, reg.Server, "h-transcript-ln", "Claude", fmt.Sprintf("Message %d", i))
 	}
 
 	// last_n=3 should return only the last 3 messages but still include room header and system prompt
-	res, _, _ := cs.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
+	res, _, _ := reg.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
 		RoomID: "h-transcript-ln", LastN: "3",
 	})
 	text := resultText(res)
@@ -95,19 +96,19 @@ func TestHandleReadTranscriptWithLastN(t *testing.T) {
 }
 
 func TestHandleReadTranscriptLastNPreservesSummaries(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "h-transcript-sum-ln")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-transcript-sum-ln")
 
 	for i := 0; i < 5; i++ {
-		mustPost(t, cs, "h-transcript-sum-ln", "Claude", "Old msg")
+		mustPost(t, reg.Server, "h-transcript-sum-ln", "Claude", "Old msg")
 	}
-	cs.insertSummary("h-transcript-sum-ln", "Summary of 5 old messages")
+	reg.Server.InsertSummary("h-transcript-sum-ln", "Summary of 5 old messages")
 	for i := 0; i < 5; i++ {
-		mustPost(t, cs, "h-transcript-sum-ln", "Gemini", fmt.Sprintf("New msg %d", i))
+		mustPost(t, reg.Server, "h-transcript-sum-ln", "Gemini", fmt.Sprintf("New msg %d", i))
 	}
 
 	// last_n=2 should keep summaries + last 2 regular messages
-	res, _, _ := cs.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
+	res, _, _ := reg.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
 		RoomID: "h-transcript-sum-ln", LastN: "2",
 	})
 	text := resultText(res)
@@ -127,14 +128,14 @@ func TestHandleReadTranscriptLastNPreservesSummaries(t *testing.T) {
 }
 
 func TestHandleReadTranscriptLastNOmittedReturnsAll(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "h-transcript-all")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-transcript-all")
 	for i := 0; i < 5; i++ {
-		mustPost(t, cs, "h-transcript-all", "Claude", fmt.Sprintf("Msg %d", i))
+		mustPost(t, reg.Server, "h-transcript-all", "Claude", fmt.Sprintf("Msg %d", i))
 	}
 
 	// No last_n — should return all 5 messages
-	res, _, _ := cs.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
+	res, _, _ := reg.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
 		RoomID: "h-transcript-all",
 	})
 	text := resultText(res)
@@ -144,14 +145,14 @@ func TestHandleReadTranscriptLastNOmittedReturnsAll(t *testing.T) {
 }
 
 func TestHandleReadTranscriptLastNInvalid(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "h-transcript-bad-ln")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-transcript-bad-ln")
 	for i := 0; i < 3; i++ {
-		mustPost(t, cs, "h-transcript-bad-ln", "Claude", fmt.Sprintf("Msg %d", i))
+		mustPost(t, reg.Server, "h-transcript-bad-ln", "Claude", fmt.Sprintf("Msg %d", i))
 	}
 
 	// Invalid last_n should return all (graceful fallback)
-	res, _, _ := cs.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
+	res, _, _ := reg.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
 		RoomID: "h-transcript-bad-ln", LastN: "abc",
 	})
 	text := resultText(res)
@@ -161,12 +162,12 @@ func TestHandleReadTranscriptLastNInvalid(t *testing.T) {
 }
 
 func TestHandleReadTranscriptLastNLargerThanTotal(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "h-transcript-big-ln")
-	mustPost(t, cs, "h-transcript-big-ln", "Claude", "Only message")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-transcript-big-ln")
+	mustPost(t, reg.Server, "h-transcript-big-ln", "Claude", "Only message")
 
 	// last_n=100 with only 1 message should return all
-	res, _, _ := cs.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
+	res, _, _ := reg.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
 		RoomID: "h-transcript-big-ln", LastN: "100",
 	})
 	text := resultText(res)
@@ -178,14 +179,14 @@ func TestHandleReadTranscriptLastNLargerThanTotal(t *testing.T) {
 // ========== read_transcript (after_id) ==========
 
 func TestHandleReadTranscriptAfterID(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "h-transcript-after")
-	mustPost(t, cs, "h-transcript-after", "Claude", "First")
-	id2 := mustPostTyped(t, cs, "h-transcript-after", "Gemini", "Second", "thought")
-	mustPostTyped(t, cs, "h-transcript-after", "Claude", "Third", "decision")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-transcript-after")
+	mustPost(t, reg.Server, "h-transcript-after", "Claude", "First")
+	id2 := mustPostTyped(t, reg.Server, "h-transcript-after", "Gemini", "Second", "thought")
+	mustPostTyped(t, reg.Server, "h-transcript-after", "Claude", "Third", "decision")
 
 	// Get messages after the second one — should return only "Third"
-	res, _, _ := cs.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
+	res, _, _ := reg.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
 		RoomID: "h-transcript-after", AfterID: fmt.Sprintf("%d", id2),
 	})
 	text := resultText(res)
@@ -202,11 +203,11 @@ func TestHandleReadTranscriptAfterID(t *testing.T) {
 }
 
 func TestHandleReadTranscriptAfterIDNoNewMessages(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "h-transcript-after-empty")
-	id1 := mustPost(t, cs, "h-transcript-after-empty", "Claude", "Only one")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-transcript-after-empty")
+	id1 := mustPost(t, reg.Server, "h-transcript-after-empty", "Claude", "Only one")
 
-	res, _, _ := cs.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
+	res, _, _ := reg.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
 		RoomID: "h-transcript-after-empty", AfterID: fmt.Sprintf("%d", id1),
 	})
 	text := resultText(res)
@@ -216,10 +217,10 @@ func TestHandleReadTranscriptAfterIDNoNewMessages(t *testing.T) {
 }
 
 func TestHandleReadTranscriptAfterIDInvalid(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "h-transcript-after-bad")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-transcript-after-bad")
 
-	res, _, _ := cs.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
+	res, _, _ := reg.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
 		RoomID: "h-transcript-after-bad", AfterID: "not-a-number",
 	})
 	text := resultText(res)
@@ -229,13 +230,13 @@ func TestHandleReadTranscriptAfterIDInvalid(t *testing.T) {
 }
 
 func TestHandleReadTranscriptAfterIDWithTypedMessages(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "h-transcript-after-typed")
-	id1 := mustPost(t, cs, "h-transcript-after-typed", "Claude", "Base")
-	mustPostTyped(t, cs, "h-transcript-after-typed", "Gemini", "A thought", "thought")
-	cs.postMessage("h-transcript-after-typed", "Claude", "A decision", "decision", id1)
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-transcript-after-typed")
+	id1 := mustPost(t, reg.Server, "h-transcript-after-typed", "Claude", "Base")
+	mustPostTyped(t, reg.Server, "h-transcript-after-typed", "Gemini", "A thought", "thought")
+	reg.Server.PostMessage("h-transcript-after-typed", "Claude", "A decision", "decision", id1)
 
-	res, _, _ := cs.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
+	res, _, _ := reg.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
 		RoomID: "h-transcript-after-typed", AfterID: fmt.Sprintf("%d", id1),
 	})
 	text := resultText(res)
@@ -248,13 +249,13 @@ func TestHandleReadTranscriptAfterIDWithTypedMessages(t *testing.T) {
 }
 
 func TestHandleReadTranscriptAfterIDLatestID(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "h-transcript-afterid-latest")
-	id1 := mustPost(t, cs, "h-transcript-afterid-latest", "Claude", "First")
-	mustPostTyped(t, cs, "h-transcript-afterid-latest", "Gemini", "Second", "thought")
-	id3 := mustPostTyped(t, cs, "h-transcript-afterid-latest", "Claude", "Third", "decision")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-transcript-afterid-latest")
+	id1 := mustPost(t, reg.Server, "h-transcript-afterid-latest", "Claude", "First")
+	mustPostTyped(t, reg.Server, "h-transcript-afterid-latest", "Gemini", "Second", "thought")
+	id3 := mustPostTyped(t, reg.Server, "h-transcript-afterid-latest", "Claude", "Third", "decision")
 
-	res, _, _ := cs.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
+	res, _, _ := reg.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
 		RoomID: "h-transcript-afterid-latest", AfterID: fmt.Sprintf("%d", id1),
 	})
 	text := resultText(res)
@@ -270,11 +271,11 @@ func TestHandleReadTranscriptAfterIDLatestID(t *testing.T) {
 }
 
 func TestHandleReadTranscriptAfterIDNoMessagesNoLatest(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "h-transcript-afterid-empty")
-	id1 := mustPost(t, cs, "h-transcript-afterid-empty", "Claude", "Only one")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-transcript-afterid-empty")
+	id1 := mustPost(t, reg.Server, "h-transcript-afterid-empty", "Claude", "Only one")
 
-	res, _, _ := cs.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
+	res, _, _ := reg.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
 		RoomID: "h-transcript-afterid-empty", AfterID: fmt.Sprintf("%d", id1),
 	})
 	text := resultText(res)
@@ -288,14 +289,14 @@ func TestHandleReadTranscriptAfterIDNoMessagesNoLatest(t *testing.T) {
 // ========== read_transcript (summary mode) ==========
 
 func TestHandleReadTranscriptSummaryMode(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "h-transcript-summode", withSystemPrompt("Focus on security."))
-	mustPostTyped(t, cs, "h-transcript-summode", "Claude", "Old thought", "thought")
-	mustPostTyped(t, cs, "h-transcript-summode", "Claude", "Latest thought", "thought")
-	mustPostTyped(t, cs, "h-transcript-summode", "Gemini", "A decision was made", "decision")
-	mustPostTyped(t, cs, "h-transcript-summode", "Claude", "Do this action", "action")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-transcript-summode", withSystemPrompt("Focus on security."))
+	mustPostTyped(t, reg.Server, "h-transcript-summode", "Claude", "Old thought", "thought")
+	mustPostTyped(t, reg.Server, "h-transcript-summode", "Claude", "Latest thought", "thought")
+	mustPostTyped(t, reg.Server, "h-transcript-summode", "Gemini", "A decision was made", "decision")
+	mustPostTyped(t, reg.Server, "h-transcript-summode", "Claude", "Do this action", "action")
 
-	res, _, _ := cs.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
+	res, _, _ := reg.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
 		RoomID: "h-transcript-summode", Mode: "summary",
 	})
 	text := resultText(res)
@@ -327,10 +328,10 @@ func TestHandleReadTranscriptSummaryMode(t *testing.T) {
 }
 
 func TestHandleReadTranscriptSummaryModeEmpty(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "h-transcript-summode-empty")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-transcript-summode-empty")
 
-	res, _, _ := cs.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
+	res, _, _ := reg.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
 		RoomID: "h-transcript-summode-empty", Mode: "summary",
 	})
 	text := resultText(res)
@@ -340,12 +341,12 @@ func TestHandleReadTranscriptSummaryModeEmpty(t *testing.T) {
 }
 
 func TestHandleReadTranscriptSummaryModeTruncatesLongContent(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "h-transcript-summode-long")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-transcript-summode-long")
 	longContent := strings.Repeat("X", 300)
-	mustPostTyped(t, cs, "h-transcript-summode-long", "Claude", longContent, "thought")
+	mustPostTyped(t, reg.Server, "h-transcript-summode-long", "Claude", longContent, "thought")
 
-	res, _, _ := cs.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
+	res, _, _ := reg.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
 		RoomID: "h-transcript-summode-long", Mode: "summary",
 	})
 	text := resultText(res)
@@ -360,15 +361,15 @@ func TestHandleReadTranscriptSummaryModeTruncatesLongContent(t *testing.T) {
 // ========== read_transcript (changelog mode) ==========
 
 func TestHandleReadTranscriptChangelog(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "h-transcript-cl")
-	mustPostTyped(t, cs, "h-transcript-cl", "Claude", "Thinking about options", "thought")
-	mustPostTyped(t, cs, "h-transcript-cl", "Claude", "Let's use RS256", "decision")
-	mustPostTyped(t, cs, "h-transcript-cl", "Gemini", "Reviewing approach", "review")
-	mustPostTyped(t, cs, "h-transcript-cl", "Claude", "Implemented RS256 in auth.go", "action")
-	mustPostTyped(t, cs, "h-transcript-cl", "Gemini", "Some critique", "critique")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-transcript-cl")
+	mustPostTyped(t, reg.Server, "h-transcript-cl", "Claude", "Thinking about options", "thought")
+	mustPostTyped(t, reg.Server, "h-transcript-cl", "Claude", "Let's use RS256", "decision")
+	mustPostTyped(t, reg.Server, "h-transcript-cl", "Gemini", "Reviewing approach", "review")
+	mustPostTyped(t, reg.Server, "h-transcript-cl", "Claude", "Implemented RS256 in auth.go", "action")
+	mustPostTyped(t, reg.Server, "h-transcript-cl", "Gemini", "Some critique", "critique")
 
-	res, _, _ := cs.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
+	res, _, _ := reg.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
 		RoomID: "h-transcript-cl", Mode: "changelog",
 	})
 	text := resultText(res)
@@ -396,11 +397,11 @@ func TestHandleReadTranscriptChangelog(t *testing.T) {
 }
 
 func TestHandleReadTranscriptChangelogEmpty(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "h-transcript-cl-empty")
-	mustPostTyped(t, cs, "h-transcript-cl-empty", "Claude", "Just a thought", "thought")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-transcript-cl-empty")
+	mustPostTyped(t, reg.Server, "h-transcript-cl-empty", "Claude", "Just a thought", "thought")
 
-	res, _, _ := cs.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
+	res, _, _ := reg.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
 		RoomID: "h-transcript-cl-empty", Mode: "changelog",
 	})
 	text := resultText(res)
@@ -412,17 +413,17 @@ func TestHandleReadTranscriptChangelogEmpty(t *testing.T) {
 // ========== read_transcript (pinned messages) ==========
 
 func TestPinnedMessageInTranscript(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "transcript-pin")
-	mustPost(t, cs, "transcript-pin", "Claude", "Regular message 1")
-	id2 := mustPostTyped(t, cs, "transcript-pin", "Gemini", "This is the TL;DR", "decision")
-	mustPost(t, cs, "transcript-pin", "Claude", "Regular message 3")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "transcript-pin")
+	mustPost(t, reg.Server, "transcript-pin", "Claude", "Regular message 1")
+	id2 := mustPostTyped(t, reg.Server, "transcript-pin", "Gemini", "This is the TL;DR", "decision")
+	mustPost(t, reg.Server, "transcript-pin", "Claude", "Regular message 3")
 
-	cs.pinMessage("transcript-pin", id2)
+	reg.Server.PinMessage("transcript-pin", id2)
 
-	room, _ := cs.getRoom("transcript-pin")
-	msgs, _ := cs.getTranscript("transcript-pin")
-	transcript := formatTranscript(room, msgs)
+	room, _ := reg.Server.GetRoom("transcript-pin")
+	msgs, _ := reg.Server.GetTranscript("transcript-pin")
+	transcript := council.FormatTranscript(room, msgs)
 
 	// Pinned message should appear before regular messages
 	pinnedIdx := strings.Index(transcript, "PINNED")
@@ -447,14 +448,14 @@ func TestPinnedMessageInTranscript(t *testing.T) {
 }
 
 func TestPinnedMessageInSummaryMode(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "summary-pin", withSystemPrompt("Test instructions"))
-	id := mustPostTyped(t, cs, "summary-pin", "Claude", "Pinned summary content", "decision")
-	mustPostTyped(t, cs, "summary-pin", "Gemini", "A thought", "thought")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "summary-pin", withSystemPrompt("Test instructions"))
+	id := mustPostTyped(t, reg.Server, "summary-pin", "Claude", "Pinned summary content", "decision")
+	mustPostTyped(t, reg.Server, "summary-pin", "Gemini", "A thought", "thought")
 
-	cs.pinMessage("summary-pin", id)
+	reg.Server.PinMessage("summary-pin", id)
 
-	res, _, err := cs.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
+	res, _, err := reg.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
 		RoomID: "summary-pin", Mode: "summary",
 	})
 	if err != nil {
@@ -471,16 +472,16 @@ func TestPinnedMessageInSummaryMode(t *testing.T) {
 }
 
 func TestPinnedMessageInAfterIDMode(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "afterid-pin")
-	id1 := mustPostTyped(t, cs, "afterid-pin", "Claude", "Pinned overview", "decision")
-	mustPost(t, cs, "afterid-pin", "Gemini", "Second msg")
-	id3 := mustPostTyped(t, cs, "afterid-pin", "Claude", "Third msg", "action")
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "afterid-pin")
+	id1 := mustPostTyped(t, reg.Server, "afterid-pin", "Claude", "Pinned overview", "decision")
+	mustPost(t, reg.Server, "afterid-pin", "Gemini", "Second msg")
+	id3 := mustPostTyped(t, reg.Server, "afterid-pin", "Claude", "Third msg", "action")
 
-	cs.pinMessage("afterid-pin", id1)
+	reg.Server.PinMessage("afterid-pin", id1)
 
 	// Read after id2 — should still include pinned message at top
-	res, _, err := cs.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
+	res, _, err := reg.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
 		RoomID:  "afterid-pin",
 		AfterID: fmt.Sprintf("%d", id3-1),
 	})

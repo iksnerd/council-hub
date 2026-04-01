@@ -1,4 +1,4 @@
-package main
+package council
 
 import (
 	"fmt"
@@ -7,14 +7,14 @@ import (
 )
 
 func TestPostMessage(t *testing.T) {
-	cs := setupTestServer(t)
-	cs.createRoom("msg-room", "Message test", "", "", "", "", "")
+	s := setupTestServer(t)
+	s.CreateRoom("msg-room", "Message test", "", "", "", "", "")
 
-	id1, err := cs.postMessage("msg-room", "Claude", "Hello from Claude", "message", 0)
+	id1, err := s.PostMessage("msg-room", "Claude", "Hello from Claude", "message", 0)
 	if err != nil {
 		t.Fatalf("postMessage failed: %v", err)
 	}
-	id2, err := cs.postMessage("msg-room", "Gemini", "Hello from Gemini", "message", 0)
+	id2, err := s.PostMessage("msg-room", "Gemini", "Hello from Gemini", "message", 0)
 	if err != nil {
 		t.Fatalf("postMessage failed: %v", err)
 	}
@@ -23,7 +23,7 @@ func TestPostMessage(t *testing.T) {
 		t.Errorf("expected id2 > id1, got id1=%d id2=%d", id1, id2)
 	}
 
-	msgs, err := cs.getTranscript("msg-room")
+	msgs, err := s.GetTranscript("msg-room")
 	if err != nil {
 		t.Fatalf("getTranscript failed: %v", err)
 	}
@@ -36,14 +36,14 @@ func TestPostMessage(t *testing.T) {
 }
 
 func TestMessageType(t *testing.T) {
-	cs := setupTestServer(t)
-	cs.createRoom("type-room", "Type test", "", "", "", "", "")
+	s := setupTestServer(t)
+	s.CreateRoom("type-room", "Type test", "", "", "", "", "")
 
-	cs.postMessage("type-room", "Claude", "I think we should...", "thought", 0)
-	cs.postMessage("type-room", "Gemini", "Let's go with RS256", "decision", 0)
-	cs.postMessage("type-room", "Claude", "func main() {}", "code", 0)
+	s.PostMessage("type-room", "Claude", "I think we should...", "thought", 0)
+	s.PostMessage("type-room", "Gemini", "Let's go with RS256", "decision", 0)
+	s.PostMessage("type-room", "Claude", "func main() {}", "code", 0)
 
-	msgs, _ := cs.getTranscript("type-room")
+	msgs, _ := s.GetTranscript("type-room")
 	if len(msgs) != 3 {
 		t.Fatalf("expected 3 messages, got %d", len(msgs))
 	}
@@ -59,15 +59,15 @@ func TestMessageType(t *testing.T) {
 }
 
 func TestCritiqueMessageType(t *testing.T) {
-	cs := setupTestServer(t)
-	cs.createRoom("critique-room", "Critique test", "", "", "", "", "")
+	s := setupTestServer(t)
+	s.CreateRoom("critique-room", "Critique test", "", "", "", "", "")
 
-	_, err := cs.postMessage("critique-room", "Claude", "This approach has flaws", "critique", 0)
+	_, err := s.PostMessage("critique-room", "Claude", "This approach has flaws", "critique", 0)
 	if err != nil {
 		t.Fatalf("postMessage with critique type failed: %v", err)
 	}
 
-	msgs, _ := cs.getTranscript("critique-room")
+	msgs, _ := s.GetTranscript("critique-room")
 	if len(msgs) != 1 {
 		t.Fatalf("expected 1 message, got %d", len(msgs))
 	}
@@ -75,21 +75,21 @@ func TestCritiqueMessageType(t *testing.T) {
 		t.Errorf("expected 'critique', got '%s'", msgs[0].MessageType)
 	}
 
-	room, _ := cs.getRoom("critique-room")
-	transcript := formatTranscript(room, msgs)
+	room, _ := s.GetRoom("critique-room")
+	transcript := FormatTranscript(room, msgs)
 	if !strings.Contains(transcript, "Claude (critique)") {
 		t.Error("transcript missing critique message type")
 	}
 }
 
 func TestPostMessageWithReplyTo(t *testing.T) {
-	cs := setupTestServer(t)
-	cs.createRoom("reply-room", "Reply test", "", "", "", "", "")
+	s := setupTestServer(t)
+	s.CreateRoom("reply-room", "Reply test", "", "", "", "", "")
 
-	id1, _ := cs.postMessage("reply-room", "Claude", "Original message", "message", 0)
-	id2, _ := cs.postMessage("reply-room", "Gemini", "Replying to Claude", "review", id1)
+	id1, _ := s.PostMessage("reply-room", "Claude", "Original message", "message", 0)
+	id2, _ := s.PostMessage("reply-room", "Gemini", "Replying to Claude", "review", id1)
 
-	msgs, _ := cs.getTranscript("reply-room")
+	msgs, _ := s.GetTranscript("reply-room")
 	if len(msgs) != 2 {
 		t.Fatalf("expected 2 messages, got %d", len(msgs))
 	}
@@ -98,8 +98,8 @@ func TestPostMessageWithReplyTo(t *testing.T) {
 	}
 
 	// Verify transcript rendering includes reply tag
-	room, _ := cs.getRoom("reply-room")
-	transcript := formatTranscript(room, msgs)
+	room, _ := s.GetRoom("reply-room")
+	transcript := FormatTranscript(room, msgs)
 	expected := fmt.Sprintf("re: #%d", id1)
 	if !strings.Contains(transcript, expected) {
 		t.Errorf("transcript missing reply tag '%s'", expected)
@@ -111,7 +111,7 @@ func TestPostMessageWithReplyTo(t *testing.T) {
 	}
 
 	// Get by ID and verify reply_to is preserved
-	fetched, _ := cs.getMessagesByIDs([]int64{id2})
+	fetched, _ := s.GetMessagesByIDs([]int64{id2})
 	if len(fetched) != 1 {
 		t.Fatalf("expected 1 message, got %d", len(fetched))
 	}
@@ -121,13 +121,13 @@ func TestPostMessageWithReplyTo(t *testing.T) {
 }
 
 func TestReplyToInReadRecent(t *testing.T) {
-	cs := setupTestServer(t)
-	cs.createRoom("reply-recent", "Reply recent test", "", "", "", "", "")
+	s := setupTestServer(t)
+	s.CreateRoom("reply-recent", "Reply recent test", "", "", "", "", "")
 
-	id1, _ := cs.postMessage("reply-recent", "Claude", "First", "message", 0)
-	cs.postMessage("reply-recent", "Gemini", "Reply to first", "critique", id1)
+	id1, _ := s.PostMessage("reply-recent", "Claude", "First", "message", 0)
+	s.PostMessage("reply-recent", "Gemini", "Reply to first", "critique", id1)
 
-	msgs, err := cs.getRecentMessages("reply-recent", 2)
+	msgs, err := s.GetRecentMessages("reply-recent", 2)
 	if err != nil {
 		t.Fatalf("getRecentMessages failed: %v", err)
 	}
@@ -143,15 +143,15 @@ func TestReplyToInReadRecent(t *testing.T) {
 }
 
 func TestSearchMessages(t *testing.T) {
-	cs := setupTestServer(t)
-	cs.createRoom("search-room-1", "Room 1", "proj", "", "", "", "")
-	cs.createRoom("search-room-2", "Room 2", "proj", "", "", "", "")
-	cs.postMessage("search-room-1", "Claude", "JWT token validation is broken", "thought", 0)
-	cs.postMessage("search-room-1", "Gemini", "I agree about the JWT issue", "review", 0)
-	cs.postMessage("search-room-2", "Claude", "Database migration complete", "action", 0)
+	s := setupTestServer(t)
+	s.CreateRoom("search-room-1", "Room 1", "proj", "", "", "", "")
+	s.CreateRoom("search-room-2", "Room 2", "proj", "", "", "", "")
+	s.PostMessage("search-room-1", "Claude", "JWT token validation is broken", "thought", 0)
+	s.PostMessage("search-room-1", "Gemini", "I agree about the JWT issue", "review", 0)
+	s.PostMessage("search-room-2", "Claude", "Database migration complete", "action", 0)
 
 	// Search by keyword
-	msgs, err := cs.searchMessages("JWT", "", "", "", "", 20)
+	msgs, err := s.SearchMessages("JWT", "", "", "", "", 20)
 	if err != nil {
 		t.Fatalf("searchMessages failed: %v", err)
 	}
@@ -160,38 +160,38 @@ func TestSearchMessages(t *testing.T) {
 	}
 
 	// Search by author
-	msgs, _ = cs.searchMessages("", "Claude", "", "", "", 20)
+	msgs, _ = s.SearchMessages("", "Claude", "", "", "", 20)
 	if len(msgs) != 2 {
 		t.Errorf("expected 2 messages from Claude, got %d", len(msgs))
 	}
 
 	// Search by message type
-	msgs, _ = cs.searchMessages("", "", "review", "", "", 20)
+	msgs, _ = s.SearchMessages("", "", "review", "", "", 20)
 	if len(msgs) != 1 {
 		t.Errorf("expected 1 review message, got %d", len(msgs))
 	}
 
 	// Search scoped to room
-	msgs, _ = cs.searchMessages("", "Claude", "", "search-room-2", "", 20)
+	msgs, _ = s.SearchMessages("", "Claude", "", "search-room-2", "", 20)
 	if len(msgs) != 1 {
 		t.Errorf("expected 1 message from Claude in search-room-2, got %d", len(msgs))
 	}
 
 	// No results
-	msgs, _ = cs.searchMessages("nonexistent", "", "", "", "", 20)
+	msgs, _ = s.SearchMessages("nonexistent", "", "", "", "", 20)
 	if len(msgs) != 0 {
 		t.Errorf("expected 0 messages, got %d", len(msgs))
 	}
 }
 
 func TestSearchMessagesGlobal(t *testing.T) {
-	cs := setupTestServer(t)
-	cs.createRoom("search-global-a", "Room A", "proj", "", "", "", "")
-	cs.createRoom("search-global-b", "Room B", "proj", "", "", "", "")
-	cs.postMessage("search-global-a", "Claude", "BEP 44 analysis here", "thought", 0)
-	cs.postMessage("search-global-b", "Gemini", "BEP 46 analysis here", "review", 0)
+	s := setupTestServer(t)
+	s.CreateRoom("search-global-a", "Room A", "proj", "", "", "", "")
+	s.CreateRoom("search-global-b", "Room B", "proj", "", "", "", "")
+	s.PostMessage("search-global-a", "Claude", "BEP 44 analysis here", "thought", 0)
+	s.PostMessage("search-global-b", "Gemini", "BEP 46 analysis here", "review", 0)
 
-	msgs, err := cs.searchMessages("BEP", "", "", "", "", 20)
+	msgs, err := s.SearchMessages("BEP", "", "", "", "", 20)
 	if err != nil {
 		t.Fatalf("searchMessages failed: %v", err)
 	}
@@ -208,12 +208,12 @@ func TestSearchMessagesGlobal(t *testing.T) {
 }
 
 func TestSearchMessagesSnippetLength(t *testing.T) {
-	cs := setupTestServer(t)
-	cs.createRoom("search-snippet", "Snippet test", "", "", "", "", "")
+	s := setupTestServer(t)
+	s.CreateRoom("search-snippet", "Snippet test", "", "", "", "", "")
 	longContent := strings.Repeat("A", 400)
-	cs.postMessage("search-snippet", "Claude", longContent, "message", 0)
+	s.PostMessage("search-snippet", "Claude", longContent, "message", 0)
 
-	msgs, err := cs.searchMessages("AAAA", "", "", "search-snippet", "", 1)
+	msgs, err := s.SearchMessages("AAAA", "", "", "search-snippet", "", 1)
 	if err != nil {
 		t.Fatalf("searchMessages failed: %v", err)
 	}
@@ -226,11 +226,11 @@ func TestSearchMessagesSnippetLength(t *testing.T) {
 }
 
 func TestGetMessagesByIDs(t *testing.T) {
-	cs := setupTestServer(t)
-	cs.createRoom("getmsg-room", "Get messages test", "", "", "", "", "")
-	id1, _ := cs.postMessage("getmsg-room", "Claude", "Full content of message one with lots of detail", "thought", 0)
+	s := setupTestServer(t)
+	s.CreateRoom("getmsg-room", "Get messages test", "", "", "", "", "")
+	id1, _ := s.PostMessage("getmsg-room", "Claude", "Full content of message one with lots of detail", "thought", 0)
 
-	msgs, err := cs.getMessagesByIDs([]int64{id1})
+	msgs, err := s.GetMessagesByIDs([]int64{id1})
 	if err != nil {
 		t.Fatalf("getMessagesByIDs failed: %v", err)
 	}
@@ -246,14 +246,14 @@ func TestGetMessagesByIDs(t *testing.T) {
 }
 
 func TestGetMessagesByIDsMultiple(t *testing.T) {
-	cs := setupTestServer(t)
-	cs.createRoom("getmsg-room-a", "Room A", "", "", "", "", "")
-	cs.createRoom("getmsg-room-b", "Room B", "", "", "", "", "")
-	id1, _ := cs.postMessage("getmsg-room-a", "Claude", "Message in room A", "message", 0)
-	id2, _ := cs.postMessage("getmsg-room-b", "Gemini", "Message in room B", "review", 0)
-	id3, _ := cs.postMessage("getmsg-room-a", "Amp", "Another in room A", "decision", 0)
+	s := setupTestServer(t)
+	s.CreateRoom("getmsg-room-a", "Room A", "", "", "", "", "")
+	s.CreateRoom("getmsg-room-b", "Room B", "", "", "", "", "")
+	id1, _ := s.PostMessage("getmsg-room-a", "Claude", "Message in room A", "message", 0)
+	id2, _ := s.PostMessage("getmsg-room-b", "Gemini", "Message in room B", "review", 0)
+	id3, _ := s.PostMessage("getmsg-room-a", "Amp", "Another in room A", "decision", 0)
 
-	msgs, err := cs.getMessagesByIDs([]int64{id1, id2, id3})
+	msgs, err := s.GetMessagesByIDs([]int64{id1, id2, id3})
 	if err != nil {
 		t.Fatalf("getMessagesByIDs failed: %v", err)
 	}
@@ -266,9 +266,9 @@ func TestGetMessagesByIDsMultiple(t *testing.T) {
 }
 
 func TestGetMessagesByIDsNotFound(t *testing.T) {
-	cs := setupTestServer(t)
+	s := setupTestServer(t)
 
-	msgs, err := cs.getMessagesByIDs([]int64{99999, 99998})
+	msgs, err := s.GetMessagesByIDs([]int64{99999, 99998})
 	if err != nil {
 		t.Fatalf("getMessagesByIDs failed: %v", err)
 	}
@@ -278,9 +278,9 @@ func TestGetMessagesByIDsNotFound(t *testing.T) {
 }
 
 func TestGetMessagesByIDsEmpty(t *testing.T) {
-	cs := setupTestServer(t)
+	s := setupTestServer(t)
 
-	msgs, err := cs.getMessagesByIDs([]int64{})
+	msgs, err := s.GetMessagesByIDs([]int64{})
 	if err != nil {
 		t.Fatalf("getMessagesByIDs failed: %v", err)
 	}
@@ -290,13 +290,13 @@ func TestGetMessagesByIDsEmpty(t *testing.T) {
 }
 
 func TestGetRecentMessages(t *testing.T) {
-	cs := setupTestServer(t)
-	cs.createRoom("recent-room", "Recent test", "", "", "", "", "")
+	s := setupTestServer(t)
+	s.CreateRoom("recent-room", "Recent test", "", "", "", "", "")
 	for i := 0; i < 10; i++ {
-		cs.postMessage("recent-room", "Claude", fmt.Sprintf("Message %d", i), "message", 0)
+		s.PostMessage("recent-room", "Claude", fmt.Sprintf("Message %d", i), "message", 0)
 	}
 
-	msgs, err := cs.getRecentMessages("recent-room", 3)
+	msgs, err := s.GetRecentMessages("recent-room", 3)
 	if err != nil {
 		t.Fatalf("getRecentMessages failed: %v", err)
 	}
@@ -312,13 +312,13 @@ func TestGetRecentMessages(t *testing.T) {
 }
 
 func TestGetRecentMessagesDefault(t *testing.T) {
-	cs := setupTestServer(t)
-	cs.createRoom("recent-default", "Default limit test", "", "", "", "", "")
+	s := setupTestServer(t)
+	s.CreateRoom("recent-default", "Default limit test", "", "", "", "", "")
 	for i := 0; i < 15; i++ {
-		cs.postMessage("recent-default", "Claude", fmt.Sprintf("Message %d", i), "message", 0)
+		s.PostMessage("recent-default", "Claude", fmt.Sprintf("Message %d", i), "message", 0)
 	}
 
-	msgs, err := cs.getRecentMessages("recent-default", 0)
+	msgs, err := s.GetRecentMessages("recent-default", 0)
 	if err != nil {
 		t.Fatalf("getRecentMessages failed: %v", err)
 	}
@@ -328,13 +328,13 @@ func TestGetRecentMessagesDefault(t *testing.T) {
 }
 
 func TestGetRecentMessagesOverLimit(t *testing.T) {
-	cs := setupTestServer(t)
-	cs.createRoom("recent-cap", "Cap test", "", "", "", "", "")
+	s := setupTestServer(t)
+	s.CreateRoom("recent-cap", "Cap test", "", "", "", "", "")
 	for i := 0; i < 60; i++ {
-		cs.postMessage("recent-cap", "Claude", fmt.Sprintf("Message %d", i), "message", 0)
+		s.PostMessage("recent-cap", "Claude", fmt.Sprintf("Message %d", i), "message", 0)
 	}
 
-	msgs, err := cs.getRecentMessages("recent-cap", 100)
+	msgs, err := s.GetRecentMessages("recent-cap", 100)
 	if err != nil {
 		t.Fatalf("getRecentMessages failed: %v", err)
 	}
@@ -344,10 +344,10 @@ func TestGetRecentMessagesOverLimit(t *testing.T) {
 }
 
 func TestGetRecentMessagesEmptyRoom(t *testing.T) {
-	cs := setupTestServer(t)
-	cs.createRoom("recent-empty", "Empty room", "", "", "", "", "")
+	s := setupTestServer(t)
+	s.CreateRoom("recent-empty", "Empty room", "", "", "", "", "")
 
-	msgs, err := cs.getRecentMessages("recent-empty", 5)
+	msgs, err := s.GetRecentMessages("recent-empty", 5)
 	if err != nil {
 		t.Fatalf("getRecentMessages failed: %v", err)
 	}
@@ -357,22 +357,22 @@ func TestGetRecentMessagesEmptyRoom(t *testing.T) {
 }
 
 func TestGetRecentMessagesNotFound(t *testing.T) {
-	cs := setupTestServer(t)
+	s := setupTestServer(t)
 
-	_, err := cs.getRecentMessages("nonexistent", 5)
+	_, err := s.GetRecentMessages("nonexistent", 5)
 	if err == nil {
 		t.Fatal("expected error for nonexistent room")
 	}
 }
 
 func TestDeleteMessages(t *testing.T) {
-	cs := setupTestServer(t)
-	cs.createRoom("delmsg-room", "Delete messages test", "", "", "", "", "")
-	id1, _ := cs.postMessage("delmsg-room", "Claude", "Keep this", "message", 0)
-	id2, _ := cs.postMessage("delmsg-room", "Gemini", "Delete this", "message", 0)
-	id3, _ := cs.postMessage("delmsg-room", "Claude", "Delete this too", "message", 0)
+	s := setupTestServer(t)
+	s.CreateRoom("delmsg-room", "Delete messages test", "", "", "", "", "")
+	id1, _ := s.PostMessage("delmsg-room", "Claude", "Keep this", "message", 0)
+	id2, _ := s.PostMessage("delmsg-room", "Gemini", "Delete this", "message", 0)
+	id3, _ := s.PostMessage("delmsg-room", "Claude", "Delete this too", "message", 0)
 
-	count, err := cs.deleteMessages([]int64{id2, id3})
+	count, err := s.DeleteMessages([]int64{id2, id3})
 	if err != nil {
 		t.Fatalf("deleteMessages failed: %v", err)
 	}
@@ -380,7 +380,7 @@ func TestDeleteMessages(t *testing.T) {
 		t.Errorf("expected 2 deleted, got %d", count)
 	}
 
-	msgs, _ := cs.getTranscript("delmsg-room")
+	msgs, _ := s.GetTranscript("delmsg-room")
 	if len(msgs) != 1 {
 		t.Fatalf("expected 1 remaining message, got %d", len(msgs))
 	}
@@ -390,9 +390,9 @@ func TestDeleteMessages(t *testing.T) {
 }
 
 func TestDeleteMessagesNonexistent(t *testing.T) {
-	cs := setupTestServer(t)
+	s := setupTestServer(t)
 
-	count, err := cs.deleteMessages([]int64{99999})
+	count, err := s.DeleteMessages([]int64{99999})
 	if err != nil {
 		t.Fatalf("deleteMessages failed: %v", err)
 	}
@@ -404,11 +404,11 @@ func TestDeleteMessagesNonexistent(t *testing.T) {
 // ========== DB-level pinMessage tests ==========
 
 func TestPinMessageDB(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "db-pin")
-	id := mustPost(t, cs, "db-pin", "Claude", "Pin me")
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "db-pin")
+	id := mustPost(t, s, "db-pin", "Claude", "Pin me")
 
-	pinned, err := cs.pinMessage("db-pin", id)
+	pinned, err := s.PinMessage("db-pin", id)
 	if err != nil {
 		t.Fatalf("pinMessage error: %v", err)
 	}
@@ -417,17 +417,17 @@ func TestPinMessageDB(t *testing.T) {
 	}
 
 	// Verify
-	msg, _ := cs.getPinnedMessage("db-pin")
+	msg, _ := s.GetPinnedMessage("db-pin")
 	if msg == nil || msg.ID != id {
 		t.Error("getPinnedMessage should return the pinned message")
 	}
 }
 
 func TestGetPinnedMessageNone(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "no-pin")
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "no-pin")
 
-	msg, err := cs.getPinnedMessage("no-pin")
+	msg, err := s.GetPinnedMessage("no-pin")
 	if err != nil {
 		t.Fatalf("getPinnedMessage error: %v", err)
 	}
@@ -439,11 +439,11 @@ func TestGetPinnedMessageNone(t *testing.T) {
 // ========== DB-level updateMessage tests ==========
 
 func TestUpdateMessageDB(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "db-update")
-	id := mustPost(t, cs, "db-update", "Claude", "Original")
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "db-update")
+	id := mustPost(t, s, "db-update", "Claude", "Original")
 
-	m, err := cs.updateMessage(id, "Updated", "")
+	m, err := s.UpdateMessage(id, "Updated", "")
 	if err != nil {
 		t.Fatalf("updateMessage error: %v", err)
 	}
@@ -456,11 +456,11 @@ func TestUpdateMessageDB(t *testing.T) {
 }
 
 func TestUpdateMessageDBWithType(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "db-uptype")
-	id := mustPost(t, cs, "db-uptype", "Claude", "Original")
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "db-uptype")
+	id := mustPost(t, s, "db-uptype", "Claude", "Original")
 
-	m, err := cs.updateMessage(id, "Now a decision", "decision")
+	m, err := s.UpdateMessage(id, "Now a decision", "decision")
 	if err != nil {
 		t.Fatalf("updateMessage error: %v", err)
 	}
@@ -470,9 +470,9 @@ func TestUpdateMessageDBWithType(t *testing.T) {
 }
 
 func TestUpdateMessageDBNotFound(t *testing.T) {
-	cs := setupTestServer(t)
+	s := setupTestServer(t)
 
-	_, err := cs.updateMessage(99999, "Nope", "")
+	_, err := s.UpdateMessage(99999, "Nope", "")
 	if err == nil {
 		t.Error("expected error for nonexistent message")
 	}
@@ -481,15 +481,15 @@ func TestUpdateMessageDBNotFound(t *testing.T) {
 // -- postMessage: default type branch --
 
 func TestPostMessageDefaultType(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "default-type")
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "default-type")
 
-	id, err := cs.postMessage("default-type", "Claude", "Hello", "", 0)
+	id, err := s.PostMessage("default-type", "Claude", "Hello", "", 0)
 	if err != nil {
 		t.Fatalf("postMessage failed: %v", err)
 	}
 
-	msgs, _ := cs.getMessagesByIDs([]int64{id})
+	msgs, _ := s.GetMessagesByIDs([]int64{id})
 	if msgs[0].MessageType != "message" {
 		t.Errorf("expected default type 'message', got '%s'", msgs[0].MessageType)
 	}
@@ -498,20 +498,20 @@ func TestPostMessageDefaultType(t *testing.T) {
 // -- searchMessages limit edge cases --
 
 func TestSearchMessagesLimitClamping(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "search-clamp")
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "search-clamp")
 	for i := 0; i < 5; i++ {
-		mustPost(t, cs, "search-clamp", "Claude", "keyword")
+		mustPost(t, s, "search-clamp", "Claude", "keyword")
 	}
 
 	// Negative limit should clamp to 20
-	msgs, _ := cs.searchMessages("keyword", "", "", "", "", -5)
+	msgs, _ := s.SearchMessages("keyword", "", "", "", "", -5)
 	if len(msgs) != 5 {
 		t.Errorf("expected 5 (all) with clamped limit, got %d", len(msgs))
 	}
 
 	// Over-100 limit should clamp to 20
-	msgs, _ = cs.searchMessages("keyword", "", "", "", "", 200)
+	msgs, _ = s.SearchMessages("keyword", "", "", "", "", 200)
 	if len(msgs) != 5 {
 		t.Errorf("expected 5 with clamped limit, got %d", len(msgs))
 	}
@@ -520,8 +520,8 @@ func TestSearchMessagesLimitClamping(t *testing.T) {
 // -- deleteMessages with empty slice --
 
 func TestDeleteMessagesEmptySlice(t *testing.T) {
-	cs := setupTestServer(t)
-	count, err := cs.deleteMessages([]int64{})
+	s := setupTestServer(t)
+	count, err := s.DeleteMessages([]int64{})
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}
@@ -533,11 +533,11 @@ func TestDeleteMessagesEmptySlice(t *testing.T) {
 // -- postMessage: updated_at best-effort doesn't fail the operation --
 
 func TestPostMessageUpdatedAtBestEffort(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "besteff-room")
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "besteff-room")
 
 	// Post should succeed even though updated_at UPDATE is best-effort
-	id := mustPost(t, cs, "besteff-room", "Claude", "Hello")
+	id := mustPost(t, s, "besteff-room", "Claude", "Hello")
 	if id <= 0 {
 		t.Errorf("expected positive message ID, got %d", id)
 	}
@@ -546,15 +546,15 @@ func TestPostMessageUpdatedAtBestEffort(t *testing.T) {
 // -- insertSummary: updated_at best-effort doesn't fail the operation --
 
 func TestInsertSummaryUpdatedAtBestEffort(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "summary-besteff")
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "summary-besteff")
 
-	err := cs.insertSummary("summary-besteff", "A summary")
+	err := s.InsertSummary("summary-besteff", "A summary")
 	if err != nil {
 		t.Fatalf("insertSummary failed: %v", err)
 	}
 
-	msgs, _ := cs.getTranscript("summary-besteff")
+	msgs, _ := s.GetTranscript("summary-besteff")
 	if len(msgs) != 1 || !msgs[0].IsSummary {
 		t.Error("expected 1 summary message")
 	}
