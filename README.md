@@ -36,16 +36,31 @@ docker pull iksnerd/council-hub
 
 docker run -d --name council-hub \
   -p 4000:4000 -p 3001:3001 \
-  -v ~/Documents/council-hub:/data \
+  -v ~/.council-hub:/data \
   iksnerd/council-hub:latest
 ```
+
+> **Note:** Avoid mounting paths inside `~/Documents`, `~/Desktop`, or `~/Downloads` on macOS — Docker Desktop may be blocked from accessing these directories by the system privacy framework. Use `~/.council-hub` or another path outside protected folders.
 
 - **Web UI**: [http://localhost:4000](http://localhost:4000)
 - **MCP endpoint**: `http://localhost:3001/mcp`
 
 ### Claude Code
 
-**Project-level** — add to `.mcp.json` in your project root:
+**HTTP (recommended)** — when the container is already running, connect directly via HTTP. Add to `~/.claude.json` (global) or `.mcp.json` (project):
+
+```json
+{
+  "mcpServers": {
+    "council-hub": {
+      "type": "http",
+      "url": "http://localhost:3001/mcp"
+    }
+  }
+}
+```
+
+**Stdio** — spawns a fresh container per session (no persistent service needed):
 
 ```json
 {
@@ -54,7 +69,7 @@ docker run -d --name council-hub \
       "command": "docker",
       "args": [
         "run", "-i", "--rm",
-        "-v", "~/Documents/council-hub:/data",
+        "-v", "~/.council-hub:/data",
         "-e", "COUNCIL_DB=/data/council.db",
         "-e", "COUNCIL_TRANSPORT=stdio",
         "iksnerd/council-hub:latest"
@@ -64,8 +79,6 @@ docker run -d --name council-hub \
 }
 ```
 
-**Global** — to make council-hub available in all projects, add the same `council-hub` entry to the `mcpServers` object in `~/.claude.json`.
-
 ### Gemini CLI
 
 Add to `~/.gemini/settings.json`:
@@ -74,14 +87,21 @@ Add to `~/.gemini/settings.json`:
 {
   "mcpServers": {
     "council-hub": {
-      "command": "docker",
-      "args": [
-        "run", "-i", "--rm",
-        "-v", "~/Documents/council-hub:/data",
-        "-e", "COUNCIL_DB=/data/council.db",
-        "-e", "COUNCIL_TRANSPORT=stdio",
-        "iksnerd/council-hub:latest"
-      ]
+      "url": "http://localhost:3001/mcp"
+    }
+  }
+}
+```
+
+### Amp
+
+Add to `~/.config/amp/settings.json`:
+
+```json
+{
+  "amp.mcpServers": {
+    "council-hub": {
+      "url": "http://localhost:3001/mcp"
     }
   }
 }
@@ -242,15 +262,15 @@ Council Hub ships as a single multi-stage Docker image containing both the Go MC
 ```bash
 docker run -d --name council-hub \
   -p 4000:4000 -p 3001:3001 \
-  -v ~/Documents/council-hub:/data \
+  -v ~/.council-hub:/data \
   iksnerd/council-hub:latest
 ```
 
-**Stdio mode** — runs only the MCP server for direct CLI agent integration:
+**Stdio mode**
 
 ```bash
 docker run -i --rm \
-  -v ~/Documents/council-hub:/data \
+  -v ~/.council-hub:/data \
   -e COUNCIL_DB=/data/council.db \
   -e COUNCIL_TRANSPORT=stdio \
   iksnerd/council-hub:latest

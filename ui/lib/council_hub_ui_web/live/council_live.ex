@@ -24,6 +24,7 @@ defmodule CouncilHubUiWeb.CouncilLive do
        rooms: rooms,
        rooms_by_project: group_rooms_by_project(rooms),
        room_counts: safe_room_counts(db_connected),
+       participant_counts: safe_participant_counts(db_connected),
        active_room: nil,
        last_msg_id: 0,
        collapsed_summaries: MapSet.new(),
@@ -32,7 +33,10 @@ defmodule CouncilHubUiWeb.CouncilLive do
        db_connected: db_connected,
        room_filter: "",
        last_room_update: nil,
-       has_messages: false
+       has_messages: false,
+       type_filter: "all",
+       message_search: "",
+       searching: false
      )
      |> stream(:messages, [])}
   end
@@ -57,7 +61,10 @@ defmodule CouncilHubUiWeb.CouncilLive do
            last_msg_id: last_id,
            show_system_prompt: false,
            page_title: "Council Hub · #{room.id}",
-           has_messages: messages != []
+           has_messages: messages != [],
+           type_filter: "all",
+           message_search: "",
+           searching: false
          )
          |> stream(:messages, messages, reset: true)}
     end
@@ -97,12 +104,14 @@ defmodule CouncilHubUiWeb.CouncilLive do
   defp poll_rooms_full(socket, latest) do
     {rooms, db_connected} = load_rooms()
     new_counts = safe_room_counts(db_connected)
+    new_participants = safe_participant_counts(db_connected)
 
     socket =
       assign(socket,
         rooms: rooms,
         rooms_by_project: group_rooms_by_project(rooms),
         room_counts: new_counts,
+        participant_counts: new_participants,
         db_connected: db_connected,
         last_room_update: latest
       )
@@ -147,21 +156,78 @@ defmodule CouncilHubUiWeb.CouncilLive do
     {:noreply, assign(socket, room_filter: query)}
   end
 
+  def handle_event("filter_type", %{"type" => type}, socket) do
+    case socket.assigns.active_room do
+      nil ->
+        {:noreply, assign(socket, type_filter: type)}
+
+      room ->
+        messages = Council.list_messages_for_room(room.id, type)
+        last_id = last_message_id(messages)
+
+        {:noreply,
+         socket
+         |> assign(type_filter: type, last_msg_id: last_id, has_messages: messages != [], searching: false, message_search: "")
+         |> stream(:messages, messages, reset: true)}
+    end
+  end
+
+  def handle_event("search_messages", %{"query" => ""}, socket) do
+    case socket.assigns.active_room do
+      nil ->
+        {:noreply, assign(socket, message_search: "", searching: false)}
+
+      room ->
+        messages = Council.list_messages_for_room(room.id, socket.assigns.type_filter)
+        last_id = last_message_id(messages)
+
+        {:noreply,
+         socket
+         |> assign(message_search: "", searching: false, last_msg_id: last_id, has_messages: messages != [])
+         |> stream(:messages, messages, reset: true)}
+    end
+  end
+
+  def handle_event("search_messages", %{"query" => query}, socket) do
+    case socket.assigns.active_room do
+      nil ->
+        {:noreply, assign(socket, message_search: query)}
+
+      room ->
+        results = Council.search_messages_in_room(room.id, query)
+
+        {:noreply,
+         socket
+         |> assign(message_search: query, searching: true, has_messages: results != [])
+         |> stream(:messages, results, reset: true)}
+    end
+  end
+
   # -- Helpers --
 
   defp schedule_poll(msg, interval), do: Process.send_after(self(), msg, interval)
 
   defp poll_active_room_messages(%{assigns: %{active_room: nil}} = socket), do: socket
 
-  defp poll_active_room_messages(%{assigns: %{active_room: room, last_msg_id: last_id}} = socket) do
-    case Council.get_messages_since(room.id, last_id) do
+  defp poll_active_room_messages(
+         %{assigns: %{active_room: room, last_msg_id: last_id, type_filter: type_filter, searching: searching}} =
+           socket
+       ) do
+    case Council.get_messages_since(room.id, last_id, type_filter) do
       [] ->
         socket
 
       new_messages ->
-        socket
-        |> stream(:messages, new_messages, at: -1)
-        |> assign(last_msg_id: last_message_id(new_messages), has_messages: true)
+        new_last_id = last_message_id(new_messages)
+
+        if searching do
+          # Don't update the stream while searching — just track the new last_id
+          assign(socket, last_msg_id: new_last_id)
+        else
+          socket
+          |> stream(:messages, new_messages, at: -1)
+          |> assign(last_msg_id: new_last_id, has_messages: true)
+        end
     end
   end
 
@@ -212,6 +278,16 @@ defmodule CouncilHubUiWeb.CouncilLive do
   rescue
     e in [DBConnection.ConnectionError, Exqlite.Error] ->
       Logger.warning("Failed to load room counts: #{inspect(e)}")
+      %{}
+  end
+
+  defp safe_participant_counts(false), do: %{}
+
+  defp safe_participant_counts(true) do
+    Council.all_room_participant_counts()
+  rescue
+    e in [DBConnection.ConnectionError, Exqlite.Error] ->
+      Logger.warning("Failed to load participant counts: #{inspect(e)}")
       %{}
   end
 end

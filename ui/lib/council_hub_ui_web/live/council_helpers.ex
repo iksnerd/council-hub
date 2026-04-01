@@ -74,6 +74,18 @@ defmodule CouncilHubUiWeb.CouncilHelpers do
   def type_label(""), do: "message"
   def type_label(type), do: type
 
+  def type_color(type) do
+    case type do
+      "decision" -> "bg-green-500/15 text-green-400 border-green-500/30"
+      "action"   -> "bg-blue-500/15 text-blue-400 border-blue-500/30"
+      "critique" -> "bg-amber-500/15 text-amber-400 border-amber-500/30"
+      "code"     -> "bg-purple-500/15 text-purple-400 border-purple-500/30"
+      "review"   -> "bg-teal-500/15 text-teal-400 border-teal-500/30"
+      "thought"  -> "bg-gray-700/50 text-gray-500 border-gray-600/30"
+      _          -> "bg-gray-800/80 text-gray-400 border-gray-700/50"
+    end
+  end
+
   def render_markdown(nil), do: ""
 
   def render_markdown(content) do

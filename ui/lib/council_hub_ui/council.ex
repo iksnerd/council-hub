@@ -16,20 +16,51 @@ defmodule CouncilHubUi.Council do
     Repo.get(Room, id)
   end
 
-  def list_messages_for_room(room_id) do
+  def list_messages_for_room(room_id, type_filter \\ "all") do
+    base = from m in Message, where: m.room_id == ^room_id
+
+    base =
+      if type_filter != "all",
+        do: from(m in base, where: m.message_type == ^type_filter or m.is_summary == true),
+        else: base
+
+    Repo.all(from m in base, order_by: [desc: m.pinned, asc: m.id])
+  end
+
+  def get_messages_since(room_id, last_id, type_filter \\ "all") do
+    base = from m in Message, where: m.room_id == ^room_id and m.id > ^last_id
+
+    base =
+      if type_filter != "all",
+        do: from(m in base, where: m.message_type == ^type_filter or m.is_summary == true),
+        else: base
+
+    Repo.all(from m in base, order_by: [asc: m.id])
+  end
+
+  def search_messages_in_room(_room_id, query) when query in [nil, ""], do: []
+
+  def search_messages_in_room(room_id, query) do
+    q = "%#{String.downcase(query)}%"
+
     Repo.all(
       from m in Message,
-        where: m.room_id == ^room_id,
-        order_by: [desc: m.pinned, asc: m.id]
+        where:
+          m.room_id == ^room_id and
+            fragment("lower(?) LIKE ?", m.content, ^q),
+        order_by: [asc: m.id],
+        limit: 50
     )
   end
 
-  def get_messages_since(room_id, last_id) do
+  @doc "Returns %{room_id => distinct_author_count} for all rooms."
+  def all_room_participant_counts do
     Repo.all(
       from m in Message,
-        where: m.room_id == ^room_id and m.id > ^last_id,
-        order_by: [asc: m.id]
+        group_by: m.room_id,
+        select: {m.room_id, count(m.author, :distinct)}
     )
+    |> Map.new()
   end
 
   @doc "Returns %{room_id => count} for all rooms in a single query."

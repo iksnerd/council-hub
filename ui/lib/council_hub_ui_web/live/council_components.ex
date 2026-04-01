@@ -11,6 +11,7 @@ defmodule CouncilHubUiWeb.CouncilComponents do
   attr :room, :map, required: true
   attr :active, :boolean, default: false
   attr :count, :integer, default: 0
+  attr :participants, :integer, default: 0
 
   def room_card(assigns) do
     ~H"""
@@ -53,13 +54,18 @@ defmodule CouncilHubUiWeb.CouncilComponents do
           {tag}
         </span>
       </div>
-      <div
-        :if={@room.updated_at}
-        id={"room-time-#{@room.id}"}
-        phx-hook="RelativeTime"
-        data-timestamp={NaiveDateTime.to_iso8601(@room.updated_at)}
-        class="mt-1.5 text-[10px] text-gray-600 font-mono"
-      >
+      <div class="mt-1.5 flex items-center justify-between gap-2">
+        <div
+          :if={@room.updated_at}
+          id={"room-time-#{@room.id}"}
+          phx-hook="RelativeTime"
+          data-timestamp={NaiveDateTime.to_iso8601(@room.updated_at)}
+          class="text-[10px] text-gray-600 font-mono"
+        >
+        </div>
+        <span :if={@participants > 1} class="text-[9px] text-gray-700 font-mono shrink-0">
+          {@participants} agents
+        </span>
       </div>
     </.link>
     """
@@ -169,7 +175,7 @@ defmodule CouncilHubUiWeb.CouncilComponents do
 
   def message_bubble(assigns) do
     ~H"""
-    <div class="message-block group">
+    <div class={["message-block group", if(Map.get(@msg, :pinned, false), do: "border-l-2 border-amber-500/50 pl-1 bg-amber-500/[0.03] rounded-r-lg", else: "")]}>
       <div class="flex gap-3">
         <div
           class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 text-[11px] font-bold border mt-0.5"
@@ -183,7 +189,7 @@ defmodule CouncilHubUiWeb.CouncilComponents do
             <span class="text-[13px] font-bold" style={"color: #{author_hex(@msg.author)}"}>
               {@msg.author}
             </span>
-            <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-800/80 text-gray-400 border border-gray-700/50">
+            <span class={["inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border", type_color(@msg.message_type)]}>
               <span class={[type_icon(@msg.message_type), "w-3 h-3"]}></span>
               {type_label(@msg.message_type)}
             </span>

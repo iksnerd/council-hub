@@ -75,6 +75,21 @@ These were requested but already exist:
 | 28 | **Work item export mode** — `read_transcript(mode=work_items)` for ADO/GitHub Issue format | 1 agent | Medium | TODO |
 | 29 | **Semantic/fuzzy search** — beyond exact keyword matching for concept discovery | 2+ agents | High | TODO |
 | 30 | **`read_recent` deprecation/removal** — overlaps with `read_transcript(last_n)` and `get_messages(last_n)` | 3+ agents | Low | DEPRECATED in v0.4.0, remove in v0.5.0 |
+| 31 | **UUID message IDs** — migrate from auto-increment int to UUIDs for merge-safety and future distribution | internal | Medium | TODO — breaking change, target v1.0.0 |
+
+---
+
+## UI Dashboard Updates (v0.5.0)
+
+The Phoenix LiveView dashboard needs to reflect features shipped in v0.3.x–v0.4.0:
+
+| # | Feature | Effort | Status |
+|---|---------|--------|--------|
+| U1 | **Pinned message rendering** — highlight pinned messages with badge/visual treatment | Low | TODO |
+| U2 | **Room status badges** — color-coded status (active=green, paused=yellow, resolved=grey) | Low | TODO |
+| U3 | **Message type indicators** — colored badges for decision/action/critique/code/review/thought | Low | TODO |
+| U4 | **Room stats in sidebar** — message count, participant count, last activity per room | Medium | TODO |
+| U5 | **Search bar** — full-text search across rooms mirroring `search_messages` | Medium | TODO |
 
 ---
 

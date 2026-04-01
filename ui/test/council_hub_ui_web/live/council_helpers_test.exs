@@ -227,6 +227,42 @@ defmodule CouncilHubUiWeb.CouncilHelpersTest do
     assert CouncilHelpers.message_count_label(5) == "5"
   end
 
+  # -- type_color --
+
+  test "type_color decision is green" do
+    assert String.contains?(CouncilHelpers.type_color("decision"), "green")
+  end
+
+  test "type_color action is blue" do
+    assert String.contains?(CouncilHelpers.type_color("action"), "blue")
+  end
+
+  test "type_color critique is amber" do
+    assert String.contains?(CouncilHelpers.type_color("critique"), "amber")
+  end
+
+  test "type_color code is purple" do
+    assert String.contains?(CouncilHelpers.type_color("code"), "purple")
+  end
+
+  test "type_color review is teal" do
+    assert String.contains?(CouncilHelpers.type_color("review"), "teal")
+  end
+
+  test "type_color thought is gray" do
+    assert String.contains?(CouncilHelpers.type_color("thought"), "gray")
+  end
+
+  test "type_color unknown falls back to gray" do
+    result = CouncilHelpers.type_color("unknown")
+    assert String.contains?(result, "gray")
+  end
+
+  test "type_color nil falls back to gray" do
+    result = CouncilHelpers.type_color(nil)
+    assert String.contains?(result, "gray")
+  end
+
   # -- present? --
 
   test "present? nil is false" do

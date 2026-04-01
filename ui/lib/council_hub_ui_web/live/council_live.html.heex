@@ -51,25 +51,27 @@
       <% else %>
         <% filtered = filter_rooms(@rooms, @room_filter) %>
         <%= for {project, rooms} <- group_rooms_by_project(filtered) do %>
-          <div class="mb-3">
-            <div class="flex items-center gap-2 px-3 pt-2 pb-1.5">
+          <% has_active = Enum.any?(rooms, fn r -> @active_room && @active_room.id == r.id end) %>
+          <details open={has_active || @room_filter != "" || length(group_rooms_by_project(filtered)) == 1} class="mb-3 group/details">
+            <summary class="flex items-center gap-2 px-3 pt-2 pb-1.5 cursor-pointer list-none select-none hover:text-gray-300 transition-colors">
+              <span class="text-gray-600 group-open/details:rotate-90 transition-transform duration-150 text-[10px]">▶</span>
               <div class="w-1 h-1 rounded-full bg-blue-400/60"></div>
-              <span class="text-[10px] font-semibold text-gray-500 uppercase tracking-widest">
+              <span class="text-[10px] font-semibold text-gray-500 uppercase tracking-widest flex-1">
                 {project}
               </span>
               <span class="text-[10px] text-gray-600 font-mono">{length(rooms)}</span>
-              <div class="flex-1 border-t border-gray-800/60 ml-1"></div>
-            </div>
+            </summary>
             <div class="space-y-1">
               <%= for room <- rooms do %>
                 <.room_card
                   room={room}
                   active={@active_room && @active_room.id == room.id}
                   count={Map.get(@room_counts, room.id, 0)}
+                  participants={Map.get(@participant_counts, room.id, 0)}
                 />
               <% end %>
             </div>
-          </div>
+          </details>
         <% end %>
         <div :if={filtered == [] && @room_filter != ""} class="text-center text-gray-500 text-xs py-8">
           No rooms matching "{@room_filter}"
@@ -97,6 +99,42 @@
         count={Map.get(@room_counts, @active_room.id, 0)}
         show_system_prompt={@show_system_prompt}
       />
+
+      <%!-- Message Search + Type Filter --%>
+      <div class="px-6 py-2 border-b border-gray-800/60 flex items-center gap-3 flex-wrap">
+        <form phx-change="search_messages" class="relative flex-1 min-w-36">
+          <span class={[
+            "w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none hero-magnifying-glass",
+            if(@searching, do: "text-amber-400", else: "text-gray-600")
+          ]}></span>
+          <input
+            type="text"
+            name="query"
+            value={@message_search}
+            placeholder="Search messages..."
+            autocomplete="off"
+            phx-debounce="300"
+            class="w-full bg-gray-800/50 border border-gray-700/50 rounded-lg text-xs text-gray-300 placeholder-gray-600 pl-8 pr-3 py-1.5 focus:outline-none focus:border-amber-500/30 focus:ring-1 focus:ring-amber-500/20"
+          />
+        </form>
+        <div class="flex items-center gap-1 flex-wrap">
+          <%= for {label, value} <- [{"All", "all"}, {"Decisions", "decision"}, {"Actions", "action"}, {"Code", "code"}, {"Reviews", "review"}, {"Thoughts", "thought"}] do %>
+            <button
+              phx-click="filter_type"
+              phx-value-type={value}
+              class={[
+                "inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium border transition-colors cursor-pointer",
+                if(@type_filter == value && !@searching,
+                  do: "bg-amber-500/20 text-amber-400 border-amber-500/30",
+                  else: "bg-gray-800/60 text-gray-500 border-gray-700/40 hover:text-gray-300 hover:border-gray-600/60"
+                )
+              ]}
+            >
+              {label}
+            </button>
+          <% end %>
+        </div>
+      </div>
 
       <%!-- Message Feed --%>
       <div

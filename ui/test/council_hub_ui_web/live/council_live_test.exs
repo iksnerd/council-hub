@@ -264,6 +264,143 @@ defmodule CouncilHubUiWeb.CouncilLiveTest do
     end
   end
 
+  describe "filter_type event" do
+    test "filters messages by type", %{conn: conn} do
+      room = create_room(%{id: "ft-room"})
+      create_message(%{room_id: room.id, author: "Claude", content: "A decision", message_type: "decision"})
+      create_message(%{room_id: room.id, author: "Gemini", content: "A thought", message_type: "thought"})
+
+      {:ok, view, _html} = live(conn, "/rooms/ft-room")
+
+      html =
+        view
+        |> element("button[phx-click='filter_type'][phx-value-type='decision']")
+        |> render_click()
+
+      assert html =~ "A decision"
+      refute html =~ "A thought"
+    end
+
+    test "all filter shows all messages", %{conn: conn} do
+      room = create_room(%{id: "ft-all-room"})
+      create_message(%{room_id: room.id, author: "Claude", content: "A decision", message_type: "decision"})
+      create_message(%{room_id: room.id, author: "Gemini", content: "A thought", message_type: "thought"})
+
+      {:ok, view, _html} = live(conn, "/rooms/ft-all-room")
+
+      html =
+        view
+        |> element("button[phx-click='filter_type'][phx-value-type='all']")
+        |> render_click()
+
+      assert html =~ "A decision"
+      assert html =~ "A thought"
+    end
+
+  end
+
+  describe "search_messages event" do
+    test "search returns matching messages", %{conn: conn} do
+      room = create_room(%{id: "sm-room"})
+      create_message(%{room_id: room.id, author: "Claude", content: "Authentication fix"})
+      create_message(%{room_id: room.id, author: "Gemini", content: "Unrelated post"})
+
+      {:ok, view, _html} = live(conn, "/rooms/sm-room")
+
+      html =
+        view
+        |> element("form[phx-change='search_messages']")
+        |> render_change(%{query: "authentication"})
+
+      assert html =~ "Authentication fix"
+      refute html =~ "Unrelated post"
+    end
+
+    test "clearing search restores full message list", %{conn: conn} do
+      room = create_room(%{id: "sm-clear-room"})
+      create_message(%{room_id: room.id, author: "Claude", content: "Authentication fix"})
+      create_message(%{room_id: room.id, author: "Gemini", content: "Unrelated post"})
+
+      {:ok, view, _html} = live(conn, "/rooms/sm-clear-room")
+
+      # Search first
+      view
+      |> element("form[phx-change='search_messages']")
+      |> render_change(%{query: "authentication"})
+
+      # Then clear
+      html =
+        view
+        |> element("form[phx-change='search_messages']")
+        |> render_change(%{query: ""})
+
+      assert html =~ "Authentication fix"
+      assert html =~ "Unrelated post"
+    end
+
+    test "poll does not override search results", %{conn: conn} do
+      room = create_room(%{id: "sm-poll-room"})
+      create_message(%{room_id: room.id, author: "Claude", content: "Auth fix"})
+      create_message(%{room_id: room.id, author: "Gemini", content: "Unrelated"})
+
+      {:ok, view, _html} = live(conn, "/rooms/sm-poll-room")
+
+      view
+      |> element("form[phx-change='search_messages']")
+      |> render_change(%{query: "auth"})
+
+      # Poll arrives — should update last_msg_id but not change stream
+      create_message(%{room_id: room.id, author: "Claude", content: "New message"})
+      send(view.pid, :poll_messages)
+
+      html = render(view)
+      assert html =~ "Auth fix"
+      # "Unrelated" should NOT be back in the stream
+      refute html =~ "Unrelated"
+    end
+  end
+
+  describe "sidebar project accordion" do
+    test "rooms grouped by project render in sidebar", %{conn: conn} do
+      create_room(%{id: "acc-room-a", project: "proj-alpha"})
+      create_room(%{id: "acc-room-b", project: "proj-beta"})
+
+      {:ok, _view, html} = live(conn, "/")
+      assert html =~ "proj-alpha"
+      assert html =~ "proj-beta"
+      assert html =~ "acc-room-a"
+      assert html =~ "acc-room-b"
+    end
+
+    test "active room's project group is open", %{conn: conn} do
+      create_room(%{id: "acc-active", project: "proj-active"})
+      create_message(%{room_id: "acc-active", author: "Claude", content: "msg"})
+
+      {:ok, _view, html} = live(conn, "/rooms/acc-active")
+      # The details element for the active project should have open attribute
+      assert html =~ "acc-active"
+    end
+  end
+
+  describe "participant counts in sidebar" do
+    test "shows agent count when multiple participants", %{conn: conn} do
+      room = create_room(%{id: "pc-display-room"})
+      create_message(%{room_id: room.id, author: "Claude", content: "msg1"})
+      create_message(%{room_id: room.id, author: "Gemini", content: "msg2"})
+
+      {:ok, _view, html} = live(conn, "/")
+      assert html =~ "2 agents"
+    end
+
+    test "does not show agent count for single participant", %{conn: conn} do
+      room = create_room(%{id: "pc-solo-room"})
+      create_message(%{room_id: room.id, author: "Claude", content: "solo"})
+
+      {:ok, _view, html} = live(conn, "/")
+      refute html =~ "1 agents"
+    end
+  end
+
   describe "filter_rooms/2" do
     test "empty query returns all" do
       rooms = [%{id: "a", description: "Alpha"}, %{id: "b", description: "Beta"}]

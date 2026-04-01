@@ -170,6 +170,107 @@ defmodule CouncilHubUi.CouncilTest do
     end
   end
 
+  describe "list_messages_for_room/2 with type_filter" do
+    test "filters messages by type" do
+      room = create_room(%{id: "tf-room"})
+      create_message(%{room_id: room.id, content: "A decision", message_type: "decision"})
+      create_message(%{room_id: room.id, content: "An action", message_type: "action"})
+      create_message(%{room_id: room.id, content: "A thought", message_type: "thought"})
+
+      decisions = Council.list_messages_for_room(room.id, "decision")
+      assert length(decisions) == 1
+      assert hd(decisions).message_type == "decision"
+    end
+
+    test "always includes summaries regardless of filter" do
+      room = create_room(%{id: "tf-sum-room"})
+      create_message(%{room_id: room.id, content: "A decision", message_type: "decision"})
+      create_message(%{room_id: room.id, content: "Summary", is_summary: true})
+
+      decisions = Council.list_messages_for_room(room.id, "decision")
+      contents = Enum.map(decisions, & &1.content)
+      assert "A decision" in contents
+      assert "Summary" in contents
+    end
+
+    test "all filter returns everything" do
+      room = create_room(%{id: "tf-all-room"})
+      create_message(%{room_id: room.id, content: "d", message_type: "decision"})
+      create_message(%{room_id: room.id, content: "a", message_type: "action"})
+
+      all = Council.list_messages_for_room(room.id, "all")
+      assert length(all) == 2
+    end
+  end
+
+  describe "get_messages_since/3 with type_filter" do
+    test "filters new messages by type" do
+      room = create_room(%{id: "gs-tf-room"})
+      m1 = create_message(%{room_id: room.id, content: "Old decision", message_type: "decision"})
+      _m2 = create_message(%{room_id: room.id, content: "New thought", message_type: "thought"})
+      _m3 = create_message(%{room_id: room.id, content: "New decision", message_type: "decision"})
+
+      msgs = Council.get_messages_since(room.id, m1.id, "decision")
+      assert length(msgs) == 1
+      assert hd(msgs).content == "New decision"
+    end
+  end
+
+  describe "search_messages_in_room/2" do
+    test "finds messages by content" do
+      room = create_room(%{id: "search-room"})
+      create_message(%{room_id: room.id, content: "Authentication fix", author: "Claude"})
+      create_message(%{room_id: room.id, content: "Unrelated post", author: "Gemini"})
+
+      results = Council.search_messages_in_room(room.id, "authentication")
+      assert length(results) == 1
+      assert hd(results).content == "Authentication fix"
+    end
+
+    test "search is case-insensitive" do
+      room = create_room(%{id: "search-case"})
+      create_message(%{room_id: room.id, content: "FaceID setup", author: "Claude"})
+
+      assert length(Council.search_messages_in_room(room.id, "faceid")) == 1
+      assert length(Council.search_messages_in_room(room.id, "FACEID")) == 1
+    end
+
+    test "returns empty list for blank query" do
+      room = create_room(%{id: "search-blank"})
+      create_message(%{room_id: room.id, content: "Some content"})
+
+      assert Council.search_messages_in_room(room.id, "") == []
+      assert Council.search_messages_in_room(room.id, nil) == []
+    end
+
+    test "only returns messages from the given room" do
+      r1 = create_room(%{id: "search-r1"})
+      r2 = create_room(%{id: "search-r2"})
+      create_message(%{room_id: r1.id, content: "authentication"})
+      create_message(%{room_id: r2.id, content: "authentication"})
+
+      results = Council.search_messages_in_room(r1.id, "authentication")
+      assert length(results) == 1
+      assert hd(results).room_id == r1.id
+    end
+  end
+
+  describe "all_room_participant_counts/0" do
+    test "returns distinct author count per room" do
+      r1 = create_room(%{id: "pc-r1"})
+      create_message(%{room_id: r1.id, author: "Claude"})
+      create_message(%{room_id: r1.id, author: "Gemini"})
+      create_message(%{room_id: r1.id, author: "Claude"})
+
+      counts = Council.all_room_participant_counts()
+      assert counts[r1.id] == 2
+    end
+
+    test "returns empty map when no messages" do
+      assert Council.all_room_participant_counts() == %{}
+    end
+  end
+
   describe "format_transcript/2" do
     test "formats room header and messages" do
       room = create_room(%{id: "fmt-room", description: "Format test", project: "proj", tech_stack: "Go", tags: "tag1", status: "active"})
