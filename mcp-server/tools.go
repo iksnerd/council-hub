@@ -57,7 +57,8 @@ type ListRoomsInput struct {
 	Tag     string `json:"tag"`
 	Status  string `json:"status"`
 	Search  string `json:"search"`
-	Compact string `json:"compact"`
+	Compact string `json:"compact"` // deprecated: compact is now default; kept for backwards compat
+	Verbose string `json:"verbose"`
 }
 
 // UpdateRoomInput represents the parameters for updating a room's metadata.
@@ -257,13 +258,13 @@ func registerTools(cs *CouncilServer) {
 
 	mcp.AddTool(cs.mcp, &mcp.Tool{
 		Name:        "list_rooms",
-		Description: "List council rooms, optionally filtered by project, tag, status, or keyword search. Returns room metadata sorted by recent activity. Use compact=true for a one-line-per-room summary (saves ~60-80% tokens).",
+		Description: "List council rooms, optionally filtered by project, tag, status, or keyword search. Returns compact one-line-per-room format by default (saves ~60-80% tokens vs verbose). Set verbose=true for full metadata.",
 		InputSchema: schema(nil, map[string]map[string]any{
 			"project": prop("string", "Filter by project name"),
 			"tag":     prop("string", "Filter by tag"),
 			"status":  prop("string", "Filter by status (active, paused, resolved)"),
 			"search":  prop("string", "Keyword search across room ID, topic/description, and tags"),
-			"compact": prop("string", "Set to 'true' for one-line-per-room output (id | project | status | msgs | topic | last_activity)"),
+			"verbose": prop("string", "Set to 'true' for full metadata per room (system_prompt, tech_stack, tags, related_rooms)"),
 		}),
 	}, cs.handleListRooms)
 
@@ -641,7 +642,10 @@ func (cs *CouncilServer) handleListRooms(ctx context.Context, req *mcp.CallToolR
 	var b strings.Builder
 	fmt.Fprintf(&b, "Found %d room(s):\n\n", len(rooms))
 
-	if args.Compact == "true" {
+	// Compact is the default. Verbose mode is opt-in via verbose=true.
+	// Legacy compact=false maps to verbose for backwards compat.
+	useVerbose := args.Verbose == "true" || args.Compact == "false"
+	if !useVerbose {
 		// Fetch message counts for compact display
 		msgCounts := cs.getMessageCounts()
 
@@ -1249,6 +1253,7 @@ func (cs *CouncilServer) readSingleTranscript(args ReadTranscriptInput) (*mcp.Ca
 		if len(latestMsgs) == 0 {
 			b.WriteString("No messages yet.\n")
 		} else {
+			seenType := map[string]int{}
 			for _, m := range latestMsgs {
 				if pinned != nil && m.ID == pinned.ID {
 					continue // already shown above
@@ -1258,7 +1263,12 @@ func (cs *CouncilServer) readSingleTranscript(args ReadTranscriptInput) (*mcp.Ca
 				if len(snippet) > 200 {
 					snippet = snippet[:200] + "..."
 				}
-				fmt.Fprintf(&b, "**Latest %s** [#%d %s] %s:\n  %s\n\n", m.MessageType, m.ID, ts, m.Author, snippet)
+				seenType[m.MessageType]++
+				label := "Latest"
+				if seenType[m.MessageType] > 1 {
+					label = "Previous"
+				}
+				fmt.Fprintf(&b, "**%s %s** [#%d %s] %s:\n  %s\n\n", label, m.MessageType, m.ID, ts, m.Author, snippet)
 			}
 		}
 		return msg(b.String())
@@ -1320,7 +1330,11 @@ func (cs *CouncilServer) readSingleTranscript(args ReadTranscriptInput) (*mcp.Ca
 		if latestID > 0 {
 			fmt.Fprintf(&b, " (latest: #%d)", latestID)
 		}
-		b.WriteString("\n---\n")
+		b.WriteString("\n")
+		if room.SystemPrompt != "" {
+			fmt.Fprintf(&b, "**System Prompt:** %s\n", room.SystemPrompt)
+		}
+		b.WriteString("---\n")
 
 		// Include pinned message at top of delta reads for context
 		pinned, _ := cs.getPinnedMessage(args.RoomID)
@@ -1411,17 +1425,59 @@ func (cs *CouncilServer) handleGetDigest(ctx context.Context, req *mcp.CallToolR
 	fmt.Fprintf(&b, "%d room(s) with new activity:\n\n", len(digest))
 
 	for _, d := range digest {
-		excerpt := d.LatestExcerpt
-		if len(excerpt) > 120 {
-			excerpt = excerpt[:120]
-			if i := strings.LastIndex(excerpt, " "); i > 80 {
-				excerpt = excerpt[:i]
-			}
-			excerpt += "..."
-		}
-		excerpt = strings.ReplaceAll(excerpt, "\n", " ")
+		excerpt := digestExcerpt(d.LatestExcerpt)
 		fmt.Fprintf(&b, "- **%s** | %d new msg(s) | %s: %s\n", d.RoomID, d.NewMessages, d.LatestAuthor, excerpt)
 	}
 
 	return msg(b.String())
+}
+
+// digestExcerpt extracts a clean one-line summary from message content.
+// Prefers the first markdown heading, then the first non-empty sentence,
+// then falls back to a word-boundary truncation at 120 chars.
+func digestExcerpt(content string) string {
+	content = strings.TrimSpace(content)
+	if content == "" {
+		return ""
+	}
+
+	// Try first markdown heading (## Heading or # Heading)
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "#") {
+			heading := strings.TrimLeft(line, "# ")
+			if heading != "" {
+				if len(heading) > 120 {
+					heading = heading[:120] + "..."
+				}
+				return heading
+			}
+		}
+		// Stop looking after first non-empty non-heading line
+		if line != "" {
+			break
+		}
+	}
+
+	// Try first sentence (ends with . ! ?)
+	flat := strings.ReplaceAll(content, "\n", " ")
+	for i, ch := range flat {
+		if (ch == '.' || ch == '!' || ch == '?') && i > 10 {
+			sentence := strings.TrimSpace(flat[:i+1])
+			if len(sentence) <= 150 {
+				return sentence
+			}
+			break
+		}
+	}
+
+	// Fallback: word-boundary truncation
+	if len(flat) > 120 {
+		truncated := flat[:120]
+		if i := strings.LastIndex(truncated, " "); i > 80 {
+			truncated = truncated[:i]
+		}
+		return truncated + "..."
+	}
+	return flat
 }

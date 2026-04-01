@@ -73,9 +73,7 @@ func TestHandleListRooms(t *testing.T) {
 	if !strings.Contains(text, "h-list-1") || !strings.Contains(text, "h-list-2") {
 		t.Error("list missing room IDs")
 	}
-	if !strings.Contains(text, "Related: related-room") {
-		t.Error("list missing related rooms")
-	}
+	// default output is compact — no Related field; use verbose=true to see it
 }
 
 func TestHandleListRoomsEmpty(t *testing.T) {
@@ -143,13 +141,13 @@ func TestHandleListRoomsNonCompact(t *testing.T) {
 	cs := setupTestServer(t)
 	mustCreateRoom(t, cs, "h-verbose-1", withDescription("Full detail room"), withProject("proj"), withTechStack("Go, Docker"), withTags("auth"), withRelatedRooms("related-a"))
 
-	res, _, _ := cs.handleListRooms(context.Background(), nil, ListRoomsInput{})
+	res, _, _ := cs.handleListRooms(context.Background(), nil, ListRoomsInput{Verbose: "true"})
 	text := resultText(res)
 	if !strings.Contains(text, "Tech: Go, Docker") {
-		t.Error("non-compact should include Tech field")
+		t.Error("verbose mode should include Tech field")
 	}
 	if !strings.Contains(text, "Related: related-a") {
-		t.Error("non-compact should include Related field")
+		t.Error("verbose mode should include Related field")
 	}
 }
 
@@ -169,10 +167,10 @@ func TestHandleListRoomsWithTechStack(t *testing.T) {
 	cs := setupTestServer(t)
 	mustCreateRoom(t, cs, "h-list-tech", withTechStack("Go, SQLite"))
 
-	res, _, _ := cs.handleListRooms(context.Background(), nil, ListRoomsInput{})
+	res, _, _ := cs.handleListRooms(context.Background(), nil, ListRoomsInput{Verbose: "true"})
 	text := resultText(res)
 	if !strings.Contains(text, "Tech: Go, SQLite") {
-		t.Errorf("expected tech stack in listing, got: %s", text)
+		t.Errorf("expected tech stack in verbose listing, got: %s", text)
 	}
 }
 

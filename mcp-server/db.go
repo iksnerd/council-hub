@@ -85,7 +85,7 @@ func NewCouncilServer(dbPath string, logger *slog.Logger) (*CouncilServer, error
 
 	mcpServer := mcp.NewServer(&mcp.Implementation{
 		Name:    "council-hub",
-		Version: "0.5.0",
+		Version: "0.5.1",
 	}, &mcp.ServerOptions{
 		Logger:       logger,
 		Capabilities: &mcp.ServerCapabilities{},
@@ -714,16 +714,17 @@ func (cs *CouncilServer) getMessagesAfterID(roomID string, afterID int64) ([]Mes
 
 // getLatestPerType returns the most recent message for each message_type in a room.
 func (cs *CouncilServer) getLatestPerType(roomID string) ([]Message, error) {
+	// Return up to 2 most recent messages per type so agents see both the latest
+	// and its predecessor (useful when the latest superseded an earlier key message).
 	rows, err := cs.db.Query(`
-		SELECT m.id, m.room_id, m.author, m.content, m.message_type, m.is_summary, m.reply_to, m.pinned, m.timestamp
-		FROM messages m
-		INNER JOIN (
-			SELECT message_type, MAX(id) as max_id
+		SELECT id, room_id, author, content, message_type, is_summary, reply_to, pinned, timestamp
+		FROM (
+			SELECT *, ROW_NUMBER() OVER (PARTITION BY message_type ORDER BY id DESC) as rn
 			FROM messages
 			WHERE room_id = ? AND is_summary = 0
-			GROUP BY message_type
-		) latest ON m.id = latest.max_id
-		ORDER BY m.timestamp DESC`,
+		) ranked
+		WHERE rn <= 2
+		ORDER BY message_type, id DESC`,
 		roomID,
 	)
 	if err != nil {

@@ -308,12 +308,15 @@ func TestHandleReadTranscriptSummaryMode(t *testing.T) {
 	if !strings.Contains(text, "summary") {
 		t.Error("expected summary header")
 	}
-	// Should include latest per type, not the old thought
+	// Should include latest thought and the previous one (top 2 per type)
 	if !strings.Contains(text, "Latest thought") {
 		t.Error("expected latest thought")
 	}
-	if strings.Contains(text, "Old thought") {
-		t.Error("should not contain old thought, only latest per type")
+	if !strings.Contains(text, "Previous thought") {
+		t.Error("expected previous thought label for second entry")
+	}
+	if !strings.Contains(text, "Old thought") {
+		t.Error("expected old thought content to appear as Previous thought")
 	}
 	if !strings.Contains(text, "A decision was made") {
 		t.Error("expected the decision")
