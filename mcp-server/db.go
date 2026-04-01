@@ -85,7 +85,7 @@ func NewCouncilServer(dbPath string, logger *slog.Logger) (*CouncilServer, error
 
 	mcpServer := mcp.NewServer(&mcp.Implementation{
 		Name:    "council-hub",
-		Version: "0.3.2",
+		Version: "0.4.0",
 	}, &mcp.ServerOptions{
 		Logger:       logger,
 		Capabilities: &mcp.ServerCapabilities{},
@@ -813,6 +813,57 @@ func (cs *CouncilServer) listRooms(project, tag, status, search string) ([]Room,
 		rooms = append(rooms, r)
 	}
 	return rooms, rows.Err()
+}
+
+// DigestEntry represents one room's activity in a project digest.
+type DigestEntry struct {
+	RoomID        string
+	NewMessages   int
+	LatestAuthor  string
+	LatestExcerpt string
+}
+
+// getDigest returns rooms with messages since the given timestamp.
+func (cs *CouncilServer) getDigest(project, since string) ([]DigestEntry, error) {
+	// Normalize timestamp — accept both "2026-03-31T12:00:00" and "2026-03-31 12:00:00"
+	since = strings.ReplaceAll(since, "T", " ")
+
+	query := `
+		SELECT m.room_id, COUNT(*) as new_msgs,
+		       (SELECT author FROM messages WHERE room_id = m.room_id ORDER BY id DESC LIMIT 1) as latest_author,
+		       (SELECT content FROM messages WHERE room_id = m.room_id ORDER BY id DESC LIMIT 1) as latest_content
+		FROM messages m`
+	var args []any
+
+	if project != "" {
+		query += ` JOIN rooms r ON m.room_id = r.id`
+	}
+
+	query += ` WHERE m.timestamp > ?`
+	args = append(args, since)
+
+	if project != "" {
+		query += ` AND r.project = ?`
+		args = append(args, project)
+	}
+
+	query += ` GROUP BY m.room_id ORDER BY MAX(m.timestamp) DESC`
+
+	rows, err := cs.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var entries []DigestEntry
+	for rows.Next() {
+		var d DigestEntry
+		if err := rows.Scan(&d.RoomID, &d.NewMessages, &d.LatestAuthor, &d.LatestExcerpt); err != nil {
+			return nil, err
+		}
+		entries = append(entries, d)
+	}
+	return entries, rows.Err()
 }
 
 // getMessageCounts returns a map of room_id -> message count for all rooms.

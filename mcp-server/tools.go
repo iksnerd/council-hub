@@ -9,6 +9,17 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
+// toolResultText extracts the text content from a CallToolResult.
+func toolResultText(r *mcp.CallToolResult) string {
+	if r == nil || len(r.Content) == 0 {
+		return ""
+	}
+	if tc, ok := r.Content[0].(*mcp.TextContent); ok {
+		return tc.Text
+	}
+	return ""
+}
+
 // ToolOutput is the structured output type for tool results.
 type ToolOutput struct {
 	Message string `json:"message"`
@@ -72,10 +83,18 @@ type DeleteRoomInput struct {
 
 // ReadTranscriptInput represents the parameters for reading a room transcript.
 type ReadTranscriptInput struct {
-	RoomID  string `json:"room_id"`
-	LastN   string `json:"last_n"`
-	AfterID string `json:"after_id"`
-	Mode    string `json:"mode"`
+	RoomID         string `json:"room_id"`
+	RoomIDs        string `json:"room_ids"`
+	LastN          string `json:"last_n"`
+	AfterID        string `json:"after_id"`
+	Mode           string `json:"mode"`
+	IncludeRelated string `json:"include_related"`
+}
+
+// DigestInput represents the parameters for the project digest tool.
+type DigestInput struct {
+	Project string `json:"project"`
+	Since   string `json:"since"`
 }
 
 // SearchMessagesInput represents the parameters for searching messages.
@@ -310,7 +329,7 @@ func registerTools(cs *CouncilServer) {
 
 	mcp.AddTool(cs.mcp, &mcp.Tool{
 		Name:        "read_recent",
-		Description: "Quick-check the last N messages from a room (default 10, max 50). Lightweight: includes room topic header but no system_prompt. Best for rooms you already know. For full context with system_prompt, use read_transcript(last_n=N) instead.",
+		Description: "DEPRECATED — prefer read_transcript(last_n=N) which includes system_prompt and room context. Quick-check the last N messages from a room (default 10, max 50). Lightweight: includes room topic header but no system_prompt.",
 		InputSchema: schema([]string{"room_id"}, map[string]map[string]any{
 			"room_id": prop("string", "Target room ID"),
 			"limit":   prop("string", "Number of recent messages to return (default 10, max 50)"),
@@ -364,14 +383,25 @@ func registerTools(cs *CouncilServer) {
 
 	mcp.AddTool(cs.mcp, &mcp.Tool{
 		Name:        "read_transcript",
-		Description: "Read a room's transcript with full context (room header, system_prompt, pinned message, messages). The primary tool for reading rooms. Supports: last_n for recent messages, after_id for delta reads (includes pinned message for context), mode=summary for orientation (pinned + latest per type), mode=changelog for decisions+actions only.",
-		InputSchema: schema([]string{"room_id"}, map[string]map[string]any{
-			"room_id":  prop("string", "Target room ID"),
-			"last_n":   prop("string", "Return only the last N messages (default: all). Keeps room header and system prompt."),
-			"after_id": prop("string", "Return only messages with ID greater than this value. For delta reads after context compaction."),
-			"mode":     prop("string", "Set to 'summary' for system_prompt + latest per type, or 'changelog' for only decision + action messages chronologically (ideal for PR descriptions/release notes)."),
+		Description: "Read a room's transcript with full context (room header, system_prompt, pinned message, messages). The primary tool for reading rooms. Supports: last_n for recent messages, after_id for delta reads (includes pinned message for context), mode=summary for orientation (pinned + latest per type), mode=changelog for decisions+actions only. Use room_ids for batch multi-room reads. Use include_related=true to auto-append related room summaries.",
+		InputSchema: schema(nil, map[string]map[string]any{
+			"room_id":         prop("string", "Target room ID (use this OR room_ids, not both)"),
+			"room_ids":        prop("string", "Comma-separated room IDs for batch reads (e.g. room-a,room-b,room-c). Each room rendered with the same mode/last_n settings."),
+			"last_n":          prop("string", "Return only the last N messages (default: all). Keeps room header and system prompt."),
+			"after_id":        prop("string", "Return only messages with ID greater than this value. For delta reads after context compaction."),
+			"mode":            prop("string", "Set to 'summary' for system_prompt + latest per type, or 'changelog' for only decision + action messages chronologically (ideal for PR descriptions/release notes)."),
+			"include_related": prop("string", "Set to 'true' to append a summary of each related room after the main transcript. Resolves related_rooms automatically."),
 		}),
 	}, cs.handleReadTranscript)
+
+	mcp.AddTool(cs.mcp, &mcp.Tool{
+		Name:        "get_digest",
+		Description: "Get a project activity digest showing rooms with new messages since a given timestamp. Returns room ID, new message count, and latest message excerpt per room. Perfect for start-of-session 'what changed?' orientation.",
+		InputSchema: schema([]string{"since"}, map[string]map[string]any{
+			"project": prop("string", "Filter to rooms in this project (optional — omit for all projects)"),
+			"since":   prop("string", "ISO timestamp (e.g. 2026-03-31T12:00:00). Returns only rooms with messages after this time."),
+		}),
+	}, cs.handleGetDigest)
 }
 
 func (cs *CouncilServer) handleCreateRoom(ctx context.Context, req *mcp.CallToolRequest, args CreateRoomInput) (*mcp.CallToolResult, ToolOutput, error) {
@@ -501,7 +531,7 @@ func (cs *CouncilServer) handlePostToRoom(ctx context.Context, req *mcp.CallTool
 	}
 
 	cs.logger.Info("Message posted", "room_id", args.RoomID, "author", args.Author, "type", args.MessageType, "msg_id", msgID)
-	return msg(fmt.Sprintf("Message #%d posted to room '%s' by %s.", msgID, args.RoomID, args.Author))
+	return msg(fmt.Sprintf("Message #%d posted to room '%s' by %s.\n\n**Cursor:** message_id=%d, room_id=%s", msgID, args.RoomID, args.Author, msgID, args.RoomID))
 }
 
 func (cs *CouncilServer) handleSignalStatus(ctx context.Context, req *mcp.CallToolRequest, args SignalStatusInput) (*mcp.CallToolResult, ToolOutput, error) {
@@ -778,7 +808,11 @@ func (cs *CouncilServer) handleSearchMessages(ctx context.Context, req *mcp.Call
 			ts := m.Timestamp.Format("2006-01-02 15:04")
 			excerpt := m.Content
 			if len(excerpt) > 120 {
-				excerpt = excerpt[:120] + "..."
+				excerpt = excerpt[:120]
+				if i := strings.LastIndex(excerpt, " "); i > 80 {
+					excerpt = excerpt[:i]
+				}
+				excerpt += "..."
 			}
 			// Replace newlines in excerpt for single-line display
 			excerpt = strings.ReplaceAll(excerpt, "\n", " ")
@@ -1130,8 +1164,80 @@ func (cs *CouncilServer) handleReadTranscript(ctx context.Context, req *mcp.Call
 		}, ToolOutput{Message: text}, nil
 	}
 
+	// Batch mode: room_ids takes precedence
+	if args.RoomIDs != "" {
+		ids := strings.Split(args.RoomIDs, ",")
+		var combined strings.Builder
+		for i, id := range ids {
+			id = strings.TrimSpace(id)
+			if id == "" {
+				continue
+			}
+			if i > 0 {
+				combined.WriteString("\n---\n\n")
+			}
+			singleArgs := ReadTranscriptInput{
+				RoomID:  id,
+				LastN:   args.LastN,
+				AfterID: args.AfterID,
+				Mode:    args.Mode,
+			}
+			result, _, err := cs.readSingleTranscript(singleArgs)
+			if err != nil {
+				fmt.Fprintf(&combined, "# %s — Error: %s\n", id, err.Error())
+			} else {
+				combined.WriteString(toolResultText(result))
+			}
+		}
+		return msg(combined.String())
+	}
+
 	if args.RoomID == "" {
-		return msg("Error: room_id is required.")
+		return msg("Error: room_id or room_ids is required.")
+	}
+
+	result, output, err := cs.readSingleTranscript(args)
+	if err != nil {
+		return nil, output, err
+	}
+
+	// Append related room summaries if requested
+	if args.IncludeRelated == "true" {
+		room, roomErr := cs.getRoom(args.RoomID)
+		if roomErr == nil && room.RelatedRooms != "" {
+			var related strings.Builder
+			related.WriteString(toolResultText(result))
+			relatedIDs := strings.Split(room.RelatedRooms, ",")
+			for _, rid := range relatedIDs {
+				rid = strings.TrimSpace(rid)
+				if rid == "" {
+					continue
+				}
+				related.WriteString("\n---\n\n")
+				summaryArgs := ReadTranscriptInput{
+					RoomID: rid,
+					Mode:   "summary",
+				}
+				sResult, _, sErr := cs.readSingleTranscript(summaryArgs)
+				if sErr != nil {
+					fmt.Fprintf(&related, "# %s (related) — Error: %s\n", rid, sErr.Error())
+				} else {
+					related.WriteString(toolResultText(sResult))
+				}
+			}
+			return msg(related.String())
+		}
+	}
+
+	return result, output, err
+}
+
+// readSingleTranscript handles a single room transcript read (all modes).
+func (cs *CouncilServer) readSingleTranscript(args ReadTranscriptInput) (*mcp.CallToolResult, ToolOutput, error) {
+	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: text}},
+		}, ToolOutput{Message: text}, nil
 	}
 
 	room, err := cs.getRoom(args.RoomID)
@@ -1290,4 +1396,54 @@ func (cs *CouncilServer) handleReadTranscript(ctx context.Context, req *mcp.Call
 
 	transcript := formatTranscript(room, messages)
 	return msg(transcript)
+}
+
+// handleGetDigest returns a project activity digest.
+func (cs *CouncilServer) handleGetDigest(ctx context.Context, req *mcp.CallToolRequest, args DigestInput) (*mcp.CallToolResult, ToolOutput, error) {
+	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: text}},
+		}, ToolOutput{Message: text}, nil
+	}
+
+	if args.Since == "" {
+		return msg("Error: since is required (ISO timestamp, e.g. 2026-03-31T12:00:00).")
+	}
+
+	digest, err := cs.getDigest(args.Project, args.Since)
+	if err != nil {
+		cs.logger.Error("Failed to get digest", "project", args.Project, "since", args.Since, "error", err)
+		return msg(fmt.Sprintf("Error: %s", err.Error()))
+	}
+
+	if len(digest) == 0 {
+		projectNote := ""
+		if args.Project != "" {
+			projectNote = fmt.Sprintf(" in project '%s'", args.Project)
+		}
+		return msg(fmt.Sprintf("No new activity%s since %s.", projectNote, args.Since))
+	}
+
+	var b strings.Builder
+	projectNote := ""
+	if args.Project != "" {
+		projectNote = fmt.Sprintf(" [%s]", args.Project)
+	}
+	fmt.Fprintf(&b, "# Activity Digest%s — since %s\n\n", projectNote, args.Since)
+	fmt.Fprintf(&b, "%d room(s) with new activity:\n\n", len(digest))
+
+	for _, d := range digest {
+		excerpt := d.LatestExcerpt
+		if len(excerpt) > 120 {
+			excerpt = excerpt[:120]
+			if i := strings.LastIndex(excerpt, " "); i > 80 {
+				excerpt = excerpt[:i]
+			}
+			excerpt += "..."
+		}
+		excerpt = strings.ReplaceAll(excerpt, "\n", " ")
+		fmt.Fprintf(&b, "- **%s** | %d new msg(s) | %s: %s\n", d.RoomID, d.NewMessages, d.LatestAuthor, excerpt)
+	}
+
+	return msg(b.String())
 }
