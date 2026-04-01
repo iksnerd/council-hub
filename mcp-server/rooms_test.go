@@ -346,3 +346,138 @@ func TestNewColumnsUsable(t *testing.T) {
 		t.Errorf("expected reply_to 42, got %d", msgs[0].ReplyTo)
 	}
 }
+
+// -- updateRoom: all fields set (covers every branch) --
+
+func TestUpdateRoomAllFields(t *testing.T) {
+	cs := setupTestServer(t)
+	mustCreateRoom(t, cs, "upd-all", withDescription("Topic"), withProject("Proj"), withTechStack("Tech"), withTags("Tags"), withSystemPrompt("Prompt"), withRelatedRooms("Related"))
+
+	err := cs.updateRoom("upd-all", "New Topic", "New Proj", "New Tech", "New Tags", "New Prompt", "New Related")
+	if err != nil {
+		t.Fatalf("updateRoom failed: %v", err)
+	}
+
+	room, _ := cs.getRoom("upd-all")
+	if room.Description != "New Topic" {
+		t.Errorf("expected 'New Topic', got '%s'", room.Description)
+	}
+	if room.RelatedRooms != "New Related" {
+		t.Errorf("expected 'New Related', got '%s'", room.RelatedRooms)
+	}
+}
+
+// -- listRooms: status filter --
+
+func TestListRoomsByStatusFilter(t *testing.T) {
+	cs := setupTestServer(t)
+	mustCreateRoom(t, cs, "ls-active")
+	mustCreateRoom(t, cs, "ls-resolved")
+	cs.updateStatus("ls-resolved", "resolved")
+
+	rooms, _ := cs.listRooms("", "", "active", "")
+	if len(rooms) != 1 || rooms[0].ID != "ls-active" {
+		t.Errorf("expected only active room, got %d rooms", len(rooms))
+	}
+
+	rooms, _ = cs.listRooms("", "", "resolved", "")
+	if len(rooms) != 1 || rooms[0].ID != "ls-resolved" {
+		t.Errorf("expected only resolved room, got %d rooms", len(rooms))
+	}
+}
+
+// -- NewCouncilServer with file DB to exercise non-memory DSN path --
+
+func TestNewCouncilServerFileDSN(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := tmpDir + "/test.db"
+	cs, err := NewCouncilServer(dbPath, testLogger())
+	if err != nil {
+		t.Fatalf("NewCouncilServer failed: %v", err)
+	}
+	defer cs.db.Close()
+
+	// Verify it works
+	mustCreateRoom(t, cs, "file-room")
+}
+
+// -- archiveRoom with :memory: DB (different archive dir logic) --
+
+func TestArchiveRoomMemoryDB(t *testing.T) {
+	cs := setupTestServer(t)
+	mustCreateRoom(t, cs, "mem-archive")
+	mustPost(t, cs, "mem-archive", "Claude", "test")
+
+	path, err := cs.archiveRoom("mem-archive")
+	if err != nil {
+		t.Fatalf("archiveRoom failed: %v", err)
+	}
+	if !strings.Contains(path, "archives") {
+		t.Errorf("expected archives in path, got: %s", path)
+	}
+}
+
+// -- deleteRoom: error wrapping includes room ID context --
+
+func TestDeleteRoomErrorWrapping(t *testing.T) {
+	cs := setupTestServer(t)
+
+	err := cs.deleteRoom("nonexistent")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "nonexistent") {
+		t.Errorf("error should contain room ID, got: %s", err)
+	}
+}
+
+// -- deleteRoom: message cleanup error path (drop messages table to trigger) --
+
+func TestDeleteRoomMessageCleanupError(t *testing.T) {
+	cs := setupTestServer(t)
+	mustCreateRoom(t, cs, "del-msg-err")
+	mustPost(t, cs, "del-msg-err", "Claude", "msg")
+
+	// Drop messages table so DELETE FROM messages fails
+	cs.db.Exec("DROP TABLE messages")
+
+	err := cs.deleteRoom("del-msg-err")
+	if err == nil {
+		t.Fatal("expected error when messages table is missing")
+	}
+	if !strings.Contains(err.Error(), "delete messages") {
+		t.Errorf("expected 'delete messages' in error, got: %s", err)
+	}
+}
+
+// -- deleteRoom: room DELETE itself fails (closed DB) --
+
+func TestDeleteRoomExecError(t *testing.T) {
+	cs := setupTestServer(t)
+	mustCreateRoom(t, cs, "del-exec-err")
+	cs.db.Close()
+
+	err := cs.deleteRoom("del-exec-err")
+	if err == nil {
+		t.Fatal("expected error on closed DB")
+	}
+	if !strings.Contains(err.Error(), "delete room") {
+		t.Errorf("expected 'delete room' in error, got: %s", err)
+	}
+}
+
+// -- archiveRoom: getTranscript fails --
+
+func TestArchiveRoomTranscriptError(t *testing.T) {
+	cs := setupTestServer(t)
+	mustCreateRoom(t, cs, "arch-transcript-err")
+	mustPost(t, cs, "arch-transcript-err", "Claude", "msg")
+	// Corrupt messages table so getTranscript fails
+	cs.db.Exec("ALTER TABLE messages RENAME TO messages_old")
+	cs.db.Exec("CREATE TABLE messages AS SELECT id, room_id FROM messages_old")
+
+	_, err := cs.archiveRoom("arch-transcript-err")
+	if err == nil {
+		t.Error("expected transcript error during archive")
+	}
+}

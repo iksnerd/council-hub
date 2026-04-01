@@ -11,8 +11,8 @@ import (
 func TestHandleTranscriptResource(t *testing.T) {
 	cs := setupTestServer(t)
 	registerResources(cs)
-	cs.createRoom("res-room", "Resource test", "proj", "Go", "tag", "Be helpful", "related-a")
-	cs.postMessage("res-room", "Claude", "Hello", "thought", 0)
+	mustCreateRoom(t, cs, "res-room", withProject("proj"), withTechStack("Go"), withTags("tag"), withSystemPrompt("Be helpful"), withRelatedRooms("related-a"))
+	mustPostTyped(t, cs, "res-room", "Claude", "Hello", "thought")
 
 	result, err := cs.handleTranscript(context.Background(), &mcp.ReadResourceRequest{
 		Params: &mcp.ReadResourceParams{URI: "council://room/res-room/transcript"},

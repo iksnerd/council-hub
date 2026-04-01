@@ -400,3 +400,162 @@ func TestDeleteMessagesNonexistent(t *testing.T) {
 		t.Errorf("expected 0 deleted, got %d", count)
 	}
 }
+
+// ========== DB-level pinMessage tests ==========
+
+func TestPinMessageDB(t *testing.T) {
+	cs := setupTestServer(t)
+	mustCreateRoom(t, cs, "db-pin")
+	id := mustPost(t, cs, "db-pin", "Claude", "Pin me")
+
+	pinned, err := cs.pinMessage("db-pin", id)
+	if err != nil {
+		t.Fatalf("pinMessage error: %v", err)
+	}
+	if !pinned {
+		t.Error("expected pinned=true")
+	}
+
+	// Verify
+	msg, _ := cs.getPinnedMessage("db-pin")
+	if msg == nil || msg.ID != id {
+		t.Error("getPinnedMessage should return the pinned message")
+	}
+}
+
+func TestGetPinnedMessageNone(t *testing.T) {
+	cs := setupTestServer(t)
+	mustCreateRoom(t, cs, "no-pin")
+
+	msg, err := cs.getPinnedMessage("no-pin")
+	if err != nil {
+		t.Fatalf("getPinnedMessage error: %v", err)
+	}
+	if msg != nil {
+		t.Error("expected nil when no message is pinned")
+	}
+}
+
+// ========== DB-level updateMessage tests ==========
+
+func TestUpdateMessageDB(t *testing.T) {
+	cs := setupTestServer(t)
+	mustCreateRoom(t, cs, "db-update")
+	id := mustPost(t, cs, "db-update", "Claude", "Original")
+
+	m, err := cs.updateMessage(id, "Updated", "")
+	if err != nil {
+		t.Fatalf("updateMessage error: %v", err)
+	}
+	if m.Content != "Updated" {
+		t.Errorf("expected 'Updated', got '%s'", m.Content)
+	}
+	if m.MessageType != "message" {
+		t.Errorf("type should be preserved as 'message', got '%s'", m.MessageType)
+	}
+}
+
+func TestUpdateMessageDBWithType(t *testing.T) {
+	cs := setupTestServer(t)
+	mustCreateRoom(t, cs, "db-uptype")
+	id := mustPost(t, cs, "db-uptype", "Claude", "Original")
+
+	m, err := cs.updateMessage(id, "Now a decision", "decision")
+	if err != nil {
+		t.Fatalf("updateMessage error: %v", err)
+	}
+	if m.MessageType != "decision" {
+		t.Errorf("expected type 'decision', got '%s'", m.MessageType)
+	}
+}
+
+func TestUpdateMessageDBNotFound(t *testing.T) {
+	cs := setupTestServer(t)
+
+	_, err := cs.updateMessage(99999, "Nope", "")
+	if err == nil {
+		t.Error("expected error for nonexistent message")
+	}
+}
+
+// -- postMessage: default type branch --
+
+func TestPostMessageDefaultType(t *testing.T) {
+	cs := setupTestServer(t)
+	mustCreateRoom(t, cs, "default-type")
+
+	id, err := cs.postMessage("default-type", "Claude", "Hello", "", 0)
+	if err != nil {
+		t.Fatalf("postMessage failed: %v", err)
+	}
+
+	msgs, _ := cs.getMessagesByIDs([]int64{id})
+	if msgs[0].MessageType != "message" {
+		t.Errorf("expected default type 'message', got '%s'", msgs[0].MessageType)
+	}
+}
+
+// -- searchMessages limit edge cases --
+
+func TestSearchMessagesLimitClamping(t *testing.T) {
+	cs := setupTestServer(t)
+	mustCreateRoom(t, cs, "search-clamp")
+	for i := 0; i < 5; i++ {
+		mustPost(t, cs, "search-clamp", "Claude", "keyword")
+	}
+
+	// Negative limit should clamp to 20
+	msgs, _ := cs.searchMessages("keyword", "", "", "", "", -5)
+	if len(msgs) != 5 {
+		t.Errorf("expected 5 (all) with clamped limit, got %d", len(msgs))
+	}
+
+	// Over-100 limit should clamp to 20
+	msgs, _ = cs.searchMessages("keyword", "", "", "", "", 200)
+	if len(msgs) != 5 {
+		t.Errorf("expected 5 with clamped limit, got %d", len(msgs))
+	}
+}
+
+// -- deleteMessages with empty slice --
+
+func TestDeleteMessagesEmptySlice(t *testing.T) {
+	cs := setupTestServer(t)
+	count, err := cs.deleteMessages([]int64{})
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("expected 0, got %d", count)
+	}
+}
+
+// -- postMessage: updated_at best-effort doesn't fail the operation --
+
+func TestPostMessageUpdatedAtBestEffort(t *testing.T) {
+	cs := setupTestServer(t)
+	mustCreateRoom(t, cs, "besteff-room")
+
+	// Post should succeed even though updated_at UPDATE is best-effort
+	id := mustPost(t, cs, "besteff-room", "Claude", "Hello")
+	if id <= 0 {
+		t.Errorf("expected positive message ID, got %d", id)
+	}
+}
+
+// -- insertSummary: updated_at best-effort doesn't fail the operation --
+
+func TestInsertSummaryUpdatedAtBestEffort(t *testing.T) {
+	cs := setupTestServer(t)
+	mustCreateRoom(t, cs, "summary-besteff")
+
+	err := cs.insertSummary("summary-besteff", "A summary")
+	if err != nil {
+		t.Fatalf("insertSummary failed: %v", err)
+	}
+
+	msgs, _ := cs.getTranscript("summary-besteff")
+	if len(msgs) != 1 || !msgs[0].IsSummary {
+		t.Error("expected 1 summary message")
+	}
+}
