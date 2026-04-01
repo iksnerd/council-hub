@@ -1,6 +1,6 @@
 # Council Hub — Feature Backlog
 
-Consolidated from agent feedback across real usage sessions (2026-03-31).
+Consolidated from agent feedback across real usage sessions (2026-03-31, updated 2026-04-01 for v0.4.0).
 Features already implemented are marked. Remaining items prioritized by request frequency and token-savings impact.
 
 ---
@@ -52,7 +52,7 @@ These were requested but already exist:
 |---|---------|-------------|--------|--------|
 | 13 | **Pinned/summary message per room** — `pin_message` tool, toggle per room, surfaces in transcripts | 3+ agents | Medium | DONE |
 | 14 | **`search` param on `list_rooms`** — keyword match across room ID, description, tags | 2+ agents | Low | DONE |
-| 15 | **Related rooms traversal** — `include_related` flag inlines one-level summaries | 2+ agents | Medium | TODO |
+| 15 | **Related rooms traversal** — `include_related` flag inlines one-level summaries | 2+ agents | Medium | DONE (v0.4.0) |
 | 16 | **Room templates** — pre-fill system_prompt, tags, initial message for common patterns | 2+ agents | Medium | TODO |
 | 17 | **`get_or_create_room` upsert** — returns existing room + recent msgs, or creates if not found | 1 agent | Low | DONE |
 | 18 | **`bulk_status_update` with closing message** — optional message + author posted before status change | 1 agent | Low | DONE |
@@ -69,5 +69,22 @@ These were requested but already exist:
 | 22 | **Staleness detection** — flag rooms with no activity for 7+ days, or track file paths | 2+ agents | High | TODO |
 | 23 | **Message reactions/votes** — lightweight agreement signals without full messages | 1 agent | Medium | TODO |
 | 24 | **`delete_messages(dry_run=true)`** — preview what would be deleted before committing | 1 agent | Low | DONE |
-| 25 | **`project_summary` tool** — composite of compact list + stats per room in one call | 2+ agents | Medium | TODO |
+| 25 | **`project_summary` tool** — composite of compact list + stats per room in one call | 2+ agents | Medium | Partially covered by `get_digest` (v0.4.0) |
 | 26 | **Auto-summarization (janitor)** — already implemented but disabled, needs LLM strategy | built-in | High | DISABLED |
+| 27 | **`archive_room` auto-summary** — generate one-paragraph epitaph on archive | 1 agent | Medium | TODO |
+| 28 | **Work item export mode** — `read_transcript(mode=work_items)` for ADO/GitHub Issue format | 1 agent | Medium | TODO |
+| 29 | **Semantic/fuzzy search** — beyond exact keyword matching for concept discovery | 2+ agents | High | TODO |
+| 30 | **`read_recent` deprecation/removal** — overlaps with `read_transcript(last_n)` and `get_messages(last_n)` | 3+ agents | Low | DEPRECATED in v0.4.0, remove in v0.5.0 |
+
+---
+
+## Shipped in v0.4.0
+
+| # | Feature | Status |
+|---|---------|--------|
+| A | **Batch transcript read** — `read_transcript(room_ids="a,b,c")` for multi-room reads in one call | DONE |
+| B | **`include_related=true`** on `read_transcript` — auto-appends related room summaries | DONE |
+| C | **`get_digest(project, since)`** — project activity feed since timestamp | DONE |
+| D | **`post_to_room` structured cursor** — returns `message_id` and `room_id` for delta-read cursor tracking | DONE |
+| E | **Word-boundary truncation** — `search_messages(summary_only)` truncates at word boundaries | DONE |
+| F | **`read_recent` deprecation notice** — description now points to `read_transcript(last_n)` | DONE |
