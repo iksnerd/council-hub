@@ -11,6 +11,7 @@ import (
 // CreateRoomInput represents the parameters for creating a room.
 type CreateRoomInput struct {
 	ID           string `json:"id"`
+	Template     string `json:"template"`
 	Topic        string `json:"topic"`
 	Project      string `json:"project"`
 	TechStack    string `json:"tech_stack"`
@@ -38,6 +39,7 @@ type ListRoomsInput struct {
 // UpdateRoomInput represents the parameters for updating a room's metadata.
 type UpdateRoomInput struct {
 	RoomID       string `json:"room_id"`
+	RoomIDs      string `json:"room_ids"`
 	Topic        string `json:"topic"`
 	Project      string `json:"project"`
 	TechStack    string `json:"tech_stack"`
@@ -92,15 +94,50 @@ func (r *Registry) handleCreateRoom(ctx context.Context, req *mcp.CallToolReques
 		return msg("Error: room id is required.")
 	}
 
+	// Apply template defaults (explicit user args take precedence)
+	if args.Template != "" {
+		tpl, ok := roomTemplates[args.Template]
+		if !ok {
+			return msg(fmt.Sprintf("Error: unknown template '%s'. Available: %s",
+				args.Template, strings.Join(templateNames(), ", ")))
+		}
+		if args.Topic == "" {
+			args.Topic = tpl.Topic
+		}
+		if args.Tags == "" {
+			args.Tags = tpl.Tags
+		}
+		if args.TechStack == "" {
+			args.TechStack = tpl.TechStack
+		}
+		if args.SystemPrompt == "" {
+			args.SystemPrompt = tpl.SystemPrompt
+		}
+	}
+
+	// Pre-check existence so we know whether to post the initial message
+	_, roomAlreadyExists := r.Server.GetRoom(args.ID)
+
 	if err := r.Server.CreateRoom(args.ID, args.Topic, args.Project, args.TechStack, args.Tags, args.SystemPrompt, args.RelatedRooms); err != nil {
 		r.Server.Logger.Error("Failed to create room", "id", args.ID, "error", err)
 		return nil, ToolOutput{}, err
+	}
+
+	// Post initial message for new rooms created from a template
+	if args.Template != "" && roomAlreadyExists != nil {
+		tpl := roomTemplates[args.Template]
+		if tpl.InitialMsg != "" {
+			r.Server.PostMessage(args.ID, "system", tpl.InitialMsg, "thought", 0) //nolint:errcheck
+		}
 	}
 
 	r.Server.Logger.Info("Room created", "id", args.ID, "project", args.Project, "topic", args.Topic)
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "Room '%s' created.\n", args.ID)
+	if args.Template != "" {
+		fmt.Fprintf(&b, "**Template:** %s\n", args.Template)
+	}
 	if args.Topic != "" {
 		fmt.Fprintf(&b, "**Topic:** %s\n", args.Topic)
 	}
@@ -193,16 +230,26 @@ func (r *Registry) handleUpdateRoom(ctx context.Context, req *mcp.CallToolReques
 		}, ToolOutput{Message: text}, nil
 	}
 
-	if args.RoomID == "" {
-		return msg("Error: room_id is required.")
+	// Collect all target room IDs (room_ids takes comma-separated list; room_id is single/legacy)
+	seen := map[string]bool{}
+	var ids []string
+	for _, id := range strings.Split(args.RoomIDs, ",") {
+		id = strings.TrimSpace(id)
+		if id != "" && !seen[id] {
+			seen[id] = true
+			ids = append(ids, id)
+		}
+	}
+	if args.RoomID != "" && !seen[args.RoomID] {
+		ids = append(ids, args.RoomID)
+	}
+
+	if len(ids) == 0 {
+		return msg("Error: room_id or room_ids is required.")
 	}
 
 	if args.Topic == "" && args.Project == "" && args.TechStack == "" && args.Tags == "" && args.SystemPrompt == "" && args.RelatedRooms == "" {
 		return msg("Error: at least one field to update must be provided (topic, project, tech_stack, tags, system_prompt, related_rooms).")
-	}
-
-	if err := r.Server.UpdateRoom(args.RoomID, args.Topic, args.Project, args.TechStack, args.Tags, args.SystemPrompt, args.RelatedRooms); err != nil {
-		return msg(fmt.Sprintf("Error: %s", err.Error()))
 	}
 
 	var updated []string
@@ -224,28 +271,39 @@ func (r *Registry) handleUpdateRoom(ctx context.Context, req *mcp.CallToolReques
 	if args.RelatedRooms != "" {
 		updated = append(updated, "related_rooms")
 	}
-
-	r.Server.Logger.Info("Room updated", "room_id", args.RoomID, "fields", strings.Join(updated, ", "))
+	fieldsLabel := strings.Join(updated, ", ")
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "Room '%s' updated: %s.", args.RoomID, strings.Join(updated, ", "))
-	if room, err := r.Server.GetRoom(args.RoomID); err == nil {
-		fmt.Fprintf(&b, "\n\n**Current state:**")
-		if room.Description != "" {
-			fmt.Fprintf(&b, "\n- Topic: %s", room.Description)
+	for _, id := range ids {
+		if err := r.Server.UpdateRoom(id, args.Topic, args.Project, args.TechStack, args.Tags, args.SystemPrompt, args.RelatedRooms); err != nil {
+			fmt.Fprintf(&b, "Error updating '%s': %s\n", id, err.Error())
+			continue
 		}
-		if room.Project != "" {
-			fmt.Fprintf(&b, "\n- Project: %s", room.Project)
-		}
-		if room.Tags != "" {
-			fmt.Fprintf(&b, "\n- Tags: %s", room.Tags)
-		}
-		if room.RelatedRooms != "" {
-			fmt.Fprintf(&b, "\n- Related rooms: %s", room.RelatedRooms)
-		}
-		fmt.Fprintf(&b, "\n- Status: %s", room.Status)
+		r.Server.Logger.Info("Room updated", "room_id", id, "fields", fieldsLabel)
+		fmt.Fprintf(&b, "Room '%s' updated: %s.\n", id, fieldsLabel)
 	}
-	return msg(b.String())
+
+	// For single-room updates, append current state (backward-compatible behaviour)
+	if len(ids) == 1 {
+		if room, err := r.Server.GetRoom(ids[0]); err == nil {
+			fmt.Fprintf(&b, "\n**Current state:**")
+			if room.Description != "" {
+				fmt.Fprintf(&b, "\n- Topic: %s", room.Description)
+			}
+			if room.Project != "" {
+				fmt.Fprintf(&b, "\n- Project: %s", room.Project)
+			}
+			if room.Tags != "" {
+				fmt.Fprintf(&b, "\n- Tags: %s", room.Tags)
+			}
+			if room.RelatedRooms != "" {
+				fmt.Fprintf(&b, "\n- Related rooms: %s", room.RelatedRooms)
+			}
+			fmt.Fprintf(&b, "\n- Status: %s", room.Status)
+		}
+	}
+
+	return msg(strings.TrimRight(b.String(), "\n"))
 }
 
 func (r *Registry) handleReadRoom(ctx context.Context, req *mcp.CallToolRequest, args ReadRoomInput) (*mcp.CallToolResult, ToolOutput, error) {

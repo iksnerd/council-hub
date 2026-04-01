@@ -157,6 +157,173 @@ func TestHandleUpdateRoomDBError(t *testing.T) {
 	}
 }
 
+// ========== create_room templates ==========
+
+func TestHandleCreateRoomTemplate(t *testing.T) {
+	reg := setupHandlerTest(t)
+
+	res, _, err := reg.handleCreateRoom(context.Background(), nil, CreateRoomInput{
+		ID: "tpl-room", Template: "decision-log",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	text := resultText(res)
+	if !strings.Contains(text, "decision-log") {
+		t.Errorf("expected template name in response, got: %s", text)
+	}
+
+	room, _ := reg.Server.GetRoom("tpl-room")
+	if !strings.Contains(room.Tags, "decision") {
+		t.Errorf("expected decision tag from template, got: %s", room.Tags)
+	}
+	if room.SystemPrompt == "" {
+		t.Errorf("expected system_prompt from template, got empty")
+	}
+}
+
+func TestHandleCreateRoomTemplateOverride(t *testing.T) {
+	reg := setupHandlerTest(t)
+
+	res, _, err := reg.handleCreateRoom(context.Background(), nil, CreateRoomInput{
+		ID: "tpl-override", Template: "sprint", Tags: "custom-tag",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	_ = resultText(res)
+
+	room, _ := reg.Server.GetRoom("tpl-override")
+	if room.Tags != "custom-tag" {
+		t.Errorf("explicit tags should override template, got: %s", room.Tags)
+	}
+	if room.SystemPrompt == "" {
+		t.Errorf("template system_prompt should still apply when tags were overridden")
+	}
+}
+
+func TestHandleCreateRoomTemplateUnknown(t *testing.T) {
+	reg := setupHandlerTest(t)
+
+	res, _, _ := reg.handleCreateRoom(context.Background(), nil, CreateRoomInput{
+		ID: "tpl-bad", Template: "nonexistent",
+	})
+	text := resultText(res)
+	if !strings.Contains(text, "Error") {
+		t.Errorf("expected error for unknown template, got: %s", text)
+	}
+	// Should list valid template names
+	if !strings.Contains(text, "decision-log") {
+		t.Errorf("expected available template names in error, got: %s", text)
+	}
+}
+
+func TestHandleCreateRoomTemplateInitialMsg(t *testing.T) {
+	reg := setupHandlerTest(t)
+
+	_, _, err := reg.handleCreateRoom(context.Background(), nil, CreateRoomInput{
+		ID: "tpl-msg", Template: "bug",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	msgs, _ := reg.Server.GetRecentMessages("tpl-msg", 10)
+	if len(msgs) == 0 {
+		t.Fatal("expected initial message to be posted")
+	}
+	if msgs[0].Author != "system" {
+		t.Errorf("expected author 'system', got '%s'", msgs[0].Author)
+	}
+	if !strings.Contains(msgs[0].Content, "Bug investigation") {
+		t.Errorf("unexpected initial message content: %s", msgs[0].Content)
+	}
+}
+
+func TestHandleCreateRoomTemplateNoInitialMsgIfExists(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "tpl-exists")
+
+	_, _, _ = reg.handleCreateRoom(context.Background(), nil, CreateRoomInput{
+		ID: "tpl-exists", Template: "bug",
+	})
+
+	msgs, _ := reg.Server.GetRecentMessages("tpl-exists", 10)
+	if len(msgs) != 0 {
+		t.Errorf("expected no initial message for pre-existing room, got %d messages", len(msgs))
+	}
+}
+
+// ========== update_room batch ==========
+
+func TestHandleUpdateRoomBatch(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "batch-a")
+	mustCreateRoom(t, reg.Server, "batch-b")
+
+	res, _, _ := reg.handleUpdateRoom(context.Background(), nil, UpdateRoomInput{
+		RoomIDs: "batch-a,batch-b", Tags: "sprint-5",
+	})
+	text := resultText(res)
+	if !strings.Contains(text, "batch-a") || !strings.Contains(text, "batch-b") {
+		t.Errorf("expected both rooms in response, got: %s", text)
+	}
+
+	for _, id := range []string{"batch-a", "batch-b"} {
+		room, _ := reg.Server.GetRoom(id)
+		if room.Tags != "sprint-5" {
+			t.Errorf("room %s: expected tags 'sprint-5', got '%s'", id, room.Tags)
+		}
+	}
+}
+
+func TestHandleUpdateRoomBatchPartialError(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "batch-good")
+
+	res, _, _ := reg.handleUpdateRoom(context.Background(), nil, UpdateRoomInput{
+		RoomIDs: "batch-good,ghost-room", Tags: "foo",
+	})
+	text := resultText(res)
+	if !strings.Contains(text, "batch-good") {
+		t.Errorf("expected success line for batch-good, got: %s", text)
+	}
+	if !strings.Contains(text, "Error") || !strings.Contains(text, "ghost-room") {
+		t.Errorf("expected error line for ghost-room, got: %s", text)
+	}
+}
+
+func TestHandleUpdateRoomBatchNoIDs(t *testing.T) {
+	reg := setupHandlerTest(t)
+
+	res, _, _ := reg.handleUpdateRoom(context.Background(), nil, UpdateRoomInput{Tags: "foo"})
+	text := resultText(res)
+	if !strings.Contains(text, "Error") {
+		t.Errorf("expected error when no IDs provided, got: %s", text)
+	}
+}
+
+func TestHandleUpdateRoomIDAndRoomIDsCombo(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "combo-a")
+	mustCreateRoom(t, reg.Server, "combo-b")
+
+	res, _, _ := reg.handleUpdateRoom(context.Background(), nil, UpdateRoomInput{
+		RoomID: "combo-a", RoomIDs: "combo-b", Tags: "merged",
+	})
+	text := resultText(res)
+	if !strings.Contains(text, "combo-a") || !strings.Contains(text, "combo-b") {
+		t.Errorf("expected both rooms updated, got: %s", text)
+	}
+
+	for _, id := range []string{"combo-a", "combo-b"} {
+		room, _ := reg.Server.GetRoom(id)
+		if room.Tags != "merged" {
+			t.Errorf("room %s: expected tags 'merged', got '%s'", id, room.Tags)
+		}
+	}
+}
+
 // ========== read_room ==========
 
 func TestHandleReadRoom(t *testing.T) {

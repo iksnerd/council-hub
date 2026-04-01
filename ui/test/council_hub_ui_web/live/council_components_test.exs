@@ -202,6 +202,42 @@ defmodule CouncilHubUiWeb.CouncilComponentsTest do
       html = render_component(&CouncilComponents.message_bubble/1, assigns)
       assert html =~ "critique"
     end
+
+    test "renders copy button with message data" do
+      assigns = %{
+        msg: %{
+          id: 7,
+          author: "Claude",
+          content: "Important finding",
+          message_type: "decision",
+          reply_to: 0,
+          timestamp: ~N[2026-03-29 14:00:00]
+        }
+      }
+
+      html = render_component(&CouncilComponents.message_bubble/1, assigns)
+      assert html =~ "copy-msg-7"
+      assert html =~ "CopyMessage"
+      assert html =~ "Important finding"
+      assert html =~ "Claude"
+      assert html =~ "decision"
+    end
+
+    test "copy button data includes message id" do
+      assigns = %{
+        msg: %{
+          id: 99,
+          author: "GPT",
+          content: "Some content",
+          message_type: "thought",
+          reply_to: 0,
+          timestamp: ~N[2026-03-29 14:00:00]
+        }
+      }
+
+      html = render_component(&CouncilComponents.message_bubble/1, assigns)
+      assert html =~ "#99"
+    end
   end
 
   describe "summary_block" do

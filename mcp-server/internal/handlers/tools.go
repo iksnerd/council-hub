@@ -57,9 +57,10 @@ func prop(typ, desc string) map[string]any {
 func (r *Registry) RegisterTools() {
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "create_room",
-		Description: "Create a new council room (virtual workspace) for a topic or task. Does nothing if the room already exists. Related rooms are automatically linked in both directions.",
+		Description: "Create a new council room (virtual workspace) for a topic or task. Does nothing if the room already exists. Related rooms are automatically linked in both directions. Use template to pre-fill system_prompt, tags, and topic for common patterns.",
 		InputSchema: schema([]string{"id"}, map[string]map[string]any{
 			"id":            prop("string", "Unique room identifier (e.g. auth-migration-v2)"),
+			"template":      prop("string", "Pre-fill system_prompt, tags, and topic for a common pattern. Available: brainstorm, bug, decision-log, review, sprint. Explicit fields override template defaults."),
 			"topic":         prop("string", "What this room is about"),
 			"project":       prop("string", "Project grouping for filtering"),
 			"tech_stack":    prop("string", "Technologies involved"),
@@ -130,9 +131,10 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "update_room",
-		Description: "Update a room's metadata. Only provided fields are changed; omitted fields are left unchanged. Returns the full updated room state. Related rooms are bidirectionally linked.",
-		InputSchema: schema([]string{"room_id"}, map[string]map[string]any{
-			"room_id":       prop("string", "Target room ID"),
+		Description: "Update a room's metadata. Only provided fields are changed; omitted fields are left unchanged. Returns the full updated room state. Related rooms are bidirectionally linked. Use room_ids (comma-separated) to patch multiple rooms in one call.",
+		InputSchema: schema([]string{}, map[string]map[string]any{
+			"room_id":       prop("string", "Target room ID (single room)"),
+			"room_ids":      prop("string", "Comma-separated room IDs for batch updates — use instead of or alongside room_id"),
 			"topic":         prop("string", "New topic/description"),
 			"project":       prop("string", "New project grouping"),
 			"tech_stack":    prop("string", "New tech stack"),

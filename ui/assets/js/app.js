@@ -36,6 +36,18 @@ function formatRelativeTime(isoString) {
 }
 
 const Hooks = {
+  CopyMessage: {
+    mounted() {
+      this.el.addEventListener("click", () => {
+        const text = this.el.dataset.copy
+        navigator.clipboard.writeText(text).then(() => {
+          const icon = this.el.querySelector("span")
+          icon.classList.replace("hero-clipboard", "hero-check")
+          setTimeout(() => icon.classList.replace("hero-check", "hero-clipboard"), 1500)
+        })
+      })
+    }
+  },
   RelativeTime: {
     mounted() {
       this.update()

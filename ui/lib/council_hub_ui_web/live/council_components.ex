@@ -217,6 +217,16 @@ defmodule CouncilHubUiWeb.CouncilComponents do
               class="text-[10px] text-gray-700 font-mono opacity-0 group-hover:opacity-100 transition-opacity"
             >
             </span>
+            <button
+              id={"copy-msg-#{@msg.id}"}
+              phx-hook="CopyMessage"
+              data-copy={"##{@msg.id} | #{format_timestamp(@msg.timestamp)} | #{@msg.author} (#{@msg.message_type})\n\n#{@msg.content}"}
+              class="ml-auto opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded text-gray-600 hover:text-gray-300 hover:bg-white/5 cursor-pointer"
+              title="Copy message"
+              type="button"
+            >
+              <span class="hero-clipboard w-3.5 h-3.5"></span>
+            </button>
           </div>
 
           <div class={"council-prose text-[0.9rem] leading-relaxed text-gray-200 border-l-2 pl-3 #{author_classes(@msg.author)}"}>
