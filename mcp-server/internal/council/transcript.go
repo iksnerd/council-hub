@@ -30,12 +30,12 @@ func FormatTranscript(room Room, messages []Message) string {
 	}
 
 	// Render pinned message first if one exists
-	pinnedID := int64(-1)
+	pinnedID := ""
 	for _, m := range messages {
 		if m.Pinned {
 			pinnedID = m.ID
 			ts := m.Timestamp.Format("2006-01-02 15:04:05")
-			fmt.Fprintf(&b, "\n**PINNED [#%d %s] %s:**\n%s\n---\n", m.ID, ts, m.Author, m.Content)
+			fmt.Fprintf(&b, "\n**PINNED [#%.8s %s] %s:**\n%s\n---\n", m.ID, ts, m.Author, m.Content)
 			break
 		}
 	}
@@ -46,15 +46,15 @@ func FormatTranscript(room Room, messages []Message) string {
 		}
 		ts := m.Timestamp.Format("2006-01-02 15:04:05")
 		replyTag := ""
-		if m.ReplyTo > 0 {
-			replyTag = fmt.Sprintf(", re: #%d", m.ReplyTo)
+		if m.ReplyTo != "" {
+			replyTag = fmt.Sprintf(", re: #%.8s", m.ReplyTo)
 		}
 		if m.IsSummary {
 			fmt.Fprintf(&b, "\n**[%s] SUMMARY:**\n%s\n", ts, m.Content)
 		} else if m.MessageType != "" && m.MessageType != "message" {
 			fmt.Fprintf(&b, "\n**[%s] %s (%s%s):**\n%s\n", ts, m.Author, m.MessageType, replyTag, m.Content)
-		} else if m.ReplyTo > 0 {
-			fmt.Fprintf(&b, "\n**[%s] %s (re: #%d):**\n%s\n", ts, m.Author, m.ReplyTo, m.Content)
+		} else if m.ReplyTo != "" {
+			fmt.Fprintf(&b, "\n**[%s] %s (re: #%.8s):**\n%s\n", ts, m.Author, m.ReplyTo, m.Content)
 		} else {
 			fmt.Fprintf(&b, "\n**[%s] %s:**\n%s\n", ts, m.Author, m.Content)
 		}

@@ -46,7 +46,7 @@ func TestConcurrentReadsAndWrites(t *testing.T) {
 	// 10 writers
 	for i := 0; i < 10; i++ {
 		go func(n int) {
-			_, err := s.PostMessage("rw-room", "Writer", "msg", "message", 0)
+			_, err := s.PostMessage("rw-room", "Writer", "msg", "message", "")
 			if err != nil {
 				t.Errorf("concurrent write %d failed: %v", n, err)
 			}

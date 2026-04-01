@@ -79,12 +79,12 @@ defmodule CouncilHubUi.CouncilTest do
       assert Council.get_messages_since(room.id, m1.id) == []
     end
 
-    test "returns all messages when last_id is 0" do
+    test "returns all messages when last_id is empty string" do
       room = create_room(%{id: "all-since"})
       create_message(%{room_id: room.id, content: "First"})
       create_message(%{room_id: room.id, content: "Second"})
 
-      msgs = Council.get_messages_since(room.id, 0)
+      msgs = Council.get_messages_since(room.id, "")
       assert length(msgs) == 2
     end
   end
@@ -159,14 +159,14 @@ defmodule CouncilHubUi.CouncilTest do
   describe "Message schema" do
     test "has reply_to field" do
       room = create_room(%{id: "reply-test"})
-      msg = create_message(%{room_id: room.id, reply_to: 42})
-      assert msg.reply_to == 42
+      msg = create_message(%{room_id: room.id, reply_to: "some-parent-uuid"})
+      assert msg.reply_to == "some-parent-uuid"
     end
 
-    test "reply_to defaults to 0" do
+    test "reply_to defaults to empty string" do
       room = create_room(%{id: "reply-default"})
       msg = create_message(%{room_id: room.id})
-      assert msg.reply_to == 0
+      assert msg.reply_to == ""
     end
   end
 
@@ -309,7 +309,7 @@ defmodule CouncilHubUi.CouncilTest do
       messages = Council.list_messages_for_room(room.id)
       transcript = Council.format_transcript(room, messages)
 
-      assert transcript =~ "re: ##{m1.id}"
+      assert transcript =~ "re: ##{String.slice(m1.id, 0, 8)}"
     end
 
     test "includes system prompt" do

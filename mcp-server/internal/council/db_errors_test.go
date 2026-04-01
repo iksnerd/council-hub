@@ -31,7 +31,7 @@ func TestCreateRoomDBClosed(t *testing.T) {
 
 func TestPostMessageDBClosed(t *testing.T) {
 	s := setupAndClose(t)
-	_, err := s.PostMessage("pre-close", "Claude", "fail", "message", 0)
+	_, err := s.PostMessage("pre-close", "Claude", "fail", "message", "")
 	if err == nil {
 		t.Error("expected error on closed DB")
 	}
@@ -87,7 +87,7 @@ func TestSearchMessagesDBClosed(t *testing.T) {
 
 func TestGetMessagesByIDsDBClosed(t *testing.T) {
 	s := setupAndClose(t)
-	_, err := s.GetMessagesByIDs([]int64{1})
+	_, err := s.GetMessagesByIDs([]string{"fake-id"})
 	if err == nil {
 		t.Error("expected error on closed DB")
 	}
@@ -111,7 +111,7 @@ func TestDeleteRoomDBClosed(t *testing.T) {
 
 func TestDeleteMessagesDBClosed(t *testing.T) {
 	s := setupAndClose(t)
-	_, err := s.DeleteMessages([]int64{1})
+	_, err := s.DeleteMessages([]string{"fake-id"})
 	if err == nil {
 		t.Error("expected error on closed DB")
 	}
@@ -296,13 +296,13 @@ func TestMigrationFromOldSchema(t *testing.T) {
 		t.Errorf("expected empty related_rooms default, got '%s'", relatedRooms)
 	}
 
-	var replyTo int64
+	var replyTo string
 	err = db.QueryRow(`SELECT reply_to FROM messages WHERE room_id = 'old-room'`).Scan(&replyTo)
 	if err != nil {
 		t.Fatalf("failed to read reply_to: %v", err)
 	}
-	if replyTo != 0 {
-		t.Errorf("expected reply_to default 0, got %d", replyTo)
+	if replyTo != "" {
+		t.Errorf("expected reply_to default '', got '%s'", replyTo)
 	}
 
 	// Step 5: Verify old data is intact
@@ -332,7 +332,7 @@ func TestMigrationFromOldSchema(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to write related_rooms: %v", err)
 	}
-	_, err = db.Exec(`INSERT INTO messages (room_id, author, content, message_type, reply_to) VALUES ('old-room', 'Gemini', 'New reply', 'review', 1)`)
+	_, err = db.Exec(`INSERT INTO messages (room_id, author, content, message_type, reply_to) VALUES ('old-room', 'Gemini', 'New reply', 'review', 'some-parent-uuid')`)
 	if err != nil {
 		t.Fatalf("failed to insert message with reply_to: %v", err)
 	}
@@ -358,7 +358,7 @@ func TestMigrationIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("insert after double init failed: %v", err)
 	}
-	_, err = db.Exec(`INSERT INTO messages (room_id, author, content, reply_to) VALUES ('test', 'X', 'Y', 42)`)
+	_, err = db.Exec(`INSERT INTO messages (room_id, author, content, reply_to) VALUES ('test', 'X', 'Y', 'some-uuid')`)
 	if err != nil {
 		t.Fatalf("insert after double init failed: %v", err)
 	}
@@ -424,9 +424,9 @@ func TestMigrationPreservesMultipleRows(t *testing.T) {
 	if count != 3 {
 		t.Errorf("expected all 3 rooms with empty related_rooms, got %d", count)
 	}
-	db.QueryRow(`SELECT COUNT(*) FROM messages WHERE reply_to = 0`).Scan(&count)
+	db.QueryRow(`SELECT COUNT(*) FROM messages WHERE reply_to = ''`).Scan(&count)
 	if count != 3 {
-		t.Errorf("expected all 3 messages with reply_to=0, got %d", count)
+		t.Errorf("expected all 3 messages with empty reply_to, got %d", count)
 	}
 }
 
@@ -447,7 +447,7 @@ func corruptMessages(t *testing.T) *Server {
 
 func TestGetMessagesByIDsScanError(t *testing.T) {
 	s := corruptMessages(t)
-	_, err := s.GetMessagesByIDs([]int64{1, 2})
+	_, err := s.GetMessagesByIDs([]string{"fake-id-1", "fake-id-2"})
 	if err == nil {
 		t.Error("expected scan error")
 	}
@@ -589,7 +589,7 @@ func TestGetRoomStatsAggregateError(t *testing.T) {
 
 func TestUpdateMessageDBClosed(t *testing.T) {
 	s := setupAndClose(t)
-	_, err := s.UpdateMessage(1, "new content", "")
+	_, err := s.UpdateMessage("fake-id", "new content", "")
 	if err == nil {
 		t.Error("expected error on closed DB (no message_type branch)")
 	}
@@ -597,7 +597,7 @@ func TestUpdateMessageDBClosed(t *testing.T) {
 
 func TestUpdateMessageWithTypeDBClosed(t *testing.T) {
 	s := setupAndClose(t)
-	_, err := s.UpdateMessage(1, "new content", "decision")
+	_, err := s.UpdateMessage("fake-id", "new content", "decision")
 	if err == nil {
 		t.Error("expected error on closed DB (with message_type branch)")
 	}
@@ -607,7 +607,7 @@ func TestUpdateMessageWithTypeDBClosed(t *testing.T) {
 
 func TestGetMessagesAfterIDDBClosed(t *testing.T) {
 	s := setupAndClose(t)
-	_, err := s.GetMessagesAfterID("pre-close", 0)
+	_, err := s.GetMessagesAfterID("pre-close", "")
 	if err == nil {
 		t.Error("expected error on closed DB")
 	}
@@ -645,7 +645,7 @@ func TestGetMessageCountsDBClosed(t *testing.T) {
 
 func TestGetMessagesAfterIDScanError(t *testing.T) {
 	s := corruptMessages(t)
-	_, err := s.GetMessagesAfterID("corrupt-room", 0)
+	_, err := s.GetMessagesAfterID("corrupt-room", "")
 	if err == nil {
 		t.Error("expected scan error")
 	}
@@ -663,7 +663,7 @@ func TestGetLatestPerTypeScanError(t *testing.T) {
 
 func TestPinMessageDBClosed(t *testing.T) {
 	s := setupAndClose(t)
-	_, err := s.PinMessage("pre-close", 1)
+	_, err := s.PinMessage("pre-close", "fake-id")
 	if err == nil {
 		t.Error("expected error on closed DB")
 	}

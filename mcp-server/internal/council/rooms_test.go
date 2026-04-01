@@ -212,8 +212,8 @@ func TestUpdateRoomNotFound(t *testing.T) {
 func TestDeleteRoom(t *testing.T) {
 	s := setupTestServer(t)
 	s.CreateRoom("del-room", "To be deleted", "", "", "", "", "")
-	s.PostMessage("del-room", "Claude", "Message 1", "message", 0)
-	s.PostMessage("del-room", "Gemini", "Message 2", "message", 0)
+	s.PostMessage("del-room", "Claude", "Message 1", "message", "")
+	s.PostMessage("del-room", "Gemini", "Message 2", "message", "")
 
 	if err := s.DeleteRoom("del-room"); err != nil {
 		t.Fatalf("deleteRoom failed: %v", err)
@@ -299,9 +299,9 @@ func TestListRoomsByStatus(t *testing.T) {
 func TestRoomStats(t *testing.T) {
 	s := setupTestServer(t)
 	s.CreateRoom("stats-room", "Stats test", "", "", "", "", "")
-	s.PostMessage("stats-room", "Claude", "Message 1", "thought", 0)
-	s.PostMessage("stats-room", "Claude", "Message 2", "decision", 0)
-	s.PostMessage("stats-room", "Gemini", "Message 3", "review", 0)
+	s.PostMessage("stats-room", "Claude", "Message 1", "thought", "")
+	s.PostMessage("stats-room", "Claude", "Message 2", "decision", "")
+	s.PostMessage("stats-room", "Gemini", "Message 3", "review", "")
 
 	stats, err := s.GetRoomStats("stats-room")
 	if err != nil {
@@ -347,7 +347,7 @@ func TestRoomStatsNotFound(t *testing.T) {
 func TestArchiveRoom(t *testing.T) {
 	s := setupTestServer(t)
 	s.CreateRoom("archive-room", "Archive test", "proj", "Go", "test", "Be helpful", "")
-	s.PostMessage("archive-room", "Claude", "Test message", "message", 0)
+	s.PostMessage("archive-room", "Claude", "Test message", "message", "")
 
 	archivePath, err := s.ArchiveRoom("archive-room")
 	if err != nil {
@@ -386,13 +386,13 @@ func TestNewColumnsUsable(t *testing.T) {
 		t.Errorf("expected related_rooms 'related-a', got '%s'", room.RelatedRooms)
 	}
 
-	id, _ := s.PostMessage("migrate-room", "Test", "msg", "message", 42)
-	msgs, _ := s.GetMessagesByIDs([]int64{id})
+	id, _ := s.PostMessage("migrate-room", "Test", "msg", "message", "some-parent-id")
+	msgs, _ := s.GetMessagesByIDs([]string{id})
 	if len(msgs) != 1 {
 		t.Fatalf("expected 1 message, got %d", len(msgs))
 	}
-	if msgs[0].ReplyTo != 42 {
-		t.Errorf("expected reply_to 42, got %d", msgs[0].ReplyTo)
+	if msgs[0].ReplyTo != "some-parent-id" {
+		t.Errorf("expected reply_to 'some-parent-id', got '%s'", msgs[0].ReplyTo)
 	}
 }
 
@@ -579,10 +579,10 @@ func TestRoomLifecycle(t *testing.T) {
 	}
 
 	// Post various message types
-	id1, _ := s.PostMessage("design", "Claude", "Proposal: split into internal packages", "thought", 0)
-	id2, _ := s.PostMessage("design", "Gemini", "Agreed — use internal/council and internal/handlers", "decision", 0)
+	id1, _ := s.PostMessage("design", "Claude", "Proposal: split into internal packages", "thought", "")
+	id2, _ := s.PostMessage("design", "Gemini", "Agreed — use internal/council and internal/handlers", "decision", "")
 	s.PostMessage("design", "Claude", "type Server struct { DB *sql.DB }", "code", id2)
-	s.PostMessage("impl", "Claude", "Starting refactor", "action", 0)
+	s.PostMessage("impl", "Claude", "Starting refactor", "action", "")
 
 	// Pin, update, check transcript reflects both
 	s.PinMessage("design", id1)
@@ -605,7 +605,7 @@ func TestRoomLifecycle(t *testing.T) {
 	// Delta reads
 	after, _ := s.GetMessagesAfterID("design", id2)
 	if len(after) != 1 {
-		t.Errorf("expected 1 message after id %d, got %d", id2, len(after))
+		t.Errorf("expected 1 message after id %s, got %d", id2, len(after))
 	}
 
 	// Summary mode

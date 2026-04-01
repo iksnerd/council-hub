@@ -187,7 +187,7 @@ func TestHandleReadTranscriptAfterID(t *testing.T) {
 
 	// Get messages after the second one — should return only "Third"
 	res, _, _ := reg.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
-		RoomID: "h-transcript-after", AfterID: fmt.Sprintf("%d", id2),
+		RoomID: "h-transcript-after", AfterID: id2,
 	})
 	text := resultText(res)
 
@@ -208,7 +208,7 @@ func TestHandleReadTranscriptAfterIDNoNewMessages(t *testing.T) {
 	id1 := mustPost(t, reg.Server, "h-transcript-after-empty", "Claude", "Only one")
 
 	res, _, _ := reg.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
-		RoomID: "h-transcript-after-empty", AfterID: fmt.Sprintf("%d", id1),
+		RoomID: "h-transcript-after-empty", AfterID: id1,
 	})
 	text := resultText(res)
 	if !strings.Contains(text, "0 message(s) after") {
@@ -216,16 +216,20 @@ func TestHandleReadTranscriptAfterIDNoNewMessages(t *testing.T) {
 	}
 }
 
-func TestHandleReadTranscriptAfterIDInvalid(t *testing.T) {
+func TestHandleReadTranscriptAfterIDUnknownCursor(t *testing.T) {
 	reg := setupHandlerTest(t)
 	mustCreateRoom(t, reg.Server, "h-transcript-after-bad")
 
-	res, _, _ := reg.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
-		RoomID: "h-transcript-after-bad", AfterID: "not-a-number",
+	// Any string cursor is valid; an unknown cursor returns 0 messages (no error)
+	res, _, err := reg.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
+		RoomID: "h-transcript-after-bad", AfterID: "unknown-cursor-string",
 	})
+	if err != nil {
+		t.Fatalf("expected no error for unknown cursor, got: %v", err)
+	}
 	text := resultText(res)
-	if !strings.Contains(text, "Error") {
-		t.Errorf("expected error for invalid after_id, got: %s", text)
+	if !strings.Contains(text, "0 message(s) after") {
+		t.Errorf("expected 0 messages for unknown cursor, got: %s", text)
 	}
 }
 
@@ -237,7 +241,7 @@ func TestHandleReadTranscriptAfterIDWithTypedMessages(t *testing.T) {
 	reg.Server.PostMessage("h-transcript-after-typed", "Claude", "A decision", "decision", id1)
 
 	res, _, _ := reg.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
-		RoomID: "h-transcript-after-typed", AfterID: fmt.Sprintf("%d", id1),
+		RoomID: "h-transcript-after-typed", AfterID: id1,
 	})
 	text := resultText(res)
 	if !strings.Contains(text, "thought") {
@@ -256,12 +260,12 @@ func TestHandleReadTranscriptAfterIDLatestID(t *testing.T) {
 	id3 := mustPostTyped(t, reg.Server, "h-transcript-afterid-latest", "Claude", "Third", "decision")
 
 	res, _, _ := reg.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
-		RoomID: "h-transcript-afterid-latest", AfterID: fmt.Sprintf("%d", id1),
+		RoomID: "h-transcript-afterid-latest", AfterID: id1,
 	})
 	text := resultText(res)
 
-	// Header should include latest ID
-	expected := fmt.Sprintf("(latest: #%d)", id3)
+	// Header should include latest ID (first 8 chars of UUID)
+	expected := fmt.Sprintf("(latest: #%s)", id3[:8])
 	if !strings.Contains(text, expected) {
 		t.Errorf("expected latest_id in header, got: %s", text)
 	}
@@ -276,7 +280,7 @@ func TestHandleReadTranscriptAfterIDNoMessagesNoLatest(t *testing.T) {
 	id1 := mustPost(t, reg.Server, "h-transcript-afterid-empty", "Claude", "Only one")
 
 	res, _, _ := reg.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
-		RoomID: "h-transcript-afterid-empty", AfterID: fmt.Sprintf("%d", id1),
+		RoomID: "h-transcript-afterid-empty", AfterID: id1,
 	})
 	text := resultText(res)
 
@@ -475,15 +479,15 @@ func TestPinnedMessageInAfterIDMode(t *testing.T) {
 	reg := setupHandlerTest(t)
 	mustCreateRoom(t, reg.Server, "afterid-pin")
 	id1 := mustPostTyped(t, reg.Server, "afterid-pin", "Claude", "Pinned overview", "decision")
-	mustPost(t, reg.Server, "afterid-pin", "Gemini", "Second msg")
-	id3 := mustPostTyped(t, reg.Server, "afterid-pin", "Claude", "Third msg", "action")
+	id2 := mustPost(t, reg.Server, "afterid-pin", "Gemini", "Second msg")
+	mustPostTyped(t, reg.Server, "afterid-pin", "Claude", "Third msg", "action")
 
 	reg.Server.PinMessage("afterid-pin", id1)
 
 	// Read after id2 — should still include pinned message at top
 	res, _, err := reg.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
 		RoomID:  "afterid-pin",
-		AfterID: fmt.Sprintf("%d", id3-1),
+		AfterID: id2,
 	})
 	if err != nil {
 		t.Fatalf("handleReadTranscript error: %v", err)

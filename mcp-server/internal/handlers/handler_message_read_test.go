@@ -89,12 +89,12 @@ func TestHandleGetMessagesByRoomIDBadLimit(t *testing.T) {
 func TestHandleGetMessagesIDsTakePrecedence(t *testing.T) {
 	reg := setupHandlerTest(t)
 	mustCreateRoom(t, reg.Server, "h-get-prio")
-	mustPost(t, reg.Server, "h-get-prio", "Claude", "Message one")
+	id1 := mustPost(t, reg.Server, "h-get-prio", "Claude", "Message one")
 	mustPostTyped(t, reg.Server, "h-get-prio", "Gemini", "Message two", "review")
 
 	// If both message_ids and room_id are provided, message_ids takes precedence
 	res, _, _ := reg.handleGetMessages(context.Background(), nil, GetMessagesInput{
-		MessageIDs: "1", RoomID: "h-get-prio",
+		MessageIDs: id1, RoomID: "h-get-prio",
 	})
 	text := resultText(res)
 	if !strings.Contains(text, "1 message(s)") {
@@ -111,12 +111,12 @@ func TestHandleGetMessagesMissing(t *testing.T) {
 	}
 }
 
-func TestHandleGetMessagesInvalidID(t *testing.T) {
+func TestHandleGetMessagesNonExistentID(t *testing.T) {
 	reg := setupHandlerTest(t)
 
-	res, _, _ := reg.handleGetMessages(context.Background(), nil, GetMessagesInput{MessageIDs: "abc"})
-	if !strings.Contains(resultText(res), "not a valid") {
-		t.Error("expected invalid ID error")
+	res, _, _ := reg.handleGetMessages(context.Background(), nil, GetMessagesInput{MessageIDs: "fake-nonexistent-uuid"})
+	if !strings.Contains(resultText(res), "No messages found") {
+		t.Error("expected no messages for non-existent UUID")
 	}
 }
 
@@ -132,10 +132,10 @@ func TestHandleGetMessagesNotFound(t *testing.T) {
 func TestHandleGetMessagesMultiple(t *testing.T) {
 	reg := setupHandlerTest(t)
 	mustCreateRoom(t, reg.Server, "h-get-multi")
-	mustPost(t, reg.Server, "h-get-multi", "Claude", "First")
-	mustPostTyped(t, reg.Server, "h-get-multi", "Gemini", "Second", "review")
+	id1 := mustPost(t, reg.Server, "h-get-multi", "Claude", "First")
+	id2 := mustPostTyped(t, reg.Server, "h-get-multi", "Gemini", "Second", "review")
 
-	res, _, _ := reg.handleGetMessages(context.Background(), nil, GetMessagesInput{MessageIDs: "1,2"})
+	res, _, _ := reg.handleGetMessages(context.Background(), nil, GetMessagesInput{MessageIDs: id1 + "," + id2})
 	text := resultText(res)
 	if !strings.Contains(text, "2 message(s)") {
 		t.Errorf("expected 2 messages, got: %s", text)

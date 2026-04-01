@@ -24,13 +24,20 @@ defmodule CouncilHubUi.CouncilFixtures do
   end
 
   def create_message(attrs \\ %{}) do
+    # Generate monotonically increasing IDs so get_messages_since ordering works in tests.
+    # Format: "019d0000-0000-7000-8000-xxxxxxxxxxxx" where the last segment is a hex counter.
+    counter = System.unique_integer([:positive, :monotonic]) |> rem(281_474_976_710_655)
+    last_part = counter |> Integer.to_string(16) |> String.pad_leading(12, "0")
+    ordered_id = "019d0000-0000-7000-8000-#{last_part}"
+
     defaults = %{
+      id: ordered_id,
       room_id: "test-room",
       author: "Claude",
       content: "Test message",
       message_type: "message",
       is_summary: 0,
-      reply_to: 0,
+      reply_to: "",
       timestamp: NaiveDateTime.utc_now()
     }
 

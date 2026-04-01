@@ -15,13 +15,14 @@ defmodule CouncilHubUi.Repo.Migrations.CreateTables do
       add :updated_at, :naive_datetime, default: fragment("CURRENT_TIMESTAMP")
     end
 
-    create table(:messages) do
+    create table(:messages, primary_key: false) do
+      add :id, :string, primary_key: true
       add :room_id, :string
       add :author, :string
       add :content, :string
       add :message_type, :string, default: "message"
       add :is_summary, :boolean, default: false
-      add :reply_to, :integer, default: 0
+      add :reply_to, :string, default: ""
       add :pinned, :boolean, default: false
       add :timestamp, :naive_datetime, default: fragment("CURRENT_TIMESTAMP")
     end

@@ -1,6 +1,7 @@
 package council
 
 import (
+	"database/sql"
 	"fmt"
 	"strings"
 	"testing"
@@ -11,17 +12,17 @@ func TestPostMessage(t *testing.T) {
 	s := setupTestServer(t)
 	s.CreateRoom("msg-room", "Message test", "", "", "", "", "")
 
-	id1, err := s.PostMessage("msg-room", "Claude", "Hello from Claude", "message", 0)
+	id1, err := s.PostMessage("msg-room", "Claude", "Hello from Claude", "message", "")
 	if err != nil {
 		t.Fatalf("postMessage failed: %v", err)
 	}
-	id2, err := s.PostMessage("msg-room", "Gemini", "Hello from Gemini", "message", 0)
+	id2, err := s.PostMessage("msg-room", "Gemini", "Hello from Gemini", "message", "")
 	if err != nil {
 		t.Fatalf("postMessage failed: %v", err)
 	}
 
 	if id2 <= id1 {
-		t.Errorf("expected id2 > id1, got id1=%d id2=%d", id1, id2)
+		t.Errorf("expected id2 > id1 (UUID v7 ordering), got id1=%s id2=%s", id1, id2)
 	}
 
 	msgs, err := s.GetTranscript("msg-room")
@@ -40,9 +41,9 @@ func TestMessageType(t *testing.T) {
 	s := setupTestServer(t)
 	s.CreateRoom("type-room", "Type test", "", "", "", "", "")
 
-	s.PostMessage("type-room", "Claude", "I think we should...", "thought", 0)
-	s.PostMessage("type-room", "Gemini", "Let's go with RS256", "decision", 0)
-	s.PostMessage("type-room", "Claude", "func main() {}", "code", 0)
+	s.PostMessage("type-room", "Claude", "I think we should...", "thought", "")
+	s.PostMessage("type-room", "Gemini", "Let's go with RS256", "decision", "")
+	s.PostMessage("type-room", "Claude", "func main() {}", "code", "")
 
 	msgs, _ := s.GetTranscript("type-room")
 	if len(msgs) != 3 {
@@ -63,7 +64,7 @@ func TestCritiqueMessageType(t *testing.T) {
 	s := setupTestServer(t)
 	s.CreateRoom("critique-room", "Critique test", "", "", "", "", "")
 
-	_, err := s.PostMessage("critique-room", "Claude", "This approach has flaws", "critique", 0)
+	_, err := s.PostMessage("critique-room", "Claude", "This approach has flaws", "critique", "")
 	if err != nil {
 		t.Fatalf("postMessage with critique type failed: %v", err)
 	}
@@ -87,7 +88,7 @@ func TestPostMessageWithReplyTo(t *testing.T) {
 	s := setupTestServer(t)
 	s.CreateRoom("reply-room", "Reply test", "", "", "", "", "")
 
-	id1, _ := s.PostMessage("reply-room", "Claude", "Original message", "message", 0)
+	id1, _ := s.PostMessage("reply-room", "Claude", "Original message", "message", "")
 	id2, _ := s.PostMessage("reply-room", "Gemini", "Replying to Claude", "review", id1)
 
 	msgs, _ := s.GetTranscript("reply-room")
@@ -95,29 +96,29 @@ func TestPostMessageWithReplyTo(t *testing.T) {
 		t.Fatalf("expected 2 messages, got %d", len(msgs))
 	}
 	if msgs[1].ReplyTo != id1 {
-		t.Errorf("expected reply_to %d, got %d", id1, msgs[1].ReplyTo)
+		t.Errorf("expected reply_to %s, got %s", id1, msgs[1].ReplyTo)
 	}
 
-	// Verify transcript rendering includes reply tag
+	// Verify transcript rendering includes reply tag (first 8 chars of UUID)
 	room, _ := s.GetRoom("reply-room")
 	transcript := FormatTranscript(room, msgs)
-	expected := fmt.Sprintf("re: #%d", id1)
+	expected := fmt.Sprintf("re: #%s", id1[:8])
 	if !strings.Contains(transcript, expected) {
 		t.Errorf("transcript missing reply tag '%s'", expected)
 	}
 
 	// Verify non-reply message has no reply tag
-	if msgs[0].ReplyTo != 0 {
-		t.Errorf("expected reply_to 0 for original message, got %d", msgs[0].ReplyTo)
+	if msgs[0].ReplyTo != "" {
+		t.Errorf("expected reply_to '' for original message, got %s", msgs[0].ReplyTo)
 	}
 
 	// Get by ID and verify reply_to is preserved
-	fetched, _ := s.GetMessagesByIDs([]int64{id2})
+	fetched, _ := s.GetMessagesByIDs([]string{id2})
 	if len(fetched) != 1 {
 		t.Fatalf("expected 1 message, got %d", len(fetched))
 	}
 	if fetched[0].ReplyTo != id1 {
-		t.Errorf("getMessagesByIDs: expected reply_to %d, got %d", id1, fetched[0].ReplyTo)
+		t.Errorf("getMessagesByIDs: expected reply_to %s, got %s", id1, fetched[0].ReplyTo)
 	}
 }
 
@@ -125,7 +126,7 @@ func TestReplyToInReadRecent(t *testing.T) {
 	s := setupTestServer(t)
 	s.CreateRoom("reply-recent", "Reply recent test", "", "", "", "", "")
 
-	id1, _ := s.PostMessage("reply-recent", "Claude", "First", "message", 0)
+	id1, _ := s.PostMessage("reply-recent", "Claude", "First", "message", "")
 	s.PostMessage("reply-recent", "Gemini", "Reply to first", "critique", id1)
 
 	msgs, err := s.GetRecentMessages("reply-recent", 2)
@@ -136,7 +137,7 @@ func TestReplyToInReadRecent(t *testing.T) {
 		t.Fatalf("expected 2 messages, got %d", len(msgs))
 	}
 	if msgs[1].ReplyTo != id1 {
-		t.Errorf("expected reply_to %d, got %d", id1, msgs[1].ReplyTo)
+		t.Errorf("expected reply_to %s, got %s", id1, msgs[1].ReplyTo)
 	}
 	if msgs[1].MessageType != "critique" {
 		t.Errorf("expected message_type 'critique', got '%s'", msgs[1].MessageType)
@@ -147,9 +148,9 @@ func TestSearchMessages(t *testing.T) {
 	s := setupTestServer(t)
 	s.CreateRoom("search-room-1", "Room 1", "proj", "", "", "", "")
 	s.CreateRoom("search-room-2", "Room 2", "proj", "", "", "", "")
-	s.PostMessage("search-room-1", "Claude", "JWT token validation is broken", "thought", 0)
-	s.PostMessage("search-room-1", "Gemini", "I agree about the JWT issue", "review", 0)
-	s.PostMessage("search-room-2", "Claude", "Database migration complete", "action", 0)
+	s.PostMessage("search-room-1", "Claude", "JWT token validation is broken", "thought", "")
+	s.PostMessage("search-room-1", "Gemini", "I agree about the JWT issue", "review", "")
+	s.PostMessage("search-room-2", "Claude", "Database migration complete", "action", "")
 
 	// Search by keyword
 	msgs, err := s.SearchMessages("JWT", "", "", "", "", 20)
@@ -189,8 +190,8 @@ func TestSearchMessagesGlobal(t *testing.T) {
 	s := setupTestServer(t)
 	s.CreateRoom("search-global-a", "Room A", "proj", "", "", "", "")
 	s.CreateRoom("search-global-b", "Room B", "proj", "", "", "", "")
-	s.PostMessage("search-global-a", "Claude", "BEP 44 analysis here", "thought", 0)
-	s.PostMessage("search-global-b", "Gemini", "BEP 46 analysis here", "review", 0)
+	s.PostMessage("search-global-a", "Claude", "BEP 44 analysis here", "thought", "")
+	s.PostMessage("search-global-b", "Gemini", "BEP 46 analysis here", "review", "")
 
 	msgs, err := s.SearchMessages("BEP", "", "", "", "", 20)
 	if err != nil {
@@ -212,7 +213,7 @@ func TestSearchMessagesSnippetLength(t *testing.T) {
 	s := setupTestServer(t)
 	s.CreateRoom("search-snippet", "Snippet test", "", "", "", "", "")
 	longContent := strings.Repeat("A", 400)
-	s.PostMessage("search-snippet", "Claude", longContent, "message", 0)
+	s.PostMessage("search-snippet", "Claude", longContent, "message", "")
 
 	msgs, err := s.SearchMessages("AAAA", "", "", "search-snippet", "", 1)
 	if err != nil {
@@ -229,9 +230,9 @@ func TestSearchMessagesSnippetLength(t *testing.T) {
 func TestGetMessagesByIDs(t *testing.T) {
 	s := setupTestServer(t)
 	s.CreateRoom("getmsg-room", "Get messages test", "", "", "", "", "")
-	id1, _ := s.PostMessage("getmsg-room", "Claude", "Full content of message one with lots of detail", "thought", 0)
+	id1, _ := s.PostMessage("getmsg-room", "Claude", "Full content of message one with lots of detail", "thought", "")
 
-	msgs, err := s.GetMessagesByIDs([]int64{id1})
+	msgs, err := s.GetMessagesByIDs([]string{id1})
 	if err != nil {
 		t.Fatalf("getMessagesByIDs failed: %v", err)
 	}
@@ -250,11 +251,11 @@ func TestGetMessagesByIDsMultiple(t *testing.T) {
 	s := setupTestServer(t)
 	s.CreateRoom("getmsg-room-a", "Room A", "", "", "", "", "")
 	s.CreateRoom("getmsg-room-b", "Room B", "", "", "", "", "")
-	id1, _ := s.PostMessage("getmsg-room-a", "Claude", "Message in room A", "message", 0)
-	id2, _ := s.PostMessage("getmsg-room-b", "Gemini", "Message in room B", "review", 0)
-	id3, _ := s.PostMessage("getmsg-room-a", "Amp", "Another in room A", "decision", 0)
+	id1, _ := s.PostMessage("getmsg-room-a", "Claude", "Message in room A", "message", "")
+	id2, _ := s.PostMessage("getmsg-room-b", "Gemini", "Message in room B", "review", "")
+	id3, _ := s.PostMessage("getmsg-room-a", "Amp", "Another in room A", "decision", "")
 
-	msgs, err := s.GetMessagesByIDs([]int64{id1, id2, id3})
+	msgs, err := s.GetMessagesByIDs([]string{id1, id2, id3})
 	if err != nil {
 		t.Fatalf("getMessagesByIDs failed: %v", err)
 	}
@@ -269,7 +270,7 @@ func TestGetMessagesByIDsMultiple(t *testing.T) {
 func TestGetMessagesByIDsNotFound(t *testing.T) {
 	s := setupTestServer(t)
 
-	msgs, err := s.GetMessagesByIDs([]int64{99999, 99998})
+	msgs, err := s.GetMessagesByIDs([]string{"fake-uuid-1", "fake-uuid-2"})
 	if err != nil {
 		t.Fatalf("getMessagesByIDs failed: %v", err)
 	}
@@ -281,7 +282,7 @@ func TestGetMessagesByIDsNotFound(t *testing.T) {
 func TestGetMessagesByIDsEmpty(t *testing.T) {
 	s := setupTestServer(t)
 
-	msgs, err := s.GetMessagesByIDs([]int64{})
+	msgs, err := s.GetMessagesByIDs([]string{})
 	if err != nil {
 		t.Fatalf("getMessagesByIDs failed: %v", err)
 	}
@@ -294,7 +295,7 @@ func TestGetRecentMessages(t *testing.T) {
 	s := setupTestServer(t)
 	s.CreateRoom("recent-room", "Recent test", "", "", "", "", "")
 	for i := 0; i < 10; i++ {
-		s.PostMessage("recent-room", "Claude", fmt.Sprintf("Message %d", i), "message", 0)
+		s.PostMessage("recent-room", "Claude", fmt.Sprintf("Message %d", i), "message", "")
 	}
 
 	msgs, err := s.GetRecentMessages("recent-room", 3)
@@ -316,7 +317,7 @@ func TestGetRecentMessagesDefault(t *testing.T) {
 	s := setupTestServer(t)
 	s.CreateRoom("recent-default", "Default limit test", "", "", "", "", "")
 	for i := 0; i < 15; i++ {
-		s.PostMessage("recent-default", "Claude", fmt.Sprintf("Message %d", i), "message", 0)
+		s.PostMessage("recent-default", "Claude", fmt.Sprintf("Message %d", i), "message", "")
 	}
 
 	msgs, err := s.GetRecentMessages("recent-default", 0)
@@ -332,7 +333,7 @@ func TestGetRecentMessagesOverLimit(t *testing.T) {
 	s := setupTestServer(t)
 	s.CreateRoom("recent-cap", "Cap test", "", "", "", "", "")
 	for i := 0; i < 60; i++ {
-		s.PostMessage("recent-cap", "Claude", fmt.Sprintf("Message %d", i), "message", 0)
+		s.PostMessage("recent-cap", "Claude", fmt.Sprintf("Message %d", i), "message", "")
 	}
 
 	msgs, err := s.GetRecentMessages("recent-cap", 100)
@@ -369,11 +370,11 @@ func TestGetRecentMessagesNotFound(t *testing.T) {
 func TestDeleteMessages(t *testing.T) {
 	s := setupTestServer(t)
 	s.CreateRoom("delmsg-room", "Delete messages test", "", "", "", "", "")
-	id1, _ := s.PostMessage("delmsg-room", "Claude", "Keep this", "message", 0)
-	id2, _ := s.PostMessage("delmsg-room", "Gemini", "Delete this", "message", 0)
-	id3, _ := s.PostMessage("delmsg-room", "Claude", "Delete this too", "message", 0)
+	id1, _ := s.PostMessage("delmsg-room", "Claude", "Keep this", "message", "")
+	id2, _ := s.PostMessage("delmsg-room", "Gemini", "Delete this", "message", "")
+	id3, _ := s.PostMessage("delmsg-room", "Claude", "Delete this too", "message", "")
 
-	count, err := s.DeleteMessages([]int64{id2, id3})
+	count, err := s.DeleteMessages([]string{id2, id3})
 	if err != nil {
 		t.Fatalf("deleteMessages failed: %v", err)
 	}
@@ -386,14 +387,14 @@ func TestDeleteMessages(t *testing.T) {
 		t.Fatalf("expected 1 remaining message, got %d", len(msgs))
 	}
 	if msgs[0].ID != id1 {
-		t.Errorf("expected message %d to remain, got %d", id1, msgs[0].ID)
+		t.Errorf("expected message %s to remain, got %s", id1, msgs[0].ID)
 	}
 }
 
 func TestDeleteMessagesNonexistent(t *testing.T) {
 	s := setupTestServer(t)
 
-	count, err := s.DeleteMessages([]int64{99999})
+	count, err := s.DeleteMessages([]string{"fake-nonexistent-uuid"})
 	if err != nil {
 		t.Fatalf("deleteMessages failed: %v", err)
 	}
@@ -473,7 +474,7 @@ func TestUpdateMessageDBWithType(t *testing.T) {
 func TestUpdateMessageDBNotFound(t *testing.T) {
 	s := setupTestServer(t)
 
-	_, err := s.UpdateMessage(99999, "Nope", "")
+	_, err := s.UpdateMessage("fake-nonexistent-uuid", "Nope", "")
 	if err == nil {
 		t.Error("expected error for nonexistent message")
 	}
@@ -485,12 +486,12 @@ func TestPostMessageDefaultType(t *testing.T) {
 	s := setupTestServer(t)
 	mustCreateRoom(t, s, "default-type")
 
-	id, err := s.PostMessage("default-type", "Claude", "Hello", "", 0)
+	id, err := s.PostMessage("default-type", "Claude", "Hello", "", "")
 	if err != nil {
 		t.Fatalf("postMessage failed: %v", err)
 	}
 
-	msgs, _ := s.GetMessagesByIDs([]int64{id})
+	msgs, _ := s.GetMessagesByIDs([]string{id})
 	if msgs[0].MessageType != "message" {
 		t.Errorf("expected default type 'message', got '%s'", msgs[0].MessageType)
 	}
@@ -522,7 +523,7 @@ func TestSearchMessagesLimitClamping(t *testing.T) {
 
 func TestDeleteMessagesEmptySlice(t *testing.T) {
 	s := setupTestServer(t)
-	count, err := s.DeleteMessages([]int64{})
+	count, err := s.DeleteMessages([]string{})
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}
@@ -539,8 +540,8 @@ func TestPostMessageUpdatedAtBestEffort(t *testing.T) {
 
 	// Post should succeed even though updated_at UPDATE is best-effort
 	id := mustPost(t, s, "besteff-room", "Claude", "Hello")
-	if id <= 0 {
-		t.Errorf("expected positive message ID, got %d", id)
+	if id == "" {
+		t.Errorf("expected non-empty message ID")
 	}
 }
 
@@ -568,21 +569,21 @@ func TestGetMessagesAfterID(t *testing.T) {
 	mustCreateRoom(t, s, "after-room")
 	id1 := mustPost(t, s, "after-room", "Claude", "First")
 	id2 := mustPost(t, s, "after-room", "Gemini", "Second")
-	mustPost(t, s, "after-room", "Claude", "Third")
+	id3 := mustPost(t, s, "after-room", "Claude", "Third")
 
 	msgs, err := s.GetMessagesAfterID("after-room", id1)
 	if err != nil {
 		t.Fatalf("GetMessagesAfterID failed: %v", err)
 	}
 	if len(msgs) != 2 {
-		t.Fatalf("expected 2 messages after id %d, got %d", id1, len(msgs))
+		t.Fatalf("expected 2 messages after id %s, got %d", id1, len(msgs))
 	}
 	if msgs[0].ID != id2 {
-		t.Errorf("expected first result id %d, got %d", id2, msgs[0].ID)
+		t.Errorf("expected first result id %s, got %s", id2, msgs[0].ID)
 	}
 
 	// After the last message — empty
-	msgs, err = s.GetMessagesAfterID("after-room", id2+100)
+	msgs, err = s.GetMessagesAfterID("after-room", id3)
 	if err != nil {
 		t.Fatalf("GetMessagesAfterID failed: %v", err)
 	}
@@ -702,7 +703,7 @@ func TestPinMessageReplacesExisting(t *testing.T) {
 	}
 	msg, _ := s.GetPinnedMessage("pin-replace")
 	if msg == nil || msg.ID != id2 {
-		t.Errorf("expected pinned id %d, got %v", id2, msg)
+		t.Errorf("expected pinned id %s, got %v", id2, msg)
 	}
 }
 
@@ -803,4 +804,145 @@ func TestSearchMessagesByProject(t *testing.T) {
 	if msgs[0].RoomID != "proj-room-a" {
 		t.Errorf("expected proj-room-a, got %s", msgs[0].RoomID)
 	}
+}
+
+// ========== UUID migration ==========
+
+func TestMigrateMessagesToUUIDs(t *testing.T) {
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+
+	// 1. Create old integer-ID schema
+	db.Exec(`CREATE TABLE rooms (id TEXT PRIMARY KEY, description TEXT, status TEXT DEFAULT 'active',
+		project TEXT DEFAULT '', tech_stack TEXT DEFAULT '', tags TEXT DEFAULT '',
+		system_prompt TEXT DEFAULT '', related_rooms TEXT DEFAULT '',
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)`)
+	db.Exec(`CREATE TABLE messages (id INTEGER PRIMARY KEY AUTOINCREMENT, room_id TEXT, author TEXT,
+		content TEXT, message_type TEXT DEFAULT 'message', is_summary BOOLEAN DEFAULT 0,
+		reply_to INTEGER DEFAULT 0, pinned BOOLEAN DEFAULT 0,
+		timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(room_id) REFERENCES rooms(id))`)
+
+	// 2. Insert rooms
+	db.Exec(`INSERT INTO rooms (id, description) VALUES ('room-a', 'Test Room A')`)
+	db.Exec(`INSERT INTO rooms (id, description) VALUES ('room-b', 'Test Room B')`)
+
+	// 3. Insert messages with integer IDs (including reply_to cross-references)
+	db.Exec(`INSERT INTO messages (id, room_id, author, content, message_type) VALUES (1, 'room-a', 'Claude', 'First message', 'message')`)
+	db.Exec(`INSERT INTO messages (id, room_id, author, content, message_type) VALUES (2, 'room-a', 'Gemini', 'Second message', 'thought')`)
+	db.Exec(`INSERT INTO messages (id, room_id, author, content, message_type, reply_to) VALUES (3, 'room-a', 'Claude', 'Reply to first', 'message', 1)`)
+	db.Exec(`INSERT INTO messages (id, room_id, author, content, message_type, pinned) VALUES (4, 'room-b', 'Amp', 'Pinned in room-b', 'decision', 1)`)
+	db.Exec(`INSERT INTO messages (id, room_id, author, content, message_type, is_summary) VALUES (5, 'room-b', 'Claude', 'Summary', 'message', 1)`)
+
+	// 4. Run the migration
+	if err := migrateMessagesToUUIDs(db); err != nil {
+		t.Fatalf("migration failed: %v", err)
+	}
+
+	// 5. Verify count — no data lost
+	var count int
+	db.QueryRow(`SELECT COUNT(*) FROM messages`).Scan(&count)
+	if count != 5 {
+		t.Errorf("expected 5 messages after migration, got %d", count)
+	}
+
+	// 6. Load migrated messages in insertion order
+	type migratedMsg struct {
+		id, author, replyTo string
+		pinned, isSummary   bool
+	}
+	rows, err := db.Query(`SELECT id, author, reply_to, pinned, is_summary FROM messages ORDER BY rowid ASC`)
+	if err != nil {
+		t.Fatalf("query after migration: %v", err)
+	}
+	var msgs []migratedMsg
+	for rows.Next() {
+		var m migratedMsg
+		rows.Scan(&m.id, &m.author, &m.replyTo, &m.pinned, &m.isSummary)
+		msgs = append(msgs, m)
+	}
+	rows.Close()
+	if len(msgs) != 5 {
+		t.Fatalf("expected 5 migrated messages, got %d", len(msgs))
+	}
+
+	// 7. All IDs are valid UUID v7 strings
+	for _, m := range msgs {
+		if !isValidUUIDv7(m.id) {
+			t.Errorf("id %q is not a valid UUID v7", m.id)
+		}
+	}
+
+	// 8. Insertion order preserved (Claude first, Gemini second, etc.)
+	if msgs[0].author != "Claude" {
+		t.Errorf("expected Claude first, got %s", msgs[0].author)
+	}
+	if msgs[1].author != "Gemini" {
+		t.Errorf("expected Gemini second, got %s", msgs[1].author)
+	}
+
+	// 9. UUID v7 time ordering: later messages have lexicographically greater IDs
+	if msgs[1].id <= msgs[0].id {
+		t.Errorf("expected uuid[1] > uuid[0], got %s <= %s", msgs[1].id, msgs[0].id)
+	}
+	if msgs[2].id <= msgs[1].id {
+		t.Errorf("expected uuid[2] > uuid[1], got %s <= %s", msgs[2].id, msgs[1].id)
+	}
+
+	// 10. reply_to is correctly translated (message 3 replied to message 1)
+	replyMsg := msgs[2] // third message (was id=3, reply_to=1)
+	if replyMsg.replyTo == "" {
+		t.Error("reply_to should have been translated to UUID, got empty string")
+	}
+	if replyMsg.replyTo != msgs[0].id {
+		t.Errorf("reply_to should point to first message UUID %s, got %s", msgs[0].id, replyMsg.replyTo)
+	}
+
+	// 11. Pinned flag preserved
+	if !msgs[3].pinned {
+		t.Error("pinned flag not preserved after migration")
+	}
+
+	// 12. is_summary flag preserved
+	if !msgs[4].isSummary {
+		t.Error("is_summary flag not preserved after migration")
+	}
+
+	// 13. Rooms table untouched
+	var roomCount int
+	db.QueryRow(`SELECT COUNT(*) FROM rooms`).Scan(&roomCount)
+	if roomCount != 2 {
+		t.Errorf("expected 2 rooms, got %d", roomCount)
+	}
+
+	// 14. Idempotency: running migration again is a no-op
+	if err := migrateMessagesToUUIDs(db); err != nil {
+		t.Errorf("second migration run failed: %v", err)
+	}
+	db.QueryRow(`SELECT COUNT(*) FROM messages`).Scan(&count)
+	if count != 5 {
+		t.Errorf("idempotency failed: count changed to %d", count)
+	}
+}
+
+func isValidUUIDv7(s string) bool {
+	if len(s) != 36 {
+		return false
+	}
+	// UUID format: 8-4-4-4-12 hex chars with dashes, version nibble = 7
+	for i, c := range s {
+		if i == 8 || i == 13 || i == 18 || i == 23 {
+			if c != '-' {
+				return false
+			}
+			continue
+		}
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+			return false
+		}
+	}
+	// Version nibble at position 14 must be '7'
+	return s[14] == '7'
 }

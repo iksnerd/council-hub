@@ -133,7 +133,7 @@ func (r *Registry) readSingleTranscript(args ReadTranscriptInput) (*mcp.CallTool
 		pinned, _ := r.Server.GetPinnedMessage(args.RoomID)
 		if pinned != nil {
 			ts := pinned.Timestamp.Format("2006-01-02 15:04:05")
-			fmt.Fprintf(&b, "**PINNED [#%d %s] %s:**\n%s\n---\n", pinned.ID, ts, pinned.Author, pinned.Content)
+			fmt.Fprintf(&b, "**PINNED [#%.8s %s] %s:**\n%s\n---\n", pinned.ID, ts, pinned.Author, pinned.Content)
 		}
 
 		if len(latestMsgs) == 0 {
@@ -154,7 +154,7 @@ func (r *Registry) readSingleTranscript(args ReadTranscriptInput) (*mcp.CallTool
 				if seenType[m.MessageType] > 1 {
 					label = "Previous"
 				}
-				fmt.Fprintf(&b, "**%s %s** [#%d %s] %s:\n  %s\n\n", label, m.MessageType, m.ID, ts, m.Author, snippet)
+				fmt.Fprintf(&b, "**%s %s** [#%.8s %s] %s:\n  %s\n\n", label, m.MessageType, m.ID, ts, m.Author, snippet)
 			}
 		}
 		return msg(b.String())
@@ -181,7 +181,7 @@ func (r *Registry) readSingleTranscript(args ReadTranscriptInput) (*mcp.CallTool
 				continue
 			}
 			ts := m.Timestamp.Format("2006-01-02 15:04:05")
-			fmt.Fprintf(&b, "\n**[#%d %s] %s (%s):**\n%s\n", m.ID, ts, m.Author, m.MessageType, m.Content)
+			fmt.Fprintf(&b, "\n**[#%.8s %s] %s (%s):**\n%s\n", m.ID, ts, m.Author, m.MessageType, m.Content)
 			count++
 		}
 		if count == 0 {
@@ -192,19 +192,14 @@ func (r *Registry) readSingleTranscript(args ReadTranscriptInput) (*mcp.CallTool
 
 	// Mode: after_id \u2014 delta read
 	if args.AfterID != "" {
-		var afterID int64
-		if _, err := fmt.Sscanf(args.AfterID, "%d", &afterID); err != nil {
-			return msg(fmt.Sprintf("Error: after_id '%s' is not a valid message ID.", args.AfterID))
-		}
-
-		messages, err := r.Server.GetMessagesAfterID(args.RoomID, afterID)
+		messages, err := r.Server.GetMessagesAfterID(args.RoomID, args.AfterID)
 		if err != nil {
-			r.Server.Logger.Error("Failed to get messages after ID", "room_id", args.RoomID, "after_id", afterID, "error", err)
+			r.Server.Logger.Error("Failed to get messages after ID", "room_id", args.RoomID, "after_id", args.AfterID, "error", err)
 			return nil, ToolOutput{}, err
 		}
 
 		// Find the latest message ID in the room for cursor tracking
-		var latestID int64
+		latestID := ""
 		for _, m := range messages {
 			if m.ID > latestID {
 				latestID = m.ID
@@ -212,9 +207,9 @@ func (r *Registry) readSingleTranscript(args ReadTranscriptInput) (*mcp.CallTool
 		}
 
 		var b strings.Builder
-		fmt.Fprintf(&b, "# %s \u2014 %d message(s) after #%d", room.ID, len(messages), afterID)
-		if latestID > 0 {
-			fmt.Fprintf(&b, " (latest: #%d)", latestID)
+		fmt.Fprintf(&b, "# %s \u2014 %d message(s) after #%.8s", room.ID, len(messages), args.AfterID)
+		if latestID != "" {
+			fmt.Fprintf(&b, " (latest: #%.8s)", latestID)
 		}
 		b.WriteString("\n")
 		if room.SystemPrompt != "" {
@@ -226,21 +221,21 @@ func (r *Registry) readSingleTranscript(args ReadTranscriptInput) (*mcp.CallTool
 		pinned, _ := r.Server.GetPinnedMessage(args.RoomID)
 		if pinned != nil {
 			ts := pinned.Timestamp.Format("2006-01-02 15:04:05")
-			fmt.Fprintf(&b, "\n**PINNED [#%d %s] %s:**\n%s\n---\n", pinned.ID, ts, pinned.Author, pinned.Content)
+			fmt.Fprintf(&b, "\n**PINNED [#%.8s %s] %s:**\n%s\n---\n", pinned.ID, ts, pinned.Author, pinned.Content)
 		}
 
 		for _, m := range messages {
 			ts := m.Timestamp.Format("2006-01-02 15:04:05")
 			replyTag := ""
-			if m.ReplyTo > 0 {
-				replyTag = fmt.Sprintf(", re: #%d", m.ReplyTo)
+			if m.ReplyTo != "" {
+				replyTag = fmt.Sprintf(", re: #%.8s", m.ReplyTo)
 			}
 			if m.IsSummary {
 				fmt.Fprintf(&b, "\n**[%s] SUMMARY:**\n%s\n", ts, m.Content)
 			} else if m.MessageType != "" && m.MessageType != "message" {
-				fmt.Fprintf(&b, "\n**[#%d %s] %s (%s%s):**\n%s\n", m.ID, ts, m.Author, m.MessageType, replyTag, m.Content)
+				fmt.Fprintf(&b, "\n**[#%.8s %s] %s (%s%s):**\n%s\n", m.ID, ts, m.Author, m.MessageType, replyTag, m.Content)
 			} else {
-				fmt.Fprintf(&b, "\n**[#%d %s] %s:**\n%s\n", m.ID, ts, m.Author, m.Content)
+				fmt.Fprintf(&b, "\n**[#%.8s %s] %s:**\n%s\n", m.ID, ts, m.Author, m.Content)
 			}
 		}
 		return msg(b.String())

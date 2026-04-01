@@ -201,11 +201,11 @@ defmodule CouncilHubUiWeb.CouncilComponents do
               PINNED
             </span>
             <span
-              :if={Map.get(@msg, :reply_to, 0) > 0}
+              :if={Map.get(@msg, :reply_to, "") != ""}
               class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-cyan-500/10 text-cyan-400 border border-cyan-500/20"
             >
               <span class="hero-arrow-uturn-left w-3 h-3"></span>
-              re: #{Map.get(@msg, :reply_to)}
+              re: #<%= String.slice(Map.get(@msg, :reply_to, ""), 0, 8) %>
             </span>
             <span class="text-[10px] text-gray-600 font-mono tabular-nums">
               {format_timestamp(@msg.timestamp)}

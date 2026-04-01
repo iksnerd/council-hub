@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -30,13 +31,13 @@ type Room struct {
 
 // Message represents a message in a council room.
 type Message struct {
-	ID          int64
+	ID          string
 	RoomID      string
 	Author      string
 	Content     string
 	MessageType string
 	IsSummary   bool
-	ReplyTo     int64
+	ReplyTo     string // UUID of parent message, or ""
 	Pinned      bool
 	Timestamp   time.Time
 }
@@ -83,9 +84,14 @@ func NewServer(dbPath string, logger *slog.Logger) (*Server, error) {
 		return nil, fmt.Errorf("failed to initialize schema: %w", err)
 	}
 
+	if err := migrateMessagesToUUIDs(db); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to migrate message IDs to UUID: %w", err)
+	}
+
 	mcpServer := mcp.NewServer(&mcp.Implementation{
 		Name:    "council-hub",
-		Version: "0.5.3",
+		Version: "0.5.4",
 	}, &mcp.ServerOptions{
 		Logger:       logger,
 		Capabilities: &mcp.ServerCapabilities{},
@@ -115,13 +121,13 @@ func initSchema(db *sql.DB) error {
 	);
 
 	CREATE TABLE IF NOT EXISTS messages (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		id TEXT PRIMARY KEY,
 		room_id TEXT,
 		author TEXT,
 		content TEXT,
 		message_type TEXT DEFAULT 'message',
 		is_summary BOOLEAN DEFAULT 0,
-		reply_to INTEGER DEFAULT 0,
+		reply_to TEXT DEFAULT '',
 		timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
 		FOREIGN KEY(room_id) REFERENCES rooms(id)
 	);`
@@ -135,7 +141,7 @@ func initSchema(db *sql.DB) error {
 	// These use constant defaults so ALTER TABLE works with SQLite.
 	migrations := []string{
 		`ALTER TABLE rooms ADD COLUMN related_rooms TEXT DEFAULT ''`,
-		`ALTER TABLE messages ADD COLUMN reply_to INTEGER DEFAULT 0`,
+		`ALTER TABLE messages ADD COLUMN reply_to TEXT DEFAULT ''`,
 		`ALTER TABLE messages ADD COLUMN pinned BOOLEAN DEFAULT 0`,
 	}
 	for _, m := range migrations {
@@ -197,7 +203,7 @@ func (s *Server) syncReverseLinks(roomID, relatedRooms string) {
 	}
 }
 
-func (s *Server) PostMessage(roomID, author, content, messageType string, replyTo int64) (int64, error) {
+func (s *Server) PostMessage(roomID, author, content, messageType string, replyTo string) (string, error) {
 	s.Mu.Lock()
 	defer s.Mu.Unlock()
 
@@ -205,22 +211,22 @@ func (s *Server) PostMessage(roomID, author, content, messageType string, replyT
 		messageType = "message"
 	}
 
-	result, err := s.DB.Exec(
-		`INSERT INTO messages (room_id, author, content, message_type, reply_to) VALUES (?, ?, ?, ?, ?)`,
-		roomID, author, content, messageType, replyTo,
+	id := uuid.Must(uuid.NewV7()).String()
+	_, err := s.DB.Exec(
+		`INSERT INTO messages (id, room_id, author, content, message_type, reply_to) VALUES (?, ?, ?, ?, ?, ?)`,
+		id, roomID, author, content, messageType, replyTo,
 	)
 	if err != nil {
-		return 0, err
+		return "", err
 	}
 
 	// Update room's updated_at — best-effort, don't fail the post on this
 	_, _ = s.DB.Exec(`UPDATE rooms SET updated_at = CURRENT_TIMESTAMP WHERE id = ?`, roomID)
 
-	id, err := result.LastInsertId()
-	return id, err
+	return id, nil
 }
 
-func (s *Server) UpdateMessage(messageID int64, newContent, newMessageType string) (*Message, error) {
+func (s *Server) UpdateMessage(messageID string, newContent, newMessageType string) (*Message, error) {
 	s.Mu.Lock()
 	defer s.Mu.Unlock()
 
@@ -256,7 +262,7 @@ func (s *Server) UpdateMessage(messageID int64, newContent, newMessageType strin
 	return &m, nil
 }
 
-func (s *Server) PinMessage(roomID string, messageID int64) (bool, error) {
+func (s *Server) PinMessage(roomID string, messageID string) (bool, error) {
 	s.Mu.Lock()
 	defer s.Mu.Unlock()
 
@@ -268,7 +274,7 @@ func (s *Server) PinMessage(roomID string, messageID int64) (bool, error) {
 		return false, err
 	}
 	if actualRoomID != roomID {
-		return false, fmt.Errorf("message #%d belongs to room '%s', not '%s'", messageID, actualRoomID, roomID)
+		return false, fmt.Errorf("message %.8s belongs to room '%s', not '%s'", messageID, actualRoomID, roomID)
 	}
 
 	if currentlyPinned {
@@ -370,7 +376,7 @@ func (s *Server) UpdateRoom(roomID, description, project, techStack, tags, syste
 	return nil
 }
 
-func (s *Server) GetMessagesByIDs(ids []int64) ([]Message, error) {
+func (s *Server) GetMessagesByIDs(ids []string) ([]Message, error) {
 	if len(ids) == 0 {
 		return nil, nil
 	}
@@ -464,7 +470,7 @@ type RoomStats struct {
 	RoomID          string
 	Status          string
 	MessageCount    int
-	LatestMessageID int64
+	LatestMessageID string
 	Participants    map[string]int // author -> message count
 	TypeCounts      map[string]int // message_type -> count
 	FirstMessage    time.Time
@@ -537,8 +543,7 @@ func (s *Server) GetRoomStats(roomID string) (RoomStats, error) {
 	stats.Status = status
 
 	// Get aggregate stats + latest message ID
-	var firstMsg, lastMsg sql.NullString
-	var latestID sql.NullInt64
+	var firstMsg, lastMsg, latestID sql.NullString
 	err = s.DB.QueryRow(`SELECT COUNT(*), MIN(timestamp), MAX(timestamp), MAX(id) FROM messages WHERE room_id = ?`, roomID).
 		Scan(&stats.MessageCount, &firstMsg, &lastMsg, &latestID)
 	if err != nil {
@@ -551,7 +556,7 @@ func (s *Server) GetRoomStats(roomID string) (RoomStats, error) {
 		stats.LastMessage, _ = time.Parse("2006-01-02 15:04:05", lastMsg.String)
 	}
 	if latestID.Valid {
-		stats.LatestMessageID = latestID.Int64
+		stats.LatestMessageID = latestID.String
 	}
 
 	// Get per-author counts
@@ -592,7 +597,7 @@ func (s *Server) GetRoomStats(roomID string) (RoomStats, error) {
 	return stats, typeRows.Err()
 }
 
-func (s *Server) DeleteMessages(ids []int64) (int64, error) {
+func (s *Server) DeleteMessages(ids []string) (int64, error) {
 	s.Mu.Lock()
 	defer s.Mu.Unlock()
 
@@ -666,7 +671,7 @@ func (s *Server) GetTranscript(roomID string) ([]Message, error) {
 		FROM messages
 		WHERE room_id = ?
 		  AND (is_summary = 1 OR id > COALESCE(
-		      (SELECT MAX(id) FROM messages WHERE room_id = ? AND is_summary = 1), 0
+		      (SELECT MAX(id) FROM messages WHERE room_id = ? AND is_summary = 1), ''
 		  ))
 		ORDER BY timestamp ASC`, messageColumns),
 		roomID, roomID,
@@ -688,7 +693,7 @@ func (s *Server) GetTranscript(roomID string) ([]Message, error) {
 }
 
 // getMessagesAfterID returns messages with ID > afterID for a room, in chronological order.
-func (s *Server) GetMessagesAfterID(roomID string, afterID int64) ([]Message, error) {
+func (s *Server) GetMessagesAfterID(roomID string, afterID string) ([]Message, error) {
 	rows, err := s.DB.Query(fmt.Sprintf(`
 		SELECT %s
 		FROM messages
@@ -750,7 +755,7 @@ func (s *Server) GetRoomsNeedingSummary(threshold int) ([]string, error) {
 		FROM messages
 		WHERE is_summary = 0
 		  AND id > COALESCE(
-		      (SELECT MAX(m2.id) FROM messages m2 WHERE m2.room_id = messages.room_id AND m2.is_summary = 1), 0
+		      (SELECT MAX(m2.id) FROM messages m2 WHERE m2.room_id = messages.room_id AND m2.is_summary = 1), ''
 		  )
 		GROUP BY room_id
 		HAVING COUNT(*) > ?`,
@@ -780,7 +785,7 @@ func (s *Server) GetUnsummarizedMessages(roomID string) ([]Message, error) {
 		WHERE room_id = ?
 		  AND is_summary = 0
 		  AND id > COALESCE(
-		      (SELECT MAX(id) FROM messages WHERE room_id = ? AND is_summary = 1), 0
+		      (SELECT MAX(id) FROM messages WHERE room_id = ? AND is_summary = 1), ''
 		  )
 		ORDER BY timestamp ASC`, messageColumns),
 		roomID, roomID,
@@ -806,9 +811,10 @@ func (s *Server) InsertSummary(roomID, summary string) error {
 	s.Mu.Lock()
 	defer s.Mu.Unlock()
 
+	id := uuid.Must(uuid.NewV7()).String()
 	_, err := s.DB.Exec(
-		`INSERT INTO messages (room_id, author, content, message_type, is_summary) VALUES (?, ?, ?, 'message', 1)`,
-		roomID, "System", summary,
+		`INSERT INTO messages (id, room_id, author, content, message_type, is_summary) VALUES (?, ?, ?, ?, 'message', 1)`,
+		id, roomID, "System", summary,
 	)
 	if err != nil {
 		return err
@@ -928,4 +934,103 @@ func (s *Server) GetMessageCounts() map[string]int {
 		counts[roomID] = count
 	}
 	return counts
+}
+
+// migrateMessagesToUUIDs detects an old integer-ID messages schema and converts it to UUID v7.
+// It is idempotent: if messages.id is already TEXT, it returns immediately.
+// All data is preserved; reply_to cross-references are translated using the old→new ID map.
+func migrateMessagesToUUIDs(db *sql.DB) error {
+	// Check if migration is needed: look for INTEGER type on messages.id
+	var colType string
+	err := db.QueryRow(`SELECT type FROM pragma_table_info('messages') WHERE name='id'`).Scan(&colType)
+	if err != nil || strings.ToUpper(colType) != "INTEGER" {
+		return nil // already migrated, or table doesn't exist yet
+	}
+
+	// Load all existing messages ordered by old integer ID (= insertion order)
+	type oldRow struct {
+		OldID       int64
+		RoomID      string
+		Author      string
+		Content     string
+		MessageType string
+		IsSummary   bool
+		OldReplyTo  int64
+		Pinned      bool
+		Timestamp   string
+	}
+
+	rows, err := db.Query(`SELECT id, room_id, author, content, message_type, is_summary, reply_to, pinned, timestamp FROM messages ORDER BY id ASC`)
+	if err != nil {
+		return fmt.Errorf("read old messages: %w", err)
+	}
+
+	var oldRows []oldRow
+	for rows.Next() {
+		var r oldRow
+		if err := rows.Scan(&r.OldID, &r.RoomID, &r.Author, &r.Content, &r.MessageType, &r.IsSummary, &r.OldReplyTo, &r.Pinned, &r.Timestamp); err != nil {
+			rows.Close()
+			return fmt.Errorf("scan old message: %w", err)
+		}
+		oldRows = append(oldRows, r)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate old messages: %w", err)
+	}
+
+	// Build old int64 → new UUID v7 mapping (processed in order, so UUIDs are chronological)
+	idMap := make(map[int64]string, len(oldRows))
+	for _, r := range oldRows {
+		idMap[r.OldID] = uuid.Must(uuid.NewV7()).String()
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin migration transaction: %w", err)
+	}
+
+	if _, err := tx.Exec(`ALTER TABLE messages RENAME TO messages_old`); err != nil {
+		tx.Rollback()
+		return fmt.Errorf("rename old table: %w", err)
+	}
+
+	if _, err := tx.Exec(`CREATE TABLE messages (
+		id TEXT PRIMARY KEY,
+		room_id TEXT,
+		author TEXT,
+		content TEXT,
+		message_type TEXT DEFAULT 'message',
+		is_summary BOOLEAN DEFAULT 0,
+		reply_to TEXT DEFAULT '',
+		pinned BOOLEAN DEFAULT 0,
+		timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY(room_id) REFERENCES rooms(id)
+	)`); err != nil {
+		tx.Rollback()
+		return fmt.Errorf("create new messages table: %w", err)
+	}
+
+	for _, r := range oldRows {
+		newReplyTo := ""
+		if r.OldReplyTo > 0 {
+			if ref, ok := idMap[r.OldReplyTo]; ok {
+				newReplyTo = ref
+			}
+		}
+		if _, err := tx.Exec(
+			`INSERT INTO messages (id, room_id, author, content, message_type, is_summary, reply_to, pinned, timestamp) VALUES (?,?,?,?,?,?,?,?,?)`,
+			idMap[r.OldID], r.RoomID, r.Author, r.Content, r.MessageType, r.IsSummary, newReplyTo, r.Pinned, r.Timestamp,
+		); err != nil {
+			tx.Rollback()
+			return fmt.Errorf("insert migrated message: %w", err)
+		}
+	}
+
+	if _, err := tx.Exec(`DROP TABLE messages_old`); err != nil {
+		tx.Rollback()
+		return fmt.Errorf("drop old messages table: %w", err)
+	}
+
+	return tx.Commit()
 }

@@ -86,25 +86,25 @@ func mustCreateRoom(t *testing.T, s *council.Server, id string, opts ...func(*te
 
 // --- Message helpers ---
 
-func mustPost(t *testing.T, s *council.Server, roomID, author, content string) int64 {
+func mustPost(t *testing.T, s *council.Server, roomID, author, content string) string {
 	t.Helper()
-	id, err := s.PostMessage(roomID, author, content, "message", 0)
+	id, err := s.PostMessage(roomID, author, content, "message", "")
 	if err != nil {
 		t.Fatalf("PostMessage failed: %v", err)
 	}
 	return id
 }
 
-func mustPostTyped(t *testing.T, s *council.Server, roomID, author, content, msgType string) int64 {
+func mustPostTyped(t *testing.T, s *council.Server, roomID, author, content, msgType string) string {
 	t.Helper()
-	id, err := s.PostMessage(roomID, author, content, msgType, 0)
+	id, err := s.PostMessage(roomID, author, content, msgType, "")
 	if err != nil {
 		t.Fatalf("PostMessage failed: %v", err)
 	}
 	return id
 }
 
-func mustPostReply(t *testing.T, s *council.Server, roomID, author, content string, replyTo int64) int64 {
+func mustPostReply(t *testing.T, s *council.Server, roomID, author, content string, replyTo string) string {
 	t.Helper()
 	id, err := s.PostMessage(roomID, author, content, "message", replyTo)
 	if err != nil {

@@ -300,7 +300,7 @@ func TestReadTranscriptBatchWithAfterID(t *testing.T) {
 
 	res, _, err := reg.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
 		RoomIDs: "ba-room",
-		AfterID: string(rune('0' + int32(id1))),
+		AfterID: id1,
 	})
 	if err != nil {
 		t.Fatalf("batch after_id error: %v", err)

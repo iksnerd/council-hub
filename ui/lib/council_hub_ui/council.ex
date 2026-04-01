@@ -109,15 +109,16 @@ defmodule CouncilHubUi.Council do
   end
 
   defp format_message(msg) do
-    reply_tag = if (Map.get(msg, :reply_to, 0) || 0) > 0, do: ", re: ##{msg.reply_to}", else: ""
+    reply_to = Map.get(msg, :reply_to, "") || ""
+    reply_tag = if reply_to != "", do: ", re: ##{String.slice(reply_to, 0, 8)}", else: ""
     ts = format_ts(msg.timestamp)
 
     cond do
       msg.message_type not in [nil, "", "message"] ->
         "\n**[#{ts}] #{msg.author} (#{msg.message_type}#{reply_tag}):**\n#{msg.content}"
 
-      (Map.get(msg, :reply_to, 0) || 0) > 0 ->
-        "\n**[#{ts}] #{msg.author} (re: ##{msg.reply_to}):**\n#{msg.content}"
+      reply_to != "" ->
+        "\n**[#{ts}] #{msg.author} (re: ##{String.slice(reply_to, 0, 8)}):**\n#{msg.content}"
 
       true ->
         "\n**[#{ts}] #{msg.author}:**\n#{msg.content}"

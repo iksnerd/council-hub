@@ -103,7 +103,7 @@ defmodule CouncilHubUiWeb.CouncilLiveTest do
       create_message(%{room_id: room.id, author: "Gemini", content: "Reply", reply_to: m1.id})
 
       {:ok, _view, html} = live(conn, "/rooms/reply-display")
-      assert html =~ "re: ##{m1.id}"
+      assert html =~ "re: ##{String.slice(m1.id, 0, 8)}"
     end
 
     test "shows summary blocks", %{conn: conn} do

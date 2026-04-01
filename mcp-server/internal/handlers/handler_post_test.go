@@ -79,7 +79,7 @@ func TestHandlePostToRoomWithReplyTo(t *testing.T) {
 
 	res, _, _ := reg.handlePostToRoom(context.Background(), nil, PostToRoomInput{
 		RoomID: "h-reply", Author: "Gemini", Message: "Reply",
-		ReplyTo: "1",
+		ReplyTo: id,
 	})
 	text := resultText(res)
 	if !strings.Contains(text, "posted") {
@@ -99,17 +99,18 @@ func TestHandlePostToRoomWithReplyTo(t *testing.T) {
 	}
 }
 
-func TestHandlePostToRoomInvalidReplyTo(t *testing.T) {
+func TestHandlePostToRoomAnyReplyToAccepted(t *testing.T) {
 	reg := setupHandlerTest(t)
-	mustCreateRoom(t, reg.Server, "h-reply-bad")
+	mustCreateRoom(t, reg.Server, "h-reply-any")
 
+	// Any string is accepted as reply_to (UUID or otherwise)
 	res, _, _ := reg.handlePostToRoom(context.Background(), nil, PostToRoomInput{
-		RoomID: "h-reply-bad", Author: "Claude", Message: "Hello",
-		ReplyTo: "not-a-number",
+		RoomID: "h-reply-any", Author: "Claude", Message: "Hello",
+		ReplyTo: "any-string-reply-to",
 	})
 	text := resultText(res)
-	if !strings.Contains(text, "Error") {
-		t.Errorf("expected error for bad reply_to, got: %s", text)
+	if !strings.Contains(text, "posted") {
+		t.Errorf("expected success for any string reply_to, got: %s", text)
 	}
 }
 

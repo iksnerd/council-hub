@@ -175,12 +175,12 @@ func TestSummarizeLongContent(t *testing.T) {
 func TestFormatTranscriptReplyToPlainMessage(t *testing.T) {
 	room := Room{ID: "fmt-reply", Description: "Test", Status: "active"}
 	msgs := []Message{
-		{ID: 1, Author: "Claude", Content: "Original", MessageType: "message", ReplyTo: 0},
-		{ID: 2, Author: "Gemini", Content: "Reply", MessageType: "message", ReplyTo: 1},
+		{ID: "uuid-0001", Author: "Claude", Content: "Original", MessageType: "message", ReplyTo: ""},
+		{ID: "uuid-0002", Author: "Gemini", Content: "Reply", MessageType: "message", ReplyTo: "uuid-0001"},
 	}
 
 	transcript := FormatTranscript(room, msgs)
-	if !strings.Contains(transcript, "Gemini (re: #1)") {
+	if !strings.Contains(transcript, "Gemini (re: #uuid-000") {
 		t.Errorf("expected plain message reply rendering, got: %s", transcript)
 	}
 }
@@ -224,8 +224,8 @@ func TestRunJanitorCancellation(t *testing.T) {
 func TestFormatTranscriptWithSummary(t *testing.T) {
 	room := Room{ID: "sum-fmt", Description: "Test", Status: "active"}
 	msgs := []Message{
-		{ID: 1, Author: "System", Content: "Summary of prior discussion", IsSummary: true},
-		{ID: 2, Author: "Claude", Content: "New point", MessageType: "message"},
+		{ID: "uuid-0001", Author: "System", Content: "Summary of prior discussion", IsSummary: true},
+		{ID: "uuid-0002", Author: "Claude", Content: "New point", MessageType: "message"},
 	}
 	transcript := FormatTranscript(room, msgs)
 	if !strings.Contains(transcript, "SUMMARY") {

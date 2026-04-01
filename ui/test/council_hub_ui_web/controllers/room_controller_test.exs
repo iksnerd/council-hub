@@ -38,7 +38,7 @@ defmodule CouncilHubUiWeb.RoomControllerTest do
       create_message(%{room_id: room.id, author: "Gemini", content: "Reply", message_type: "review", reply_to: m1.id})
 
       conn = get(conn, "/rooms/reply-export/export")
-      assert conn.resp_body =~ "re: ##{m1.id}"
+      assert conn.resp_body =~ "re: ##{String.slice(m1.id, 0, 8)}"
     end
 
     test "includes system prompt in transcript", %{conn: conn} do

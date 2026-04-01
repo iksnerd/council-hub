@@ -140,11 +140,11 @@ defmodule CouncilHubUiWeb.CouncilComponentsTest do
     test "renders author, type, and content" do
       assigns = %{
         msg: %{
-          id: 1,
+          id: "uuid-0001",
           author: "Claude",
           content: "Hello **world**",
           message_type: "thought",
-          reply_to: 0,
+          reply_to: "",
           timestamp: ~N[2026-03-29 14:00:00]
         }
       }
@@ -158,27 +158,27 @@ defmodule CouncilHubUiWeb.CouncilComponentsTest do
     test "renders reply_to badge" do
       assigns = %{
         msg: %{
-          id: 2,
+          id: "uuid-0002",
           author: "Gemini",
           content: "Reply here",
           message_type: "review",
-          reply_to: 1,
+          reply_to: "uuid-0001",
           timestamp: ~N[2026-03-29 14:00:00]
         }
       }
 
       html = render_component(&CouncilComponents.message_bubble/1, assigns)
-      assert html =~ "re: #1"
+      assert html =~ "re: #uuid-000"
     end
 
-    test "no reply badge when reply_to is 0" do
+    test "no reply badge when reply_to is empty" do
       assigns = %{
         msg: %{
-          id: 3,
+          id: "uuid-0003",
           author: "Claude",
           content: "No reply",
           message_type: "message",
-          reply_to: 0,
+          reply_to: "",
           timestamp: ~N[2026-03-29 14:00:00]
         }
       }
@@ -190,11 +190,11 @@ defmodule CouncilHubUiWeb.CouncilComponentsTest do
     test "renders critique type" do
       assigns = %{
         msg: %{
-          id: 4,
+          id: "uuid-0004",
           author: "Gemini",
           content: "This is flawed",
           message_type: "critique",
-          reply_to: 0,
+          reply_to: "",
           timestamp: ~N[2026-03-29 14:00:00]
         }
       }
@@ -206,17 +206,17 @@ defmodule CouncilHubUiWeb.CouncilComponentsTest do
     test "renders copy button with message data" do
       assigns = %{
         msg: %{
-          id: 7,
+          id: "uuid-0007",
           author: "Claude",
           content: "Important finding",
           message_type: "decision",
-          reply_to: 0,
+          reply_to: "",
           timestamp: ~N[2026-03-29 14:00:00]
         }
       }
 
       html = render_component(&CouncilComponents.message_bubble/1, assigns)
-      assert html =~ "copy-msg-7"
+      assert html =~ "copy-msg-uuid-0007"
       assert html =~ "CopyMessage"
       assert html =~ "Important finding"
       assert html =~ "Claude"
@@ -226,17 +226,17 @@ defmodule CouncilHubUiWeb.CouncilComponentsTest do
     test "copy button data includes message id" do
       assigns = %{
         msg: %{
-          id: 99,
+          id: "uuid-0099",
           author: "GPT",
           content: "Some content",
           message_type: "thought",
-          reply_to: 0,
+          reply_to: "",
           timestamp: ~N[2026-03-29 14:00:00]
         }
       }
 
       html = render_component(&CouncilComponents.message_bubble/1, assigns)
-      assert html =~ "#99"
+      assert html =~ "#uuid-0099"
     end
   end
 

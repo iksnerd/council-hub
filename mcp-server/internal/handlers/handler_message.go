@@ -79,21 +79,14 @@ func (r *Registry) handlePostToRoom(ctx context.Context, req *mcp.CallToolReques
 		return msg(fmt.Sprintf("Error: Room '%s' not found. Create it first with create_room.", args.RoomID))
 	}
 
-	var replyTo int64
-	if args.ReplyTo != "" {
-		if _, err := fmt.Sscanf(args.ReplyTo, "%d", &replyTo); err != nil {
-			return msg(fmt.Sprintf("Error: reply_to '%s' is not a valid message ID.", args.ReplyTo))
-		}
-	}
-
-	msgID, err := r.Server.PostMessage(args.RoomID, args.Author, args.Message, args.MessageType, replyTo)
+	msgID, err := r.Server.PostMessage(args.RoomID, args.Author, args.Message, args.MessageType, args.ReplyTo)
 	if err != nil {
 		r.Server.Logger.Error("Failed to post message", "room_id", args.RoomID, "error", err)
 		return nil, ToolOutput{}, err
 	}
 
 	r.Server.Logger.Info("Message posted", "room_id", args.RoomID, "author", args.Author, "type", args.MessageType, "msg_id", msgID)
-	return msg(fmt.Sprintf("Message #%d posted to room '%s' by %s.\n\n```json\n{\"message_id\": %d, \"room_id\": \"%s\", \"latest_message_id\": %d}\n```", msgID, args.RoomID, args.Author, msgID, args.RoomID, msgID))
+	return msg(fmt.Sprintf("Message #%.8s posted to room '%s' by %s.\n\n```json\n{\"message_id\": \"%s\", \"room_id\": \"%s\", \"latest_message_id\": \"%s\"}\n```", msgID, args.RoomID, args.Author, msgID, args.RoomID, msgID))
 }
 
 func (r *Registry) handleSearchMessages(ctx context.Context, req *mcp.CallToolRequest, args SearchMessagesInput) (*mcp.CallToolResult, ToolOutput, error) {
@@ -140,7 +133,7 @@ func (r *Registry) handleSearchMessages(ctx context.Context, req *mcp.CallToolRe
 			}
 			// Replace newlines in excerpt for single-line display
 			excerpt = strings.ReplaceAll(excerpt, "\n", " ")
-			fmt.Fprintf(&b, "- #%d | %s | %s | %s | %s | %s\n", m.ID, ts, m.Author, m.RoomID, m.MessageType, excerpt)
+			fmt.Fprintf(&b, "- #%.8s | %s | %s | %s | %s | %s\n", m.ID, ts, m.Author, m.RoomID, m.MessageType, excerpt)
 		}
 	} else {
 		for _, m := range messages {
@@ -149,7 +142,7 @@ func (r *Registry) handleSearchMessages(ctx context.Context, req *mcp.CallToolRe
 			if len(snippet) > 300 {
 				snippet = snippet[:300] + "..."
 			}
-			fmt.Fprintf(&b, "- **#%d** [%s] %s in **%s** (%s):\n  %s\n\n", m.ID, ts, m.Author, m.RoomID, m.MessageType, snippet)
+			fmt.Fprintf(&b, "- **#%s** [%s] %s in **%s** (%s):\n  %s\n\n", m.ID, ts, m.Author, m.RoomID, m.MessageType, snippet)
 		}
 	}
 
@@ -168,14 +161,12 @@ func (r *Registry) handleGetMessages(ctx context.Context, req *mcp.CallToolReque
 	if args.MessageIDs != "" {
 		// Mode 1: fetch by explicit IDs
 		parts := strings.Split(args.MessageIDs, ",")
-		var ids []int64
+		var ids []string
 		for _, p := range parts {
 			p = strings.TrimSpace(p)
-			var id int64
-			if _, err := fmt.Sscanf(p, "%d", &id); err != nil {
-				return msg(fmt.Sprintf("Error: '%s' is not a valid message ID.", p))
+			if p != "" {
+				ids = append(ids, p)
 			}
-			ids = append(ids, id)
 		}
 
 		var err error
@@ -216,7 +207,7 @@ func (r *Registry) handleGetMessages(ctx context.Context, req *mcp.CallToolReque
 	fmt.Fprintf(&b, "Found %d message(s):\n\n", len(messages))
 	for _, m := range messages {
 		ts := m.Timestamp.Format("2006-01-02 15:04:05")
-		fmt.Fprintf(&b, "---\n**#%d** [%s] %s in **%s** (%s):\n\n%s\n\n", m.ID, ts, m.Author, m.RoomID, m.MessageType, m.Content)
+		fmt.Fprintf(&b, "---\n**#%s** [%s] %s in **%s** (%s):\n\n%s\n\n", m.ID, ts, m.Author, m.RoomID, m.MessageType, m.Content)
 	}
 
 	return msg(b.String())
@@ -236,26 +227,21 @@ func (r *Registry) handlePinMessage(ctx context.Context, req *mcp.CallToolReques
 		return msg("Error: message_id is required.")
 	}
 
-	var id int64
-	if _, err := fmt.Sscanf(args.MessageID, "%d", &id); err != nil {
-		return msg(fmt.Sprintf("Error: '%s' is not a valid message ID.", args.MessageID))
-	}
-
-	pinned, err := r.Server.PinMessage(args.RoomID, id)
+	pinned, err := r.Server.PinMessage(args.RoomID, args.MessageID)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return msg(fmt.Sprintf("Error: message #%d not found.", id))
+			return msg(fmt.Sprintf("Error: message #%.8s not found.", args.MessageID))
 		}
-		r.Server.Logger.Error("Failed to pin message", "id", id, "error", err)
+		r.Server.Logger.Error("Failed to pin message", "id", args.MessageID, "error", err)
 		return msg(fmt.Sprintf("Error: %s", err.Error()))
 	}
 
 	if pinned {
-		r.Server.Logger.Info("Message pinned", "id", id, "room", args.RoomID)
-		return msg(fmt.Sprintf("Message #%d pinned in room '%s'. It will appear first in transcripts.", id, args.RoomID))
+		r.Server.Logger.Info("Message pinned", "id", args.MessageID, "room", args.RoomID)
+		return msg(fmt.Sprintf("Message #%.8s pinned in room '%s'. It will appear first in transcripts.", args.MessageID, args.RoomID))
 	}
-	r.Server.Logger.Info("Message unpinned", "id", id, "room", args.RoomID)
-	return msg(fmt.Sprintf("Message #%d unpinned in room '%s'.", id, args.RoomID))
+	r.Server.Logger.Info("Message unpinned", "id", args.MessageID, "room", args.RoomID)
+	return msg(fmt.Sprintf("Message #%.8s unpinned in room '%s'.", args.MessageID, args.RoomID))
 }
 
 func (r *Registry) handleUpdateMessage(ctx context.Context, req *mcp.CallToolRequest, args UpdateMessageInput) (*mcp.CallToolResult, ToolOutput, error) {
@@ -272,26 +258,21 @@ func (r *Registry) handleUpdateMessage(ctx context.Context, req *mcp.CallToolReq
 		return msg("Error: content is required.")
 	}
 
-	var id int64
-	if _, err := fmt.Sscanf(args.MessageID, "%d", &id); err != nil {
-		return msg(fmt.Sprintf("Error: '%s' is not a valid message ID.", args.MessageID))
-	}
-
 	if args.MessageType != "" && !validMessageTypes[args.MessageType] {
 		return msg(fmt.Sprintf("Error: invalid message_type '%s'. Valid types: message, thought, decision, code, review, action, critique.", args.MessageType))
 	}
 
-	m, err := r.Server.UpdateMessage(id, args.Content, args.MessageType)
+	m, err := r.Server.UpdateMessage(args.MessageID, args.Content, args.MessageType)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return msg(fmt.Sprintf("Error: message #%d not found.", id))
+			return msg(fmt.Sprintf("Error: message #%.8s not found.", args.MessageID))
 		}
-		r.Server.Logger.Error("Failed to update message", "id", id, "error", err)
+		r.Server.Logger.Error("Failed to update message", "id", args.MessageID, "error", err)
 		return nil, ToolOutput{}, err
 	}
 
-	r.Server.Logger.Info("Message updated", "id", id, "room", m.RoomID)
-	return msg(fmt.Sprintf("Message #%d updated. Author: %s, Room: %s, Type: %s.", m.ID, m.Author, m.RoomID, m.MessageType))
+	r.Server.Logger.Info("Message updated", "id", args.MessageID, "room", m.RoomID)
+	return msg(fmt.Sprintf("Message #%.8s updated. Author: %s, Room: %s, Type: %s.", m.ID, m.Author, m.RoomID, m.MessageType))
 }
 
 func (r *Registry) handleDeleteMessages(ctx context.Context, req *mcp.CallToolRequest, args DeleteMessagesInput) (*mcp.CallToolResult, ToolOutput, error) {
@@ -306,14 +287,12 @@ func (r *Registry) handleDeleteMessages(ctx context.Context, req *mcp.CallToolRe
 	}
 
 	parts := strings.Split(args.MessageIDs, ",")
-	var ids []int64
+	var ids []string
 	for _, p := range parts {
 		p = strings.TrimSpace(p)
-		var id int64
-		if _, err := fmt.Sscanf(p, "%d", &id); err != nil {
-			return msg(fmt.Sprintf("Error: '%s' is not a valid message ID.", p))
+		if p != "" {
+			ids = append(ids, p)
 		}
-		ids = append(ids, id)
 	}
 
 	if args.DryRun == "true" {
@@ -325,7 +304,7 @@ func (r *Registry) handleDeleteMessages(ctx context.Context, req *mcp.CallToolRe
 
 		var b strings.Builder
 		fmt.Fprintf(&b, "DRY RUN — %d message(s) would be deleted:\n\n", len(msgs))
-		foundIDs := make(map[int64]bool)
+		foundIDs := make(map[string]bool)
 		for _, m := range msgs {
 			foundIDs[m.ID] = true
 			excerpt := m.Content
@@ -337,12 +316,12 @@ func (r *Registry) handleDeleteMessages(ctx context.Context, req *mcp.CallToolRe
 				excerpt += "..."
 			}
 			excerpt = strings.ReplaceAll(excerpt, "\n", " ")
-			fmt.Fprintf(&b, "  #%d | %s | %s | %s | %s\n",
+			fmt.Fprintf(&b, "  #%.8s | %s | %s | %s | %s\n",
 				m.ID, m.Author, m.Timestamp.Format("2006-01-02 15:04:05"), m.RoomID, excerpt)
 		}
 		for _, id := range ids {
 			if !foundIDs[id] {
-				fmt.Fprintf(&b, "  #%d — not found\n", id)
+				fmt.Fprintf(&b, "  #%.8s — not found\n", id)
 			}
 		}
 		return msg(b.String())

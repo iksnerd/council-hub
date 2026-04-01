@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"testing"
 )
@@ -248,7 +247,7 @@ func TestAfterIDIncludesSystemPrompt(t *testing.T) {
 
 	res, _, _ := reg.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
 		RoomID:  "after-sp",
-		AfterID: fmt.Sprintf("%d", id),
+		AfterID: id,
 	})
 	text := resultText(res)
 	if !strings.Contains(text, "You are a code reviewer.") {
@@ -267,7 +266,7 @@ func TestAfterIDNoSystemPromptWhenEmpty(t *testing.T) {
 
 	res, _, _ := reg.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
 		RoomID:  "after-nosp",
-		AfterID: fmt.Sprintf("%d", id),
+		AfterID: id,
 	})
 	text := resultText(res)
 	if strings.Contains(text, "System Prompt:") {

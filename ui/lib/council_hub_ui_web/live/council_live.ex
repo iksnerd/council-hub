@@ -26,7 +26,7 @@ defmodule CouncilHubUiWeb.CouncilLive do
        room_counts: safe_room_counts(db_connected),
        participant_counts: safe_participant_counts(db_connected),
        active_room: nil,
-       last_msg_id: 0,
+       last_msg_id: "",
        collapsed_summaries: MapSet.new(),
        show_system_prompt: false,
        page_title: "Council Hub",
@@ -137,7 +137,7 @@ defmodule CouncilHubUiWeb.CouncilLive do
 
   @impl true
   def handle_event("toggle_summary", %{"id" => id_str}, socket) do
-    id = String.to_integer(id_str)
+    id = id_str
     collapsed = socket.assigns.collapsed_summaries
 
     collapsed =
@@ -237,7 +237,7 @@ defmodule CouncilHubUiWeb.CouncilLive do
     _e in [DBConnection.ConnectionError, Exqlite.Error] -> nil
   end
 
-  defp last_message_id([]), do: 0
+  defp last_message_id([]), do: ""
   defp last_message_id(messages), do: List.last(messages).id
 
   defp load_rooms do

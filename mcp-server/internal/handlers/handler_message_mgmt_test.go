@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"testing"
 )
@@ -16,7 +15,7 @@ func TestHandlePinMessage(t *testing.T) {
 
 	res, _, err := reg.handlePinMessage(context.Background(), nil, PinMessageInput{
 		RoomID:    "pin-room",
-		MessageID: fmt.Sprintf("%d", id),
+		MessageID: id,
 	})
 	if err != nil {
 		t.Fatalf("handlePinMessage error: %v", err)
@@ -35,7 +34,7 @@ func TestHandlePinMessage(t *testing.T) {
 		t.Fatal("expected pinned message, got nil")
 	}
 	if pinned.ID != id {
-		t.Errorf("expected pinned message ID %d, got %d", id, pinned.ID)
+		t.Errorf("expected pinned message ID %s, got %s", id, pinned.ID)
 	}
 }
 
@@ -45,12 +44,12 @@ func TestHandlePinMessageToggle(t *testing.T) {
 	id := mustPost(t, reg.Server, "pin-toggle", "Claude", "Pin/Unpin")
 
 	// Pin it
-	reg.handlePinMessage(context.Background(), nil, PinMessageInput{RoomID: "pin-toggle", MessageID: fmt.Sprintf("%d", id)})
+	reg.handlePinMessage(context.Background(), nil, PinMessageInput{RoomID: "pin-toggle", MessageID: id})
 
 	// Unpin it (toggle)
 	res, _, _ := reg.handlePinMessage(context.Background(), nil, PinMessageInput{
 		RoomID:    "pin-toggle",
-		MessageID: fmt.Sprintf("%d", id),
+		MessageID: id,
 	})
 	text := resultText(res)
 	if !strings.Contains(text, "unpinned") {
@@ -70,14 +69,14 @@ func TestHandlePinMessageReplacesExisting(t *testing.T) {
 	id2 := mustPost(t, reg.Server, "pin-replace", "Gemini", "Second")
 
 	// Pin first
-	reg.handlePinMessage(context.Background(), nil, PinMessageInput{RoomID: "pin-replace", MessageID: fmt.Sprintf("%d", id1)})
+	reg.handlePinMessage(context.Background(), nil, PinMessageInput{RoomID: "pin-replace", MessageID: id1})
 
 	// Pin second — should replace first
-	reg.handlePinMessage(context.Background(), nil, PinMessageInput{RoomID: "pin-replace", MessageID: fmt.Sprintf("%d", id2)})
+	reg.handlePinMessage(context.Background(), nil, PinMessageInput{RoomID: "pin-replace", MessageID: id2})
 
 	pinned, _ := reg.Server.GetPinnedMessage("pin-replace")
 	if pinned == nil || pinned.ID != id2 {
-		t.Errorf("expected message %d to be pinned, got %v", id2, pinned)
+		t.Errorf("expected message %s to be pinned, got %v", id2, pinned)
 	}
 }
 
@@ -90,7 +89,7 @@ func TestHandlePinMessageWrongRoom(t *testing.T) {
 	// Try to pin room-a's message in room-b
 	res, _, _ := reg.handlePinMessage(context.Background(), nil, PinMessageInput{
 		RoomID:    "room-b",
-		MessageID: fmt.Sprintf("%d", id),
+		MessageID: id,
 	})
 	text := resultText(res)
 	if !strings.Contains(text, "belongs to room 'room-a'") {
@@ -110,7 +109,7 @@ func TestHandlePinMessageNotFound(t *testing.T) {
 	reg := setupHandlerTest(t)
 	mustCreateRoom(t, reg.Server, "pin-nf")
 	res, _, _ := reg.handlePinMessage(context.Background(), nil, PinMessageInput{
-		RoomID: "pin-nf", MessageID: "99999",
+		RoomID: "pin-nf", MessageID: "fake-nonexistent-uuid",
 	})
 	if !strings.Contains(resultText(res), "not found") {
 		t.Error("expected not found error")
@@ -125,7 +124,7 @@ func TestHandleUpdateMessage(t *testing.T) {
 	id := mustPost(t, reg.Server, "h-upd-msg", "Claude", "Old content")
 
 	res, _, err := reg.handleUpdateMessage(context.Background(), nil, UpdateMessageInput{
-		MessageID: fmt.Sprintf("%d", id),
+		MessageID: id,
 		Content:   "New content",
 	})
 	if err != nil {
@@ -137,7 +136,7 @@ func TestHandleUpdateMessage(t *testing.T) {
 	}
 
 	// Verify in DB
-	msgs, _ := reg.Server.GetMessagesByIDs([]int64{id})
+	msgs, _ := reg.Server.GetMessagesByIDs([]string{id})
 	if len(msgs) == 0 || msgs[0].Content != "New content" {
 		t.Errorf("expected content update, got: %v", msgs)
 	}
@@ -149,12 +148,12 @@ func TestHandleUpdateMessageWithType(t *testing.T) {
 	id := mustPost(t, reg.Server, "h-upd-type", "Claude", "Msg")
 
 	reg.handleUpdateMessage(context.Background(), nil, UpdateMessageInput{
-		MessageID:   fmt.Sprintf("%d", id),
+		MessageID:   id,
 		Content:     "Msg",
 		MessageType: "decision",
 	})
 
-	msgs, _ := reg.Server.GetMessagesByIDs([]int64{id})
+	msgs, _ := reg.Server.GetMessagesByIDs([]string{id})
 	if len(msgs) == 0 || msgs[0].MessageType != "decision" {
 		t.Errorf("expected type update, got: %v", msgs)
 	}
@@ -166,11 +165,11 @@ func TestHandleUpdateMessagePreservesFields(t *testing.T) {
 	id := mustPost(t, reg.Server, "h-upd-pres", "Claude", "Original")
 
 	reg.handleUpdateMessage(context.Background(), nil, UpdateMessageInput{
-		MessageID: fmt.Sprintf("%d", id),
+		MessageID: id,
 		Content:   "Updated",
 	})
 
-	msgs, _ := reg.Server.GetMessagesByIDs([]int64{id})
+	msgs, _ := reg.Server.GetMessagesByIDs([]string{id})
 	if len(msgs) == 0 {
 		t.Fatal("message lost")
 	}
@@ -186,7 +185,7 @@ func TestHandleUpdateMessagePreservesFields(t *testing.T) {
 func TestHandleUpdateMessageNotFound(t *testing.T) {
 	reg := setupHandlerTest(t)
 	res, _, _ := reg.handleUpdateMessage(context.Background(), nil, UpdateMessageInput{
-		MessageID: "99999",
+		MessageID: "fake-nonexistent-uuid",
 		Content:   "New",
 	})
 	if !strings.Contains(resultText(res), "not found") {
@@ -200,7 +199,7 @@ func TestHandleUpdateMessageInvalidType(t *testing.T) {
 	id := mustPost(t, reg.Server, "h-upd-bad-type", "Claude", "Msg")
 
 	res, _, _ := reg.handleUpdateMessage(context.Background(), nil, UpdateMessageInput{
-		MessageID:   fmt.Sprintf("%d", id),
+		MessageID:   id,
 		Content:     "Msg",
 		MessageType: "invalid",
 	})
@@ -217,26 +216,26 @@ func TestHandleUpdateMessageMissingFields(t *testing.T) {
 	}
 }
 
-func TestHandleUpdateMessageNonParseableID(t *testing.T) {
+func TestHandleUpdateMessageNonExistentID(t *testing.T) {
 	reg := setupHandlerTest(t)
 	res, _, _ := reg.handleUpdateMessage(context.Background(), nil, UpdateMessageInput{
-		MessageID: "not-a-number",
+		MessageID: "not-a-real-uuid",
 		Content:   "some content",
 	})
-	if !strings.Contains(resultText(res), "not a valid message ID") {
-		t.Errorf("expected invalid ID error, got: %s", resultText(res))
+	if !strings.Contains(resultText(res), "not found") {
+		t.Errorf("expected not found error, got: %s", resultText(res))
 	}
 }
 
-func TestHandlePinMessageNonParseableID(t *testing.T) {
+func TestHandlePinMessageNonExistentID(t *testing.T) {
 	reg := setupHandlerTest(t)
 	mustCreateRoom(t, reg.Server, "pin-parse-err")
 	res, _, _ := reg.handlePinMessage(context.Background(), nil, PinMessageInput{
 		RoomID:    "pin-parse-err",
-		MessageID: "not-a-number",
+		MessageID: "not-a-real-uuid",
 	})
-	if !strings.Contains(resultText(res), "not a valid message ID") {
-		t.Errorf("expected invalid ID error, got: %s", resultText(res))
+	if !strings.Contains(resultText(res), "not found") {
+		t.Errorf("expected not found error, got: %s", resultText(res))
 	}
 }
 
@@ -245,9 +244,9 @@ func TestHandlePinMessageNonParseableID(t *testing.T) {
 func TestHandleDeleteMessages(t *testing.T) {
 	reg := setupHandlerTest(t)
 	mustCreateRoom(t, reg.Server, "h-delmsg")
-	mustPost(t, reg.Server, "h-delmsg", "Claude", "Delete me")
+	id := mustPost(t, reg.Server, "h-delmsg", "Claude", "Delete me")
 
-	res, _, _ := reg.handleDeleteMessages(context.Background(), nil, DeleteMessagesInput{MessageIDs: "1"})
+	res, _, _ := reg.handleDeleteMessages(context.Background(), nil, DeleteMessagesInput{MessageIDs: id})
 	text := resultText(res)
 	if !strings.Contains(text, "Deleted 1") {
 		t.Errorf("expected 1 deleted, got: %s", text)
@@ -263,12 +262,13 @@ func TestHandleDeleteMessagesMissing(t *testing.T) {
 	}
 }
 
-func TestHandleDeleteMessagesInvalidID(t *testing.T) {
+func TestHandleDeleteMessagesNonExistentID(t *testing.T) {
 	reg := setupHandlerTest(t)
 
-	res, _, _ := reg.handleDeleteMessages(context.Background(), nil, DeleteMessagesInput{MessageIDs: "abc"})
-	if !strings.Contains(resultText(res), "not a valid") {
-		t.Error("expected invalid ID error")
+	res, _, _ := reg.handleDeleteMessages(context.Background(), nil, DeleteMessagesInput{MessageIDs: "fake-nonexistent-uuid"})
+	// Non-existent IDs delete 0 messages — not an error
+	if !strings.Contains(resultText(res), "Deleted 0") {
+		t.Errorf("expected 0 deleted for non-existent ID, got: %s", resultText(res))
 	}
 }
 
@@ -276,7 +276,7 @@ func TestHandleDeleteMessagesDBError(t *testing.T) {
 	reg := setupHandlerServer(t)
 	reg.Server.DB.Close()
 
-	_, _, err := reg.handleDeleteMessages(context.Background(), nil, DeleteMessagesInput{MessageIDs: "1"})
+	_, _, err := reg.handleDeleteMessages(context.Background(), nil, DeleteMessagesInput{MessageIDs: "some-uuid"})
 	if err == nil {
 		t.Error("expected error")
 	}
@@ -289,7 +289,7 @@ func TestHandleDeleteMessagesDryRun(t *testing.T) {
 	id2 := mustPostTyped(t, reg.Server, "dry-room", "Gemini", "Message two", "thought")
 
 	res, _, err := reg.handleDeleteMessages(context.Background(), nil, DeleteMessagesInput{
-		MessageIDs: fmt.Sprintf("%d,%d", id1, id2),
+		MessageIDs: id1 + "," + id2,
 		DryRun:     "true",
 	})
 	if err != nil {
@@ -314,7 +314,7 @@ func TestHandleDeleteMessagesDryRun(t *testing.T) {
 	}
 
 	// Verify messages still exist
-	msgs, _ := reg.Server.GetMessagesByIDs([]int64{id1, id2})
+	msgs, _ := reg.Server.GetMessagesByIDs([]string{id1, id2})
 	if len(msgs) != 2 {
 		t.Errorf("expected 2 messages to still exist, got %d", len(msgs))
 	}
@@ -326,7 +326,7 @@ func TestHandleDeleteMessagesDryRunNotFound(t *testing.T) {
 	id := mustPost(t, reg.Server, "dry-nf", "Claude", "Exists")
 
 	res, _, _ := reg.handleDeleteMessages(context.Background(), nil, DeleteMessagesInput{
-		MessageIDs: fmt.Sprintf("%d,99999", id),
+		MessageIDs: id + ",fake-nonexistent-id",
 		DryRun:     "true",
 	})
 	text := resultText(res)
@@ -334,7 +334,7 @@ func TestHandleDeleteMessagesDryRunNotFound(t *testing.T) {
 	if !strings.Contains(text, "1 message(s) would be deleted") {
 		t.Errorf("expected '1 message(s) would be deleted', got: %s", text)
 	}
-	if !strings.Contains(text, "#99999") && !strings.Contains(text, "not found") {
+	if !strings.Contains(text, "not found") {
 		t.Error("expected not found indicator for missing ID")
 	}
 }
@@ -346,7 +346,7 @@ func TestHandleDeleteMessagesDryRunFalse(t *testing.T) {
 
 	// dry_run=false should still delete
 	res, _, _ := reg.handleDeleteMessages(context.Background(), nil, DeleteMessagesInput{
-		MessageIDs: fmt.Sprintf("%d", id),
+		MessageIDs: id,
 		DryRun:     "false",
 	})
 	text := resultText(res)
@@ -354,7 +354,7 @@ func TestHandleDeleteMessagesDryRunFalse(t *testing.T) {
 		t.Errorf("expected deletion confirmation, got: %s", text)
 	}
 
-	msgs, _ := reg.Server.GetMessagesByIDs([]int64{id})
+	msgs, _ := reg.Server.GetMessagesByIDs([]string{id})
 	if len(msgs) != 0 {
 		t.Error("message should be deleted when dry_run=false")
 	}
@@ -367,7 +367,7 @@ func TestHandleDeleteMessagesDryRunOmitted(t *testing.T) {
 
 	// No dry_run param — should delete (backward compatible)
 	res, _, _ := reg.handleDeleteMessages(context.Background(), nil, DeleteMessagesInput{
-		MessageIDs: fmt.Sprintf("%d", id),
+		MessageIDs: id,
 	})
 	text := resultText(res)
 	if !strings.Contains(text, "Deleted 1 message") {
@@ -382,7 +382,7 @@ func TestHandleDeleteMessagesDryRunExcerptTruncation(t *testing.T) {
 	id := mustPost(t, reg.Server, "dry-trunc", "Claude", longContent)
 
 	res, _, _ := reg.handleDeleteMessages(context.Background(), nil, DeleteMessagesInput{
-		MessageIDs: fmt.Sprintf("%d", id),
+		MessageIDs: id,
 		DryRun:     "true",
 	})
 	text := resultText(res)

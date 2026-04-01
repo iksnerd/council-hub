@@ -268,9 +268,9 @@ func TestHandleRoomStatsLatestMessageID(t *testing.T) {
 	res, _, _ := reg.handleRoomStats(context.Background(), nil, RoomStatsInput{RoomID: "h-stats-latest"})
 	text := resultText(res)
 
-	expected := fmt.Sprintf("Latest message ID:** %d", id2)
+	expected := fmt.Sprintf("Latest message ID:** %s", id2[:8])
 	if !strings.Contains(text, expected) {
-		t.Errorf("expected latest_message_id %d, got: %s", id2, text)
+		t.Errorf("expected latest_message_id %s, got: %s", id2[:8], text)
 	}
 }
 

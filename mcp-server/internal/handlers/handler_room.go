@@ -127,7 +127,7 @@ func (r *Registry) handleCreateRoom(ctx context.Context, req *mcp.CallToolReques
 	if args.Template != "" && roomAlreadyExists != nil {
 		tpl := roomTemplates[args.Template]
 		if tpl.InitialMsg != "" {
-			r.Server.PostMessage(args.ID, "system", tpl.InitialMsg, "thought", 0) //nolint:errcheck
+			r.Server.PostMessage(args.ID, "system", tpl.InitialMsg, "thought", "") //nolint:errcheck
 		}
 	}
 
@@ -209,9 +209,9 @@ func (r *Registry) handleGetOrCreateRoom(ctx context.Context, req *mcp.CallToolR
 			for _, m := range messages {
 				ts := m.Timestamp.Format("2006-01-02 15:04:05")
 				if m.MessageType != "" && m.MessageType != "message" {
-					fmt.Fprintf(&b, "\n**[#%d %s] %s (%s):**\n%s\n", m.ID, ts, m.Author, m.MessageType, m.Content)
+					fmt.Fprintf(&b, "\n**[#%.8s %s] %s (%s):**\n%s\n", m.ID, ts, m.Author, m.MessageType, m.Content)
 				} else {
-					fmt.Fprintf(&b, "\n**[#%d %s] %s:**\n%s\n", m.ID, ts, m.Author, m.Content)
+					fmt.Fprintf(&b, "\n**[#%.8s %s] %s:**\n%s\n", m.ID, ts, m.Author, m.Content)
 				}
 			}
 		} else {
@@ -447,8 +447,8 @@ func (r *Registry) handleRoomStats(ctx context.Context, req *mcp.CallToolRequest
 	var b strings.Builder
 	fmt.Fprintf(&b, "**%s** [%s]\n", stats.RoomID, stats.Status)
 	fmt.Fprintf(&b, "**Messages:** %d\n", stats.MessageCount)
-	if stats.LatestMessageID > 0 {
-		fmt.Fprintf(&b, "**Latest message ID:** %d\n", stats.LatestMessageID)
+	if stats.LatestMessageID != "" {
+		fmt.Fprintf(&b, "**Latest message ID:** %.8s\n", stats.LatestMessageID)
 	}
 
 	if len(stats.Participants) > 0 {
@@ -532,7 +532,7 @@ func (r *Registry) handleBulkStatusUpdate(ctx context.Context, req *mcp.CallTool
 		}
 		// Post closing message before status change (if provided)
 		if args.Message != "" {
-			r.Server.PostMessage(roomID, args.Author, args.Message, "decision", 0)
+			r.Server.PostMessage(roomID, args.Author, args.Message, "decision", "")
 		}
 		if err := r.Server.UpdateStatus(roomID, args.Status); err != nil {
 			notFound = append(notFound, roomID)
