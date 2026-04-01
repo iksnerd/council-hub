@@ -217,6 +217,29 @@ func TestHandleUpdateMessageMissingFields(t *testing.T) {
 	}
 }
 
+func TestHandleUpdateMessageNonParseableID(t *testing.T) {
+	reg := setupHandlerTest(t)
+	res, _, _ := reg.handleUpdateMessage(context.Background(), nil, UpdateMessageInput{
+		MessageID: "not-a-number",
+		Content:   "some content",
+	})
+	if !strings.Contains(resultText(res), "not a valid message ID") {
+		t.Errorf("expected invalid ID error, got: %s", resultText(res))
+	}
+}
+
+func TestHandlePinMessageNonParseableID(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "pin-parse-err")
+	res, _, _ := reg.handlePinMessage(context.Background(), nil, PinMessageInput{
+		RoomID:    "pin-parse-err",
+		MessageID: "not-a-number",
+	})
+	if !strings.Contains(resultText(res), "not a valid message ID") {
+		t.Errorf("expected invalid ID error, got: %s", resultText(res))
+	}
+}
+
 // ========== delete_messages ==========
 
 func TestHandleDeleteMessages(t *testing.T) {

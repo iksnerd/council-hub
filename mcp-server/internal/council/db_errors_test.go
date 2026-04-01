@@ -548,6 +548,31 @@ func TestGetRecentMessagesQueryError(t *testing.T) {
 
 // -- getRoomStats: first QueryRow error (aggregate stats) --
 
+func TestGetPinnedMessageDBError(t *testing.T) {
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "pin-db-err")
+	s.DB.Exec("DROP TABLE messages")
+	_, err := s.GetPinnedMessage("pin-db-err")
+	if err == nil {
+		t.Error("expected error for missing messages table")
+	}
+}
+
+// -- GetRoomStats: per-type scan error (message_type column type mismatch) --
+
+func TestGetRoomStatsTypeScanError(t *testing.T) {
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "type-scan-err")
+	mustPost(t, s, "type-scan-err", "Claude", "Msg")
+	s.DB.Exec("ALTER TABLE messages RENAME TO messages_old")
+	s.DB.Exec("CREATE TABLE messages (id INTEGER PRIMARY KEY, room_id TEXT, author TEXT, message_type INTEGER, is_summary BOOLEAN)")
+	s.DB.Exec("INSERT INTO messages (room_id, author, message_type, is_summary) VALUES ('type-scan-err', 'Claude', 'not-an-int', 0)")
+	_, err := s.GetRoomStats("type-scan-err")
+	if err == nil {
+		t.Error("expected scan error in per-type query")
+	}
+}
+
 func TestGetRoomStatsAggregateError(t *testing.T) {
 	s := setupTestServer(t)
 	mustCreateRoom(t, s, "stats-agg-err")
@@ -557,5 +582,89 @@ func TestGetRoomStatsAggregateError(t *testing.T) {
 	_, err := s.GetRoomStats("stats-agg-err")
 	if err == nil {
 		t.Error("expected aggregate stats error")
+	}
+}
+
+// -- UpdateMessage: closed DB covers exec error in both branches --
+
+func TestUpdateMessageDBClosed(t *testing.T) {
+	s := setupAndClose(t)
+	_, err := s.UpdateMessage(1, "new content", "")
+	if err == nil {
+		t.Error("expected error on closed DB (no message_type branch)")
+	}
+}
+
+func TestUpdateMessageWithTypeDBClosed(t *testing.T) {
+	s := setupAndClose(t)
+	_, err := s.UpdateMessage(1, "new content", "decision")
+	if err == nil {
+		t.Error("expected error on closed DB (with message_type branch)")
+	}
+}
+
+// -- GetMessagesAfterID / GetLatestPerType: closed DB --
+
+func TestGetMessagesAfterIDDBClosed(t *testing.T) {
+	s := setupAndClose(t)
+	_, err := s.GetMessagesAfterID("pre-close", 0)
+	if err == nil {
+		t.Error("expected error on closed DB")
+	}
+}
+
+func TestGetLatestPerTypeDBClosed(t *testing.T) {
+	s := setupAndClose(t)
+	_, err := s.GetLatestPerType("pre-close")
+	if err == nil {
+		t.Error("expected error on closed DB")
+	}
+}
+
+// -- GetDigest: closed DB --
+
+func TestGetDigestDBClosed(t *testing.T) {
+	s := setupAndClose(t)
+	_, err := s.GetDigest("", "2020-01-01 00:00:00")
+	if err == nil {
+		t.Error("expected error on closed DB")
+	}
+}
+
+// -- GetMessageCounts: closed DB returns empty map (not an error) --
+
+func TestGetMessageCountsDBClosed(t *testing.T) {
+	s := setupAndClose(t)
+	counts := s.GetMessageCounts()
+	if len(counts) != 0 {
+		t.Errorf("expected empty map on closed DB, got %d entries", len(counts))
+	}
+}
+
+// -- GetMessagesAfterID / GetLatestPerType: scan errors via corrupted table --
+
+func TestGetMessagesAfterIDScanError(t *testing.T) {
+	s := corruptMessages(t)
+	_, err := s.GetMessagesAfterID("corrupt-room", 0)
+	if err == nil {
+		t.Error("expected scan error")
+	}
+}
+
+func TestGetLatestPerTypeScanError(t *testing.T) {
+	s := corruptMessages(t)
+	_, err := s.GetLatestPerType("corrupt-room")
+	if err == nil {
+		t.Error("expected scan error")
+	}
+}
+
+// -- PinMessage: not found (sql.ErrNoRows) --
+
+func TestPinMessageDBClosed(t *testing.T) {
+	s := setupAndClose(t)
+	_, err := s.PinMessage("pre-close", 1)
+	if err == nil {
+		t.Error("expected error on closed DB")
 	}
 }

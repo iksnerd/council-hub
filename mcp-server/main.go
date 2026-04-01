@@ -11,6 +11,8 @@ import (
 	"syscall"
 	"time"
 
+	"council-hub/internal/council"
+	"council-hub/internal/handlers"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -29,21 +31,22 @@ func main() {
 		dbPath = "council.db"
 	}
 
-	cs, err := NewCouncilServer(dbPath, logger)
+	cs, err := council.NewServer(dbPath, logger)
 	if err != nil {
 		log.Fatalf("Failed to create server: %v", err)
 	}
-	defer cs.db.Close()
+	defer cs.DB.Close()
 
-	registerTools(cs)
-	registerResources(cs)
+	reg := &handlers.Registry{Server: cs}
+	reg.RegisterTools()
+	reg.RegisterResources()
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
 	// TODO: Re-enable once we have a summarization strategy that preserves
 	// decisions, actions, and code blocks instead of losing context.
-	// go cs.runJanitor(ctx)
+	// go cs.RunJanitor(ctx)
 
 	transport := os.Getenv("COUNCIL_TRANSPORT")
 	if transport == "" {
@@ -58,7 +61,7 @@ func main() {
 		}
 
 		handler := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
-			return cs.mcp
+			return cs.MCP
 		}, &mcp.StreamableHTTPOptions{
 			Logger: logger,
 		})
@@ -86,7 +89,7 @@ func main() {
 
 	default:
 		logger.Info("Council Hub starting (stdio)", "db", dbPath)
-		if err := cs.mcp.Run(ctx, &mcp.StdioTransport{}); err != nil {
+		if err := cs.MCP.Run(ctx, &mcp.StdioTransport{}); err != nil {
 			if err.Error() != "EOF" {
 				log.Fatalf("Server error: %v", err)
 			}

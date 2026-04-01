@@ -12,9 +12,9 @@ func TestTranscriptFormatting(t *testing.T) {
 	mustPost(t, cs, "fmt-room", "Claude", "First message")
 	mustPost(t, cs, "fmt-room", "Gemini", "Second message")
 
-	room, _ := cs.getRoom("fmt-room")
-	msgs, _ := cs.getTranscript("fmt-room")
-	transcript := formatTranscript(room, msgs)
+	room, _ := cs.GetRoom("fmt-room")
+	msgs, _ := cs.GetTranscript("fmt-room")
+	transcript := FormatTranscript(room, msgs)
 
 	if !strings.Contains(transcript, "# COUNCIL ROOM: fmt-room") {
 		t.Error("transcript missing room header")
@@ -39,9 +39,9 @@ func TestTranscriptWithFullMetadata(t *testing.T) {
 	mustPostTyped(t, cs, "rich-room", "Claude", "I think we should use RS256", "thought")
 	mustPostTyped(t, cs, "rich-room", "Gemini", "Agreed, let's proceed", "decision")
 
-	room, _ := cs.getRoom("rich-room")
-	msgs, _ := cs.getTranscript("rich-room")
-	transcript := formatTranscript(room, msgs)
+	room, _ := cs.GetRoom("rich-room")
+	msgs, _ := cs.GetTranscript("rich-room")
+	transcript := FormatTranscript(room, msgs)
 
 	if !strings.Contains(transcript, "**Project:** llm-memory") {
 		t.Error("transcript missing project")
@@ -70,11 +70,11 @@ func TestTranscriptWithSummary(t *testing.T) {
 		mustPost(t, cs, "sum-room", "Claude", "Old message")
 	}
 
-	cs.insertSummary("sum-room", "Summary of 5 old messages")
+	cs.InsertSummary("sum-room", "Summary of 5 old messages")
 
 	mustPost(t, cs, "sum-room", "Gemini", "New message after summary")
 
-	msgs, err := cs.getTranscript("sum-room")
+	msgs, err := cs.GetTranscript("sum-room")
 	if err != nil {
 		t.Fatalf("getTranscript failed: %v", err)
 	}
@@ -96,9 +96,9 @@ func TestTranscriptWithRelatedRooms(t *testing.T) {
 	mustCreateRoom(t, cs, "linked-room", withProject("proj"), withRelatedRooms("other-room,another-room"))
 	mustPost(t, cs, "linked-room", "Claude", "Test")
 
-	room, _ := cs.getRoom("linked-room")
-	msgs, _ := cs.getTranscript("linked-room")
-	transcript := formatTranscript(room, msgs)
+	room, _ := cs.GetRoom("linked-room")
+	msgs, _ := cs.GetTranscript("linked-room")
+	transcript := FormatTranscript(room, msgs)
 
 	if !strings.Contains(transcript, "**Related Rooms:** other-room,another-room") {
 		t.Error("transcript missing related rooms")
@@ -109,7 +109,7 @@ func TestJanitorSweep(t *testing.T) {
 	cs := setupTestServer(t)
 	setupRoomWithMessages(t, cs, "janitor-room", 25)
 
-	rooms, err := cs.getRoomsNeedingSummary(20)
+	rooms, err := cs.GetRoomsNeedingSummary(20)
 	if err != nil {
 		t.Fatalf("getRoomsNeedingSummary failed: %v", err)
 	}
@@ -117,9 +117,9 @@ func TestJanitorSweep(t *testing.T) {
 		t.Fatalf("expected janitor-room to need summary, got %v", rooms)
 	}
 
-	cs.janitorSweep()
+	cs.JanitorSweep()
 
-	msgs, _ := cs.getTranscript("janitor-room")
+	msgs, _ := cs.GetTranscript("janitor-room")
 	hasSummary := false
 	for _, m := range msgs {
 		if m.IsSummary {
@@ -131,7 +131,7 @@ func TestJanitorSweep(t *testing.T) {
 		t.Error("expected summary message after janitor sweep")
 	}
 
-	rooms, _ = cs.getRoomsNeedingSummary(20)
+	rooms, _ = cs.GetRoomsNeedingSummary(20)
 	if len(rooms) != 0 {
 		t.Errorf("expected no rooms needing summary after sweep, got %v", rooms)
 	}
@@ -179,7 +179,7 @@ func TestFormatTranscriptReplyToPlainMessage(t *testing.T) {
 		{ID: 2, Author: "Gemini", Content: "Reply", MessageType: "message", ReplyTo: 1},
 	}
 
-	transcript := formatTranscript(room, msgs)
+	transcript := FormatTranscript(room, msgs)
 	if !strings.Contains(transcript, "Gemini (re: #1)") {
 		t.Errorf("expected plain message reply rendering, got: %s", transcript)
 	}
@@ -193,9 +193,9 @@ func TestJanitorSweepNoRooms(t *testing.T) {
 	mustPost(t, cs, "j-empty", "Claude", "Hello")
 
 	// Should not panic or error with no rooms over threshold
-	cs.janitorSweep()
+	cs.JanitorSweep()
 
-	msgs, _ := cs.getTranscript("j-empty")
+	msgs, _ := cs.GetTranscript("j-empty")
 	for _, m := range msgs {
 		if m.IsSummary {
 			t.Error("should not have summarized a room with 1 message")
@@ -211,7 +211,7 @@ func TestRunJanitorCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() {
-		cs.runJanitor(ctx)
+		cs.RunJanitor(ctx)
 		close(done)
 	}()
 
@@ -227,7 +227,7 @@ func TestFormatTranscriptWithSummary(t *testing.T) {
 		{ID: 1, Author: "System", Content: "Summary of prior discussion", IsSummary: true},
 		{ID: 2, Author: "Claude", Content: "New point", MessageType: "message"},
 	}
-	transcript := formatTranscript(room, msgs)
+	transcript := FormatTranscript(room, msgs)
 	if !strings.Contains(transcript, "SUMMARY") {
 		t.Error("missing summary in transcript")
 	}
@@ -249,10 +249,10 @@ func TestJanitorTickerFires(t *testing.T) {
 
 func TestJanitorSweepDBError(t *testing.T) {
 	cs := setupTestServer(t)
-	cs.db.Close()
+	cs.DB.Close()
 
 	// Should not panic — just logs and returns
-	cs.janitorSweep()
+	cs.JanitorSweep()
 }
 
 func TestJanitorSweepGetUnsummarizedError(t *testing.T) {
@@ -263,10 +263,10 @@ func TestJanitorSweepGetUnsummarizedError(t *testing.T) {
 	}
 
 	// Corrupt messages table so getUnsummarizedMessages fails
-	cs.db.Exec("ALTER TABLE messages RENAME TO messages_backup")
-	cs.db.Exec("CREATE TABLE messages (id INTEGER PRIMARY KEY, bad_col TEXT)")
+	cs.DB.Exec("ALTER TABLE messages RENAME TO messages_backup")
+	cs.DB.Exec("CREATE TABLE messages (id INTEGER PRIMARY KEY, bad_col TEXT)")
 
-	cs.janitorSweep() // Should hit error paths without panic
+	cs.JanitorSweep() // Should hit error paths without panic
 }
 
 func TestJanitorSweepInsertSummaryError(t *testing.T) {
@@ -285,4 +285,20 @@ func TestJanitorSweepInsertSummaryError(t *testing.T) {
 	// Alternative: close the DB after getting rooms needing summary but before
 	// insert. Can't do that in the same goroutine. Let's just verify the
 	// success path is covered and accept these error branches need a mock.
+}
+
+func TestJanitorSweepUnsummarizedMessagesError(t *testing.T) {
+	cs := setupTestServer(t)
+	setupRoomWithMessages(t, cs, "j-unsum-err", 25)
+
+	// Replace messages table with a schema that satisfies getRoomsNeedingSummary
+	// but causes GetUnsummarizedMessages to fail at scan time.
+	cs.DB.Exec("ALTER TABLE messages RENAME TO messages_old")
+	cs.DB.Exec("CREATE TABLE messages (room_id TEXT, is_summary BOOLEAN, author TEXT)")
+	for i := 0; i < 21; i++ {
+		cs.DB.Exec("INSERT INTO messages (room_id, is_summary) VALUES ('j-unsum-err', 0)")
+	}
+
+	// Should log the error and continue without panicking
+	cs.JanitorSweep()
 }

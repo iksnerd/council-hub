@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestPostMessage(t *testing.T) {
@@ -557,5 +558,249 @@ func TestInsertSummaryUpdatedAtBestEffort(t *testing.T) {
 	msgs, _ := s.GetTranscript("summary-besteff")
 	if len(msgs) != 1 || !msgs[0].IsSummary {
 		t.Error("expected 1 summary message")
+	}
+}
+
+// ========== GetMessagesAfterID ==========
+
+func TestGetMessagesAfterID(t *testing.T) {
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "after-room")
+	id1 := mustPost(t, s, "after-room", "Claude", "First")
+	id2 := mustPost(t, s, "after-room", "Gemini", "Second")
+	mustPost(t, s, "after-room", "Claude", "Third")
+
+	msgs, err := s.GetMessagesAfterID("after-room", id1)
+	if err != nil {
+		t.Fatalf("GetMessagesAfterID failed: %v", err)
+	}
+	if len(msgs) != 2 {
+		t.Fatalf("expected 2 messages after id %d, got %d", id1, len(msgs))
+	}
+	if msgs[0].ID != id2 {
+		t.Errorf("expected first result id %d, got %d", id2, msgs[0].ID)
+	}
+
+	// After the last message — empty
+	msgs, err = s.GetMessagesAfterID("after-room", id2+100)
+	if err != nil {
+		t.Fatalf("GetMessagesAfterID failed: %v", err)
+	}
+	if len(msgs) != 0 {
+		t.Errorf("expected 0 messages, got %d", len(msgs))
+	}
+}
+
+// ========== GetLatestPerType ==========
+
+func TestGetLatestPerType(t *testing.T) {
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "latest-type")
+	mustPostTyped(t, s, "latest-type", "Claude", "thought 1", "thought")
+	mustPostTyped(t, s, "latest-type", "Claude", "thought 2", "thought")
+	mustPostTyped(t, s, "latest-type", "Claude", "thought 3", "thought")
+	mustPostTyped(t, s, "latest-type", "Gemini", "decision 1", "decision")
+	mustPostTyped(t, s, "latest-type", "Gemini", "decision 2", "decision")
+	mustPostTyped(t, s, "latest-type", "Claude", "code block", "code")
+
+	msgs, err := s.GetLatestPerType("latest-type")
+	if err != nil {
+		t.Fatalf("GetLatestPerType failed: %v", err)
+	}
+	// Up to 2 per type: thought(2), decision(2), code(1) = 5
+	if len(msgs) < 3 || len(msgs) > 6 {
+		t.Fatalf("expected 3-6 messages (up to 2 per type), got %d", len(msgs))
+	}
+	types := map[string]int{}
+	for _, m := range msgs {
+		types[m.MessageType]++
+	}
+	if types["thought"] != 2 {
+		t.Errorf("expected 2 thought messages, got %d", types["thought"])
+	}
+	if types["decision"] != 2 {
+		t.Errorf("expected 2 decision messages, got %d", types["decision"])
+	}
+	if types["code"] != 1 {
+		t.Errorf("expected 1 code message, got %d", types["code"])
+	}
+}
+
+func TestGetLatestPerTypeEmpty(t *testing.T) {
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "latest-empty")
+	msgs, err := s.GetLatestPerType("latest-empty")
+	if err != nil {
+		t.Fatalf("GetLatestPerType failed: %v", err)
+	}
+	if len(msgs) != 0 {
+		t.Errorf("expected 0 messages, got %d", len(msgs))
+	}
+}
+
+// ========== GetMessageCounts ==========
+
+func TestGetMessageCounts(t *testing.T) {
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "count-a")
+	mustCreateRoom(t, s, "count-b")
+	mustPost(t, s, "count-a", "Claude", "msg 1")
+	mustPost(t, s, "count-a", "Claude", "msg 2")
+	mustPost(t, s, "count-b", "Gemini", "msg 1")
+
+	counts := s.GetMessageCounts()
+	if counts["count-a"] != 2 {
+		t.Errorf("expected 2 for count-a, got %d", counts["count-a"])
+	}
+	if counts["count-b"] != 1 {
+		t.Errorf("expected 1 for count-b, got %d", counts["count-b"])
+	}
+}
+
+func TestGetMessageCountsEmpty(t *testing.T) {
+	s := setupTestServer(t)
+	counts := s.GetMessageCounts()
+	if len(counts) != 0 {
+		t.Errorf("expected empty map, got %d entries", len(counts))
+	}
+}
+
+// ========== PinMessage — toggle and multi-room edge cases ==========
+
+func TestPinMessageToggleOff(t *testing.T) {
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "pin-toggle")
+	id := mustPost(t, s, "pin-toggle", "Claude", "Pin me")
+
+	pinned, _ := s.PinMessage("pin-toggle", id)
+	if !pinned {
+		t.Fatal("expected pinned=true on first call")
+	}
+	pinned, err := s.PinMessage("pin-toggle", id)
+	if err != nil {
+		t.Fatalf("toggle off failed: %v", err)
+	}
+	if pinned {
+		t.Error("expected pinned=false after toggle")
+	}
+	msg, _ := s.GetPinnedMessage("pin-toggle")
+	if msg != nil {
+		t.Error("expected no pinned message after toggle off")
+	}
+}
+
+func TestPinMessageReplacesExisting(t *testing.T) {
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "pin-replace")
+	id1 := mustPost(t, s, "pin-replace", "Claude", "First")
+	id2 := mustPost(t, s, "pin-replace", "Gemini", "Second")
+
+	s.PinMessage("pin-replace", id1)
+	pinned, err := s.PinMessage("pin-replace", id2)
+	if err != nil || !pinned {
+		t.Fatalf("expected pin to succeed: pinned=%v err=%v", pinned, err)
+	}
+	msg, _ := s.GetPinnedMessage("pin-replace")
+	if msg == nil || msg.ID != id2 {
+		t.Errorf("expected pinned id %d, got %v", id2, msg)
+	}
+}
+
+func TestPinMessageWrongRoom(t *testing.T) {
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "pin-a")
+	mustCreateRoom(t, s, "pin-b")
+	id := mustPost(t, s, "pin-a", "Claude", "In room A")
+
+	_, err := s.PinMessage("pin-b", id)
+	if err == nil {
+		t.Error("expected error when pinning message from wrong room")
+	}
+	if !strings.Contains(err.Error(), "belongs to room") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+// ========== GetDigest ==========
+
+func TestGetDigest(t *testing.T) {
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "digest-a", withProject("proj-x"))
+	mustCreateRoom(t, s, "digest-b", withProject("proj-x"))
+	mustCreateRoom(t, s, "digest-c", withProject("proj-y"))
+	mustPost(t, s, "digest-a", "Claude", "msg a1")
+	mustPost(t, s, "digest-a", "Claude", "msg a2")
+	mustPost(t, s, "digest-b", "Gemini", "msg b1")
+	mustPost(t, s, "digest-c", "Amp", "msg c1")
+
+	since := time.Now().UTC().Add(-1 * time.Hour).Format("2006-01-02 15:04:05")
+
+	entries, err := s.GetDigest("", since)
+	if err != nil {
+		t.Fatalf("GetDigest failed: %v", err)
+	}
+	if len(entries) != 3 {
+		t.Fatalf("expected 3 digest entries, got %d", len(entries))
+	}
+
+	// Filter by project
+	entries, err = s.GetDigest("proj-x", since)
+	if err != nil {
+		t.Fatalf("GetDigest project filter failed: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Errorf("expected 2 entries for proj-x, got %d", len(entries))
+	}
+	for _, e := range entries {
+		if e.NewMessages == 0 || e.LatestAuthor == "" {
+			t.Errorf("entry missing fields: %+v", e)
+		}
+	}
+}
+
+func TestGetDigestNoResults(t *testing.T) {
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "digest-empty")
+	entries, err := s.GetDigest("", "2099-01-01 00:00:00")
+	if err != nil {
+		t.Fatalf("GetDigest failed: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Errorf("expected 0 entries, got %d", len(entries))
+	}
+}
+
+func TestGetDigestTNormalization(t *testing.T) {
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "digest-t")
+	mustPost(t, s, "digest-t", "Claude", "msg")
+	since := time.Now().UTC().Add(-1 * time.Hour).Format("2006-01-02T15:04:05")
+	entries, err := s.GetDigest("", since)
+	if err != nil {
+		t.Fatalf("GetDigest T-normalization failed: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Errorf("expected 1 entry, got %d", len(entries))
+	}
+}
+
+// ========== SearchMessages by project filter ==========
+
+func TestSearchMessagesByProject(t *testing.T) {
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "proj-room-a", withProject("alpha"))
+	mustCreateRoom(t, s, "proj-room-b", withProject("beta"))
+	mustPost(t, s, "proj-room-a", "Claude", "shared keyword")
+	mustPost(t, s, "proj-room-b", "Gemini", "shared keyword")
+
+	msgs, err := s.SearchMessages("keyword", "", "", "", "alpha", 20)
+	if err != nil {
+		t.Fatalf("SearchMessages with project filter failed: %v", err)
+	}
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 message from project alpha, got %d", len(msgs))
+	}
+	if msgs[0].RoomID != "proj-room-a" {
+		t.Errorf("expected proj-room-a, got %s", msgs[0].RoomID)
 	}
 }

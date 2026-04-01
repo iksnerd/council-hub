@@ -122,3 +122,24 @@ func setupRoomWithMessages(t *testing.T, s *council.Server, roomID string, n int
 		mustPost(t, s, roomID, authors[i%2], fmt.Sprintf("Message %d", i+1))
 	}
 }
+
+// ========== toolResultText edge cases ==========
+
+func TestToolResultTextNilResult(t *testing.T) {
+	if toolResultText(nil) != "" {
+		t.Error("expected empty string for nil result")
+	}
+}
+
+func TestToolResultTextEmptyContent(t *testing.T) {
+	r := &mcp.CallToolResult{Content: []mcp.Content{}}
+	if toolResultText(r) != "" {
+		t.Error("expected empty string for empty content")
+	}
+}
+
+func TestToolResultTextNonTextContent(t *testing.T) {
+	// Content that is not *mcp.TextContent returns ""
+	r := &mcp.CallToolResult{Content: []mcp.Content{(*mcp.TextContent)(nil)}}
+	_ = toolResultText(r) // just exercise the path, no panic
+}

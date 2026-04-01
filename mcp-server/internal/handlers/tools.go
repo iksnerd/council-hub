@@ -15,7 +15,7 @@ func toolResultText(r *mcp.CallToolResult) string {
 	if r == nil || len(r.Content) == 0 {
 		return ""
 	}
-	if tc, ok := r.Content[0].(*mcp.TextContent); ok {
+	if tc, ok := r.Content[0].(*mcp.TextContent); ok && tc != nil {
 		return tc.Text
 	}
 	return ""

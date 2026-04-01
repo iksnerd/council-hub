@@ -216,3 +216,34 @@ func TestHandleGetOrCreateRoomCustomLastN(t *testing.T) {
 		t.Error("should not contain old messages with last_n=2")
 	}
 }
+
+func TestHandleGetOrCreateRoomLastNOverLimit(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "upsert-overlimit")
+	for i := 0; i < 10; i++ {
+		mustPost(t, reg.Server, "upsert-overlimit", "Claude", fmt.Sprintf("Msg %d", i))
+	}
+	// last_n > 50 should clamp to 50
+	res, _, _ := reg.handleGetOrCreateRoom(context.Background(), nil, GetOrCreateRoomInput{
+		ID: "upsert-overlimit", LastN: "999",
+	})
+	text := resultText(res)
+	// All 10 messages should be present (clamped to 50, but only 10 exist)
+	if !strings.Contains(text, "Msg 0") || !strings.Contains(text, "Msg 9") {
+		t.Error("expected all messages within clamped limit")
+	}
+}
+
+func TestHandleGetOrCreateRoomLastNInvalidString(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "upsert-badlastn")
+	mustPost(t, reg.Server, "upsert-badlastn", "Claude", "A message")
+
+	// Invalid last_n string defaults to 5
+	res, _, _ := reg.handleGetOrCreateRoom(context.Background(), nil, GetOrCreateRoomInput{
+		ID: "upsert-badlastn", LastN: "abc",
+	})
+	if !strings.Contains(resultText(res), "Found") {
+		t.Error("expected successful result with defaulted last_n")
+	}
+}

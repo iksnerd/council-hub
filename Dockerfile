@@ -22,6 +22,7 @@ WORKDIR /go-app
 COPY mcp-server/go.mod mcp-server/go.sum ./
 RUN go mod download
 COPY mcp-server/*.go ./
+COPY mcp-server/internal/ ./internal/
 RUN CGO_ENABLED=1 go build -o council-hub .
 
 # --- Stage 2: Build Elixir/Phoenix UI ---

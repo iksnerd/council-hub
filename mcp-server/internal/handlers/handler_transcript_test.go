@@ -497,3 +497,29 @@ func TestPinnedMessageInAfterIDMode(t *testing.T) {
 		t.Error("after_id mode should include pinned message content")
 	}
 }
+
+func TestHandleReadTranscriptIncludeRelated(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "main-room", withDescription("Main"), withRelatedRooms("side-room"))
+	mustCreateRoom(t, reg.Server, "side-room", withDescription("Side"), withSystemPrompt("Side context."))
+	mustPost(t, reg.Server, "main-room", "Claude", "Main discussion")
+	mustPostTyped(t, reg.Server, "side-room", "Gemini", "Side decision", "decision")
+
+	res, _, err := reg.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{
+		RoomID:         "main-room",
+		IncludeRelated: "true",
+	})
+	if err != nil {
+		t.Fatalf("handleReadTranscript include_related error: %v", err)
+	}
+	text := resultText(res)
+	if !strings.Contains(text, "Main discussion") {
+		t.Error("expected main room content")
+	}
+	if !strings.Contains(text, "side-room") {
+		t.Error("expected related room header")
+	}
+	if !strings.Contains(text, "Side decision") {
+		t.Error("expected related room message content")
+	}
+}

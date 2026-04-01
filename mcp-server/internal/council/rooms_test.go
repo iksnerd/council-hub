@@ -530,3 +530,119 @@ func TestArchiveRoomTranscriptError(t *testing.T) {
 		t.Error("expected transcript error during archive")
 	}
 }
+
+// ========== ListRooms keyword search ==========
+
+func TestListRoomsSearch(t *testing.T) {
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "jwt-auth", withDescription("JWT authentication refactor"), withTags("security"))
+	mustCreateRoom(t, s, "db-migration", withDescription("Database migration"))
+	mustCreateRoom(t, s, "jwt-tokens", withDescription("Token validation"), withTags("jwt"))
+
+	// Match by description keyword
+	rooms, err := s.ListRooms("", "", "", "JWT")
+	if err != nil {
+		t.Fatalf("ListRooms search failed: %v", err)
+	}
+	if len(rooms) != 2 {
+		t.Errorf("expected 2 rooms matching 'JWT', got %d", len(rooms))
+	}
+
+	// Match by room ID
+	rooms, _ = s.ListRooms("", "", "", "db-migration")
+	if len(rooms) != 1 {
+		t.Errorf("expected 1 room matching ID 'db-migration', got %d", len(rooms))
+	}
+
+	// Match by tag content
+	rooms, _ = s.ListRooms("", "", "", "security")
+	if len(rooms) != 1 {
+		t.Errorf("expected 1 room matching tag 'security', got %d", len(rooms))
+	}
+}
+
+// ========== Full lifecycle workflow ==========
+
+// TestRoomLifecycle exercises the complete room lifecycle to catch regressions
+// after structural changes like the internal/ package refactor.
+func TestRoomLifecycle(t *testing.T) {
+	s := setupTestServer(t)
+
+	// Create two linked rooms
+	s.CreateRoom("design", "System design", "council-hub", "Go, SQLite", "architecture", "Focus on modularity.", "")
+	s.CreateRoom("impl", "Implementation", "council-hub", "Go", "code", "", "design")
+
+	// Bidirectional link established automatically
+	design, _ := s.GetRoom("design")
+	if design.RelatedRooms != "impl" {
+		t.Errorf("expected reverse link 'impl', got '%s'", design.RelatedRooms)
+	}
+
+	// Post various message types
+	id1, _ := s.PostMessage("design", "Claude", "Proposal: split into internal packages", "thought", 0)
+	id2, _ := s.PostMessage("design", "Gemini", "Agreed — use internal/council and internal/handlers", "decision", 0)
+	s.PostMessage("design", "Claude", "type Server struct { DB *sql.DB }", "code", id2)
+	s.PostMessage("impl", "Claude", "Starting refactor", "action", 0)
+
+	// Pin, update, check transcript reflects both
+	s.PinMessage("design", id1)
+	s.UpdateMessage(id1, "Proposal: split into internal packages (revised)", "")
+	s.UpdateStatus("design", "resolved")
+
+	msgs, _ := s.GetTranscript("design")
+	if len(msgs) != 3 {
+		t.Fatalf("expected 3 messages, got %d", len(msgs))
+	}
+	room, _ := s.GetRoom("design")
+	transcript := FormatTranscript(room, msgs)
+	if !strings.Contains(transcript, "PINNED") {
+		t.Error("expected pinned marker in transcript")
+	}
+	if !strings.Contains(transcript, "resolved") {
+		t.Error("expected resolved status")
+	}
+
+	// Delta reads
+	after, _ := s.GetMessagesAfterID("design", id2)
+	if len(after) != 1 {
+		t.Errorf("expected 1 message after id %d, got %d", id2, len(after))
+	}
+
+	// Summary mode
+	latest, _ := s.GetLatestPerType("design")
+	types := map[string]bool{}
+	for _, m := range latest {
+		types[m.MessageType] = true
+	}
+	if !types["thought"] || !types["decision"] || !types["code"] {
+		t.Errorf("expected thought/decision/code in latest per type, got %v", types)
+	}
+
+	// Stats
+	stats, _ := s.GetRoomStats("design")
+	if stats.MessageCount != 3 || stats.Status != "resolved" {
+		t.Errorf("unexpected stats: count=%d status=%s", stats.MessageCount, stats.Status)
+	}
+
+	// Search across rooms
+	results, _ := s.SearchMessages("refactor", "", "", "", "", 20)
+	if len(results) == 0 {
+		t.Error("expected search results for 'refactor'")
+	}
+
+	// Message counts
+	counts := s.GetMessageCounts()
+	if counts["design"] != 3 || counts["impl"] != 1 {
+		t.Errorf("unexpected message counts: %v", counts)
+	}
+
+	// Archive then delete
+	archivePath, err := s.ArchiveRoom("design")
+	if err != nil || !strings.Contains(archivePath, "design") {
+		t.Errorf("archive failed: path=%s err=%v", archivePath, err)
+	}
+	s.DeleteRoom("design")
+	if _, err := s.GetRoom("design"); err == nil {
+		t.Error("expected error for deleted room")
+	}
+}
