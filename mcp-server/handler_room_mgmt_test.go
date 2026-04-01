@@ -18,7 +18,7 @@ func TestHandleCreateRoom(t *testing.T) {
 		t.Fatalf("handleCreateRoom error: %v", err)
 	}
 	text := resultText(res)
-	if !strings.Contains(text, "h-room") || !strings.Contains(text, "ready") {
+	if !strings.Contains(text, "h-room") || !strings.Contains(text, "created") {
 		t.Errorf("unexpected result: %s", text)
 	}
 
@@ -48,8 +48,8 @@ func TestHandleCreateRoomWithRelatedRooms(t *testing.T) {
 		t.Fatalf("error: %v", err)
 	}
 	text := resultText(res)
-	if !strings.Contains(text, "ready") {
-		t.Errorf("expected ready, got: %s", text)
+	if !strings.Contains(text, "created") {
+		t.Errorf("expected created, got: %s", text)
 	}
 
 	room, _ := cs.getRoom("h-create-related")

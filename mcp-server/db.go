@@ -85,7 +85,7 @@ func NewCouncilServer(dbPath string, logger *slog.Logger) (*CouncilServer, error
 
 	mcpServer := mcp.NewServer(&mcp.Implementation{
 		Name:    "council-hub",
-		Version: "0.4.1",
+		Version: "0.5.0",
 	}, &mcp.ServerOptions{
 		Logger:       logger,
 		Capabilities: &mcp.ServerCapabilities{},
@@ -153,7 +153,48 @@ func (cs *CouncilServer) createRoom(id, description, project, techStack, tags, s
 		`INSERT OR IGNORE INTO rooms (id, description, project, tech_stack, tags, system_prompt, related_rooms) VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		id, description, project, techStack, tags, systemPrompt, relatedRooms,
 	)
-	return err
+	if err != nil {
+		return err
+	}
+
+	cs.syncReverseLinks(id, relatedRooms)
+	return nil
+}
+
+// syncReverseLinks ensures that if room A lists B in related_rooms, B also lists A.
+// Must be called while cs.mu is held.
+func (cs *CouncilServer) syncReverseLinks(roomID, relatedRooms string) {
+	if relatedRooms == "" {
+		return
+	}
+	for _, rel := range strings.Split(relatedRooms, ",") {
+		rel = strings.TrimSpace(rel)
+		if rel == "" {
+			continue
+		}
+		var existing string
+		err := cs.db.QueryRow(`SELECT related_rooms FROM rooms WHERE id = ?`, rel).Scan(&existing)
+		if err != nil {
+			continue // target room doesn't exist, skip
+		}
+		// Check if roomID is already in the target's related_rooms
+		already := false
+		for _, r := range strings.Split(existing, ",") {
+			if strings.TrimSpace(r) == roomID {
+				already = true
+				break
+			}
+		}
+		if !already {
+			updated := existing
+			if updated == "" {
+				updated = roomID
+			} else {
+				updated = updated + ", " + roomID
+			}
+			cs.db.Exec(`UPDATE rooms SET related_rooms = ? WHERE id = ?`, updated, rel)
+		}
+	}
 }
 
 func (cs *CouncilServer) postMessage(roomID, author, content, messageType string, replyTo int64) (int64, error) {
@@ -324,6 +365,8 @@ func (cs *CouncilServer) updateRoom(roomID, description, project, techStack, tag
 	if rows == 0 {
 		return fmt.Errorf("room '%s' not found", roomID)
 	}
+
+	cs.syncReverseLinks(roomID, relatedRooms)
 	return nil
 }
 

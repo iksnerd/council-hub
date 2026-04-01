@@ -19,11 +19,11 @@ func TestPostToRoomReturnsCursor(t *testing.T) {
 		t.Fatalf("handlePostToRoom error: %v", err)
 	}
 	text := resultText(res)
-	if !strings.Contains(text, "message_id=") {
-		t.Errorf("expected message_id= in response, got: %s", text)
+	if !strings.Contains(text, `"message_id":`) {
+		t.Errorf("expected JSON message_id in response, got: %s", text)
 	}
-	if !strings.Contains(text, "room_id=cursor-room") {
-		t.Errorf("expected room_id=cursor-room in response, got: %s", text)
+	if !strings.Contains(text, `"room_id": "cursor-room"`) {
+		t.Errorf("expected JSON room_id in response, got: %s", text)
 	}
 }
 
@@ -61,24 +61,7 @@ func TestSearchMessagesSummaryWordBoundary(t *testing.T) {
 	}
 }
 
-// ========== read_recent deprecation notice ==========
-
-func TestReadRecentStillWorks(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "dep-room")
-	mustPost(t, cs, "dep-room", "Claude", "Hello")
-
-	res, _, err := cs.handleReadRecent(context.Background(), nil, ReadRecentInput{
-		RoomID: "dep-room", Limit: "1",
-	})
-	if err != nil {
-		t.Fatalf("handleReadRecent error: %v", err)
-	}
-	text := resultText(res)
-	if !strings.Contains(text, "Hello") {
-		t.Errorf("expected message content, got: %s", text)
-	}
-}
+// read_recent removed in v0.5.0 — use read_transcript(last_n=N)
 
 // ========== read_transcript batch (room_ids) ==========
 

@@ -74,7 +74,7 @@ These were requested but already exist:
 | 27 | **`archive_room` auto-summary** — generate one-paragraph epitaph on archive | 1 agent | Medium | TODO |
 | 28 | **Work item export mode** — `read_transcript(mode=work_items)` for ADO/GitHub Issue format | 1 agent | Medium | TODO |
 | 29 | **Semantic/fuzzy search** — beyond exact keyword matching for concept discovery | 2+ agents | High | TODO |
-| 30 | **`read_recent` deprecation/removal** — overlaps with `read_transcript(last_n)` and `get_messages(last_n)` | 3+ agents | Low | DEPRECATED in v0.4.0, remove in v0.5.0 |
+| 30 | **`read_recent` removal** — overlaps with `read_transcript(last_n)` and `get_messages(last_n)` | 3+ agents | Low | DONE (v0.5.0) — removed |
 | 31 | **UUID message IDs** — migrate from auto-increment int to UUIDs for merge-safety and future distribution | internal | Medium | TODO — breaking change, target v1.0.0 |
 
 ---
@@ -85,11 +85,11 @@ The Phoenix LiveView dashboard needs to reflect features shipped in v0.3.x–v0.
 
 | # | Feature | Effort | Status |
 |---|---------|--------|--------|
-| U1 | **Pinned message rendering** — highlight pinned messages with badge/visual treatment | Low | TODO |
-| U2 | **Room status badges** — color-coded status (active=green, paused=yellow, resolved=grey) | Low | TODO |
-| U3 | **Message type indicators** — colored badges for decision/action/critique/code/review/thought | Low | TODO |
-| U4 | **Room stats in sidebar** — message count, participant count, last activity per room | Medium | TODO |
-| U5 | **Search bar** — full-text search across rooms mirroring `search_messages` | Medium | TODO |
+| U1 | **Pinned message rendering** — highlight pinned messages with badge/visual treatment | Low | DONE (v0.4.1) |
+| U2 | **Room status badges** — color-coded status (active=green, paused=yellow, resolved=grey) | Low | DONE (v0.4.1) |
+| U3 | **Message type indicators** — colored badges for decision/action/critique/code/review/thought | Low | DONE (v0.4.1) |
+| U4 | **Room stats in sidebar** — message count, participant count, last activity per room | Medium | DONE (v0.4.1) |
+| U5 | **Search bar** — full-text search across rooms mirroring `search_messages` | Medium | DONE (v0.4.1) |
 
 ---
 
@@ -103,3 +103,14 @@ The Phoenix LiveView dashboard needs to reflect features shipped in v0.3.x–v0.
 | D | **`post_to_room` structured cursor** — returns `message_id` and `room_id` for delta-read cursor tracking | DONE |
 | E | **Word-boundary truncation** — `search_messages(summary_only)` truncates at word boundaries | DONE |
 | F | **`read_recent` deprecation notice** — description now points to `read_transcript(last_n)` | DONE |
+
+---
+
+## Shipped in v0.5.0
+
+| # | Feature | Status |
+|---|---------|--------|
+| G | **`read_recent` removal** — tool fully removed, agents use `read_transcript(last_n)` | DONE |
+| H | **Bidirectional `related_rooms` linking** — setting `related_rooms` on A auto-links B back to A | DONE |
+| I | **`post_to_room` JSON cursor** — response includes embedded JSON with `message_id`, `room_id`, `latest_message_id` | DONE |
+| J | **UI: all dashboard features** — pinned badges, status colors, type indicators, room stats, search (U1-U5) | DONE (v0.4.1) |

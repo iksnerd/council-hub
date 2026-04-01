@@ -86,6 +86,55 @@ func TestCreateRoomWithRelatedRooms(t *testing.T) {
 	}
 }
 
+func TestBidirectionalRelatedRoomsOnCreate(t *testing.T) {
+	cs := setupTestServer(t)
+	// Create target room first
+	cs.createRoom("target-room", "Target", "", "", "", "", "")
+	// Create source room linking to target
+	cs.createRoom("source-room", "Source", "", "", "", "", "target-room")
+
+	// Verify source has target
+	src, _ := cs.getRoom("source-room")
+	if src.RelatedRooms != "target-room" {
+		t.Errorf("expected source related_rooms 'target-room', got '%s'", src.RelatedRooms)
+	}
+
+	// Verify target now has reverse link to source
+	tgt, _ := cs.getRoom("target-room")
+	if tgt.RelatedRooms != "source-room" {
+		t.Errorf("expected target related_rooms 'source-room', got '%s'", tgt.RelatedRooms)
+	}
+}
+
+func TestBidirectionalRelatedRoomsOnUpdate(t *testing.T) {
+	cs := setupTestServer(t)
+	cs.createRoom("upd-src", "Source", "", "", "", "", "")
+	cs.createRoom("upd-tgt", "Target", "", "", "", "", "")
+
+	// Update source to link to target
+	cs.updateRoom("upd-src", "", "", "", "", "", "upd-tgt")
+
+	// Verify reverse link
+	tgt, _ := cs.getRoom("upd-tgt")
+	if tgt.RelatedRooms != "upd-src" {
+		t.Errorf("expected reverse link 'upd-src', got '%s'", tgt.RelatedRooms)
+	}
+}
+
+func TestBidirectionalNoDuplicateLinks(t *testing.T) {
+	cs := setupTestServer(t)
+	cs.createRoom("dup-a", "Room A", "", "", "", "", "")
+	cs.createRoom("dup-b", "Room B", "", "", "", "", "dup-a")
+
+	// Update again with same link — should not duplicate
+	cs.updateRoom("dup-b", "", "", "", "", "", "dup-a")
+
+	a, _ := cs.getRoom("dup-a")
+	if a.RelatedRooms != "dup-b" {
+		t.Errorf("expected 'dup-b', got '%s'", a.RelatedRooms)
+	}
+}
+
 func TestSignalStatus(t *testing.T) {
 	cs := setupTestServer(t)
 	cs.createRoom("status-room", "Status test", "", "", "", "", "")
