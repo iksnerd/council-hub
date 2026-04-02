@@ -2,12 +2,16 @@ package handlers
 
 import (
 	"council-hub/internal/council"
+	"net/http"
+
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // Registry holds the council server and handles MCP tool registration.
 type Registry struct {
-	Server *council.Server
+	Server     *council.Server
+	HTTPClient *http.Client // for cluster-wide queries via Phoenix internal API
+	PhoenixURL string       // e.g. "http://127.0.0.1:4000"
 }
 
 // toolResultText extracts the text content from a CallToolResult.
@@ -121,11 +125,12 @@ func (r *Registry) RegisterTools() {
 		Name:        "list_rooms",
 		Description: "List council rooms, optionally filtered by project, tag, status, or keyword search. Returns compact one-line-per-room format by default (saves ~60-80% tokens vs verbose). Set verbose=true for full metadata.",
 		InputSchema: schema(nil, map[string]map[string]any{
-			"project": prop("string", "Filter by project name"),
-			"tag":     prop("string", "Filter by tag"),
-			"status":  prop("string", "Filter by status (active, paused, resolved)"),
-			"search":  prop("string", "Keyword search across room ID, topic/description, and tags"),
-			"verbose": prop("string", "Set to 'true' for full metadata per room (system_prompt, tech_stack, tags, related_rooms)"),
+			"project":      prop("string", "Filter by project name"),
+			"tag":          prop("string", "Filter by tag"),
+			"status":       prop("string", "Filter by status (active, paused, resolved)"),
+			"search":       prop("string", "Keyword search across room ID, topic/description, and tags"),
+			"verbose":      prop("string", "Set to 'true' for full metadata per room (system_prompt, tech_stack, tags, related_rooms)"),
+			"cluster_wide": prop("string", "Set to 'true' to search across all cluster nodes. Default: local only."),
 		}),
 	}, r.handleListRooms)
 
@@ -171,6 +176,7 @@ func (r *Registry) RegisterTools() {
 			"project":      prop("string", "Scope search to rooms in this project"),
 			"limit":        prop("string", "Max results to return (default 20, max 100)"),
 			"summary_only": prop("string", "Set to 'true' for compact output: id, author, timestamp, room, type, and 120-char excerpt"),
+			"cluster_wide": prop("string", "Set to 'true' to search across all cluster nodes. Default: local only."),
 		}),
 	}, r.handleSearchMessages)
 
@@ -188,7 +194,8 @@ func (r *Registry) RegisterTools() {
 		Name:        "room_stats",
 		Description: "Get lightweight statistics for a room: message count, latest_message_id (for after_id cursor), participants with per-author counts, type breakdown, and first/last activity timestamps. Use before read_transcript to decide whether to read.",
 		InputSchema: schema([]string{"room_id"}, map[string]map[string]any{
-			"room_id": prop("string", "Target room ID"),
+			"room_id":      prop("string", "Target room ID"),
+			"cluster_wide": prop("string", "Set to 'true' to search across all cluster nodes. Default: local only."),
 		}),
 	}, r.handleRoomStats)
 

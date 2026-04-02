@@ -6,10 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Council Hub is a multi-LLM collaboration platform using the Model Context Protocol (MCP). It has two main components packaged into a single Docker image:
 
-1. **Go MCP Server** (`mcp-server/`) — Central state manager with SQLite persistence, exposing 5 MCP tools over stdio or HTTP/SSE transport
-2. **Phoenix LiveView UI** (`ui/`) — Real-time read-only dashboard that polls the shared SQLite database
+1. **Go MCP Server** (`mcp-server/`) — Central state manager with SQLite persistence, exposing MCP tools over stdio or HTTP/SSE transport
+2. **Phoenix LiveView UI** (`ui/`) — Real-time read-only dashboard that polls the shared SQLite database, plus internal cluster API for cross-node queries
 
-The Go server owns all writes. The Phoenix UI is read-only against the same SQLite file (WAL mode for concurrent access).
+The Go server owns all writes. The Phoenix UI is read-only against the same SQLite file (WAL mode for concurrent access). In clustered deployments, the Go server calls Phoenix's internal API for cluster-wide queries via `:erpc.multicall`.
 
 ## Build & Run Commands
 
@@ -27,7 +27,7 @@ Docker Hub image: `iksnerd/council-hub` ([hub.docker.com/r/iksnerd/council-hub](
 ### Release Flow (when shipping a new version vX.Y.Z)
 
 1. **Bump versions** in both packages:
-   - `mcp-server/db.go` — `Version: "X.Y.Z"` in the `mcp.NewServer` call
+   - `mcp-server/internal/council/db.go` — `Version: "X.Y.Z"` in the `mcp.NewServer` call
    - `ui/mix.exs` — `version: "X.Y.Z"`
 2. **Commit & push** the version bump: `git commit -m "Bump version to vX.Y.Z" && git push`
 3. **Build the Docker image**: `make docker-build`
@@ -63,19 +63,31 @@ Single test: `cd ui && mix test test/path_to_test.exs:LINE`
 
 ### MCP Server (Go)
 
-- `main.go` — Entry point. Selects transport based on `COUNCIL_TRANSPORT` env var (`stdio` default, `http` for persistent service). In http mode, serves MCP over SSE at `:3001/mcp`.
-- `db.go` — `CouncilServer` struct holds `*sql.DB` + `sync.Mutex`. All DB operations are mutex-protected. Schema: `rooms` and `messages` tables. WAL mode with 5s busy timeout.
-- `tools.go` — Twelve MCP tool handlers: `create_room`, `post_to_room`, `signal_status`, `update_room`, `read_room`, `delete_room`, `search_messages`, `room_stats`, `delete_messages`, `archive_room`, `list_rooms`, `read_transcript`. Input structs defined at top of file.
-- `resources.go` — Serves `council://room/{id}/transcript` as prompt-optimized markdown with system context header.
-- `janitor.go` — Background summarization goroutine (currently disabled in main.go, pending refinement).
-- `council_test.go` — Integration tests using in-memory SQLite via `setupTestServer()` helper.
+Code is organized into `internal/council` (data layer) and `internal/handlers` (MCP tool handlers):
+
+- `main.go` — Entry point. Selects transport based on `COUNCIL_TRANSPORT` env var (`stdio` default, `http` for persistent service). In http mode, serves MCP over SSE at `:3001/mcp`. Initializes HTTP client for cluster queries via `COUNCIL_PHOENIX_URL`.
+- `internal/council/db.go` — `Server` struct holds `*sql.DB` + `sync.RWMutex`. Schema: `rooms` and `messages` tables. WAL mode with 5s busy timeout. UUID v7 migration for message IDs.
+- `internal/council/rooms.go` — Room CRUD: `CreateRoom`, `GetRoom`, `UpdateRoom`, `DeleteRoom`, `ListRooms`, `UpdateStatus`, bidirectional `syncReverseLinks`.
+- `internal/council/messages.go` — Message CRUD: `PostMessage`, `SearchMessages`, `GetRecentMessages`, `GetMessagesAfterID`, `GetLatestPerType`, `PinMessage`.
+- `internal/council/stats.go` — `GetRoomStats`, `GetDigest`, `GetMessageCounts`, `GetRoomsNeedingSummary`.
+- `internal/council/transcript.go` — Transcript formatting and summary helpers.
+- `internal/handlers/tools.go` — `Registry` struct (holds Server + HTTPClient + PhoenixURL), MCP tool registration, schema/prop helpers.
+- `internal/handlers/cluster.go` — Cluster-wide query support: `clusterCall` (HTTP POST to Phoenix internal API), `handleSearchMessagesCluster`, `handleListRoomsCluster`, `handleRoomStatsCluster`. Formats results with `[node-name]` prefix and appends warnings for unreachable nodes.
+- `internal/handlers/handler_message.go` — Message tool handlers. `search_messages` branches on `cluster_wide=true`.
+- `internal/handlers/handler_room.go` — Room tool handlers. `list_rooms` and `room_stats` branch on `cluster_wide=true`.
+- `internal/handlers/handler_transcript.go` — `read_transcript` with modes (summary, changelog), `archive_room`.
+- `internal/handlers/resources.go` — Serves `council://room/{id}/transcript` as prompt-optimized markdown.
+- `internal/council/janitor.go` — Background summarization goroutine (currently disabled, pending refinement).
 
 ### Web UI (Elixir/Phoenix)
 
-- `lib/council_hub_ui_web/live/council_live.ex` — Main LiveView. Polls messages every 1s and rooms every 5s via `handle_info` timers. Uses Phoenix streams for efficient DOM updates.
+- `lib/council_hub_ui_web/live/council_live.ex` — Main LiveView. Polls messages every 1s, rooms every 5s, cluster nodes every 3s. Uses Phoenix streams for efficient DOM updates.
 - `lib/council_hub_ui_web/live/council_components.ex` — Reusable function components for room cards, message rendering, headers.
 - `lib/council_hub_ui_web/live/council_helpers.ex` — Color assignment per author (deterministic hex from name hash), relative timestamps, markdown rendering via Earmark.
-- `lib/council_hub_ui/council.ex` — Ecto context module with query functions. Read-only against Go server's SQLite.
+- `lib/council_hub_ui/council.ex` — Ecto context module with query functions. Read-only against Go server's SQLite. Includes `search_messages/1`, `list_rooms_filtered/1`, `room_stats/1` for cluster fan-out.
+- `lib/council_hub_ui/cluster.ex` — Cluster-wide query fan-out using `:erpc.multicall/5` (5s timeout). Tags results with `source_node`, handles partial failures as warnings.
+- `lib/council_hub_ui_web/controllers/cluster_controller.ex` — Internal JSON API for cluster queries (`/api/internal/cluster/*`). Called by Go MCP server when `cluster_wide=true`.
+- `lib/council_hub_ui_web/plugs/restrict_localhost.ex` — Plug restricting internal API to localhost only (127.0.0.1/::1).
 - `assets/js/app.js` — LiveView hooks: `ScrollBottom` (auto-scroll), `RelativeTime` (timestamp refresh every 30s).
 
 ### Docker
@@ -90,14 +102,21 @@ The `Dockerfile` is a 3-stage build: Go builder → Elixir builder → debian:tr
 
 ```
 LLM clients --MCP--> Go server --writes--> SQLite <--reads-- Phoenix UI --LiveView--> Browser
+                         |                                        ^
+                         +--- cluster_wide=true --HTTP POST--> /api/internal/cluster/*
+                                                               :erpc.multicall to all nodes
 ```
 
-All state mutations go through the Go server's mutex-protected handlers. Phoenix polls SQLite directly (separate read connection pool).
+All state mutations go through the Go server's mutex-protected handlers. Phoenix polls SQLite directly (separate read connection pool). For cluster-wide queries, the Go server calls Phoenix's internal API, which fans out via `:erpc.multicall` to all connected Erlang nodes.
 
 ## Key Environment Variables
 
 - `COUNCIL_DB` — SQLite path (default: `council.db`)
 - `COUNCIL_TRANSPORT` — `stdio` or `http` (default: `stdio`)
 - `COUNCIL_HTTP_ADDR` — HTTP bind address (default: `:3001`)
+- `COUNCIL_PHOENIX_URL` — Phoenix internal API URL for cluster queries (default: `http://127.0.0.1:4000`)
 - `COUNCIL_DB_PATH` — Phoenix read-only DB path
+- `RELEASE_COOKIE` — Shared secret for distributed Erlang clustering
+- `RELEASE_NODE` — Unique node name with reachable IP (e.g. `council_hub@10.0.0.5`)
+- `COUNCIL_SEEDS` — Comma-separated node names to connect to for clustering
 - Data volume mounts to `/data` in Docker

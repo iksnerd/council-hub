@@ -37,7 +37,16 @@ func main() {
 	}
 	defer cs.DB.Close()
 
-	reg := &handlers.Registry{Server: cs}
+	phoenixURL := os.Getenv("COUNCIL_PHOENIX_URL")
+	if phoenixURL == "" {
+		phoenixURL = "http://127.0.0.1:4000"
+	}
+
+	reg := &handlers.Registry{
+		Server:     cs,
+		HTTPClient: &http.Client{Timeout: 10 * time.Second},
+		PhoenixURL: phoenixURL,
+	}
 	reg.RegisterTools()
 	reg.RegisterResources()
 

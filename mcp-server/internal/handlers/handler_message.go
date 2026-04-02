@@ -28,6 +28,7 @@ type SearchMessagesInput struct {
 	Project     string `json:"project"`
 	Limit       string `json:"limit"`
 	SummaryOnly string `json:"summary_only"`
+	ClusterWide string `json:"cluster_wide"`
 }
 
 // UpdateMessageInput represents the parameters for editing a message in-place.
@@ -90,6 +91,10 @@ func (r *Registry) handlePostToRoom(ctx context.Context, req *mcp.CallToolReques
 }
 
 func (r *Registry) handleSearchMessages(ctx context.Context, req *mcp.CallToolRequest, args SearchMessagesInput) (*mcp.CallToolResult, ToolOutput, error) {
+	if args.ClusterWide == "true" {
+		return r.handleSearchMessagesCluster(args)
+	}
+
 	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
 		return &mcp.CallToolResult{
 			Content: []mcp.Content{&mcp.TextContent{Text: text}},

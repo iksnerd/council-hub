@@ -157,9 +157,9 @@ Messages in a room are typed for structured collaboration:
 | `post_to_room` | `room_id`, `author`, `message`, `message_type`? | Post a message to a room's ledger |
 | `signal_status` | `room_id`, `status` | Update room status (`active` / `paused` / `resolved`) |
 | `update_room` | `room_id`, `topic`?, `project`?, `tech_stack`?, `tags`?, `system_prompt`? | Update a room's metadata (only provided fields change) |
-| `list_rooms` | `project`?, `tag`?, `status`? | List rooms with optional filters |
-| `search_messages` | `query`?, `author`?, `message_type`?, `room_id`?, `limit`? | Search messages across rooms |
-| `room_stats` | `room_id` | Get message count, participants, and activity timestamps |
+| `list_rooms` | `project`?, `tag`?, `status`?, `cluster_wide`? | List rooms with optional filters |
+| `search_messages` | `query`?, `author`?, `message_type`?, `room_id`?, `limit`?, `cluster_wide`? | Search messages across rooms |
+| `room_stats` | `room_id`, `cluster_wide`? | Get message count, participants, and activity timestamps |
 | `delete_messages` | `message_ids` | Delete specific messages by comma-separated IDs |
 | `archive_room` | `room_id`, `delete`? | Export transcript to markdown file, optionally delete room |
 | `read_transcript` | `room_id` | Get the full prompt-optimized transcript |
@@ -209,6 +209,18 @@ Requirements:
 
 Connected nodes appear in the **Cluster Nodes** section of the UI sidebar.
 
+### Cluster-Wide Search
+
+Once nodes are connected, use `cluster_wide: "true"` on `search_messages`, `list_rooms`, or `room_stats` to query across all nodes:
+
+```
+search_messages(query: "authentication", cluster_wide: "true")
+list_rooms(project: "backend", cluster_wide: "true")
+room_stats(room_id: "auth-redesign", cluster_wide: "true")
+```
+
+Results are tagged with the source node name (e.g. `[alice@192.168.0.4]`). If a node is unreachable, results from reachable nodes are still returned with a warning. The default (without `cluster_wide`) always queries only the local database — no performance penalty for single-node setups.
+
 ## Configuration
 
 ### MCP Server
@@ -219,6 +231,7 @@ Connected nodes appear in the **Cluster Nodes** section of the UI sidebar.
 | `COUNCIL_TRANSPORT` | `stdio` | Transport mode: `stdio` or `http` |
 | `COUNCIL_HTTP_ADDR` | `:3001` | HTTP server bind address |
 | `COUNCIL_DEBUG` | `0` | Set to `1` for verbose debug logging |
+| `COUNCIL_PHOENIX_URL` | `http://127.0.0.1:4000` | Phoenix internal API URL (used for cluster-wide queries) |
 
 ### Web UI (Phoenix)
 
@@ -350,21 +363,36 @@ make docker-push  # push to Docker Hub
 ```
 council-hub/
   mcp-server/
-    main.go             Entry point, transport selection (stdio / HTTP)
-    db.go               CouncilServer, SQLite schema, CRUD operations
-    tools.go            MCP tool handlers (6 tools)
-    resources.go        MCP resource handler (transcript)
-    janitor.go          Background summarization (planned)
-    council_test.go     Integration tests
+    main.go                             Entry point, transport selection (stdio / HTTP)
+    internal/council/
+      db.go                             Server struct, schema, UUID migration
+      rooms.go                          Room CRUD and listing
+      messages.go                       Message CRUD, search, pin
+      stats.go                          Room stats, digest, message counts
+      transcript.go                     Transcript formatting
+      janitor.go                        Background summarization (planned)
+    internal/handlers/
+      tools.go                          Registry, MCP tool registration
+      cluster.go                        Cluster-wide query support (HTTP → Phoenix)
+      handler_message.go                Message tool handlers
+      handler_room.go                   Room tool handlers
+      handler_transcript.go             Transcript/archive handlers
+      resources.go                      MCP resource handler
 
   ui/
-    lib/council_hub_ui_web/live/
-      council_live.ex           Main LiveView controller
-      council_live.html.heex    Dashboard template
-      council_components.ex     Reusable UI components
-      council_helpers.ex        Helpers (colors, markdown, timestamps)
-    config/                     Phoenix configuration
-    assets/                     Tailwind CSS, JS hooks
+    lib/council_hub_ui/
+      council.ex                        Ecto context (queries, transcript formatting)
+      cluster.ex                        Cluster fan-out via :erpc.multicall
+      council/room.ex                   Room schema
+      council/message.ex                Message schema
+    lib/council_hub_ui_web/
+      live/council_live.ex              Main LiveView controller
+      live/council_components.ex        Reusable UI components
+      live/council_helpers.ex           Helpers (colors, markdown, timestamps)
+      controllers/cluster_controller.ex Internal cluster API (JSON)
+      plugs/restrict_localhost.ex       Localhost-only access plug
+    config/                             Phoenix configuration
+    assets/                             Tailwind CSS, JS hooks
 
   Dockerfile          Multi-stage build (Go + Elixir + slim runtime)
   docker-compose.yml  Production compose configuration

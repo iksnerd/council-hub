@@ -60,6 +60,10 @@ docker run -d --name council-hub \
 
 Once connected, all nodes appear in the **Cluster Nodes** section of the UI sidebar.
 
+#### Cluster-Wide Search
+
+With clustering enabled, use `cluster_wide: "true"` on `search_messages`, `list_rooms`, or `room_stats` to query across all connected nodes. Results are tagged with the source node name. Unreachable nodes produce a warning but don't block results from reachable nodes.
+
 ### Stdio Mode (CLI agent integration)
 
 Runs only the MCP server over stdin/stdout for direct integration with CLI agents:
@@ -164,11 +168,11 @@ Add to `~/.gemini/settings.json`.
 
 ```bash
 docker stop council-hub && docker rm council-hub
-docker pull iksnerd/council-hub:v0.2.1
+docker pull iksnerd/council-hub:v0.6.0
 docker run -d --name council-hub \
   -p 4000:4000 -p 3001:3001 \
   -v ~/Documents/council-hub:/data \
-  iksnerd/council-hub:v0.2.1
+  iksnerd/council-hub:v0.6.0
 ```
 
 You can also use `:latest` instead of a specific version tag. Available tags are listed on the [Docker Hub tags page](https://hub.docker.com/r/iksnerd/council-hub/tags).
@@ -191,6 +195,7 @@ docker compose up -d
 | `COUNCIL_TRANSPORT` | `stdio` | Transport mode: `stdio` or `http` |
 | `COUNCIL_HTTP_ADDR` | `:3001` | HTTP server bind address |
 | `COUNCIL_DEBUG` | `0` | Set to `1` for verbose debug logging |
+| `COUNCIL_PHOENIX_URL` | `http://127.0.0.1:4000` | Phoenix internal API URL (used by Go server for cluster-wide queries) |
 | `COUNCIL_DB_PATH` | — | SQLite path for the Phoenix web UI (read-only) |
 | `SECRET_KEY_BASE` | auto-generated | Phoenix session signing key |
 | `PHX_HOST` | `localhost` | Phoenix hostname |
@@ -234,13 +239,12 @@ docker compose up -d
 | `post_to_room` | Post a typed message (message/thought/decision/code/review/action/critique) with optional reply threading |
 | `signal_status` | Update room status (active / paused / resolved) |
 | `update_room` | Update a room's metadata (topic, project, tags, related_rooms, etc.) |
-| `list_rooms` | List rooms with optional project/tag/status filters |
+| `list_rooms` | List rooms with optional project/tag/status filters. Set `cluster_wide=true` to query all nodes. |
 | `read_room` | Read a room's metadata without loading messages |
-| `read_recent` | Read the last N messages from a room (default 10, max 50) |
-| `read_transcript` | Get the full prompt-optimized transcript |
-| `search_messages` | Search messages by keyword, author, type, or room |
+| `read_transcript` | Get the full prompt-optimized transcript with modes (summary, changelog) |
+| `search_messages` | Search messages by keyword, author, type, or room. Set `cluster_wide=true` to query all nodes. |
 | `get_messages` | Fetch full content of specific messages by ID |
-| `room_stats` | Get message count, participants, and timestamps |
+| `room_stats` | Get message count, participants, and timestamps. Set `cluster_wide=true` to query all nodes. |
 | `delete_room` | Permanently delete a room and its messages |
 | `delete_messages` | Delete specific messages by ID |
 | `archive_room` | Export transcript to file, optionally delete room |

@@ -14,6 +14,11 @@ defmodule CouncilHubUiWeb.Router do
     plug :accepts, ["json"]
   end
 
+  pipeline :internal_api do
+    plug :accepts, ["json"]
+    plug CouncilHubUiWeb.Plugs.RestrictLocalhost
+  end
+
   scope "/", CouncilHubUiWeb do
     pipe_through :browser
 
@@ -25,8 +30,11 @@ defmodule CouncilHubUiWeb.Router do
     end
   end
 
-  # Other scopes may use custom stacks.
-  # scope "/api", CouncilHubUiWeb do
-  #   pipe_through :api
-  # end
+  scope "/api/internal/cluster", CouncilHubUiWeb do
+    pipe_through :internal_api
+
+    post "/search_messages", ClusterController, :search_messages
+    post "/list_rooms", ClusterController, :list_rooms
+    post "/room_stats", ClusterController, :room_stats
+  end
 end

@@ -295,4 +295,3 @@ func TestPostToRoomJSONCursor(t *testing.T) {
 		t.Errorf("expected JSON latest_message_id, got: %s", text)
 	}
 }
-

@@ -28,12 +28,13 @@ type SignalStatusInput struct {
 
 // ListRoomsInput represents the parameters for listing rooms.
 type ListRoomsInput struct {
-	Project string `json:"project"`
-	Tag     string `json:"tag"`
-	Status  string `json:"status"`
-	Search  string `json:"search"`
-	Compact string `json:"compact"` // deprecated: compact is now default; kept for backwards compat
-	Verbose string `json:"verbose"`
+	Project     string `json:"project"`
+	Tag         string `json:"tag"`
+	Status      string `json:"status"`
+	Search      string `json:"search"`
+	Compact     string `json:"compact"` // deprecated: compact is now default; kept for backwards compat
+	Verbose     string `json:"verbose"`
+	ClusterWide string `json:"cluster_wide"`
 }
 
 // UpdateRoomInput represents the parameters for updating a room's metadata.
@@ -60,7 +61,8 @@ type DeleteRoomInput struct {
 
 // RoomStatsInput represents the parameters for getting room statistics.
 type RoomStatsInput struct {
-	RoomID string `json:"room_id"`
+	RoomID      string `json:"room_id"`
+	ClusterWide string `json:"cluster_wide"`
 }
 
 // BulkStatusInput represents the parameters for updating multiple rooms' status at once.
@@ -366,6 +368,10 @@ func (r *Registry) handleDeleteRoom(ctx context.Context, req *mcp.CallToolReques
 }
 
 func (r *Registry) handleListRooms(ctx context.Context, req *mcp.CallToolRequest, args ListRoomsInput) (*mcp.CallToolResult, ToolOutput, error) {
+	if args.ClusterWide == "true" {
+		return r.handleListRoomsCluster(args)
+	}
+
 	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
 		return &mcp.CallToolResult{
 			Content: []mcp.Content{&mcp.TextContent{Text: text}},
@@ -429,6 +435,10 @@ func (r *Registry) handleListRooms(ctx context.Context, req *mcp.CallToolRequest
 }
 
 func (r *Registry) handleRoomStats(ctx context.Context, req *mcp.CallToolRequest, args RoomStatsInput) (*mcp.CallToolResult, ToolOutput, error) {
+	if args.ClusterWide == "true" {
+		return r.handleRoomStatsCluster(args)
+	}
+
 	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
 		return &mcp.CallToolResult{
 			Content: []mcp.Content{&mcp.TextContent{Text: text}},

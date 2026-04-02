@@ -271,6 +271,128 @@ defmodule CouncilHubUi.CouncilTest do
     end
   end
 
+  describe "search_messages/1" do
+    test "searches by content query" do
+      room = create_room(%{id: "sm-query"})
+      create_message(%{room_id: room.id, content: "erlang distribution", author: "Claude"})
+      create_message(%{room_id: room.id, content: "unrelated topic", author: "Gemini"})
+
+      results = Council.search_messages(%{"query" => "erlang"})
+      assert length(results) == 1
+      assert hd(results).content =~ "erlang"
+    end
+
+    test "filters by author" do
+      room = create_room(%{id: "sm-author"})
+      create_message(%{room_id: room.id, content: "msg 1", author: "Claude"})
+      create_message(%{room_id: room.id, content: "msg 2", author: "Gemini"})
+
+      results = Council.search_messages(%{"author" => "Claude", "room_id" => "sm-author"})
+      assert length(results) == 1
+      assert hd(results).author == "Claude"
+    end
+
+    test "filters by message_type" do
+      room = create_room(%{id: "sm-type"})
+      create_message(%{room_id: room.id, content: "a thought", message_type: "thought"})
+      create_message(%{room_id: room.id, content: "a decision", message_type: "decision"})
+
+      results = Council.search_messages(%{"message_type" => "decision", "room_id" => "sm-type"})
+      assert length(results) == 1
+      assert hd(results).message_type == "decision"
+    end
+
+    test "filters by project" do
+      r1 = create_room(%{id: "sm-proj-a", project: "alpha"})
+      r2 = create_room(%{id: "sm-proj-b", project: "beta"})
+      create_message(%{room_id: r1.id, content: "in alpha"})
+      create_message(%{room_id: r2.id, content: "in beta"})
+
+      results = Council.search_messages(%{"project" => "alpha"})
+      assert length(results) == 1
+      assert hd(results).room_id == "sm-proj-a"
+    end
+
+    test "respects limit" do
+      room = create_room(%{id: "sm-limit"})
+      for i <- 1..5, do: create_message(%{room_id: room.id, content: "msg #{i}"})
+
+      results = Council.search_messages(%{"room_id" => "sm-limit", "limit" => 2})
+      assert length(results) == 2
+    end
+  end
+
+  describe "list_rooms_filtered/1" do
+    test "filters by project" do
+      create_room(%{id: "lrf-a", project: "proj-x"})
+      create_room(%{id: "lrf-b", project: "proj-y"})
+
+      results = Council.list_rooms_filtered(%{"project" => "proj-x"})
+      assert length(results) == 1
+      assert hd(results).id == "lrf-a"
+    end
+
+    test "filters by status" do
+      create_room(%{id: "lrf-active", status: "active"})
+      create_room(%{id: "lrf-resolved", status: "resolved"})
+
+      results = Council.list_rooms_filtered(%{"status" => "resolved"})
+      assert length(results) == 1
+      assert hd(results).id == "lrf-resolved"
+    end
+
+    test "filters by tag" do
+      create_room(%{id: "lrf-tagged", tags: "elixir,erlang"})
+      create_room(%{id: "lrf-other", tags: "go,rust"})
+
+      results = Council.list_rooms_filtered(%{"tag" => "erlang"})
+      assert length(results) == 1
+      assert hd(results).id == "lrf-tagged"
+    end
+
+    test "searches across id, description, and tags" do
+      create_room(%{id: "auth-migration", description: "Auth work", tags: "security"})
+      create_room(%{id: "unrelated", description: "Other", tags: ""})
+
+      results = Council.list_rooms_filtered(%{"search" => "auth"})
+      assert length(results) == 1
+      assert hd(results).id == "auth-migration"
+    end
+
+    test "returns all rooms with empty filters" do
+      create_room(%{id: "lrf-all-a"})
+      create_room(%{id: "lrf-all-b"})
+
+      results = Council.list_rooms_filtered(%{})
+      ids = Enum.map(results, & &1.id)
+      assert "lrf-all-a" in ids
+      assert "lrf-all-b" in ids
+    end
+  end
+
+  describe "room_stats/1" do
+    test "returns stats for existing room" do
+      room = create_room(%{id: "rs-room"})
+      create_message(%{room_id: room.id, author: "Claude", message_type: "thought"})
+      create_message(%{room_id: room.id, author: "Gemini", message_type: "decision"})
+      create_message(%{room_id: room.id, author: "Claude", message_type: "thought"})
+
+      assert {:ok, stats} = Council.room_stats("rs-room")
+      assert stats.room_id == "rs-room"
+      assert stats.message_count == 3
+      assert stats.participants == %{"Claude" => 2, "Gemini" => 1}
+      assert stats.type_counts == %{"thought" => 2, "decision" => 1}
+      assert stats.first_message != nil
+      assert stats.last_message != nil
+      assert stats.latest_message_id != nil
+    end
+
+    test "returns error for nonexistent room" do
+      assert {:error, msg} = Council.room_stats("nonexistent")
+      assert msg =~ "not found"
+    end
+  end
+
   describe "format_transcript/2" do
     test "formats room header and messages" do
       room = create_room(%{id: "fmt-room", description: "Format test", project: "proj", tech_stack: "Go", tags: "tag1", status: "active"})
