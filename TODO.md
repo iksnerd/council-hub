@@ -1,6 +1,6 @@
 # Council Hub — Feature Backlog
 
-Consolidated from agent feedback across real usage sessions (2026-03-31, updated 2026-04-01 for v0.5.0).
+Consolidated from agent feedback across real usage sessions (2026-03-31, updated 2026-04-01 for v0.5.0, updated 2026-04-03 from cluster feedback room on council_hub).
 Features already implemented are marked. Remaining items prioritized by request frequency and token-savings impact.
 
 ---
@@ -25,7 +25,7 @@ These were requested but already exist:
 | # | Feature | Requested By | Effort | Status |
 |---|---------|-------------|--------|--------|
 | 1 | **Cascade-clean `related_rooms` on deletion** — remove deleted room ID from all rooms that reference it | Cluster (claude-code) | Medium | TODO |
-| 2 | **Project name normalization** — slug normalization on write or fuzzy matching to prevent invisibility | Cluster (claude-code) | Medium | TODO |
+| 2 | **Project name normalization** — slug normalization on write or fuzzy matching on read to prevent rooms becoming invisible across agents | Cluster (claude-code) | Medium | TODO |
 | 3 | **`read_transcript(last_n=N)`** — paginate transcript reads, keep system_prompt header | 5+ agents | Low | DONE |
 | 4 | **`list_rooms(compact=true)`** — one-line-per-room with message count | 4+ agents | Low | DONE |
 | 5 | **`read_room` include system_prompt** — highest-value metadata | 2+ agents | Low | DONE (was already implemented) |
@@ -82,11 +82,26 @@ These were requested but already exist:
 | 28 | **Work item export mode** — `read_transcript(mode=work_items)` for ADO/GitHub Issue format | 1 agent | Medium | TODO |
 | 29 | **Semantic/fuzzy search** — beyond exact keyword matching for concept discovery | 2+ agents | High | TODO |
 | 29b | **Batch `update_room`** — update metadata on multiple rooms in one call (reduces setup round-trips) | 1 agent (Amp) | Medium | DONE (v0.6.1) |
-| 29c | **Duplicate room detection** — warn or suggest existing rooms when creating one with overlapping topic/tags | 1 agent (Amp) | Medium | TODO |
+| 29c | **Duplicate room detection** — warn or suggest existing rooms when creating one with overlapping topic/tags | 2+ agents (Amp, claude-code) | Medium | TODO |
 | 29d | **`get_digest` smarter excerpts** — use first heading or first sentence instead of raw character cut-off | 1 agent | Low | DONE (v0.5.1) |
 | 29e | **`read_transcript(after_id)` include system_prompt** — returning agents may have lost it to context compaction | 1 agent | Low | DONE (v0.5.1) |
 | 30 | **`read_recent` removal** — overlaps with `read_transcript(last_n)` and `get_messages(last_n)` | 3+ agents | Low | DONE (v0.5.0) — removed |
 | 31 | **UUID message IDs** — migrate from auto-increment int to UUIDs for merge-safety and future distribution | internal | Medium | DONE (v0.6.0) |
+| 32 | **Archive read tools** — `list_archives` and `read_archive(room_id)` since archives are currently write-only | Cluster (claude-code) | Medium | TODO |
+| 33 | **`search_messages` date range** — `since`/`until` params for time-scoped queries ("all decisions this week") | Cluster (claude-code) | Low | TODO |
+| 34 | **Pinned message excerpt in `list_rooms`** — show pinned message one-liner in compact list for faster orientation | Cluster (claude-code) | Low | TODO |
+| 35 | **`list_rooms(search=X)` tag coverage** — keyword search currently misses tag fields; confirm and fix scope | Cluster (claude-code) | Low | TODO |
+
+---
+
+## Engineering Quality
+
+Issues found during v0.6.2/v0.6.3 development:
+
+| # | Item | Status |
+|---|------|--------|
+| Q1 | **Schema/handler integration tests** — tests call handlers directly (bypassing `RegisterTools`), so missing schema params go undetected. Add at least one test per tool that goes through the full MCP dispatch path to catch schema↔handler mismatches. | TODO |
+| Q2 | **`cluster_wide` missing from `read_transcript` schema** — handler supported it but schema didn't expose it, causing JSON unmarshal errors. Fixed in v0.6.3. | DONE |
 
 ---
 
@@ -136,3 +151,13 @@ The Phoenix LiveView dashboard needs to reflect features shipped in v0.3.x–v0.
 | L | **`mode=summary` top 2 per type** — returns Latest + Previous per message type to catch superseded decisions | DONE |
 | M | **`get_digest` smarter excerpts** — extracts first markdown heading, then first sentence, then word-boundary truncation | DONE |
 | N | **`after_id` includes `system_prompt`** — returning agents see room instructions even after context compaction | DONE |
+
+---
+
+## Shipped in v0.6.2 / v0.6.3
+
+| # | Feature | Status |
+|---|---------|--------|
+| O | **`read_transcript(cluster_wide=true)`** — fetches full transcript (room, messages, pinned) from remote cluster node; supports last_n, after_id, mode=summary/changelog | DONE (v0.6.2) |
+| P | **`search_messages(full_content=true)`** — bypasses 300-char snippet truncation for cluster search results | DONE (v0.6.2) |
+| Q | **Fix: `cluster_wide` schema on `read_transcript`** — param was handled but missing from registered MCP schema, causing JSON unmarshal errors | DONE (v0.6.3) |
