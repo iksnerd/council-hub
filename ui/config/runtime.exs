@@ -20,6 +20,32 @@ if System.get_env("PHX_SERVER") do
   config :council_hub_ui, CouncilHubUiWeb.Endpoint, server: true
 end
 
+# Clustering: if COUNCIL_SEEDS is set (comma-separated node names like
+# "council_hub@10.0.0.5,council_hub@10.0.0.6"), use Epmd strategy to
+# connect to those specific nodes. Otherwise fall back to Gossip for
+# automatic LAN/multicast discovery.
+cluster_topology =
+  case System.get_env("COUNCIL_SEEDS") do
+    nil ->
+      [council_hub: [strategy: Cluster.Strategy.Gossip]]
+
+    "" ->
+      [council_hub: [strategy: Cluster.Strategy.Gossip]]
+
+    seeds_str ->
+      seeds =
+        seeds_str
+        |> String.split(",", trim: true)
+        |> Enum.map(fn s -> String.to_atom(String.trim(s)) end)
+
+      [council_hub: [
+        strategy: Cluster.Strategy.Epmd,
+        config: [hosts: seeds]
+      ]]
+  end
+
+config :libcluster, topologies: cluster_topology
+
 config :council_hub_ui, CouncilHubUiWeb.Endpoint,
   http: [port: String.to_integer(System.get_env("PORT", "4000"))]
 

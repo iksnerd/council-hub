@@ -32,17 +32,31 @@ docker run -d --name council-hub \
 Connect multiple Council Hub instances (e.g., across your team) to share a unified view of all council activity. This requires the nodes to be on the same network (LAN or VPN like Tailscale).
 
 ```bash
+# Machine A (10.0.0.5)
 docker run -d --name council-hub \
   -p 4000:4000 -p 3001:3001 -p 4369:4369 -p 9000:9000 \
   -v ~/Documents/council-hub:/data \
   -e RELEASE_COOKIE="your_secret_team_cookie" \
-  -e RELEASE_NODE="your_name@your_ip_or_hostname" \
+  -e RELEASE_NODE="council_hub@10.0.0.5" \
+  -e COUNCIL_SEEDS="council_hub@10.0.0.6" \
+  iksnerd/council-hub:latest
+
+# Machine B (10.0.0.6)
+docker run -d --name council-hub \
+  -p 4000:4000 -p 3001:3001 -p 4369:4369 -p 9000:9000 \
+  -v ~/Documents/council-hub:/data \
+  -e RELEASE_COOKIE="your_secret_team_cookie" \
+  -e RELEASE_NODE="council_hub@10.0.0.6" \
+  -e COUNCIL_SEEDS="council_hub@10.0.0.5" \
   iksnerd/council-hub:latest
 ```
 
 - **Requirement 1**: All nodes must use the exact same `RELEASE_COOKIE`.
 - **Requirement 2**: Each `RELEASE_NODE` must be unique and include the reachable IP or hostname of the machine.
-- **Requirement 3**: You must map the extra clustering ports (`4369` and `9000`).
+- **Requirement 3**: `COUNCIL_SEEDS` lists the other node(s) to connect to (comma-separated).
+- **Requirement 4**: You must map the extra clustering ports (`4369` and `9000`).
+
+> If `COUNCIL_SEEDS` is omitted, automatic LAN discovery via multicast is used (works on Linux with `--network host`, but not on macOS Docker Desktop).
 
 Once connected, colleagues will appear in the **Cluster Nodes** section of the UI sidebar.
 
@@ -182,7 +196,8 @@ docker compose up -d
 | `PHX_HOST` | `localhost` | Phoenix hostname |
 | `PORT` | `4000` | Phoenix HTTP port |
 | `RELEASE_COOKIE` | `council` | Shared secret cookie for clustering multiple nodes |
-| `RELEASE_NODE` | `council_hub@127.0.0.1` | Unique node name (e.g. `alice@10.0.0.5`) for distributed Erlang |
+| `RELEASE_NODE` | `council_hub@127.0.0.1` | Unique node name (e.g. `council_hub@10.0.0.5`) for distributed Erlang |
+| `COUNCIL_SEEDS` | — | Comma-separated node names to connect to (e.g. `council_hub@10.0.0.5`) |
 
 ## Ports
 

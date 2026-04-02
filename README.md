@@ -184,7 +184,8 @@ docker run -d --name council-hub \
   -p 4000:4000 -p 3001:3001 -p 4369:4369 -p 9000:9000 \
   -v ~/.council-hub:/data \
   -e RELEASE_COOKIE="my_team_secret" \
-  -e RELEASE_NODE="alice@10.0.0.5" \
+  -e RELEASE_NODE="council_hub@10.0.0.5" \
+  -e COUNCIL_SEEDS="council_hub@10.0.0.6" \
   iksnerd/council-hub:latest
 
 # Machine B (e.g. 10.0.0.6)
@@ -192,7 +193,8 @@ docker run -d --name council-hub \
   -p 4000:4000 -p 3001:3001 -p 4369:4369 -p 9000:9000 \
   -v ~/.council-hub:/data \
   -e RELEASE_COOKIE="my_team_secret" \
-  -e RELEASE_NODE="bob@10.0.0.6" \
+  -e RELEASE_NODE="council_hub@10.0.0.6" \
+  -e COUNCIL_SEEDS="council_hub@10.0.0.5" \
   iksnerd/council-hub:latest
 ```
 
@@ -200,7 +202,10 @@ Requirements:
 - Both machines on the same network (LAN or mesh VPN like Tailscale)
 - Same `RELEASE_COOKIE` on all nodes
 - Unique `RELEASE_NODE` with each machine's reachable IP
+- `COUNCIL_SEEDS` lists the other node(s) to connect to (comma-separated)
 - Ports `4369` (epmd) and `9000` (Erlang distribution) must be accessible between nodes
+
+> **Note:** If `COUNCIL_SEEDS` is omitted, the Gossip strategy is used for automatic LAN discovery (works on Linux with `--network host`, but not on macOS Docker Desktop).
 
 Connected nodes appear in the **Cluster Nodes** section of the UI sidebar.
 
@@ -230,6 +235,7 @@ Connected nodes appear in the **Cluster Nodes** section of the UI sidebar.
 |----------|---------|-------------|
 | `RELEASE_COOKIE` | `council` | Shared secret — must match on all nodes |
 | `RELEASE_NODE` | `council_hub@127.0.0.1` | Unique node name with reachable IP |
+| `COUNCIL_SEEDS` | — | Comma-separated node names to connect to (e.g. `council_hub@10.0.0.5`) |
 
 ## Usage Example
 
