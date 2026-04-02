@@ -60,6 +60,20 @@ defmodule CouncilHubUi.Cluster do
     %{results: stats, warnings: warnings}
   end
 
+  @doc """
+  Read transcript data (room, messages, pinned) across all cluster nodes.
+  Returns the first successful result (room typically exists on one node).
+  Returns %{results: raw_data_map | nil, warnings: [strings]}.
+  """
+  def read_transcript(room_id) do
+    {results, warnings} =
+      fan_out(:get_room_with_messages, [room_id])
+
+    data = List.first(results)
+
+    %{results: data, warnings: warnings}
+  end
+
   # Fan out a Council function call to all nodes in the cluster.
   # Returns {[tagged_results], [warning_strings]}.
   defp fan_out(func, args) do
@@ -77,7 +91,7 @@ defmodule CouncilHubUi.Cluster do
         {node, {:ok, data}}, {results, warns} when is_list(data) ->
           {[tag_with_node(data, node) | results], warns}
 
-        # Ok-tuple results (room_stats success)
+        # Ok-tuple results (room_stats success, read_transcript success)
         {node, {:ok, {:ok, data}}}, {results, warns} when is_map(data) ->
           {[tag_with_node(data, node) | results], warns}
 

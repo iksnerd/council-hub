@@ -16,6 +16,18 @@ defmodule CouncilHubUi.Council do
     Repo.get(Room, id)
   end
 
+  def get_room_with_messages(room_id) do
+    case get_room(room_id) do
+      nil ->
+        {:error, "room '#{room_id}' not found"}
+
+      room ->
+        messages = Repo.all(from m in Message, where: m.room_id == ^room_id, order_by: [asc: m.id])
+        pinned = Repo.one(from m in Message, where: m.room_id == ^room_id and m.pinned == true, limit: 1)
+        {:ok, %{room: room, messages: messages, pinned: pinned}}
+    end
+  end
+
   def list_messages_for_room(room_id, type_filter \\ "all") do
     base = from m in Message, where: m.room_id == ^room_id
 

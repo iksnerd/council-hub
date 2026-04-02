@@ -17,6 +17,7 @@ type ReadTranscriptInput struct {
 	AfterID        string `json:"after_id"`
 	Mode           string `json:"mode"`
 	IncludeRelated string `json:"include_related"`
+	ClusterWide    string `json:"cluster_wide"`
 }
 
 // ArchiveRoomInput represents the parameters for archiving a room.
@@ -45,12 +46,21 @@ func (r *Registry) handleReadTranscript(ctx context.Context, req *mcp.CallToolRe
 				combined.WriteString("\n---\n\n")
 			}
 			singleArgs := ReadTranscriptInput{
-				RoomID:  id,
-				LastN:   args.LastN,
-				AfterID: args.AfterID,
-				Mode:    args.Mode,
+				RoomID:      id,
+				LastN:       args.LastN,
+				AfterID:     args.AfterID,
+				Mode:        args.Mode,
+				ClusterWide: args.ClusterWide,
 			}
-			result, _, err := r.readSingleTranscript(singleArgs)
+			
+			var result *mcp.CallToolResult
+			var err error
+			if args.ClusterWide == "true" {
+				result, _, err = r.handleReadTranscriptCluster(singleArgs, id)
+			} else {
+				result, _, err = r.readSingleTranscript(singleArgs)
+			}
+
 			if err != nil {
 				fmt.Fprintf(&combined, "# %s \u2014 Error: %s\n", id, err.Error())
 			} else {
@@ -64,13 +74,22 @@ func (r *Registry) handleReadTranscript(ctx context.Context, req *mcp.CallToolRe
 		return msg("Error: room_id or room_ids is required.")
 	}
 
-	result, output, err := r.readSingleTranscript(args)
+	var result *mcp.CallToolResult
+	var output ToolOutput
+	var err error
+
+	if args.ClusterWide == "true" {
+		result, output, err = r.handleReadTranscriptCluster(args, args.RoomID)
+	} else {
+		result, output, err = r.readSingleTranscript(args)
+	}
+
 	if err != nil {
 		return nil, output, err
 	}
 
-	// Append related room summaries if requested
-	if args.IncludeRelated == "true" {
+	// Append related room summaries if requested (local only for now, as related traversal is complex across cluster)
+	if args.IncludeRelated == "true" && args.ClusterWide != "true" {
 		room, roomErr := r.Server.GetRoom(args.RoomID)
 		if roomErr == nil && room.RelatedRooms != "" {
 			var related strings.Builder
@@ -123,7 +142,9 @@ func (r *Registry) readSingleTranscript(args ReadTranscriptInput) (*mcp.CallTool
 
 		var b strings.Builder
 		fmt.Fprintf(&b, "# %s [%s] \u2014 summary\n", room.ID, room.Status)
-		fmt.Fprintf(&b, "**Topic:** %s\n", room.Description)
+		if room.Description != "" {
+			fmt.Fprintf(&b, "**Topic:** %s\n", room.Description)
+		}
 		if room.SystemPrompt != "" {
 			fmt.Fprintf(&b, "**System Prompt:** %s\n", room.SystemPrompt)
 		}

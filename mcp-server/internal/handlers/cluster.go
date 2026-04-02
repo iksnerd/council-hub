@@ -7,7 +7,9 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
+	"council-hub/internal/council"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -51,6 +53,13 @@ type ClusterStatsResult struct {
 	LastMessage     string         `json:"last_message"`
 	LatestMessageID string         `json:"latest_message_id"`
 	SourceNode      string         `json:"source_node"`
+}
+
+// ClusterReadTranscriptResult represents raw data to format a transcript.
+type ClusterReadTranscriptResult struct {
+	Room     ClusterRoomResult     `json:"room"`
+	Messages []ClusterSearchResult `json:"messages"`
+	Pinned   *ClusterSearchResult  `json:"pinned"`
 }
 
 // clusterResponse is the generic response from Phoenix cluster API.
@@ -101,6 +110,134 @@ func formatClusterWarnings(b *strings.Builder, warnings []string) {
 			fmt.Fprintf(b, "**Warning:** %s\n", w)
 		}
 	}
+}
+
+func parseClusterTime(ts string) time.Time {
+	t, _ := time.Parse("2006-01-02T15:04:05", ts)
+	return t
+}
+
+func mapClusterMessage(m ClusterSearchResult) council.Message {
+	return council.Message{
+		ID:          m.ID,
+		RoomID:      m.RoomID,
+		Author:      m.Author,
+		Content:     m.Content,
+		MessageType: m.MessageType,
+		IsSummary:   m.IsSummary,
+		ReplyTo:     m.ReplyTo,
+		Pinned:      m.Pinned,
+		Timestamp:   parseClusterTime(m.Timestamp),
+	}
+}
+
+func mapClusterRoom(r ClusterRoomResult) council.Room {
+	return council.Room{
+		ID:           r.ID,
+		Description:  r.Description,
+		Status:       r.Status,
+		Project:      r.Project,
+		TechStack:    r.TechStack,
+		Tags:         r.Tags,
+		SystemPrompt: r.SystemPrompt,
+		RelatedRooms: r.RelatedRooms,
+		CreatedAt:    parseClusterTime(r.CreatedAt),
+		UpdatedAt:    parseClusterTime(r.UpdatedAt),
+	}
+}
+
+func (r *Registry) handleReadTranscriptCluster(args ReadTranscriptInput, roomID string) (*mcp.CallToolResult, ToolOutput, error) {
+	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: text}},
+		}, ToolOutput{Message: text}, nil
+	}
+
+	params := map[string]any{
+		"room_id": roomID,
+	}
+
+	raw, warnings, err := r.clusterCall("read_transcript", params)
+	if err != nil {
+		return msg(fmt.Sprintf("Error: cluster read_transcript failed: %s", err.Error()))
+	}
+
+	var result *ClusterReadTranscriptResult
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return nil, ToolOutput{}, fmt.Errorf("decode cluster read_transcript: %w", err)
+	}
+
+	if result == nil {
+		var b strings.Builder
+		b.WriteString(fmt.Sprintf("Error: room '%s' not found on any cluster node.", roomID))
+		formatClusterWarnings(&b, warnings)
+		return msg(b.String())
+	}
+
+	room := mapClusterRoom(result.Room)
+	var messages []council.Message
+
+	// Filter down the cluster messages just like Go does
+	limit := 0
+	if args.LastN != "" {
+		fmt.Sscanf(args.LastN, "%d", &limit)
+	}
+	afterID := ""
+	if args.AfterID != "" {
+		afterID = args.AfterID
+	}
+
+	var filtered []council.Message
+	for _, m := range result.Messages {
+		if afterID != "" && m.ID <= afterID {
+			continue
+		}
+		
+		if args.Mode == "changelog" {
+			if m.MessageType != "decision" && m.MessageType != "action" && m.MessageType != "summary" {
+				continue
+			}
+		}
+
+		filtered = append(filtered, mapClusterMessage(m))
+	}
+
+	if args.Mode == "summary" {
+		var summary []council.Message
+		seen := make(map[string]bool)
+		// Go backwards to get latest per type
+		for i := len(filtered) - 1; i >= 0; i-- {
+			m := filtered[i]
+			if !seen[m.MessageType] {
+				seen[m.MessageType] = true
+				summary = append([]council.Message{m}, summary...) // prepend
+			}
+		}
+		messages = summary
+	} else if limit > 0 && len(filtered) > limit {
+		messages = filtered[len(filtered)-limit:]
+	} else {
+		messages = filtered
+	}
+
+	if result.Pinned != nil && afterID != "" {
+		// Include pinned for context if doing afterID delta read
+		pinnedMsg := mapClusterMessage(*result.Pinned)
+		messages = append([]council.Message{pinnedMsg}, messages...)
+	}
+
+	transcript := council.FormatTranscript(room, messages)
+
+	var b strings.Builder
+	b.WriteString(transcript)
+	if len(warnings) > 0 {
+		b.WriteString("\n\n---\n")
+		for _, w := range warnings {
+			fmt.Fprintf(&b, "**Cluster Warning:** %s\n", w)
+		}
+	}
+
+	return msg(b.String())
 }
 
 func (r *Registry) handleSearchMessagesCluster(args SearchMessagesInput) (*mcp.CallToolResult, ToolOutput, error) {
@@ -159,7 +296,7 @@ func (r *Registry) handleSearchMessagesCluster(args SearchMessagesInput) (*mcp.C
 	} else {
 		for _, m := range results {
 			snippet := m.Content
-			if len(snippet) > 300 {
+			if args.FullContent != "true" && len(snippet) > 300 {
 				snippet = snippet[:300] + "..."
 			}
 			fmt.Fprintf(&b, "- [%s] **#%s** [%s] %s in **%s** (%s):\n  %s\n\n", m.SourceNode, m.ID, m.Timestamp, m.Author, m.RoomID, m.MessageType, snippet)

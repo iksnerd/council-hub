@@ -32,6 +32,26 @@ defmodule CouncilHubUi.CouncilTest do
     end
   end
 
+  describe "get_room_with_messages/1" do
+    test "returns room, messages, and pinned message" do
+      room = create_room(%{id: "room-with-msgs"})
+      m1 = create_message(%{room_id: room.id, content: "First", author: "Claude"})
+      m2 = create_message(%{room_id: room.id, content: "Second", author: "Gemini", pinned: true})
+
+      assert {:ok, result} = Council.get_room_with_messages(room.id)
+      assert result.room.id == room.id
+      assert length(result.messages) == 2
+      assert Enum.at(result.messages, 0).id == m1.id
+      assert Enum.at(result.messages, 1).id == m2.id
+      assert result.pinned != nil
+      assert result.pinned.id == m2.id
+    end
+
+    test "returns error for nonexistent room" do
+      assert {:error, "room 'nonexistent' not found"} = Council.get_room_with_messages("nonexistent")
+    end
+  end
+
   describe "list_messages_for_room/1" do
     test "returns messages for a room ordered by id" do
       room = create_room(%{id: "msg-room"})

@@ -174,6 +174,57 @@ func TestHandleSearchMessagesCluster(t *testing.T) {
 	}
 }
 
+func TestHandleSearchMessagesClusterFullContent(t *testing.T) {
+	longContent := strings.Repeat("word ", 100) // 500 chars
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"results": []map[string]any{
+				{
+					"id":           "full-content-id",
+					"room_id":      "test-room",
+					"author":       "Claude",
+					"content":      longContent,
+					"message_type": "message",
+					"timestamp":    "2026-04-01T12:00:00",
+					"source_node":  "node@host",
+				},
+			},
+			"warnings": []string{},
+		})
+	}))
+	defer server.Close()
+
+	reg := &Registry{
+		HTTPClient: &http.Client{Timeout: 5 * time.Second},
+		PhoenixURL: server.URL,
+	}
+
+	// 1. Test without full_content (should truncate)
+	resultTruncated, _, _ := reg.handleSearchMessagesCluster(SearchMessagesInput{
+		Query:       "word",
+		ClusterWide: "true",
+	})
+	textTrunc := resultText(resultTruncated)
+	if !strings.Contains(textTrunc, "...") {
+		t.Errorf("expected truncated excerpt when full_content is not true")
+	}
+
+	// 2. Test with full_content (should NOT truncate)
+	resultFull, _, _ := reg.handleSearchMessagesCluster(SearchMessagesInput{
+		Query:       "word",
+		FullContent: "true",
+		ClusterWide: "true",
+	})
+	textFull := resultText(resultFull)
+	if strings.Contains(textFull, "...") {
+		t.Errorf("expected full excerpt, got truncation indicator '...': %s", textFull)
+	}
+	if len(textFull) < len(longContent) {
+		t.Errorf("expected full length text")
+	}
+}
+
 func TestHandleSearchMessagesBranching(t *testing.T) {
 	// Verify that cluster_wide=true routes to cluster handler
 	// and default routes to local handler
@@ -302,6 +353,91 @@ func TestHandleRoomStatsClusterNotFound(t *testing.T) {
 	result, _, err := reg.handleRoomStatsCluster(RoomStatsInput{RoomID: "nonexistent"})
 	if err != nil {
 		t.Fatalf("handleRoomStatsCluster failed: %v", err)
+	}
+
+	text := resultText(result)
+	if !strings.Contains(text, "not found on any cluster node") {
+		t.Errorf("expected not found message, got: %s", text)
+	}
+}
+
+func TestHandleReadTranscriptCluster(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"results": map[string]any{
+				"room": map[string]any{
+					"id":          "transcript-room",
+					"description": "Topic details",
+					"status":      "active",
+					"project":     "proj",
+				},
+				"messages": []map[string]any{
+					{
+						"id":           "msg-1",
+						"author":       "Claude",
+						"content":      "First message",
+						"message_type": "message",
+						"timestamp":    "2026-04-01T12:00:00",
+					},
+					{
+						"id":           "msg-2",
+						"author":       "Gemini",
+						"content":      "Second message",
+						"message_type": "decision",
+						"timestamp":    "2026-04-01T12:05:00",
+					},
+				},
+				"pinned": map[string]any{
+					"id":           "msg-2",
+					"author":       "Gemini",
+					"content":      "Second message",
+					"message_type": "decision",
+					"timestamp":    "2026-04-01T12:05:00",
+				},
+			},
+			"warnings": []string{},
+		})
+	}))
+	defer server.Close()
+
+	reg := &Registry{
+		HTTPClient: &http.Client{Timeout: 5 * time.Second},
+		PhoenixURL: server.URL,
+	}
+
+	result, _, err := reg.handleReadTranscriptCluster(ReadTranscriptInput{RoomID: "transcript-room", ClusterWide: "true"}, "transcript-room")
+	if err != nil {
+		t.Fatalf("handleReadTranscriptCluster failed: %v", err)
+	}
+
+	text := resultText(result)
+	if !strings.Contains(text, "# COUNCIL ROOM: transcript-room") {
+		t.Errorf("expected room header, got: %s", text)
+	}
+	if !strings.Contains(text, "First message") || !strings.Contains(text, "Second message") {
+		t.Errorf("expected messages in transcript, got: %s", text)
+	}
+}
+
+func TestHandleReadTranscriptClusterNotFound(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"results":  nil,
+			"warnings": []string{},
+		})
+	}))
+	defer server.Close()
+
+	reg := &Registry{
+		HTTPClient: &http.Client{Timeout: 5 * time.Second},
+		PhoenixURL: server.URL,
+	}
+
+	result, _, err := reg.handleReadTranscriptCluster(ReadTranscriptInput{RoomID: "nonexistent"}, "nonexistent")
+	if err != nil {
+		t.Fatalf("handleReadTranscriptCluster failed: %v", err)
 	}
 
 	text := resultText(result)

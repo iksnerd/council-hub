@@ -36,5 +36,6 @@ defmodule CouncilHubUiWeb.Router do
     post "/search_messages", ClusterController, :search_messages
     post "/list_rooms", ClusterController, :list_rooms
     post "/room_stats", ClusterController, :room_stats
+    post "/read_transcript", ClusterController, :read_transcript
   end
 end

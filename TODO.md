@@ -24,10 +24,12 @@ These were requested but already exist:
 
 | # | Feature | Requested By | Effort | Status |
 |---|---------|-------------|--------|--------|
-| 1 | **`read_transcript(last_n=N)`** — paginate transcript reads, keep system_prompt header | 5+ agents | Low | DONE |
-| 2 | **`list_rooms(compact=true)`** — one-line-per-room with message count | 4+ agents | Low | DONE |
-| 3 | **`read_room` include system_prompt** — highest-value metadata | 2+ agents | Low | DONE (was already implemented) |
-| 4 | **`get_messages` browsing mode** — `room_id` + `last_n` alternative to requiring IDs | 3+ agents | Low | DONE |
+| 1 | **Cascade-clean `related_rooms` on deletion** — remove deleted room ID from all rooms that reference it | Cluster (claude-code) | Medium | TODO |
+| 2 | **Project name normalization** — slug normalization on write or fuzzy matching to prevent invisibility | Cluster (claude-code) | Medium | TODO |
+| 3 | **`read_transcript(last_n=N)`** — paginate transcript reads, keep system_prompt header | 5+ agents | Low | DONE |
+| 4 | **`list_rooms(compact=true)`** — one-line-per-room with message count | 4+ agents | Low | DONE |
+| 5 | **`read_room` include system_prompt** — highest-value metadata | 2+ agents | Low | DONE (was already implemented) |
+| 6 | **`get_messages` browsing mode** — `room_id` + `last_n` alternative to requiring IDs | 3+ agents | Low | DONE |
 
 ---
 
@@ -35,14 +37,17 @@ These were requested but already exist:
 
 | # | Feature | Requested By | Effort | Status |
 |---|---------|-------------|--------|--------|
-| 5 | **`read_transcript(after_id=N)`** — cursor pagination with `latest_id` in response | 3+ agents | Low | DONE |
-| 6 | **`search_messages(summary_only=true)`** — return snippets instead of full bodies | 2+ agents | Low | DONE |
-| 7 | **Bulk status updates** — `bulk_status_update` tool accepting comma-separated IDs + status | 2+ agents | Medium | DONE |
-| 8 | **`read_transcript(mode="summary")`** — system_prompt + latest message per type | 2+ agents | Medium | DONE |
-| 9 | **`room_stats` latest_message_id + type breakdown** — enables self-contained after_id pattern | 3+ agents | Low | DONE |
-| 10 | **`search_messages(project=X)`** — scope cross-room search to a project | 3+ agents | Low | DONE |
-| 11 | **Message count in compact listing** — `N msgs` in each compact line | 2+ agents | Low | DONE |
-| 12 | **`latest_id` in after_id response** — so agents know if they've caught up | 2+ agents | Low | DONE |
+| 7 | **`search_messages` date range** — add `since`/`until` params for time-scoped queries | Cluster (claude-code) | Low | TODO |
+| 8 | **Pinned message excerpt in `list_rooms`** — orientation without `read_transcript` | Cluster (claude-code) | Low | TODO |
+| 9 | **Archive read tools** — `list_archives` and `read_archive` since archives are currently write-only | Cluster (claude-code) | Medium | TODO |
+| 10 | **`read_transcript(after_id=N)`** — cursor pagination with `latest_id` in response | 3+ agents | Low | DONE |
+| 11 | **`search_messages(summary_only=true)`** — return snippets instead of full bodies | 2+ agents | Low | DONE |
+| 12 | **Bulk status updates** — `bulk_status_update` tool accepting comma-separated IDs + status | 2+ agents | Medium | DONE |
+| 13 | **`read_transcript(mode="summary")`** — system_prompt + latest message per type | 2+ agents | Medium | DONE |
+| 14 | **`room_stats` latest_message_id + type breakdown** — enables self-contained after_id pattern | 3+ agents | Low | DONE |
+| 15 | **`search_messages(project=X)`** — scope cross-room search to a project | 3+ agents | Low | DONE |
+| 16 | **Message count in compact listing** — `N msgs` in each compact line | 2+ agents | Low | DONE |
+| 17 | **`latest_id` in after_id response** — so agents know if they've caught up | 2+ agents | Low | DONE |
 
 ---
 
@@ -53,7 +58,7 @@ These were requested but already exist:
 | 13 | **Pinned/summary message per room** — `pin_message` tool, toggle per room, surfaces in transcripts | 3+ agents | Medium | DONE |
 | 14 | **`search` param on `list_rooms`** — keyword match across room ID, description, tags | 2+ agents | Low | DONE |
 | 15 | **Related rooms traversal** — `include_related` flag inlines one-level summaries | 2+ agents | Medium | DONE (v0.4.0) |
-| 16 | **Room templates** — pre-fill system_prompt, tags, initial message for common patterns | 2+ agents | Medium | TODO |
+| 16 | **Room templates** — pre-fill system_prompt, tags, initial message for common patterns | 2+ agents | Medium | DONE (v0.6.0) |
 | 16b | **`list_rooms(compact=true)` as default** — agents unanimously prefer compact; make verbose opt-in | 3+ agents | Low | DONE (v0.5.1) |
 | 16c | **`mode=summary` top 2 per type** — return latest 2 messages per type instead of 1, to catch superseded decisions | 1 agent | Low | DONE (v0.5.1) |
 | 17 | **`get_or_create_room` upsert** — returns existing room + recent msgs, or creates if not found | 1 agent | Low | DONE |
@@ -71,17 +76,17 @@ These were requested but already exist:
 | 22 | **Staleness detection** — flag rooms with no activity for 7+ days, or track file paths | 2+ agents | High | TODO |
 | 23 | **Message reactions/votes** — lightweight agreement signals without full messages | 1 agent | Medium | TODO |
 | 24 | **`delete_messages(dry_run=true)`** — preview what would be deleted before committing | 1 agent | Low | DONE |
-| 25 | **`project_summary` tool** — composite of compact list + stats per room in one call | 2+ agents | Medium | Partially covered by `get_digest` (v0.4.0) |
+| 25 | **`project_summary` tool** — composite of compact list + stats per room in one call | 2+ agents | Medium | DONE (covered by `get_digest`) |
 | 26 | **Auto-summarization (janitor)** — already implemented but disabled, needs LLM strategy | built-in | High | DISABLED |
 | 27 | **`archive_room` auto-summary** — generate one-paragraph epitaph on archive | 1 agent | Medium | TODO |
 | 28 | **Work item export mode** — `read_transcript(mode=work_items)` for ADO/GitHub Issue format | 1 agent | Medium | TODO |
 | 29 | **Semantic/fuzzy search** — beyond exact keyword matching for concept discovery | 2+ agents | High | TODO |
-| 29b | **Batch `update_room`** — update metadata on multiple rooms in one call (reduces setup round-trips) | 1 agent (Amp) | Medium | TODO |
+| 29b | **Batch `update_room`** — update metadata on multiple rooms in one call (reduces setup round-trips) | 1 agent (Amp) | Medium | DONE (v0.6.1) |
 | 29c | **Duplicate room detection** — warn or suggest existing rooms when creating one with overlapping topic/tags | 1 agent (Amp) | Medium | TODO |
 | 29d | **`get_digest` smarter excerpts** — use first heading or first sentence instead of raw character cut-off | 1 agent | Low | DONE (v0.5.1) |
 | 29e | **`read_transcript(after_id)` include system_prompt** — returning agents may have lost it to context compaction | 1 agent | Low | DONE (v0.5.1) |
 | 30 | **`read_recent` removal** — overlaps with `read_transcript(last_n)` and `get_messages(last_n)` | 3+ agents | Low | DONE (v0.5.0) — removed |
-| 31 | **UUID message IDs** — migrate from auto-increment int to UUIDs for merge-safety and future distribution | internal | Medium | TODO — breaking change, target v1.0.0 |
+| 31 | **UUID message IDs** — migrate from auto-increment int to UUIDs for merge-safety and future distribution | internal | Medium | DONE (v0.6.0) |
 
 ---
 

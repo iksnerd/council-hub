@@ -182,4 +182,40 @@ defmodule CouncilHubUiWeb.ClusterControllerTest do
       assert stats["source_node"] != nil
     end
   end
+
+  describe "POST /api/internal/cluster/read_transcript" do
+    test "returns transcript as JSON", %{conn: conn} do
+      room = create_room(%{id: "api-transcript"})
+      create_message(%{room_id: room.id, author: "Claude", content: "hello"})
+      create_message(%{room_id: room.id, author: "Gemini", content: "hi", pinned: true})
+
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> post("/api/internal/cluster/read_transcript", %{"room_id" => "api-transcript"})
+
+      assert %{"results" => results, "warnings" => []} = json_response(conn, 200)
+      assert results["room"]["id"] == "api-transcript"
+      assert length(results["messages"]) == 2
+      assert results["pinned"]["content"] == "hi"
+    end
+
+    test "returns 400 when room_id missing", %{conn: conn} do
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> post("/api/internal/cluster/read_transcript", %{})
+
+      assert %{"error" => "room_id is required"} = json_response(conn, 400)
+    end
+
+    test "returns null results for nonexistent room", %{conn: conn} do
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> post("/api/internal/cluster/read_transcript", %{"room_id" => "nonexistent"})
+
+      assert %{"results" => nil} = json_response(conn, 200)
+    end
+  end
 end

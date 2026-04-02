@@ -52,6 +52,32 @@ defmodule CouncilHubUiWeb.ClusterController do
     end
   end
 
+  def read_transcript(conn, params) do
+    room_id = Map.get(params, "room_id", "")
+
+    if room_id == "" do
+      conn |> put_status(400) |> json(%{error: "room_id is required"})
+    else
+      result = Cluster.read_transcript(room_id)
+
+      if result.results do
+        json(conn, %{
+          results: %{
+            room: serialize_room(result.results.room),
+            messages: Enum.map(result.results.messages, &serialize_message/1),
+            pinned: serialize_message_optional(result.results.pinned)
+          },
+          warnings: result.warnings
+        })
+      else
+        json(conn, %{
+          results: nil,
+          warnings: result.warnings
+        })
+      end
+    end
+  end
+
   defp parse_limit(val) when is_binary(val) do
     case Integer.parse(val) do
       {n, _} when n > 0 and n <= 100 -> n
@@ -61,6 +87,9 @@ defmodule CouncilHubUiWeb.ClusterController do
 
   defp parse_limit(val) when is_integer(val), do: min(max(val, 1), 100)
   defp parse_limit(_), do: 20
+
+  defp serialize_message_optional(nil), do: nil
+  defp serialize_message_optional(msg), do: serialize_message(msg)
 
   defp serialize_message(msg) do
     %{

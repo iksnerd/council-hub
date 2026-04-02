@@ -38,12 +38,18 @@ defmodule CouncilHubUi.CouncilFixtures do
       message_type: "message",
       is_summary: 0,
       reply_to: "",
+      pinned: 0,
       timestamp: NaiveDateTime.utc_now()
     }
 
     merged = Map.merge(defaults, attrs)
     # SQLite stores booleans as integers
     merged = Map.update!(merged, :is_summary, fn
+      true -> 1
+      false -> 0
+      v -> v
+    end)
+    merged = Map.update!(merged, :pinned, fn
       true -> 1
       false -> 0
       v -> v

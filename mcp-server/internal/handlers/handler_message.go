@@ -28,6 +28,7 @@ type SearchMessagesInput struct {
 	Project     string `json:"project"`
 	Limit       string `json:"limit"`
 	SummaryOnly string `json:"summary_only"`
+	FullContent string `json:"full_content"`
 	ClusterWide string `json:"cluster_wide"`
 }
 
@@ -153,7 +154,7 @@ func (r *Registry) handleSearchMessages(ctx context.Context, req *mcp.CallToolRe
 		for _, m := range messages {
 			ts := m.Timestamp.Format("2006-01-02 15:04:05")
 			snippet := m.Content
-			if len(snippet) > 300 {
+			if args.FullContent != "true" && len(snippet) > 300 {
 				snippet = snippet[:300] + "..."
 			}
 			fmt.Fprintf(&b, "- **#%s** [%s] %s in **%s** (%s):\n  %s\n\n", m.ID, ts, m.Author, m.RoomID, m.MessageType, snippet)

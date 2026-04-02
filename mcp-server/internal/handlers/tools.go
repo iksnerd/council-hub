@@ -197,7 +197,7 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "search_messages",
-		Description: "Search messages across rooms. All filter params are optional \u2014 omit or leave empty to skip. Returns snippets with message IDs; use get_messages to fetch full content. Use summary_only=true for compact results (id, author, timestamp, 120-char excerpt).",
+		Description: "Search messages across rooms. All filter params are optional \u2014 omit or leave empty to skip. Returns snippets with message IDs; use get_messages to fetch full content. Use summary_only=true for compact results (id, author, timestamp, 120-char excerpt). Use full_content=true to bypass snippet truncation.",
 		InputSchema: schema(nil, map[string]map[string]any{
 			"query":        prop("string", "Text to search for in message content"),
 			"author":       prop("string", "Filter by author name"),
@@ -206,6 +206,7 @@ func (r *Registry) RegisterTools() {
 			"project":      prop("string", "Scope search to rooms in this project"),
 			"limit":        prop("string", "Max results to return (default 20, max 100)"),
 			"summary_only": prop("string", "Set to 'true' for compact output: id, author, timestamp, room, type, and 120-char excerpt"),
+			"full_content": prop("string", "Set to 'true' to return the full un-truncated message body instead of a 300-char snippet"),
 			"cluster_wide": prop("string", "Set to 'true' to search across all cluster nodes. Default: local only."),
 		}),
 	}, r.handleSearchMessages)

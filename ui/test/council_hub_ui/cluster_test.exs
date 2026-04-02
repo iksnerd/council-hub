@@ -171,4 +171,28 @@ defmodule CouncilHubUi.ClusterTest do
       assert result.results.participants == %{"Claude" => 2, "Gemini" => 1}
     end
   end
+
+  describe "read_transcript/1" do
+    test "returns transcript data for existing room" do
+      room = create_room(%{id: "cluster-transcript-room"})
+      create_message(%{room_id: room.id, content: "First", author: "Claude"})
+      create_message(%{room_id: room.id, content: "Second", author: "Gemini", pinned: true})
+
+      result = Cluster.read_transcript(room.id)
+      
+      assert result.results != nil
+      assert result.results.room.id == room.id
+      assert length(result.results.messages) == 2
+      assert result.results.pinned != nil
+      assert result.results.source_node == Atom.to_string(Node.self())
+    end
+
+    test "returns nil results for nonexistent room" do
+      result = Cluster.read_transcript("nonexistent-room")
+      
+      assert result.results == nil
+      assert length(result.warnings) == 1
+      assert hd(result.warnings) =~ "not found"
+    end
+  end
 end
