@@ -11,10 +11,10 @@ docker-build: ## Build unified Docker image
 	docker build -t $(IMAGE):latest .
 	@echo "Built: $(IMAGE):latest"
 
-docker-run: ## Run council-hub (MCP on :3001, UI on :4000)
+docker-run: ## Run council-hub (MCP on :3001, UI on :4000, cluster on :4369/:9000)
 	@mkdir -p $(DATA_DIR)
 	docker run -d --name council-hub \
-		-p 4000:4000 -p 3001:3001 \
+		-p 4000:4000 -p 3001:3001 -p 4369:4369 -p 9000:9000 \
 		-v $(DATA_DIR):/data \
 		$(IMAGE):latest
 	@echo "Council Hub running — UI: http://localhost:4000, MCP: http://localhost:3001/mcp"
