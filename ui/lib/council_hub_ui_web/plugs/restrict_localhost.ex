@@ -8,11 +8,20 @@ defmodule CouncilHubUiWeb.Plugs.RestrictLocalhost do
 
   def init(opts), do: opts
 
+  @loopback_v4 {127, 0, 0, 1}
+  @loopback_v6 {0, 0, 0, 0, 0, 0, 0, 1}
+
   def call(conn, _opts) do
-    case conn.remote_ip do
-      {127, 0, 0, 1} -> conn
-      {0, 0, 0, 0, 0, 0, 0, 1} -> conn
-      _ -> conn |> send_resp(403, "Forbidden") |> halt()
+    if localhost?(conn.remote_ip) do
+      conn
+    else
+      conn |> send_resp(403, "Forbidden") |> halt()
     end
   end
+
+  defp localhost?(@loopback_v4), do: true
+  defp localhost?(@loopback_v6), do: true
+  # IPv4-mapped IPv6 loopback (::ffff:127.0.0.1 = {0,0,0,0,0,65535,32512,1})
+  defp localhost?({0, 0, 0, 0, 0, 65535, 32512, 1}), do: true
+  defp localhost?(_), do: false
 end
