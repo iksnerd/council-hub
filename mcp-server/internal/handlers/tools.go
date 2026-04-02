@@ -277,6 +277,7 @@ func (r *Registry) RegisterTools() {
 			"after_id":        prop("string", "Return only messages with ID greater than this value. For delta reads after context compaction."),
 			"mode":            prop("string", "Set to 'summary' for system_prompt + latest per type, or 'changelog' for only decision + action messages chronologically (ideal for PR descriptions/release notes)."),
 			"include_related": prop("string", "Set to 'true' to append a summary of each related room after the main transcript. Resolves related_rooms automatically."),
+			"cluster_wide":    prop("string", "Set to 'true' to fetch the transcript from the remote cluster node that owns it."),
 		}),
 	}, r.handleReadTranscript)
 
