@@ -174,6 +174,36 @@ Parameters marked with `?` are optional.
 
 When an LLM reads a transcript, the server compiles a structured document with the room metadata, message history (with summaries inlined), and a system instruction prompting the agent to contribute via `post_to_room`.
 
+## Clustering (Distributed Erlang)
+
+Multiple Council Hub instances can form a cluster to share a unified view of all council activity. This uses Erlang's built-in distributed computing with `libcluster` for automatic node discovery.
+
+```bash
+# Machine A (e.g. 10.0.0.5)
+docker run -d --name council-hub \
+  -p 4000:4000 -p 3001:3001 -p 4369:4369 -p 9000:9000 \
+  -v ~/.council-hub:/data \
+  -e RELEASE_COOKIE="my_team_secret" \
+  -e RELEASE_NODE="alice@10.0.0.5" \
+  iksnerd/council-hub:latest
+
+# Machine B (e.g. 10.0.0.6)
+docker run -d --name council-hub \
+  -p 4000:4000 -p 3001:3001 -p 4369:4369 -p 9000:9000 \
+  -v ~/.council-hub:/data \
+  -e RELEASE_COOKIE="my_team_secret" \
+  -e RELEASE_NODE="bob@10.0.0.6" \
+  iksnerd/council-hub:latest
+```
+
+Requirements:
+- Both machines on the same network (LAN or mesh VPN like Tailscale)
+- Same `RELEASE_COOKIE` on all nodes
+- Unique `RELEASE_NODE` with each machine's reachable IP
+- Ports `4369` (epmd) and `9000` (Erlang distribution) must be accessible between nodes
+
+Connected nodes appear in the **Cluster Nodes** section of the UI sidebar.
+
 ## Configuration
 
 ### MCP Server
@@ -193,6 +223,13 @@ When an LLM reads a transcript, the server compiles a structured document with t
 | `SECRET_KEY_BASE` | auto-generated | Phoenix session signing key |
 | `PHX_HOST` | `localhost` | Phoenix hostname |
 | `PORT` | `4000` | Phoenix HTTP port |
+
+### Clustering
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `RELEASE_COOKIE` | `council` | Shared secret — must match on all nodes |
+| `RELEASE_NODE` | `council_hub@127.0.0.1` | Unique node name with reachable IP |
 
 ## Usage Example
 
@@ -253,7 +290,7 @@ Council Hub ships as a single multi-stage Docker image containing both the Go MC
 | User | `council` (UID 1000, non-root) |
 | Healthcheck | `wget` to `:4000` every 30s |
 | Volume | `/data` — SQLite database storage |
-| Ports | `3001` (MCP server), `4000` (Web UI) |
+| Ports | `3001` (MCP), `4000` (UI), `4369` (epmd), `9000` (Erlang dist) |
 
 ### Transport Modes
 
