@@ -4,7 +4,7 @@ defmodule CouncilHubUi.MixProject do
   def project do
     [
       app: :council_hub_ui,
-      version: "0.5.4",
+      version: "0.5.5",
       elixir: "~> 1.15",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
@@ -69,6 +69,7 @@ defmodule CouncilHubUi.MixProject do
       {:telemetry_poller, "~> 1.0"},
       {:jason, "~> 1.2"},
       {:dns_cluster, "~> 0.2.0"},
+      {:libcluster, "~> 3.3"},
       {:bandit, "~> 1.5"},
       {:earmark, "~> 1.4"}
     ]

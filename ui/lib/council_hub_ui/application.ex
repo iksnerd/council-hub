@@ -7,10 +7,13 @@ defmodule CouncilHubUi.Application do
 
   @impl true
   def start(_type, _args) do
+    topologies = Application.get_env(:libcluster, :topologies) || []
+
     children = [
       CouncilHubUiWeb.Telemetry,
       CouncilHubUi.Repo,
       {DNSCluster, query: Application.get_env(:council_hub_ui, :dns_cluster_query) || :ignore},
+      {Cluster.Supervisor, [topologies, [name: CouncilHubUi.ClusterSupervisor]]},
       {Phoenix.PubSub, name: CouncilHubUi.PubSub},
       # Start a worker by calling: CouncilHubUi.Worker.start_link(arg)
       # {CouncilHubUi.Worker, arg},

@@ -8,12 +8,14 @@ defmodule CouncilHubUiWeb.CouncilLive do
 
   @poll_interval 1_000
   @rooms_poll_interval 5_000
+  @cluster_poll_interval 3_000
 
   @impl true
   def mount(_params, _session, socket) do
     if connected?(socket) do
       schedule_poll(:poll_messages, @poll_interval)
       schedule_poll(:poll_rooms, @rooms_poll_interval)
+      schedule_poll(:poll_cluster, @cluster_poll_interval)
     end
 
     {rooms, db_connected} = load_rooms()
@@ -36,7 +38,8 @@ defmodule CouncilHubUiWeb.CouncilLive do
        has_messages: false,
        type_filter: "all",
        message_search: "",
-       searching: false
+       searching: false,
+       nodes: [Node.self() | Node.list()]
      )
      |> stream(:messages, [])}
   end
@@ -99,6 +102,11 @@ defmodule CouncilHubUiWeb.CouncilLive do
     else
       poll_rooms_full(socket, latest)
     end
+  end
+
+  def handle_info(:poll_cluster, socket) do
+    schedule_poll(:poll_cluster, @cluster_poll_interval)
+    {:noreply, assign(socket, nodes: [Node.self() | Node.list()])}
   end
 
   defp poll_rooms_full(socket, latest) do

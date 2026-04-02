@@ -91,8 +91,14 @@ ENV PHX_HOST=localhost
 ENV PORT=4000
 ENV COUNCIL_DB_PATH=/data/council.db
 
+# Distributed Erlang config
+ENV RELEASE_COOKIE=council
+ENV RELEASE_DISTRIBUTION=name
+ENV RELEASE_NODE=council_hub@127.0.0.1
+ENV ELIXIR_ERL_OPTIONS="-kernel inet_dist_listen_min 9000 -kernel inet_dist_listen_max 9000"
+
 VOLUME /data
-EXPOSE 4000 3001
+EXPOSE 4000 3001 4369 9000
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
   CMD [ "$COUNCIL_TRANSPORT" = "stdio" ] || wget --no-verbose --tries=1 --spider http://localhost:4000 || exit 1

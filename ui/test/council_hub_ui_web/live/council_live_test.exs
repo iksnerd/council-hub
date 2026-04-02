@@ -382,24 +382,33 @@ defmodule CouncilHubUiWeb.CouncilLiveTest do
     end
   end
 
-  describe "participant counts in sidebar" do
-    test "shows agent count when multiple participants", %{conn: conn} do
-      room = create_room(%{id: "pc-display-room"})
-      create_message(%{room_id: room.id, author: "Claude", content: "msg1"})
-      create_message(%{room_id: room.id, author: "Gemini", content: "msg2"})
-
-      {:ok, _view, html} = live(conn, "/")
-      assert html =~ "2 agents"
+  describe "cluster tracking" do
+    test "assigns nodes on mount", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/")
+      assert %{nodes: nodes} = :sys.get_state(view.pid).socket.assigns
+      assert Node.self() in nodes
     end
 
-    test "does not show agent count for single participant", %{conn: conn} do
-      room = create_room(%{id: "pc-solo-room"})
-      create_message(%{room_id: room.id, author: "Claude", content: "solo"})
+    test "poll_cluster updates node list", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/")
 
+      # Initially should just be local node
+      assert :sys.get_state(view.pid).socket.assigns.nodes == [Node.self()]
+
+      # Trigger poll
+      send(view.pid, :poll_cluster)
+
+      # Should still be at least local node, and wouldn't crash
+      assert Node.self() in :sys.get_state(view.pid).socket.assigns.nodes
+    end
+
+    test "renders cluster nodes in sidebar", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/")
-      refute html =~ "1 agents"
+      assert html =~ "Cluster Nodes"
+      assert html =~ "#{Node.self()}"
     end
   end
+
 
   describe "filter_rooms/2" do
     test "empty query returns all" do

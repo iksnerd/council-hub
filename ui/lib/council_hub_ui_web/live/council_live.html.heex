@@ -20,6 +20,34 @@
       <% end %>
     </div>
 
+    <%!-- Cluster Nodes --%>
+    <div class="px-3 pt-4 pb-2 border-b border-gray-800/40">
+      <div class="flex items-center gap-2 px-3 mb-2">
+        <div class="w-1 h-1 rounded-full bg-amber-400/60 animate-pulse"></div>
+        <span class="text-[10px] font-semibold text-gray-500 uppercase tracking-widest">
+          Cluster Nodes
+        </span>
+        <span class="text-[10px] text-gray-600 font-mono ml-auto">{length(@nodes)}</span>
+      </div>
+      <div class="flex flex-wrap gap-1 px-2">
+        <%= for node <- @nodes do %>
+          <div class={[
+            "px-2 py-0.5 rounded text-[9px] font-mono border flex items-center gap-1.5 truncate max-w-full",
+            if(node == Node.self(),
+              do: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+              else: "bg-blue-500/10 text-blue-400 border-blue-500/20"
+            )
+          ]}>
+            <span class={[
+              "w-1 h-1 rounded-full",
+              if(node == Node.self(), do: "bg-amber-400", else: "bg-blue-400")
+            ]}></span>
+            {node}
+          </div>
+        <% end %>
+      </div>
+    </div>
+
     <%!-- Sidebar Search --%>
     <div :if={@rooms != []} class="px-3 pt-2">
       <form phx-change="filter_rooms" class="relative">
