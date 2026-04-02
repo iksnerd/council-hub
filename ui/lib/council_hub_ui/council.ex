@@ -38,19 +38,25 @@ defmodule CouncilHubUi.Council do
     Repo.all(from m in base, order_by: [asc: m.id])
   end
 
-  def search_messages_in_room(_room_id, query) when query in [nil, ""], do: []
+  def search_messages_in_room(room_id, query, type_filter \\ "all")
 
-  def search_messages_in_room(room_id, query) do
+  def search_messages_in_room(_room_id, query, _type_filter) when query in [nil, ""], do: []
+
+  def search_messages_in_room(room_id, query, type_filter) do
     q = "%#{String.downcase(query)}%"
 
-    Repo.all(
+    base =
       from m in Message,
         where:
           m.room_id == ^room_id and
-            fragment("lower(?) LIKE ?", m.content, ^q),
-        order_by: [asc: m.id],
-        limit: 50
-    )
+            fragment("lower(?) LIKE ?", m.content, ^q)
+
+    base =
+      if type_filter != "all",
+        do: from(m in base, where: m.message_type == ^type_filter or m.is_summary == true),
+        else: base
+
+    Repo.all(from m in base, order_by: [asc: m.id], limit: 50)
   end
 
   @doc "Returns %{room_id => distinct_author_count} for all rooms."

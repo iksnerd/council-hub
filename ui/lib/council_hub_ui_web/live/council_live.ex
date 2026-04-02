@@ -6,7 +6,7 @@ defmodule CouncilHubUiWeb.CouncilLive do
 
   require Logger
 
-  @poll_interval 1_000
+  @poll_interval 3_000
   @rooms_poll_interval 5_000
   @cluster_poll_interval 3_000
 
@@ -202,7 +202,7 @@ defmodule CouncilHubUiWeb.CouncilLive do
         {:noreply, assign(socket, message_search: query)}
 
       room ->
-        results = Council.search_messages_in_room(room.id, query)
+        results = Council.search_messages_in_room(room.id, query, socket.assigns.type_filter)
 
         {:noreply,
          socket

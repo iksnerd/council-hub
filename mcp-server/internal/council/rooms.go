@@ -52,7 +52,9 @@ func (s *Server) syncReverseLinks(roomID, relatedRooms string) {
 			} else {
 				updated = updated + ", " + roomID
 			}
-			s.DB.Exec(`UPDATE rooms SET related_rooms = ? WHERE id = ?`, updated, rel)
+			if _, err := s.DB.Exec(`UPDATE rooms SET related_rooms = ? WHERE id = ?`, updated, rel); err != nil {
+				s.Logger.Warn("syncReverseLinks: failed to update related_rooms", "room", rel, "error", err)
+			}
 		}
 	}
 }

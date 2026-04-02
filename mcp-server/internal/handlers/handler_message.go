@@ -67,6 +67,15 @@ func (r *Registry) handlePostToRoom(ctx context.Context, req *mcp.CallToolReques
 	if args.RoomID == "" || args.Author == "" || args.Message == "" {
 		return msg("Error: room_id, author, and message are all required.")
 	}
+	if err := validateSize("room_id", args.RoomID, maxIDLen); err != nil {
+		return msg("Error: " + err.Error())
+	}
+	if err := validateSize("author", args.Author, maxAuthorLen); err != nil {
+		return msg("Error: " + err.Error())
+	}
+	if err := validateSize("message", args.Message, maxContentLen); err != nil {
+		return msg("Error: " + err.Error())
+	}
 
 	if args.MessageType == "" {
 		args.MessageType = "message"
@@ -261,6 +270,9 @@ func (r *Registry) handleUpdateMessage(ctx context.Context, req *mcp.CallToolReq
 	}
 	if args.Content == "" {
 		return msg("Error: content is required.")
+	}
+	if err := validateSize("content", args.Content, maxContentLen); err != nil {
+		return msg("Error: " + err.Error())
 	}
 
 	if args.MessageType != "" && !validMessageTypes[args.MessageType] {

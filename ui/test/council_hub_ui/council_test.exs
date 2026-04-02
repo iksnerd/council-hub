@@ -253,6 +253,38 @@ defmodule CouncilHubUi.CouncilTest do
       assert length(results) == 1
       assert hd(results).room_id == r1.id
     end
+
+    test "respects type_filter parameter" do
+      room = create_room(%{id: "search-typed"})
+      create_message(%{room_id: room.id, content: "auth decision", message_type: "decision"})
+      create_message(%{room_id: room.id, content: "auth thought", message_type: "thought"})
+
+      results = Council.search_messages_in_room(room.id, "auth", "decision")
+      assert length(results) == 1
+      assert hd(results).message_type == "decision"
+    end
+
+    test "type_filter includes summaries" do
+      room = create_room(%{id: "search-typed-sum"})
+      create_message(%{room_id: room.id, content: "auth decision", message_type: "decision"})
+      create_message(%{room_id: room.id, content: "auth summary", is_summary: true})
+      create_message(%{room_id: room.id, content: "auth thought", message_type: "thought"})
+
+      results = Council.search_messages_in_room(room.id, "auth", "decision")
+      types = Enum.map(results, & &1.message_type)
+      assert "decision" in types
+      # summary should be included even though filter is "decision"
+      assert length(results) == 2
+    end
+
+    test "type_filter all returns everything" do
+      room = create_room(%{id: "search-typed-all"})
+      create_message(%{room_id: room.id, content: "auth decision", message_type: "decision"})
+      create_message(%{room_id: room.id, content: "auth thought", message_type: "thought"})
+
+      results = Council.search_messages_in_room(room.id, "auth", "all")
+      assert length(results) == 2
+    end
   end
 
   describe "all_room_participant_counts/0" do
@@ -390,6 +422,15 @@ defmodule CouncilHubUi.CouncilTest do
     test "returns error for nonexistent room" do
       assert {:error, msg} = Council.room_stats("nonexistent")
       assert msg =~ "not found"
+    end
+
+    test "returns zero counts for room with no messages" do
+      create_room(%{id: "rs-empty", status: "active"})
+      assert {:ok, stats} = Council.room_stats("rs-empty")
+      assert stats.message_count == 0
+      assert stats.participants == %{}
+      assert stats.type_counts == %{}
+      assert stats.status == "active"
     end
   end
 

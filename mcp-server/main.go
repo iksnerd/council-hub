@@ -88,7 +88,9 @@ func main() {
 			logger.Info("Shutting down HTTP server")
 			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer shutdownCancel()
-			httpServer.Shutdown(shutdownCtx)
+			if err := httpServer.Shutdown(shutdownCtx); err != nil {
+				logger.Error("HTTP server shutdown error", "error", err)
+			}
 		}()
 
 		logger.Info("Council Hub starting (HTTP)", "db", dbPath, "addr", addr)

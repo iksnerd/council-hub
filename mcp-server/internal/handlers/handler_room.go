@@ -95,6 +95,12 @@ func (r *Registry) handleCreateRoom(ctx context.Context, req *mcp.CallToolReques
 	if args.ID == "" {
 		return msg("Error: room id is required.")
 	}
+	if err := validateSize("id", args.ID, maxIDLen); err != nil {
+		return msg("Error: " + err.Error())
+	}
+	if err := validateRoomMetadata(args.Topic, args.Project, args.TechStack, args.Tags, args.SystemPrompt); err != nil {
+		return msg("Error: " + err.Error())
+	}
 
 	// Apply template defaults (explicit user args take precedence)
 	if args.Template != "" {
@@ -164,6 +170,12 @@ func (r *Registry) handleGetOrCreateRoom(ctx context.Context, req *mcp.CallToolR
 
 	if args.ID == "" {
 		return msg("Error: id is required.")
+	}
+	if err := validateSize("id", args.ID, maxIDLen); err != nil {
+		return msg("Error: " + err.Error())
+	}
+	if err := validateRoomMetadata(args.Topic, args.Project, args.TechStack, args.Tags, args.SystemPrompt); err != nil {
+		return msg("Error: " + err.Error())
 	}
 
 	// Try to get existing room

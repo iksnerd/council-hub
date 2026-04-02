@@ -2,10 +2,40 @@ package handlers
 
 import (
 	"council-hub/internal/council"
+	"fmt"
 	"net/http"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
+
+// Input size limits to prevent DoS and unbounded database growth.
+const (
+	maxIDLen       = 255
+	maxAuthorLen   = 255
+	maxContentLen  = 100_000 // ~100KB
+	maxMetadataLen = 10_000  // topic, project, tech_stack, tags, system_prompt
+)
+
+// validateSize returns an error if value exceeds max characters.
+func validateSize(field, value string, max int) error {
+	if len(value) > max {
+		return fmt.Errorf("%s exceeds maximum length (%d chars, limit %d)", field, len(value), max)
+	}
+	return nil
+}
+
+// validateRoomMetadata checks size limits on all room metadata fields.
+func validateRoomMetadata(topic, project, techStack, tags, systemPrompt string) error {
+	for _, check := range []struct{ name, val string }{
+		{"topic", topic}, {"project", project}, {"tech_stack", techStack},
+		{"tags", tags}, {"system_prompt", systemPrompt},
+	} {
+		if err := validateSize(check.name, check.val, maxMetadataLen); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
 // Registry holds the council server and handles MCP tool registration.
 type Registry struct {
