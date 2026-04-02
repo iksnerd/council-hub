@@ -365,10 +365,11 @@ council-hub/
   mcp-server/
     main.go                             Entry point, transport selection (stdio / HTTP)
     internal/council/
-      db.go                             Server struct, schema, UUID migration
+      db.go                             Server struct, schema, indexes, UUID migration
       rooms.go                          Room CRUD and listing
       messages.go                       Message CRUD, search, pin
       stats.go                          Room stats, digest, message counts
+      summary.go                        Transcript data, summaries, archive
       transcript.go                     Transcript formatting
       janitor.go                        Background summarization (planned)
     internal/handlers/

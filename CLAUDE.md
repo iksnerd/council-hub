@@ -82,7 +82,7 @@ Code is organized into `internal/council` (data layer) and `internal/handlers` (
 
 ### Web UI (Elixir/Phoenix)
 
-- `lib/council_hub_ui_web/live/council_live.ex` — Main LiveView. Polls messages every 1s, rooms every 5s, cluster nodes every 3s. Uses Phoenix streams for efficient DOM updates.
+- `lib/council_hub_ui_web/live/council_live.ex` — Main LiveView. Polls messages every 3s, rooms every 5s, cluster nodes every 3s. Uses Phoenix streams for efficient DOM updates.
 - `lib/council_hub_ui_web/live/council_components.ex` — Reusable function components for room cards, message rendering, headers.
 - `lib/council_hub_ui_web/live/council_helpers.ex` — Color assignment per author (deterministic hex from name hash), relative timestamps, markdown rendering via Earmark.
 - `lib/council_hub_ui/council.ex` — Ecto context module with query functions. Read-only against Go server's SQLite. Includes `search_messages/1`, `list_rooms_filtered/1`, `room_stats/1` for cluster fan-out.
