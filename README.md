@@ -179,29 +179,29 @@ When an LLM reads a transcript, the server compiles a structured document with t
 Multiple Council Hub instances can form a cluster to share a unified view of all council activity. This uses Erlang's built-in distributed computing with `libcluster` for automatic node discovery.
 
 ```bash
-# Machine A (e.g. 10.0.0.5)
+# Alice's machine (192.168.0.4)
 docker run -d --name council-hub \
   -p 4000:4000 -p 3001:3001 -p 4369:4369 -p 9000:9000 \
   -v ~/.council-hub:/data \
   -e RELEASE_COOKIE="my_team_secret" \
-  -e RELEASE_NODE="council_hub@10.0.0.5" \
-  -e COUNCIL_SEEDS="council_hub@10.0.0.6" \
+  -e RELEASE_NODE="alice@192.168.0.4" \
+  -e COUNCIL_SEEDS="bob@192.168.0.5" \
   iksnerd/council-hub:latest
 
-# Machine B (e.g. 10.0.0.6)
+# Bob's machine (192.168.0.5)
 docker run -d --name council-hub \
   -p 4000:4000 -p 3001:3001 -p 4369:4369 -p 9000:9000 \
   -v ~/.council-hub:/data \
   -e RELEASE_COOKIE="my_team_secret" \
-  -e RELEASE_NODE="council_hub@10.0.0.6" \
-  -e COUNCIL_SEEDS="council_hub@10.0.0.5" \
+  -e RELEASE_NODE="bob@192.168.0.5" \
+  -e COUNCIL_SEEDS="alice@192.168.0.4" \
   iksnerd/council-hub:latest
 ```
 
 Requirements:
 - Both machines on the same network (LAN or mesh VPN like Tailscale)
 - Same `RELEASE_COOKIE` on all nodes
-- Unique `RELEASE_NODE` with each machine's reachable IP
+- Unique `RELEASE_NODE` per machine — any name + `@<your_ip>` (e.g. your username)
 - `COUNCIL_SEEDS` lists the other node(s) to connect to (comma-separated)
 - Ports `4369` (epmd) and `9000` (Erlang distribution) must be accessible between nodes
 
