@@ -29,10 +29,13 @@ Docker Hub image: `iksnerd/council-hub` ([hub.docker.com/r/iksnerd/council-hub](
 1. **Bump versions** in both packages:
    - `mcp-server/internal/council/db.go` — `Version: "X.Y.Z"` in the `mcp.NewServer` call
    - `ui/mix.exs` — `version: "X.Y.Z"`
-2. **Commit & push** the version bump: `git commit -m "Bump version to vX.Y.Z" && git push`
-3. **Build the Docker image**: `make docker-build`
-4. **Push to Docker Hub**: `make docker-push VERSION=vX.Y.Z`
-5. **Tag the git commit**: `git tag vX.Y.Z && git push origin vX.Y.Z`
+2. **Update docs**: `DOCKERHUB.md` version refs, `CHANGELOG.md` entry
+3. **Commit & push**: `git commit -m "vX.Y.Z: <summary>" && git push`
+4. **Wait for CI** to pass on main
+5. **Tag & push tag**: `git tag vX.Y.Z && git push origin vX.Y.Z`
+6. CI (`docker-publish.yml`) automatically builds multi-arch and pushes to Docker Hub
+
+**Important:** Never move tags. If a fix is needed after tagging, bump to vX.Y.Z+1. Never push Docker images manually — let CI handle it for reproducible multi-arch builds.
 
 ### Go MCP Server
 ```bash
