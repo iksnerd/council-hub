@@ -1,0 +1,54 @@
+graph TB
+    subgraph "Machine A (Node 1)"
+        subgraph "Node 1 Docker Container"
+            direction TB
+            MCP1["Go MCP Server"]
+            UI1["Phoenix LiveView UI"]
+            DB1[("Local SQLite DB")]
+            Erlang1["BEAM VM (Erlang Node)"]
+
+            MCP1 <--> UI1
+            MCP1 -- "Writes" --> DB1
+            UI1 -- "Reads" --> DB1
+            UI1 <--> Erlang1
+        end
+    end
+
+    subgraph "Machine B (Node 2)"
+        subgraph "Node 2 Docker Container"
+            direction TB
+            MCP2["Go MCP Server"]
+            UI2["Phoenix LiveView UI"]
+            DB2[("Local SQLite DB")]
+            Erlang2["BEAM VM (Erlang Node)"]
+
+            MCP2 <--> UI2
+            MCP2 -- "Writes" --> DB2
+            UI2 -- "Reads" --> DB2
+            UI2 <--> Erlang2
+        end
+    end
+
+    %% Network Layers
+    subgraph "Network Protocols"
+        direction LR
+        Gossip["UDP Multicast (Port 45892) <br/> [LAN Discovery]"]
+        EPMD["TCP (Port 4369) <br/> [Erlang Port Mapper]"]
+        Dist["TCP (Port 9000) <br/> [Distribution Channel]"]
+    end
+
+    %% Cluster Connections
+    Erlang1 <-. "Discovery: Gossip or COUNCIL_SEEDS" .-> Erlang2
+    Erlang1 <== "Erlang Distribution: PubSub & RPC" ==> Erlang2
+
+    %% Styling
+    style Machine A fill:#2d3436,stroke:#amber,stroke-width:2px,color:#fff
+    style Machine B fill:#2d3436,stroke:#blue,stroke-width:2px,color:#fff
+    style DB1 fill:#636e72,stroke:#fff,color:#fff
+    style DB2 fill:#636e72,stroke:#fff,color:#fff
+    style Erlang1 fill:#e17055,stroke:#fff,color:#fff
+    style Erlang2 fill:#e17055,stroke:#fff,color:#fff
+    style UI1 fill:#0984e3,stroke:#fff,color:#fff
+    style UI2 fill:#0984e3,stroke:#fff,color:#fff
+    style MCP1 fill:#00b894,stroke:#fff,color:#fff
+    style MCP2 fill:#00b894,stroke:#fff,color:#fff
