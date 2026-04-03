@@ -89,7 +89,7 @@ func NewServer(dbPath string, logger *slog.Logger) (*Server, error) {
 
 	mcpServer := mcp.NewServer(&mcp.Implementation{
 		Name:    "council-hub",
-		Version: "0.6.5",
+		Version: "0.7.0",
 	}, &mcp.ServerOptions{
 		Logger:       logger,
 		Capabilities: &mcp.ServerCapabilities{},
@@ -128,7 +128,32 @@ func initSchema(db *sql.DB) error {
 		reply_to TEXT DEFAULT '',
 		timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
 		FOREIGN KEY(room_id) REFERENCES rooms(id)
-	);`
+	);
+
+	CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
+		content,
+		author UNINDEXED,
+		room_id UNINDEXED,
+		content='messages',
+		content_rowid='rowid'
+	);
+
+	CREATE TRIGGER IF NOT EXISTS messages_ai AFTER INSERT ON messages BEGIN
+		INSERT INTO messages_fts(rowid, content, author, room_id)
+		VALUES (new.rowid, new.content, new.author, new.room_id);
+	END;
+
+	CREATE TRIGGER IF NOT EXISTS messages_ad AFTER DELETE ON messages BEGIN
+		INSERT INTO messages_fts(messages_fts, rowid, content, author, room_id)
+		VALUES ('delete', old.rowid, old.content, old.author, old.room_id);
+	END;
+
+	CREATE TRIGGER IF NOT EXISTS messages_au AFTER UPDATE ON messages BEGIN
+		INSERT INTO messages_fts(messages_fts, rowid, content, author, room_id)
+		VALUES ('delete', old.rowid, old.content, old.author, old.room_id);
+		INSERT INTO messages_fts(rowid, content, author, room_id)
+		VALUES (new.rowid, new.content, new.author, new.room_id);
+	END;`
 
 	_, err := db.Exec(schema)
 	if err != nil {
@@ -158,6 +183,17 @@ func initSchema(db *sql.DB) error {
 	for _, idx := range indexes {
 		if _, err := db.Exec(idx); err != nil {
 			return fmt.Errorf("create index: %w", err)
+		}
+	}
+
+	// Check if we need to rebuild the FTS index
+	var ftsCount int
+	var msgCount int
+	_ = db.QueryRow(`SELECT count(*) FROM messages_fts`).Scan(&ftsCount)
+	_ = db.QueryRow(`SELECT count(*) FROM messages`).Scan(&msgCount)
+	if ftsCount == 0 && msgCount > 0 {
+		if _, err := db.Exec(`INSERT INTO messages_fts(messages_fts) VALUES('rebuild')`); err != nil {
+			return fmt.Errorf("rebuild fts index: %w", err)
 		}
 	}
 

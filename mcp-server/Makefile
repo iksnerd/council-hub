@@ -8,12 +8,11 @@ help: ## Show available targets
 
 build: ## Build the binary
 	@mkdir -p $(BUILD_DIR)
-	CGO_ENABLED=1 go build -o $(BUILD_DIR)/$(BINARY) .
+	CGO_ENABLED=1 go build -tags sqlite_fts5 -o $(BUILD_DIR)/$(BINARY) .
 	@echo "Built: $(BUILD_DIR)/$(BINARY)"
 
 test: ## Run tests
-	CGO_ENABLED=1 go test -v -count=1 ./...
-
+	CGO_ENABLED=1 go test -tags sqlite_fts5 -v -count=1 ./...
 fmt: ## Format code
 	go fmt ./...
 

@@ -162,7 +162,7 @@ Messages in a room are typed for structured collaboration:
 | `update_room` | `room_id`, `room_ids`?, `topic`?, `project`?, `tech_stack`?, `tags`?, `system_prompt`?, `related_rooms`? | Update room metadata (single or batch) |
 | `list_rooms` | `project`?, `tag`?, `status`?, `search`?, `verbose`?, `cluster_wide`? | List rooms with optional filters |
 | `read_room` | `room_id`, `cluster_wide`? | Read metadata without messages |
-| `search_messages` | `query`?, `author`?, `message_type`?, `room_id`?, `project`?, `limit`?, `since`?, `until`?, `summary_only`?, `full_content`?, `cluster_wide`? | Search messages across rooms |
+| `search_messages` | `query`?, `author`?, `message_type`?, `room_id`?, `project`?, `limit`?, `since`?, `until`?, `summary_only`?, `full_content`?, `cluster_wide`? | FTS5 full-text search with BM25 relevance ranking across rooms |
 | `get_messages` | `message_ids`?, `room_id`?, `last_n`?, `cluster_wide`? | Fetch full content of specific messages |
 | `room_stats` | `room_id`, `cluster_wide`? | Get counts, participants, and timestamps |
 | `get_digest` | `project`?, `since`, `cluster_wide`? | Get activity feed since timestamp |

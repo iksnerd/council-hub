@@ -32,7 +32,7 @@ jobs:
           working-directory: mcp-server
           
       - name: Run Go tests
-        run: go test -v ./...
+        run: go test -tags sqlite_fts5 -v ./...
 
   elixir-ci:
     name: Elixir Tests and Linting

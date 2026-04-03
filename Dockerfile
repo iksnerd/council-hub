@@ -23,7 +23,7 @@ COPY mcp-server/go.mod mcp-server/go.sum ./
 RUN go mod download
 COPY mcp-server/*.go ./
 COPY mcp-server/internal/ ./internal/
-RUN CGO_ENABLED=1 go build -o council-hub .
+RUN CGO_ENABLED=1 go build -tags sqlite_fts5 -o council-hub .
 
 # --- Stage 2: Build Elixir/Phoenix UI ---
 FROM elixir:1.19-otp-28 AS elixir-builder

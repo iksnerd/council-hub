@@ -244,11 +244,21 @@ func (s *Server) SearchMessages(query, author, messageType, roomID, project, sin
 	where := `WHERE 1=1`
 	var args []any
 	join := ""
+	orderBy := `ORDER BY m.timestamp DESC`
 
 	if query != "" {
+		join += ` JOIN messages_fts f ON m.rowid = f.rowid`
+		var terms []string
 		for _, word := range strings.Fields(query) {
-			where += ` AND m.content LIKE '%' || ? || '%'`
-			args = append(args, word)
+			clean := strings.ReplaceAll(word, "\"", "")
+			if clean != "" {
+				terms = append(terms, "\""+clean+"\"")
+			}
+		}
+		if len(terms) > 0 {
+			where += ` AND messages_fts MATCH ?`
+			args = append(args, strings.Join(terms, " AND "))
+			orderBy = `ORDER BY bm25(messages_fts), m.timestamp DESC`
 		}
 	}
 	if author != "" {
@@ -264,7 +274,7 @@ func (s *Server) SearchMessages(query, author, messageType, roomID, project, sin
 		args = append(args, roomID)
 	}
 	if project != "" {
-		join = ` JOIN rooms r ON m.room_id = r.id`
+		join += ` JOIN rooms r ON m.room_id = r.id`
 		where += ` AND r.project = ?`
 		args = append(args, project)
 	}
@@ -281,7 +291,7 @@ func (s *Server) SearchMessages(query, author, messageType, roomID, project, sin
 		limit = 20
 	}
 
-	q := fmt.Sprintf(`SELECT m.id, m.room_id, m.author, m.content, m.message_type, m.is_summary, m.reply_to, m.pinned, m.timestamp FROM messages m%s %s ORDER BY m.timestamp DESC LIMIT ?`, join, where)
+	q := fmt.Sprintf(`SELECT m.id, m.room_id, m.author, m.content, m.message_type, m.is_summary, m.reply_to, m.pinned, m.timestamp FROM messages m%s %s %s LIMIT ?`, join, where, orderBy)
 	args = append(args, limit)
 
 	rows, err := s.DB.Query(q, args...)

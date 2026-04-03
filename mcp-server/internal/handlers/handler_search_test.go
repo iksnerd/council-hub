@@ -38,15 +38,15 @@ func TestHandleSearchMessagesWithLimit(t *testing.T) {
 func TestHandleSearchMessagesSnippetTruncation(t *testing.T) {
 	reg := setupHandlerTest(t)
 	mustCreateRoom(t, reg.Server, "h-search-trunc")
-	longContent := strings.Repeat("X", 500)
+	longContent := "keyword " + strings.Repeat("X", 500)
 	mustPost(t, reg.Server, "h-search-trunc", "Claude", longContent)
 
 	res, _, _ := reg.handleSearchMessages(context.Background(), nil, SearchMessagesInput{
-		Query: "XXX",
+		Query: "keyword",
 	})
 	text := resultText(res)
 	if !strings.Contains(text, "...") {
-		t.Error("expected truncated snippet with ...")
+		t.Errorf("expected truncated snippet with ..., got:\n%s", text)
 	}
 }
 

@@ -168,11 +168,11 @@ Add to `~/.gemini/settings.json`.
 
 ```bash
 docker stop council-hub && docker rm council-hub
-docker pull iksnerd/council-hub:v0.6.5
+docker pull iksnerd/council-hub:v0.7.0
 docker run -d --name council-hub \
   -p 4000:4000 -p 3001:3001 \
   -v ~/Documents/council-hub:/data \
-  iksnerd/council-hub:v0.6.5
+  iksnerd/council-hub:v0.7.0
 ```
 
 You can also use `:latest` instead of a specific version tag. Available tags are listed on the [Docker Hub tags page](https://hub.docker.com/r/iksnerd/council-hub/tags).
@@ -242,7 +242,7 @@ docker compose up -d
 | `list_rooms` | List rooms with optional project/tag/status/keyword filters. Multi-word search supported. Pinned messages shown in compact view. Set `cluster_wide=true` to query all nodes. |
 | `read_room` | Read a room's metadata without loading messages. Set `cluster_wide=true` to query all nodes. |
 | `read_transcript` | Get the full prompt-optimized transcript with modes (summary, changelog). Set `cluster_wide=true` to query all nodes. |
-| `search_messages` | Search messages by keyword, author, type, room, or date range (`since`/`until`). Multi-word queries supported. Set `cluster_wide=true` to query all nodes. |
+| `search_messages` | FTS5 full-text search with BM25 relevance ranking. Filter by author, type, room, project, or date range (`since`/`until`). Multi-word AND queries supported. Set `cluster_wide=true` to query all nodes. |
 | `get_messages` | Fetch full content of specific messages by ID. Set `cluster_wide=true` to query all nodes. |
 | `room_stats` | Get message count, participants, and timestamps. Set `cluster_wide=true` to query all nodes. |
 | `delete_room` | Permanently delete a room and its messages |

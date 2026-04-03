@@ -38,13 +38,13 @@ Docker Hub image: `iksnerd/council-hub` ([hub.docker.com/r/iksnerd/council-hub](
 ```bash
 cd mcp-server
 make all             # fmt + vet + test + build
-make test            # CGO_ENABLED=1 go test -v -count=1 ./...
+make test            # CGO_ENABLED=1 go test -tags sqlite_fts5 -v -count=1 ./...
 make run             # build + run locally
 make fmt             # go fmt
 make vet             # go vet
 ```
 
-Single test: `cd mcp-server && CGO_ENABLED=1 go test -v -count=1 -run TestName ./...`
+Single test: `cd mcp-server && CGO_ENABLED=1 go test -tags sqlite_fts5 -v -count=1 -run TestName ./...`
 
 **Note:** `CGO_ENABLED=1` is required — the SQLite driver uses cgo.
 
@@ -66,9 +66,9 @@ Single test: `cd ui && mix test test/path_to_test.exs:LINE`
 Code is organized into `internal/council` (data layer) and `internal/handlers` (MCP tool handlers):
 
 - `main.go` — Entry point. Selects transport based on `COUNCIL_TRANSPORT` env var (`stdio` default, `http` for persistent service). In http mode, serves MCP over SSE at `:3001/mcp`. Initializes HTTP client for cluster queries via `COUNCIL_PHOENIX_URL`.
-- `internal/council/db.go` — `Server` struct holds `*sql.DB` + `sync.RWMutex`. Schema: `rooms` and `messages` tables with indexes on `messages(room_id)`, `messages(room_id, id)`, `messages(room_id, timestamp)`, `messages(room_id, is_summary)`, `rooms(project)`, `rooms(status)`. WAL mode with 5s busy timeout. UUID v7 migration for message IDs.
+- `internal/council/db.go` — `Server` struct holds `*sql.DB` + `sync.RWMutex`. Schema: `rooms` and `messages` tables with indexes on `messages(room_id)`, `messages(room_id, id)`, `messages(room_id, timestamp)`, `messages(room_id, is_summary)`, `rooms(project)`, `rooms(status)`. FTS5 virtual table `messages_fts` with triggers for insert/update/delete sync and auto-rebuild on startup. WAL mode with 5s busy timeout. UUID v7 migration for message IDs.
 - `internal/council/rooms.go` — Room CRUD: `CreateRoom`, `GetRoom`, `UpdateRoom`, `DeleteRoom`, `ListRooms`, `UpdateStatus`, bidirectional `syncReverseLinks`.
-- `internal/council/messages.go` — Message CRUD: `PostMessage`, `SearchMessages` (with multi-word tokenization + since/until), `GetRecentMessages`, `GetMessagesAfterID`, `GetLatestPerType`, `PinMessage`, `DeleteMessages`.
+- `internal/council/messages.go` — Message CRUD: `PostMessage`, `SearchMessages` (FTS5 full-text search with BM25 ranking, multi-word AND queries, since/until date filters), `GetRecentMessages`, `GetMessagesAfterID`, `GetLatestPerType`, `PinMessage`, `DeleteMessages`.
 - `internal/council/stats.go` — `GetRoomStats`, `GetDigest`, `GetMessageCounts`, `GetPinnedExcerpts`, `GetRoomsNeedingSummary`.
 - `internal/council/summary.go` — `GetTranscript`, `GetUnsummarizedMessages`, `InsertSummary`, `ArchiveRoom`.
 - `internal/council/transcript.go` — Transcript formatting helpers.

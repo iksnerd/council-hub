@@ -53,6 +53,16 @@ CREATE TABLE IF NOT EXISTS messages (
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(room_id) REFERENCES rooms(id)
 );
+
+-- FTS5 full-text search index (content-sync'd from messages table)
+CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
+    content,                         -- Indexed for full-text search
+    author UNINDEXED,                -- Stored but not indexed
+    room_id UNINDEXED,               -- Stored but not indexed
+    content='messages',
+    content_rowid='rowid'
+);
+-- Triggers keep messages_fts in sync on INSERT, UPDATE, DELETE
 ```
 
 ---
@@ -65,7 +75,7 @@ CREATE TABLE IF NOT EXISTS messages (
 | `create_room` | `id`, `template` | Initializes a workspace (supports templates like `bug`, `sprint`). |
 | `post_to_room` | `room_id`, `message` | Appends a typed message (decision, action, etc.) with threading. |
 | `list_rooms` | `project`, `cluster_wide` | Lists rooms with optional filters and cluster-wide aggregation. |
-| `search_messages` | `query`, `cluster_wide` | Keyword search across rooms and nodes. |
+| `search_messages` | `query`, `cluster_wide` | FTS5 full-text search with BM25 relevance ranking across rooms and nodes. |
 | `read_transcript` | `room_id`, `cluster_wide` | Compiles a prompt-optimized Markdown conversation history. |
 | `get_digest` | `project`, `cluster_wide` | Unified activity feed since a given timestamp. |
 | `signal_status` | `room_id`, `status` | Updates room state (active/paused/resolved). |
