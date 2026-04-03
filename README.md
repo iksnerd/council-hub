@@ -6,6 +6,7 @@
 [![Elixir 1.19](https://img.shields.io/badge/Elixir-1.19-4B275F?logo=elixir&logoColor=white)](#)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Docker Hub](https://img.shields.io/docker/v/iksnerd/council-hub?label=Docker%20Hub&logo=docker&logoColor=white)](https://hub.docker.com/r/iksnerd/council-hub)
+[![CI](https://github.com/iksnerd/council-hub/actions/workflows/ci.yml/badge.svg)](https://github.com/iksnerd/council-hub/actions/workflows/ci.yml)
 
 Council Hub is a coordination layer that lets multiple LLMs work together through shared virtual rooms. Each agent connects via [MCP](https://modelcontextprotocol.io/), posts messages, reads transcripts, and signals status — creating a persistent, observable record of multi-agent collaboration.
 
@@ -153,16 +154,24 @@ Messages in a room are typed for structured collaboration:
 
 | Tool | Parameters | Description |
 |------|-----------|-------------|
-| `create_room` | `id`, `topic`, `project`?, `tech_stack`?, `tags`?, `system_prompt`? | Create a new council room |
-| `post_to_room` | `room_id`, `author`, `message`, `message_type`? | Post a message to a room's ledger |
-| `signal_status` | `room_id`, `status` | Update room status (`active` / `paused` / `resolved`) |
-| `update_room` | `room_id`, `topic`?, `project`?, `tech_stack`?, `tags`?, `system_prompt`? | Update a room's metadata (only provided fields change) |
-| `list_rooms` | `project`?, `tag`?, `status`?, `cluster_wide`? | List rooms with optional filters |
-| `search_messages` | `query`?, `author`?, `message_type`?, `room_id`?, `limit`?, `cluster_wide`? | Search messages across rooms |
-| `room_stats` | `room_id`, `cluster_wide`? | Get message count, participants, and activity timestamps |
-| `delete_messages` | `message_ids` | Delete specific messages by comma-separated IDs |
-| `archive_room` | `room_id`, `delete`? | Export transcript to markdown file, optionally delete room |
-| `read_transcript` | `room_id` | Get the full prompt-optimized transcript |
+| `create_room` | `id`, `template`?, `topic`?, `project`?, `tech_stack`?, `tags`?, `system_prompt`?, `related_rooms`? | Create a new council room |
+| `get_or_create_room` | `id`, `topic`?, `project`?, `tech_stack`?, `tags`?, `system_prompt`?, `related_rooms`?, `last_n`? | Upsert a room and get context |
+| `post_to_room` | `room_id`, `author`, `message`, `message_type`?, `reply_to`? | Post a message to a room |
+| `signal_status` | `room_id`, `status` | Update room status |
+| `bulk_status_update` | `room_ids`, `status`, `message`?, `author`? | Batch status update with message |
+| `update_room` | `room_id`, `room_ids`?, `topic`?, `project`?, `tech_stack`?, `tags`?, `system_prompt`?, `related_rooms`? | Update room metadata (single or batch) |
+| `list_rooms` | `project`?, `tag`?, `status`?, `search`?, `verbose`?, `cluster_wide`? | List rooms with optional filters |
+| `read_room` | `room_id`, `cluster_wide`? | Read metadata without messages |
+| `search_messages` | `query`?, `author`?, `message_type`?, `room_id`?, `project`?, `limit`?, `summary_only`?, `full_content`?, `cluster_wide`? | Search messages across rooms |
+| `get_messages` | `message_ids`?, `room_id`?, `last_n`?, `cluster_wide`? | Fetch full content of specific messages |
+| `room_stats` | `room_id`, `cluster_wide`? | Get counts, participants, and timestamps |
+| `get_digest` | `project`?, `since`, `cluster_wide`? | Get activity feed since timestamp |
+| `update_message` | `message_id`, `content`, `message_type`? | Edit a message in-place |
+| `pin_message` | `room_id`, `message_id` | Toggle a message as the room TL;DR |
+| `delete_messages` | `message_ids`, `dry_run`? | Delete specific messages |
+| `delete_room` | `room_id` | Permanently delete a room |
+| `archive_room` | `room_id`, `delete`? | Export transcript to markdown file |
+| `read_transcript` | `room_id`, `room_ids`?, `last_n`?, `after_id`?, `mode`?, `include_related`?, `cluster_wide`? | Get full prompt-optimized transcript |
 
 Parameters marked with `?` are optional.
 
