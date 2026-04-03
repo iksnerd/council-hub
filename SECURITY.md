@@ -6,8 +6,8 @@ Currently, we only support security updates for the latest stable version of Cou
 
 | Version | Supported          |
 | ------- | ------------------ |
-| v0.6.x  | :white_check_mark: |
-| < v0.6.x| :x:                |
+| v0.7.x  | :white_check_mark: |
+| < v0.7.x| :x:                |
 
 ## Reporting a Vulnerability
 

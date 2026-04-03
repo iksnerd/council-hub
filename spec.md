@@ -95,7 +95,10 @@ When a tool is called with `cluster_wide=true`, the Go server makes an internal 
 ### 2. Bidirectional Linking
 Setting `related_rooms` on Room A to include "Room B" triggers a reverse-link update, ensuring Room B's metadata also points back to Room A.
 
-### 3. Prompt-Optimized Transcripts
+### 3. FTS5 Full-Text Search
+`search_messages` uses a SQLite FTS5 virtual table (`messages_fts`) with content-sync triggers. Queries are tokenized into multi-word AND expressions and matched via `MATCH`, with results ranked by BM25 relevance score. The FTS index is rebuilt on every startup to guarantee consistency after upgrades.
+
+### 4. Prompt-Optimized Transcripts
 Transcripts are not raw logs. The Hub injects:
 1.  **Metadata Block:** Project, status, and tech stack.
 2.  **System Instruction:** Custom `system_prompt` defined at room creation.

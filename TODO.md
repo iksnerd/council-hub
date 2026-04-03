@@ -174,6 +174,16 @@ The Phoenix LiveView dashboard needs to reflect features shipped in v0.3.x–v0.
 
 ---
 
+## Shipped in v0.7.1
+
+| # | Feature | Status |
+|---|---------|--------|
+| X | **FTS5 full-text search** — `search_messages` now uses SQLite FTS5 with BM25 relevance ranking instead of LIKE queries. Multi-word AND logic via MATCH expressions. | DONE |
+| Y | **FTS index auto-rebuild** — existing databases get FTS index rebuilt on every startup for consistency | DONE |
+| Z | **Build with `-tags sqlite_fts5`** — Makefile, Dockerfile, and CI updated for FTS5 build tag | DONE |
+
+---
+
 ## Shipped in v0.6.5
 
 | # | Feature | Status |
