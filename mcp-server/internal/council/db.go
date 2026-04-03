@@ -186,12 +186,12 @@ func initSchema(db *sql.DB) error {
 		}
 	}
 
-	// Check if we need to rebuild the FTS index
-	var ftsCount int
+	// Always rebuild the FTS index on startup to ensure consistency.
+	// This is fast (< 1s for typical databases) and guarantees the
+	// index is correct after upgrades or schema changes.
 	var msgCount int
-	_ = db.QueryRow(`SELECT count(*) FROM messages_fts`).Scan(&ftsCount)
 	_ = db.QueryRow(`SELECT count(*) FROM messages`).Scan(&msgCount)
-	if ftsCount == 0 && msgCount > 0 {
+	if msgCount > 0 {
 		if _, err := db.Exec(`INSERT INTO messages_fts(messages_fts) VALUES('rebuild')`); err != nil {
 			return fmt.Errorf("rebuild fts index: %w", err)
 		}
