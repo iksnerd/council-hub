@@ -78,7 +78,43 @@ defmodule CouncilHubUiWeb.ClusterController do
     end
   end
 
+  def get_messages(conn, params) do
+    # Can fetch by message_ids or room_id
+    cluster_params =
+      if Map.has_key?(params, "message_ids") do
+        ids = String.split(Map.get(params, "message_ids", ""), ",", trim: true) |> Enum.map(&String.trim/1)
+        %{"message_ids" => ids}
+      else
+        %{
+          "room_id" => Map.get(params, "room_id", ""),
+          "limit" => parse_limit(Map.get(params, "last_n", "10"))
+        }
+      end
+
+    result = Cluster.get_messages(cluster_params)
+
+    json(conn, %{
+      results: Enum.map(result.results, &serialize_message/1),
+      warnings: result.warnings
+    })
+  end
+
+  def get_digest(conn, params) do
+    cluster_params = %{
+      "project" => Map.get(params, "project", ""),
+      "since" => Map.get(params, "since", "")
+    }
+
+    result = Cluster.get_digest(cluster_params)
+
+    json(conn, %{
+      results: result.results,
+      warnings: result.warnings
+    })
+  end
+
   defp parse_limit(val) when is_binary(val) do
+
     case Integer.parse(val) do
       {n, _} when n > 0 and n <= 100 -> n
       _ -> 20

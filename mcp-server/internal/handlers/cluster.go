@@ -102,7 +102,115 @@ func (r *Registry) clusterCall(endpoint string, params map[string]any) (json.Raw
 	return raw.Results, raw.Warnings, nil
 }
 
-// formatClusterWarnings appends warning lines to a string builder.
+type ClusterDigestResult struct {
+	RoomID               string `json:"room_id"`
+	NewMessageCount      int    `json:"new_message_count"`
+	LatestMessageExcerpt string `json:"latest_message_excerpt"`
+	SourceNode           string `json:"source_node"`
+}
+
+func (r *Registry) handleGetMessagesCluster(args GetMessagesInput) (*mcp.CallToolResult, ToolOutput, error) {
+	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: text}},
+		}, ToolOutput{Message: text}, nil
+	}
+
+	params := map[string]any{
+		"message_ids": args.MessageIDs,
+		"room_id":     args.RoomID,
+		"last_n":      args.LastN,
+	}
+
+	raw, warnings, err := r.clusterCall("get_messages", params)
+	if err != nil {
+		return msg(fmt.Sprintf("Error: cluster get_messages failed: %s", err.Error()))
+	}
+
+	var results []ClusterSearchResult
+	if err := json.Unmarshal(raw, &results); err != nil {
+		return nil, ToolOutput{}, fmt.Errorf("decode cluster message results: %w", err)
+	}
+
+	if len(results) == 0 {
+		var b strings.Builder
+		b.WriteString("No messages found on any cluster node.")
+		formatClusterWarnings(&b, warnings)
+		return msg(b.String())
+	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "Found %d message(s) across cluster:\n\n", len(results))
+	for _, m := range results {
+		ts := m.Timestamp
+		if len(ts) > 19 {
+			ts = ts[:19]
+		}
+		fmt.Fprintf(&b, "---\n**#%s** [%s] [%s] %s in **%s** (%s):\n\n%s\n\n", m.ID, m.SourceNode, ts, m.Author, m.RoomID, m.MessageType, m.Content)
+	}
+
+	formatClusterWarnings(&b, warnings)
+	return msg(b.String())
+}
+
+func (r *Registry) handleGetDigestCluster(args DigestInput) (*mcp.CallToolResult, ToolOutput, error) {
+	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: text}},
+		}, ToolOutput{Message: text}, nil
+	}
+
+	if args.Since == "" {
+		return msg("Error: since is required (ISO timestamp, e.g. 2026-03-31T12:00:00).")
+	}
+
+	params := map[string]any{
+		"project": args.Project,
+		"since":   args.Since,
+	}
+
+	raw, warnings, err := r.clusterCall("get_digest", params)
+	if err != nil {
+		return msg(fmt.Sprintf("Error: cluster get_digest failed: %s", err.Error()))
+	}
+
+	var results []ClusterDigestResult
+	if err := json.Unmarshal(raw, &results); err != nil {
+		return nil, ToolOutput{}, fmt.Errorf("decode cluster digest results: %w", err)
+	}
+
+	if len(results) == 0 {
+		var b strings.Builder
+		projectNote := ""
+		if args.Project != "" {
+			projectNote = fmt.Sprintf(" in project '%s'", args.Project)
+		}
+		fmt.Fprintf(&b, "No new activity%s since %s across cluster.", projectNote, args.Since)
+		formatClusterWarnings(&b, warnings)
+		return msg(b.String())
+	}
+
+	var b strings.Builder
+	projectNote := ""
+	if args.Project != "" {
+		projectNote = fmt.Sprintf(" [%s]", args.Project)
+	}
+	fmt.Fprintf(&b, "# Cluster Activity Digest%s \u2014 since %s\n\n", projectNote, args.Since)
+	fmt.Fprintf(&b, "%d room(s) with new activity:\n\n", len(results))
+
+	for _, d := range results {
+		excerpt := d.LatestMessageExcerpt
+		if len(excerpt) > 120 {
+			excerpt = excerpt[:120] + "..."
+		}
+		excerpt = strings.ReplaceAll(excerpt, "\n", " ")
+		fmt.Fprintf(&b, "- [%s] **%s** | %d new msg(s) | %s\n", d.SourceNode, d.RoomID, d.NewMessageCount, excerpt)
+	}
+
+	formatClusterWarnings(&b, warnings)
+	return msg(b.String())
+}
+
 func formatClusterWarnings(b *strings.Builder, warnings []string) {
 	if len(warnings) > 0 {
 		b.WriteString("\n---\n")

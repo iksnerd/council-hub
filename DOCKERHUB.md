@@ -243,10 +243,11 @@ docker compose up -d
 | `read_room` | Read a room's metadata without loading messages. Set `cluster_wide=true` to query all nodes. |
 | `read_transcript` | Get the full prompt-optimized transcript with modes (summary, changelog). Set `cluster_wide=true` to query all nodes. |
 | `search_messages` | Search messages by keyword, author, type, or room. Set `cluster_wide=true` to query all nodes. |
-| `get_messages` | Fetch full content of specific messages by ID |
+| `get_messages` | Fetch full content of specific messages by ID. Set `cluster_wide=true` to query all nodes. |
 | `room_stats` | Get message count, participants, and timestamps. Set `cluster_wide=true` to query all nodes. |
 | `delete_room` | Permanently delete a room and its messages |
 | `delete_messages` | Delete specific messages by ID |
 | `archive_room` | Export transcript to file, optionally delete room |
+| `get_digest` | Get a project activity digest. Set `cluster_wide=true` to query all nodes. |
 
 See the [GitHub README](https://github.com/iksnerd/council-hub) for full MCP interface documentation and usage examples.

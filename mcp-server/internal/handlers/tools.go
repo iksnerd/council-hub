@@ -216,9 +216,10 @@ func (r *Registry) RegisterTools() {
 		Name:        "get_messages",
 		Description: "Fetch specific messages by ID, or browse a room's recent messages. Best for: retrieving search results by ID, or getting raw message content without room headers. For formatted transcripts with room context, use read_transcript instead.",
 		InputSchema: schema(nil, map[string]map[string]any{
-			"message_ids": prop("string", "Comma-separated message IDs (e.g. 48,52,55)"),
-			"room_id":     prop("string", "Browse messages from this room (alternative to message_ids)"),
-			"last_n":      prop("string", "Number of recent messages to fetch when using room_id (default 10, max 50)"),
+			"message_ids":  prop("string", "Comma-separated message IDs (e.g. 48,52,55)"),
+			"room_id":      prop("string", "Browse messages from this room (alternative to message_ids)"),
+			"last_n":       prop("string", "Number of recent messages to fetch when using room_id (default 10, max 50)"),
+			"cluster_wide": prop("string", "Set to 'true' to fetch messages from all cluster nodes. Default: local only."),
 		}),
 	}, r.handleGetMessages)
 
@@ -286,8 +287,10 @@ func (r *Registry) RegisterTools() {
 		Name:        "get_digest",
 		Description: "Get a project activity digest showing rooms with new messages since a given timestamp. Returns room ID, new message count, and latest message excerpt per room. Perfect for start-of-session 'what changed?' orientation.",
 		InputSchema: schema([]string{"since"}, map[string]map[string]any{
-			"project": prop("string", "Filter to rooms in this project (optional \u2014 omit for all projects)"),
-			"since":   prop("string", "ISO timestamp (e.g. 2026-03-31T12:00:00). Returns only rooms with messages after this time."),
+			"project":      prop("string", "Filter to rooms in this project (optional \u2014 omit for all projects)"),
+			"since":        prop("string", "ISO timestamp (e.g. 2026-03-31T12:00:00). Returns only rooms with messages after this time."),
+			"cluster_wide": prop("string", "Set to 'true' to fetch the digest from all cluster nodes. Default: local only."),
 		}),
 	}, r.handleGetDigest)
+
 }

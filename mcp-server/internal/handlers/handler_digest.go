@@ -10,12 +10,17 @@ import (
 
 // DigestInput represents the parameters for the project digest tool.
 type DigestInput struct {
-	Project string `json:"project"`
-	Since   string `json:"since"`
+	Project     string `json:"project"`
+	Since       string `json:"since"`
+	ClusterWide string `json:"cluster_wide"`
 }
 
 // handleGetDigest returns a project activity digest.
 func (r *Registry) handleGetDigest(ctx context.Context, req *mcp.CallToolRequest, args DigestInput) (*mcp.CallToolResult, ToolOutput, error) {
+	if args.ClusterWide == "true" {
+		return r.handleGetDigestCluster(args)
+	}
+
 	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
 		return &mcp.CallToolResult{
 			Content: []mcp.Content{&mcp.TextContent{Text: text}},

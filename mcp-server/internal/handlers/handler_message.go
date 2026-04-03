@@ -47,9 +47,10 @@ type DeleteMessagesInput struct {
 
 // GetMessagesInput represents the parameters for fetching messages by ID or by room.
 type GetMessagesInput struct {
-	MessageIDs string `json:"message_ids"`
-	RoomID     string `json:"room_id"`
-	LastN      string `json:"last_n"`
+	MessageIDs  string `json:"message_ids"`
+	RoomID      string `json:"room_id"`
+	LastN       string `json:"last_n"`
+	ClusterWide string `json:"cluster_wide"`
 }
 
 // PinMessageInput represents the parameters for pinning/unpinning a message.
@@ -165,6 +166,10 @@ func (r *Registry) handleSearchMessages(ctx context.Context, req *mcp.CallToolRe
 }
 
 func (r *Registry) handleGetMessages(ctx context.Context, req *mcp.CallToolRequest, args GetMessagesInput) (*mcp.CallToolResult, ToolOutput, error) {
+	if args.ClusterWide == "true" {
+		return r.handleGetMessagesCluster(args)
+	}
+
 	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
 		return &mcp.CallToolResult{
 			Content: []mcp.Content{&mcp.TextContent{Text: text}},

@@ -74,7 +74,56 @@ defmodule CouncilHubUi.Cluster do
     %{results: data, warnings: warnings}
   end
 
+  @doc """
+  Fetch messages by IDs or room recent messages across all cluster nodes.
+  Returns %{results: [message_maps], warnings: [strings]}.
+  """
+  def get_messages(params) do
+    func = if Map.has_key?(params, "message_ids"), do: :get_messages_by_ids, else: :get_recent_messages
+    args =
+      if func == :get_messages_by_ids do
+        [Map.get(params, "message_ids")]
+      else
+        [Map.get(params, "room_id"), Map.get(params, "limit", 10)]
+      end
+
+    {results, warnings} = fan_out(func, args)
+
+    merged =
+      results
+      |> List.flatten()
+      |> Enum.uniq_by(& &1.id)
+      |> Enum.sort_by(& &1.timestamp, {:asc, NaiveDateTime})
+
+    %{results: merged, warnings: warnings}
+  end
+
+  @doc """
+  Get project digest across all cluster nodes.
+  Returns %{results: [digest_maps], warnings: [strings]}.
+  """
+  def get_digest(params) do
+    {results, warnings} = fan_out(:get_project_digest, [Map.get(params, "project", ""), Map.get(params, "since", "")])
+
+    merged =
+      results
+      |> List.flatten()
+      # Group by room_id and merge counts (assuming room might exist on multiple nodes, though unlikely)
+      |> Enum.group_by(& &1.room_id)
+      |> Enum.map(fn {room_id, items} ->
+        # Sum new_message_count and take the latest excerpt (we'll just take the first for simplicity, or sum them)
+        total_count = Enum.reduce(items, 0, &(&1.new_message_count + &2))
+        latest_excerpt = List.first(items).latest_message_excerpt
+        source_node = List.first(items).source_node
+        %{room_id: room_id, new_message_count: total_count, latest_message_excerpt: latest_excerpt, source_node: source_node}
+      end)
+      |> Enum.sort_by(& &1.new_message_count, :desc)
+
+    %{results: merged, warnings: warnings}
+  end
+
   # Fan out a Council function call to all nodes in the cluster.
+
   # Returns {[tagged_results], [warning_strings]}.
   defp fan_out(func, args) do
     nodes = [Node.self() | Node.list()]

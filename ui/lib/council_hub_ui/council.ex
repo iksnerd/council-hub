@@ -224,8 +224,77 @@ defmodule CouncilHubUi.Council do
   end
 
   @doc """
+  Get project activity digest. Returns list of %{room_id, message_count, latest_content}
+  Mirror of Go GetProjectDigest.
+  """
+  def get_project_digest(project, since_str) do
+    since =
+      case NaiveDateTime.from_iso8601(since_str) do
+        {:ok, dt} -> dt
+        _ -> NaiveDateTime.utc_now() |> NaiveDateTime.add(-86400, :second) # fallback 24h
+      end
+
+    base_rooms = from(r in Room, as: :room)
+    base_rooms =
+      case project do
+        nil -> base_rooms
+        "" -> base_rooms
+        p -> from([room: r] in base_rooms, where: r.project == ^p)
+      end
+
+    # Ecto doesn't support complex distinct on over joins perfectly for this specific query shape,
+    # so we'll fetch the rooms first, then for each fetch stats
+    rooms = Repo.all(from [room: r] in base_rooms, select: {r.id, r.project})
+
+    Enum.reduce(rooms, [], fn {rid, _}, acc ->
+      count = Repo.one(from m in Message, where: m.room_id == ^rid and m.timestamp > ^since, select: count(m.id))
+      if count > 0 do
+        latest = Repo.one(from m in Message, where: m.room_id == ^rid, order_by: [desc: m.timestamp], limit: 1)
+        content = if latest, do: latest.content, else: ""
+        
+        # Simple extraction logic matching Go
+        excerpt = content
+        excerpt =
+          if String.contains?(excerpt, "# ") do
+            parts = String.split(excerpt, "# ")
+            if length(parts) > 1 do
+              parts |> Enum.at(1) |> String.split("\n") |> List.first() |> String.trim()
+            else
+              excerpt
+            end
+          else
+            first_sentence = String.split(excerpt, ". ") |> List.first()
+            if first_sentence && String.length(first_sentence) > 120 do
+              truncated = String.slice(first_sentence, 0, 120)
+              case Regex.run(~r/.*(?=\s)/, truncated) do
+                [matched] -> matched <> "..."
+                nil -> truncated <> "..."
+              end
+            else
+              (first_sentence || "") <> "..."
+            end
+          end
+
+        item = %{room_id: rid, new_message_count: count, latest_message_excerpt: excerpt}
+        [item | acc]
+      else
+        acc
+      end
+    end)
+  end
+
+  @doc "Fetch messages by a list of IDs"
+  def get_messages_by_ids(ids) when is_list(ids) do
+    Repo.all(from m in Message, where: m.id in ^ids, order_by: [asc: m.timestamp])
+  end
+
+  @doc "Fetch recent messages for a room with a limit"
+  def get_recent_messages(room_id, limit) do
+    Repo.all(from m in Message, where: m.room_id == ^room_id, order_by: [desc: m.id], limit: ^limit)
+  end
+
+  @doc """
   List rooms with optional filters. Mirrors Go ListRooms().
-  Accepts a map with optional keys: project, tag, status, search.
   """
   def list_rooms_filtered(params) when is_map(params) do
     base = from(r in Room, as: :room)
