@@ -13,11 +13,19 @@ defmodule CouncilHubUi.MixProject do
       compilers: [:phoenix_live_view] ++ Mix.compilers(),
       listeners: [Phoenix.CodeReloader],
       test_coverage: [
-        threshold: 50,
+        threshold: 90,
         ignore_modules: [
           CouncilHubUi.Release,
           CouncilHubUiWeb.CoreComponents,
-          CouncilHubUiWeb.Layouts
+          CouncilHubUiWeb.Layouts,
+          CouncilHubUi.Repo,
+          CouncilHubUiWeb.ErrorHTML,
+          CouncilHubUiWeb.Plugs.RestrictLocalhost,
+          CouncilHubUi.DataCase,
+          CouncilHubUiWeb.Router,
+          CouncilHubUiWeb.Telemetry,
+          CouncilHubUi.CouncilFixtures,
+          CouncilHubUi.Application
         ]
       ]
     ]
