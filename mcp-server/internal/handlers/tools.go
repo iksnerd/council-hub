@@ -183,7 +183,8 @@ func (r *Registry) RegisterTools() {
 		Name:        "read_room",
 		Description: "Read a room's metadata (topic, project, tech_stack, tags, status, system_prompt) without loading messages.",
 		InputSchema: schema([]string{"room_id"}, map[string]map[string]any{
-			"room_id": prop("string", "Target room ID"),
+			"room_id":      prop("string", "Target room ID"),
+			"cluster_wide": prop("string", "Set to 'true' to search across all cluster nodes. Default: local only."),
 		}),
 	}, r.handleReadRoom)
 

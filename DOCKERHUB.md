@@ -240,8 +240,8 @@ docker compose up -d
 | `signal_status` | Update room status (active / paused / resolved) |
 | `update_room` | Update a room's metadata (topic, project, tags, related_rooms, etc.) |
 | `list_rooms` | List rooms with optional project/tag/status filters. Set `cluster_wide=true` to query all nodes. |
-| `read_room` | Read a room's metadata without loading messages |
-| `read_transcript` | Get the full prompt-optimized transcript with modes (summary, changelog) |
+| `read_room` | Read a room's metadata without loading messages. Set `cluster_wide=true` to query all nodes. |
+| `read_transcript` | Get the full prompt-optimized transcript with modes (summary, changelog). Set `cluster_wide=true` to query all nodes. |
 | `search_messages` | Search messages by keyword, author, type, or room. Set `cluster_wide=true` to query all nodes. |
 | `get_messages` | Fetch full content of specific messages by ID |
 | `room_stats` | Get message count, participants, and timestamps. Set `cluster_wide=true` to query all nodes. |

@@ -51,7 +51,8 @@ type UpdateRoomInput struct {
 
 // ReadRoomInput represents the parameters for reading a room's metadata.
 type ReadRoomInput struct {
-	RoomID string `json:"room_id"`
+	RoomID      string `json:"room_id"`
+	ClusterWide string `json:"cluster_wide"`
 }
 
 // DeleteRoomInput represents the parameters for deleting a room.
@@ -321,6 +322,10 @@ func (r *Registry) handleUpdateRoom(ctx context.Context, req *mcp.CallToolReques
 }
 
 func (r *Registry) handleReadRoom(ctx context.Context, req *mcp.CallToolRequest, args ReadRoomInput) (*mcp.CallToolResult, ToolOutput, error) {
+	if args.ClusterWide == "true" {
+		return r.handleReadRoomCluster(args)
+	}
+
 	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
 		return &mcp.CallToolResult{
 			Content: []mcp.Content{&mcp.TextContent{Text: text}},

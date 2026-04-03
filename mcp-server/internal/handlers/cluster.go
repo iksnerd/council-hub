@@ -146,6 +146,68 @@ func mapClusterRoom(r ClusterRoomResult) council.Room {
 	}
 }
 
+func (r *Registry) handleReadRoomCluster(args ReadRoomInput) (*mcp.CallToolResult, ToolOutput, error) {
+	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: text}},
+		}, ToolOutput{Message: text}, nil
+	}
+
+	// We use the list_rooms cluster call with a search for the specific ID
+	params := map[string]any{
+		"search": args.RoomID,
+	}
+
+	raw, warnings, err := r.clusterCall("list_rooms", params)
+	if err != nil {
+		return msg(fmt.Sprintf("Error: cluster read room failed: %s", err.Error()))
+	}
+
+	var results []ClusterRoomResult
+	if err := json.Unmarshal(raw, &results); err != nil {
+		return nil, ToolOutput{}, fmt.Errorf("decode cluster room results: %w", err)
+	}
+
+	var room *ClusterRoomResult
+	for _, res := range results {
+		if res.ID == args.RoomID {
+			room = &res
+			break
+		}
+	}
+
+	if room == nil {
+		var b strings.Builder
+		b.WriteString(fmt.Sprintf("Error: room '%s' not found on any cluster node.", args.RoomID))
+		formatClusterWarnings(&b, warnings)
+		return msg(b.String())
+	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "[%s] **%s** [%s]\n", room.SourceNode, room.ID, room.Status)
+	fmt.Fprintf(&b, "**Topic:** %s\n", room.Description)
+	if room.Project != "" {
+		fmt.Fprintf(&b, "**Project:** %s\n", room.Project)
+	}
+	if room.TechStack != "" {
+		fmt.Fprintf(&b, "**Tech Stack:** %s\n", room.TechStack)
+	}
+	if room.Tags != "" {
+		fmt.Fprintf(&b, "**Tags:** %s\n", room.Tags)
+	}
+	if room.SystemPrompt != "" {
+		fmt.Fprintf(&b, "**System Prompt:** %s\n", room.SystemPrompt)
+	}
+	if room.RelatedRooms != "" {
+		fmt.Fprintf(&b, "**Related Rooms:** %s\n", room.RelatedRooms)
+	}
+	fmt.Fprintf(&b, "**Created:** %s\n", room.CreatedAt)
+	fmt.Fprintf(&b, "**Updated:** %s\n", room.UpdatedAt)
+
+	formatClusterWarnings(&b, warnings)
+	return msg(b.String())
+}
+
 func (r *Registry) handleReadTranscriptCluster(args ReadTranscriptInput, roomID string) (*mcp.CallToolResult, ToolOutput, error) {
 	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
 		return &mcp.CallToolResult{
