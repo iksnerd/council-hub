@@ -26,13 +26,13 @@ jobs:
         run: go mod download
         
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v7
         with:
           version: latest
           working-directory: mcp-server
           
       - name: Run Go tests
-        run: go test -tags sqlite_fts5 -v ./...
+        run: CGO_ENABLED=1 go test -tags sqlite_fts5 -v ./...
 
   elixir-ci:
     name: Elixir Tests and Linting
@@ -46,8 +46,8 @@ jobs:
       - name: Set up Elixir
         uses: erlef/setup-beam@v1
         with:
-          elixir-version: '1.15.x'
-          otp-version: '26.x'
+          elixir-version: '1.19.x'
+          otp-version: '28.x'
           
       - name: Cache dependencies and build
         uses: actions/cache@v4
