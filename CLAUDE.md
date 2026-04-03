@@ -68,14 +68,14 @@ Code is organized into `internal/council` (data layer) and `internal/handlers` (
 - `main.go` — Entry point. Selects transport based on `COUNCIL_TRANSPORT` env var (`stdio` default, `http` for persistent service). In http mode, serves MCP over SSE at `:3001/mcp`. Initializes HTTP client for cluster queries via `COUNCIL_PHOENIX_URL`.
 - `internal/council/db.go` — `Server` struct holds `*sql.DB` + `sync.RWMutex`. Schema: `rooms` and `messages` tables with indexes on `messages(room_id)`, `messages(room_id, id)`, `messages(room_id, timestamp)`, `messages(room_id, is_summary)`, `rooms(project)`, `rooms(status)`. WAL mode with 5s busy timeout. UUID v7 migration for message IDs.
 - `internal/council/rooms.go` — Room CRUD: `CreateRoom`, `GetRoom`, `UpdateRoom`, `DeleteRoom`, `ListRooms`, `UpdateStatus`, bidirectional `syncReverseLinks`.
-- `internal/council/messages.go` — Message CRUD: `PostMessage`, `SearchMessages`, `GetRecentMessages`, `GetMessagesAfterID`, `GetLatestPerType`, `PinMessage`, `DeleteMessages`.
-- `internal/council/stats.go` — `GetRoomStats`, `GetDigest`, `GetMessageCounts`, `GetRoomsNeedingSummary`.
+- `internal/council/messages.go` — Message CRUD: `PostMessage`, `SearchMessages` (with multi-word tokenization + since/until), `GetRecentMessages`, `GetMessagesAfterID`, `GetLatestPerType`, `PinMessage`, `DeleteMessages`.
+- `internal/council/stats.go` — `GetRoomStats`, `GetDigest`, `GetMessageCounts`, `GetPinnedExcerpts`, `GetRoomsNeedingSummary`.
 - `internal/council/summary.go` — `GetTranscript`, `GetUnsummarizedMessages`, `InsertSummary`, `ArchiveRoom`.
 - `internal/council/transcript.go` — Transcript formatting helpers.
 - `internal/handlers/tools.go` — `Registry` struct (holds Server + HTTPClient + PhoenixURL), MCP tool registration, schema/prop helpers.
 - `internal/handlers/cluster.go` — Cluster-wide query support: `clusterCall` (HTTP POST to Phoenix internal API), `handleSearchMessagesCluster`, `handleListRoomsCluster`, `handleRoomStatsCluster`. Formats results with `[node-name]` prefix and appends warnings for unreachable nodes.
-- `internal/handlers/handler_message.go` — Message tool handlers. `search_messages` branches on `cluster_wide=true`.
-- `internal/handlers/handler_room.go` — Room tool handlers. `list_rooms` and `room_stats` branch on `cluster_wide=true`.
+- `internal/handlers/handler_message.go` — Message tool handlers. `search_messages` branches on `cluster_wide=true`. Supports `since`/`until` date range filters and multi-word query tokenization (AND logic).
+- `internal/handlers/handler_room.go` — Room tool handlers. `list_rooms` and `room_stats` branch on `cluster_wide=true`. Compact listing includes pinned message excerpts (📌). Multi-word search splits on whitespace (AND logic across id/description/tags).
 - `internal/handlers/handler_transcript.go` — `read_transcript` with modes (summary, changelog), `archive_room`.
 - `internal/handlers/resources.go` — Serves `council://room/{id}/transcript` as prompt-optimized markdown.
 - `internal/council/janitor.go` — Background summarization goroutine (currently disabled, pending refinement).
