@@ -361,6 +361,81 @@ func TestHandleRoomStatsClusterNotFound(t *testing.T) {
 	}
 }
 
+func TestHandleReadRoomCluster(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"results": []map[string]any{
+				{
+					"id":            "read-room-id",
+					"description":   "Room Description",
+					"status":        "active",
+					"project":       "Test Project",
+					"tech_stack":    "Go",
+					"tags":          "test",
+					"system_prompt": "You are testing.",
+					"related_rooms": "other-room",
+					"created_at":    "2026-04-01T12:00:00",
+					"updated_at":    "2026-04-01T12:00:00",
+					"source_node":   "test_node@10.0.0.1",
+				},
+			},
+			"warnings": []string{},
+		})
+	}))
+	defer server.Close()
+
+	reg := &Registry{
+		HTTPClient: &http.Client{Timeout: 5 * time.Second},
+		PhoenixURL: server.URL,
+	}
+
+	result, _, err := reg.handleReadRoomCluster(ReadRoomInput{RoomID: "read-room-id", ClusterWide: "true"})
+	if err != nil {
+		t.Fatalf("handleReadRoomCluster failed: %v", err)
+	}
+
+	text := resultText(result)
+	if !strings.Contains(text, "read-room-id") {
+		t.Errorf("expected room ID, got: %s", text)
+	}
+	if !strings.Contains(text, "Room Description") {
+		t.Errorf("expected description, got: %s", text)
+	}
+	if !strings.Contains(text, "test_node@10.0.0.1") {
+		t.Errorf("expected node tag, got: %s", text)
+	}
+}
+
+func TestHandleReadRoomClusterNotFound(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"results":  []map[string]any{},
+			"warnings": []string{"node unreachable"},
+		})
+	}))
+	defer server.Close()
+
+	reg := &Registry{
+		HTTPClient: &http.Client{Timeout: 5 * time.Second},
+		PhoenixURL: server.URL,
+	}
+
+	result, _, err := reg.handleReadRoomCluster(ReadRoomInput{RoomID: "nonexistent", ClusterWide: "true"})
+	if err != nil {
+		t.Fatalf("handleReadRoomCluster failed: %v", err)
+	}
+
+	text := resultText(result)
+	if !strings.Contains(text, "not found on any cluster node") {
+		t.Errorf("expected not found message, got: %s", text)
+	}
+	if !strings.Contains(text, "node unreachable") {
+		t.Errorf("expected warning, got: %s", text)
+	}
+}
+
 func TestHandleReadTranscriptCluster(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
