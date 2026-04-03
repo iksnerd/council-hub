@@ -893,6 +893,142 @@ func TestHandleListRoomsClusterEmpty(t *testing.T) {
 	}
 }
 
+func TestHandleGetMessagesCluster(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"results": []map[string]any{
+				{
+					"id":           "msg-123",
+					"room_id":      "test-room",
+					"author":       "Claude",
+					"content":      "Test get_messages cluster",
+					"message_type": "message",
+					"timestamp":    "2026-04-01T12:00:00",
+					"source_node":  "node@10.0.0.1",
+				},
+			},
+			"warnings": []string{},
+		})
+	}))
+	defer server.Close()
+
+	reg := &Registry{
+		HTTPClient: &http.Client{Timeout: 5 * time.Second},
+		PhoenixURL: server.URL,
+	}
+
+	result, _, err := reg.handleGetMessagesCluster(GetMessagesInput{MessageIDs: "msg-123", ClusterWide: "true"})
+	if err != nil {
+		t.Fatalf("handleGetMessagesCluster failed: %v", err)
+	}
+
+	text := resultText(result)
+	if !strings.Contains(text, "1 message(s) across cluster") {
+		t.Errorf("expected cluster header, got: %s", text)
+	}
+	if !strings.Contains(text, "node@10.0.0.1") {
+		t.Errorf("expected node tag, got: %s", text)
+	}
+	if !strings.Contains(text, "Test get_messages cluster") {
+		t.Errorf("expected message content, got: %s", text)
+	}
+}
+
+func TestHandleGetMessagesClusterEmpty(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"results":  []map[string]any{},
+			"warnings": []string{},
+		})
+	}))
+	defer server.Close()
+
+	reg := &Registry{
+		HTTPClient: &http.Client{Timeout: 5 * time.Second},
+		PhoenixURL: server.URL,
+	}
+
+	result, _, err := reg.handleGetMessagesCluster(GetMessagesInput{MessageIDs: "nonexistent", ClusterWide: "true"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	text := resultText(result)
+	if !strings.Contains(text, "No messages found on any cluster node") {
+		t.Errorf("expected no-results message, got: %s", text)
+	}
+}
+
+func TestHandleGetDigestCluster(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"results": []map[string]any{
+				{
+					"room_id":                "digest-room",
+					"new_message_count":      5,
+					"latest_message_excerpt": "A new important update",
+					"source_node":            "node@10.0.0.1",
+				},
+			},
+			"warnings": []string{},
+		})
+	}))
+	defer server.Close()
+
+	reg := &Registry{
+		HTTPClient: &http.Client{Timeout: 5 * time.Second},
+		PhoenixURL: server.URL,
+	}
+
+	result, _, err := reg.handleGetDigestCluster(DigestInput{Project: "proj", Since: "2026-04-01T12:00:00", ClusterWide: "true"})
+	if err != nil {
+		t.Fatalf("handleGetDigestCluster failed: %v", err)
+	}
+
+	text := resultText(result)
+	if !strings.Contains(text, "Cluster Activity Digest [proj] — since 2026-04-01T12:00:00") {
+		t.Errorf("expected cluster header, got: %s", text)
+	}
+	if !strings.Contains(text, "1 room(s) with new activity") {
+		t.Errorf("expected room count, got: %s", text)
+	}
+	if !strings.Contains(text, "node@10.0.0.1") {
+		t.Errorf("expected node tag, got: %s", text)
+	}
+	if !strings.Contains(text, "5 new msg") {
+		t.Errorf("expected message count, got: %s", text)
+	}
+}
+
+func TestHandleGetDigestClusterEmpty(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"results":  []map[string]any{},
+			"warnings": []string{},
+		})
+	}))
+	defer server.Close()
+
+	reg := &Registry{
+		HTTPClient: &http.Client{Timeout: 5 * time.Second},
+		PhoenixURL: server.URL,
+	}
+
+	result, _, err := reg.handleGetDigestCluster(DigestInput{Since: "2026-04-01T12:00:00", ClusterWide: "true"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	text := resultText(result)
+	if !strings.Contains(text, "No new activity since 2026-04-01T12:00:00 across cluster") {
+		t.Errorf("expected no-results message, got: %s", text)
+	}
+}
+
 func TestFormatClusterWarnings(t *testing.T) {
 	var b strings.Builder
 	b.WriteString("Some results")
