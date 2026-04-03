@@ -118,7 +118,7 @@ func BenchmarkSearchMessages(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, err := s.SearchMessages("content to search", "", "", "", "", 20)
+		_, err := s.SearchMessages("content to search", "", "", "", "", "", "", 20)
 		if err != nil {
 			b.Fatal(err)
 		}

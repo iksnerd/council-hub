@@ -79,7 +79,7 @@ func TestListRoomsDBClosed(t *testing.T) {
 
 func TestSearchMessagesDBClosed(t *testing.T) {
 	s := setupAndClose(t)
-	_, err := s.SearchMessages("test", "", "", "", "", 10)
+	_, err := s.SearchMessages("test", "", "", "", "", "", "", 10)
 	if err == nil {
 		t.Error("expected error on closed DB")
 	}
@@ -463,7 +463,7 @@ func TestGetRecentMessagesScanError(t *testing.T) {
 
 func TestSearchMessagesScanError(t *testing.T) {
 	s := corruptMessages(t)
-	_, err := s.SearchMessages("msg", "", "", "", "", 10)
+	_, err := s.SearchMessages("msg", "", "", "", "", "", "", 10)
 	if err == nil {
 		t.Error("expected scan error")
 	}

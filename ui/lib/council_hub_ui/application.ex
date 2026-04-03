@@ -34,5 +34,4 @@ defmodule CouncilHubUi.Application do
     CouncilHubUiWeb.Endpoint.config_change(changed, removed)
     :ok
   end
-
 end

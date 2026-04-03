@@ -175,8 +175,10 @@ func (s *Server) ListRooms(project, tag, status, search string) ([]Room, error) 
 		args = append(args, status)
 	}
 	if search != "" {
-		query += ` AND (id LIKE '%' || ? || '%' OR description LIKE '%' || ? || '%' OR tags LIKE '%' || ? || '%')`
-		args = append(args, search, search, search)
+		for _, word := range strings.Fields(search) {
+			query += ` AND (id LIKE '%' || ? || '%' OR description LIKE '%' || ? || '%' OR tags LIKE '%' || ? || '%')`
+			args = append(args, word, word, word)
+		}
 	}
 
 	query += ` ORDER BY updated_at DESC`

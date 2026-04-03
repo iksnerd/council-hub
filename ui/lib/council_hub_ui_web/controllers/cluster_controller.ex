@@ -10,6 +10,8 @@ defmodule CouncilHubUiWeb.ClusterController do
       "message_type" => Map.get(params, "message_type", ""),
       "room_id" => Map.get(params, "room_id", ""),
       "project" => Map.get(params, "project", ""),
+      "since" => Map.get(params, "since", ""),
+      "until" => Map.get(params, "until", ""),
       "limit" => parse_limit(Map.get(params, "limit", "20"))
     }
 
@@ -82,7 +84,10 @@ defmodule CouncilHubUiWeb.ClusterController do
     # Can fetch by message_ids or room_id
     cluster_params =
       if Map.has_key?(params, "message_ids") do
-        ids = String.split(Map.get(params, "message_ids", ""), ",", trim: true) |> Enum.map(&String.trim/1)
+        ids =
+          String.split(Map.get(params, "message_ids", ""), ",", trim: true)
+          |> Enum.map(&String.trim/1)
+
         %{"message_ids" => ids}
       else
         %{
@@ -114,7 +119,6 @@ defmodule CouncilHubUiWeb.ClusterController do
   end
 
   defp parse_limit(val) when is_binary(val) do
-
     case Integer.parse(val) do
       {n, _} when n > 0 and n <= 100 -> n
       _ -> 20

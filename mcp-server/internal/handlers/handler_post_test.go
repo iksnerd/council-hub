@@ -126,3 +126,70 @@ func TestHandlePostToRoomDBError(t *testing.T) {
 		t.Error("expected error")
 	}
 }
+
+func TestHandlePostToRoomEmoji(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-post-emoji")
+
+	content := "Hello 🌍 from Claude 🤖 — distributed systems are 💯"
+	res, _, err := reg.handlePostToRoom(context.Background(), nil, PostToRoomInput{
+		RoomID: "h-post-emoji", Author: "Claude", Message: content,
+	})
+	if err != nil {
+		t.Fatalf("handlePostToRoom error: %v", err)
+	}
+	if !strings.Contains(resultText(res), "posted") {
+		t.Errorf("expected success, got: %s", resultText(res))
+	}
+
+	msgs, err := reg.Server.GetRecentMessages("h-post-emoji", 1)
+	if err != nil {
+		t.Fatalf("GetRecentMessages error: %v", err)
+	}
+	if len(msgs) == 0 || msgs[0].Content != content {
+		t.Errorf("emoji content not round-tripped correctly, got: %q", msgs[0].Content)
+	}
+}
+
+func TestHandlePostToRoomSingleQuote(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-post-quote")
+
+	content := "it's O'Brien's room; don't forget"
+	res, _, err := reg.handlePostToRoom(context.Background(), nil, PostToRoomInput{
+		RoomID: "h-post-quote", Author: "Claude", Message: content,
+	})
+	if err != nil {
+		t.Fatalf("handlePostToRoom error: %v", err)
+	}
+	if !strings.Contains(resultText(res), "posted") {
+		t.Errorf("expected success, got: %s", resultText(res))
+	}
+
+	msgs, err := reg.Server.GetRecentMessages("h-post-quote", 1)
+	if err != nil {
+		t.Fatalf("GetRecentMessages error: %v", err)
+	}
+	if len(msgs) == 0 || msgs[0].Content != content {
+		t.Errorf("single-quote content not round-tripped, got: %q", msgs[0].Content)
+	}
+}
+
+func TestHandleSearchMessagesLikeWildcards(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-post-wildcards")
+	mustPost(t, reg.Server, "h-post-wildcards", "Claude", "normal message here")
+
+	// LIKE wildcards in query should not cause a crash or return unexpected rows
+	res, _, err := reg.handleSearchMessages(context.Background(), nil, SearchMessagesInput{
+		RoomID: "h-post-wildcards", Query: "%_wildcards%",
+	})
+	if err != nil {
+		t.Fatalf("handleSearchMessages error: %v", err)
+	}
+	// The literal string "%_wildcards%" should not match "normal message here"
+	text := resultText(res)
+	if strings.Contains(text, "normal message here") {
+		t.Errorf("LIKE wildcards in query should be treated as literals, got: %s", text)
+	}
+}

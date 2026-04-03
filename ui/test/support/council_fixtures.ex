@@ -44,16 +44,20 @@ defmodule CouncilHubUi.CouncilFixtures do
 
     merged = Map.merge(defaults, attrs)
     # SQLite stores booleans as integers
-    merged = Map.update!(merged, :is_summary, fn
-      true -> 1
-      false -> 0
-      v -> v
-    end)
-    merged = Map.update!(merged, :pinned, fn
-      true -> 1
-      false -> 0
-      v -> v
-    end)
+    merged =
+      Map.update!(merged, :is_summary, fn
+        true -> 1
+        false -> 0
+        v -> v
+      end)
+
+    merged =
+      Map.update!(merged, :pinned, fn
+        true -> 1
+        false -> 0
+        v -> v
+      end)
+
     {1, nil} = Repo.insert_all("messages", [merged])
 
     # Return the last inserted message

@@ -531,6 +531,34 @@ func TestArchiveRoomTranscriptError(t *testing.T) {
 	}
 }
 
+// ========== ListRooms multi-word search ==========
+
+func TestListRoomsMultiWordSearch(t *testing.T) {
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "council-hub-multi", withDescription("Multi agent collaboration platform"))
+
+	// Both words match room ID ("council" and "hub" in "council-hub-multi")
+	rooms, err := s.ListRooms("", "", "", "council hub")
+	if err != nil {
+		t.Fatalf("ListRooms multi-word search failed: %v", err)
+	}
+	if len(rooms) != 1 {
+		t.Errorf("expected 1 room matching 'council hub', got %d", len(rooms))
+	}
+
+	// Both words match description ("agent" and "platform")
+	rooms, _ = s.ListRooms("", "", "", "agent platform")
+	if len(rooms) != 1 {
+		t.Errorf("expected 1 room matching 'agent platform', got %d", len(rooms))
+	}
+
+	// AND logic: both words must match somewhere, "nonexistent" matches nothing
+	rooms, _ = s.ListRooms("", "", "", "nonexistent xyz")
+	if len(rooms) != 0 {
+		t.Errorf("expected 0 rooms matching 'nonexistent xyz', got %d", len(rooms))
+	}
+}
+
 // ========== ListRooms keyword search ==========
 
 func TestListRoomsSearch(t *testing.T) {
@@ -625,7 +653,7 @@ func TestRoomLifecycle(t *testing.T) {
 	}
 
 	// Search across rooms
-	results, _ := s.SearchMessages("refactor", "", "", "", "", 20)
+	results, _ := s.SearchMessages("refactor", "", "", "", "", "", "", 20)
 	if len(results) == 0 {
 		t.Error("expected search results for 'refactor'")
 	}

@@ -153,7 +153,7 @@ func TestSearchMessages(t *testing.T) {
 	s.PostMessage("search-room-2", "Claude", "Database migration complete", "action", "")
 
 	// Search by keyword
-	msgs, err := s.SearchMessages("JWT", "", "", "", "", 20)
+	msgs, err := s.SearchMessages("JWT", "", "", "", "", "", "", 20)
 	if err != nil {
 		t.Fatalf("searchMessages failed: %v", err)
 	}
@@ -162,25 +162,25 @@ func TestSearchMessages(t *testing.T) {
 	}
 
 	// Search by author
-	msgs, _ = s.SearchMessages("", "Claude", "", "", "", 20)
+	msgs, _ = s.SearchMessages("", "Claude", "", "", "", "", "", 20)
 	if len(msgs) != 2 {
 		t.Errorf("expected 2 messages from Claude, got %d", len(msgs))
 	}
 
 	// Search by message type
-	msgs, _ = s.SearchMessages("", "", "review", "", "", 20)
+	msgs, _ = s.SearchMessages("", "", "review", "", "", "", "", 20)
 	if len(msgs) != 1 {
 		t.Errorf("expected 1 review message, got %d", len(msgs))
 	}
 
 	// Search scoped to room
-	msgs, _ = s.SearchMessages("", "Claude", "", "search-room-2", "", 20)
+	msgs, _ = s.SearchMessages("", "Claude", "", "search-room-2", "", "", "", 20)
 	if len(msgs) != 1 {
 		t.Errorf("expected 1 message from Claude in search-room-2, got %d", len(msgs))
 	}
 
 	// No results
-	msgs, _ = s.SearchMessages("nonexistent", "", "", "", "", 20)
+	msgs, _ = s.SearchMessages("nonexistent", "", "", "", "", "", "", 20)
 	if len(msgs) != 0 {
 		t.Errorf("expected 0 messages, got %d", len(msgs))
 	}
@@ -193,7 +193,7 @@ func TestSearchMessagesGlobal(t *testing.T) {
 	s.PostMessage("search-global-a", "Claude", "BEP 44 analysis here", "thought", "")
 	s.PostMessage("search-global-b", "Gemini", "BEP 46 analysis here", "review", "")
 
-	msgs, err := s.SearchMessages("BEP", "", "", "", "", 20)
+	msgs, err := s.SearchMessages("BEP", "", "", "", "", "", "", 20)
 	if err != nil {
 		t.Fatalf("searchMessages failed: %v", err)
 	}
@@ -215,7 +215,7 @@ func TestSearchMessagesSnippetLength(t *testing.T) {
 	longContent := strings.Repeat("A", 400)
 	s.PostMessage("search-snippet", "Claude", longContent, "message", "")
 
-	msgs, err := s.SearchMessages("AAAA", "", "", "search-snippet", "", 1)
+	msgs, err := s.SearchMessages("AAAA", "", "", "search-snippet", "", "", "", 1)
 	if err != nil {
 		t.Fatalf("searchMessages failed: %v", err)
 	}
@@ -507,13 +507,13 @@ func TestSearchMessagesLimitClamping(t *testing.T) {
 	}
 
 	// Negative limit should clamp to 20
-	msgs, _ := s.SearchMessages("keyword", "", "", "", "", -5)
+	msgs, _ := s.SearchMessages("keyword", "", "", "", "", "", "", -5)
 	if len(msgs) != 5 {
 		t.Errorf("expected 5 (all) with clamped limit, got %d", len(msgs))
 	}
 
 	// Over-100 limit should clamp to 20
-	msgs, _ = s.SearchMessages("keyword", "", "", "", "", 200)
+	msgs, _ = s.SearchMessages("keyword", "", "", "", "", "", "", 200)
 	if len(msgs) != 5 {
 		t.Errorf("expected 5 with clamped limit, got %d", len(msgs))
 	}
@@ -785,6 +785,141 @@ func TestGetDigestTNormalization(t *testing.T) {
 	}
 }
 
+// ========== SearchMessages multi-word ==========
+
+func TestSearchMessagesMultiWord(t *testing.T) {
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "mw-search")
+	mustPost(t, s, "mw-search", "Claude", "distributed erlang cluster setup")
+
+	// Both words present in the message — should match
+	msgs, err := s.SearchMessages("distributed cluster", "", "", "", "", "", "", 20)
+	if err != nil {
+		t.Fatalf("SearchMessages multi-word failed: %v", err)
+	}
+	if len(msgs) != 1 {
+		t.Errorf("expected 1 message matching 'distributed cluster', got %d", len(msgs))
+	}
+
+	// AND logic: "nonexistent" is not in the message, so 0 results
+	msgs, _ = s.SearchMessages("distributed nonexistent", "", "", "", "", "", "", 20)
+	if len(msgs) != 0 {
+		t.Errorf("expected 0 messages matching 'distributed nonexistent', got %d", len(msgs))
+	}
+}
+
+// ========== SearchMessages date range ==========
+
+func TestSearchMessagesSince(t *testing.T) {
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "since-room")
+	mustPost(t, s, "since-room", "Claude", "old message")
+
+	// Use yesterday as the since boundary, then post a second message
+	since := time.Now().UTC().Add(-24 * time.Hour).Format("2006-01-02 15:04:05")
+	mustPost(t, s, "since-room", "Gemini", "new message")
+
+	// Both messages are after yesterday
+	msgs, err := s.SearchMessages("", "", "", "since-room", "", since, "", 20)
+	if err != nil {
+		t.Fatalf("SearchMessages since failed: %v", err)
+	}
+	if len(msgs) != 2 {
+		t.Errorf("expected 2 messages since yesterday, got %d", len(msgs))
+	}
+
+	// Use a future timestamp — nothing should match
+	future := time.Now().UTC().Add(24 * time.Hour).Format("2006-01-02 15:04:05")
+	msgs, _ = s.SearchMessages("", "", "", "since-room", "", future, "", 20)
+	if len(msgs) != 0 {
+		t.Errorf("expected 0 messages since future, got %d", len(msgs))
+	}
+}
+
+func TestSearchMessagesUntil(t *testing.T) {
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "until-room")
+	mustPost(t, s, "until-room", "Claude", "first message")
+
+	// Use a past timestamp as until — messages posted "now" should not appear
+	past := time.Now().UTC().Add(-24 * time.Hour).Format("2006-01-02 15:04:05")
+	msgs, err := s.SearchMessages("", "", "", "until-room", "", "", past, 20)
+	if err != nil {
+		t.Fatalf("SearchMessages until failed: %v", err)
+	}
+	if len(msgs) != 0 {
+		t.Errorf("expected 0 messages until yesterday, got %d", len(msgs))
+	}
+
+	// Use a future timestamp — all messages should appear
+	future := time.Now().UTC().Add(24 * time.Hour).Format("2006-01-02 15:04:05")
+	msgs, _ = s.SearchMessages("", "", "", "until-room", "", "", future, 20)
+	if len(msgs) != 1 {
+		t.Errorf("expected 1 message until future, got %d", len(msgs))
+	}
+}
+
+func TestSearchMessagesSinceAndUntil(t *testing.T) {
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "range-room")
+	mustPost(t, s, "range-room", "Claude", "message in range")
+
+	// Window that includes now
+	since := time.Now().UTC().Add(-1 * time.Hour).Format("2006-01-02 15:04:05")
+	until := time.Now().UTC().Add(1 * time.Hour).Format("2006-01-02 15:04:05")
+	msgs, err := s.SearchMessages("", "", "", "range-room", "", since, until, 20)
+	if err != nil {
+		t.Fatalf("SearchMessages since+until failed: %v", err)
+	}
+	if len(msgs) != 1 {
+		t.Errorf("expected 1 message in range, got %d", len(msgs))
+	}
+
+	// Narrow window that excludes everything (yesterday to yesterday)
+	narrowSince := time.Now().UTC().Add(-48 * time.Hour).Format("2006-01-02 15:04:05")
+	narrowUntil := time.Now().UTC().Add(-24 * time.Hour).Format("2006-01-02 15:04:05")
+	msgs, _ = s.SearchMessages("", "", "", "range-room", "", narrowSince, narrowUntil, 20)
+	if len(msgs) != 0 {
+		t.Errorf("expected 0 messages in narrow range, got %d", len(msgs))
+	}
+}
+
+// ========== GetPinnedExcerpts ==========
+
+func TestGetPinnedExcerpts(t *testing.T) {
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "pin-excerpt-1")
+	mustCreateRoom(t, s, "pin-excerpt-2")
+
+	// Pin a message in room 1 only
+	id1 := mustPost(t, s, "pin-excerpt-1", "Claude", "This is pinned content")
+	s.PinMessage("pin-excerpt-1", id1)
+	mustPost(t, s, "pin-excerpt-2", "Gemini", "Not pinned")
+
+	excerpts := s.GetPinnedExcerpts([]string{"pin-excerpt-1", "pin-excerpt-2"})
+	if _, ok := excerpts["pin-excerpt-1"]; !ok {
+		t.Error("expected excerpt for pin-excerpt-1")
+	}
+	if _, ok := excerpts["pin-excerpt-2"]; ok {
+		t.Error("expected no excerpt for pin-excerpt-2")
+	}
+
+	// Test truncation: pin a message with 100+ chars
+	longContent := strings.Repeat("word ", 25) // 125 chars
+	idLong := mustPost(t, s, "pin-excerpt-1", "Claude", longContent)
+	s.PinMessage("pin-excerpt-1", idLong) // replaces existing pin
+
+	excerpts = s.GetPinnedExcerpts([]string{"pin-excerpt-1"})
+	excerpt := excerpts["pin-excerpt-1"]
+	if !strings.HasSuffix(excerpt, "...") {
+		t.Errorf("expected truncated excerpt ending with '...', got: %s", excerpt)
+	}
+	// Excerpt should be at most ~63 chars (60 + "...")
+	if len(excerpt) > 65 {
+		t.Errorf("expected excerpt <= 65 chars, got %d: %s", len(excerpt), excerpt)
+	}
+}
+
 // ========== SearchMessages by project filter ==========
 
 func TestSearchMessagesByProject(t *testing.T) {
@@ -794,7 +929,7 @@ func TestSearchMessagesByProject(t *testing.T) {
 	mustPost(t, s, "proj-room-a", "Claude", "shared keyword")
 	mustPost(t, s, "proj-room-b", "Gemini", "shared keyword")
 
-	msgs, err := s.SearchMessages("keyword", "", "", "", "alpha", 20)
+	msgs, err := s.SearchMessages("keyword", "", "", "", "alpha", "", "", 20)
 	if err != nil {
 		t.Fatalf("SearchMessages with project filter failed: %v", err)
 	}

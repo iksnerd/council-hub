@@ -206,6 +206,8 @@ func (r *Registry) RegisterTools() {
 			"room_id":      prop("string", "Scope search to a specific room"),
 			"project":      prop("string", "Scope search to rooms in this project"),
 			"limit":        prop("string", "Max results to return (default 20, max 100)"),
+			"since":        prop("string", "ISO timestamp (e.g. 2026-04-01T00:00:00). Only return messages at or after this time."),
+			"until":        prop("string", "ISO timestamp (e.g. 2026-04-03T23:59:59). Only return messages at or before this time."),
 			"summary_only": prop("string", "Set to 'true' for compact output: id, author, timestamp, room, type, and 120-char excerpt"),
 			"full_content": prop("string", "Set to 'true' to return the full un-truncated message body instead of a 300-char snippet"),
 			"cluster_wide": prop("string", "Set to 'true' to search across all cluster nodes. Default: local only."),

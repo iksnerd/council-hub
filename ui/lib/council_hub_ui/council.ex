@@ -22,8 +22,12 @@ defmodule CouncilHubUi.Council do
         {:error, "room '#{room_id}' not found"}
 
       room ->
-        messages = Repo.all(from m in Message, where: m.room_id == ^room_id, order_by: [asc: m.id])
-        pinned = Repo.one(from m in Message, where: m.room_id == ^room_id and m.pinned == true, limit: 1)
+        messages =
+          Repo.all(from m in Message, where: m.room_id == ^room_id, order_by: [asc: m.id])
+
+        pinned =
+          Repo.one(from m in Message, where: m.room_id == ^room_id and m.pinned == true, limit: 1)
+
         {:ok, %{room: room, messages: messages, pinned: pinned}}
     end
   end
@@ -117,7 +121,8 @@ defmodule CouncilHubUi.Council do
       |> Enum.map(&format_message/1)
       |> Enum.join("\n")
 
-    footer = "\n---\n*SYSTEM: You are reading the Council log for \"#{room.id}\". Do not repeat previous points. Use `post_to_room` to contribute your next action.*"
+    footer =
+      "\n---\n*SYSTEM: You are reading the Council log for \"#{room.id}\". Do not repeat previous points. Use `post_to_room` to contribute your next action.*"
 
     "#{header}\n---#{system}\n#{body}\n#{footer}\n"
   end
@@ -174,9 +179,19 @@ defmodule CouncilHubUi.Council do
 
     base =
       case Map.get(params, "query") do
-        nil -> base
-        "" -> base
-        q -> from([msg: m] in base, where: like(m.content, ^"%#{q}%"))
+        nil ->
+          base
+
+        "" ->
+          base
+
+        q ->
+          words = String.split(q, ~r/\s+/, trim: true)
+
+          Enum.reduce(words, base, fn word, acc ->
+            pattern = "%#{word}%"
+            from([msg: m] in acc, where: like(m.content, ^pattern))
+          end)
       end
 
     base =
@@ -216,6 +231,20 @@ defmodule CouncilHubUi.Council do
           )
       end
 
+    base =
+      case Map.get(params, "since") do
+        nil -> base
+        "" -> base
+        since -> from([msg: m] in base, where: m.timestamp >= ^since)
+      end
+
+    base =
+      case Map.get(params, "until") do
+        nil -> base
+        "" -> base
+        until_val -> from([msg: m] in base, where: m.timestamp <= ^until_val)
+      end
+
     Repo.all(
       from [msg: m] in base,
         order_by: [desc: m.timestamp],
@@ -231,10 +260,12 @@ defmodule CouncilHubUi.Council do
     since =
       case NaiveDateTime.from_iso8601(since_str) do
         {:ok, dt} -> dt
-        _ -> NaiveDateTime.utc_now() |> NaiveDateTime.add(-86400, :second) # fallback 24h
+        # fallback 24h
+        _ -> NaiveDateTime.utc_now() |> NaiveDateTime.add(-86400, :second)
       end
 
     base_rooms = from(r in Room, as: :room)
+
     base_rooms =
       case project do
         nil -> base_rooms
@@ -247,16 +278,28 @@ defmodule CouncilHubUi.Council do
     rooms = Repo.all(from [room: r] in base_rooms, select: {r.id, r.project})
 
     Enum.reduce(rooms, [], fn {rid, _}, acc ->
-      count = Repo.one(from m in Message, where: m.room_id == ^rid and m.timestamp > ^since, select: count(m.id))
+      count =
+        Repo.one(
+          from m in Message,
+            where: m.room_id == ^rid and m.timestamp > ^since,
+            select: count(m.id)
+        )
+
       if count > 0 do
-        latest = Repo.one(from m in Message, where: m.room_id == ^rid, order_by: [desc: m.timestamp], limit: 1)
+        latest =
+          Repo.one(
+            from m in Message, where: m.room_id == ^rid, order_by: [desc: m.timestamp], limit: 1
+          )
+
         content = if latest, do: latest.content, else: ""
-        
+
         # Simple extraction logic matching Go
         excerpt = content
+
         excerpt =
           if String.contains?(excerpt, "# ") do
             parts = String.split(excerpt, "# ")
+
             if length(parts) > 1 do
               parts |> Enum.at(1) |> String.split("\n") |> List.first() |> String.trim()
             else
@@ -264,8 +307,10 @@ defmodule CouncilHubUi.Council do
             end
           else
             first_sentence = String.split(excerpt, ". ") |> List.first()
+
             if first_sentence && String.length(first_sentence) > 120 do
               truncated = String.slice(first_sentence, 0, 120)
+
               case Regex.run(~r/.*(?=\s)/, truncated) do
                 [matched] -> matched <> "..."
                 nil -> truncated <> "..."
@@ -290,7 +335,9 @@ defmodule CouncilHubUi.Council do
 
   @doc "Fetch recent messages for a room with a limit"
   def get_recent_messages(room_id, limit) do
-    Repo.all(from m in Message, where: m.room_id == ^room_id, order_by: [desc: m.id], limit: ^limit)
+    Repo.all(
+      from m in Message, where: m.room_id == ^room_id, order_by: [desc: m.id], limit: ^limit
+    )
   end
 
   @doc """
@@ -336,12 +383,18 @@ defmodule CouncilHubUi.Council do
           base
 
         s ->
-          from([room: r] in base,
-            where:
-              like(r.id, ^"%#{s}%") or
-                like(r.description, ^"%#{s}%") or
-                like(r.tags, ^"%#{s}%")
-          )
+          words = String.split(s, ~r/\s+/, trim: true)
+
+          Enum.reduce(words, base, fn word, q ->
+            pattern = "%#{word}%"
+
+            from([room: r] in q,
+              where:
+                like(r.id, ^pattern) or
+                  like(r.description, ^pattern) or
+                  like(r.tags, ^pattern)
+            )
+          end)
       end
 
     Repo.all(from [room: r] in base, order_by: [desc: r.updated_at])

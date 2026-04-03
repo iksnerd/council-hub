@@ -27,6 +27,8 @@ type SearchMessagesInput struct {
 	RoomID      string `json:"room_id"`
 	Project     string `json:"project"`
 	Limit       string `json:"limit"`
+	Since       string `json:"since"`
+	Until       string `json:"until"`
 	SummaryOnly string `json:"summary_only"`
 	FullContent string `json:"full_content"`
 	ClusterWide string `json:"cluster_wide"`
@@ -123,7 +125,7 @@ func (r *Registry) handleSearchMessages(ctx context.Context, req *mcp.CallToolRe
 		}
 	}
 
-	messages, err := r.Server.SearchMessages(args.Query, args.Author, args.MessageType, args.RoomID, args.Project, limit)
+	messages, err := r.Server.SearchMessages(args.Query, args.Author, args.MessageType, args.RoomID, args.Project, args.Since, args.Until, limit)
 	if err != nil {
 		r.Server.Logger.Error("Failed to search messages", "error", err)
 		return nil, ToolOutput{}, err

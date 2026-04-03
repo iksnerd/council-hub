@@ -23,7 +23,7 @@ func TestConcurrentReads(t *testing.T) {
 			if err != nil {
 				t.Errorf("concurrent getTranscript failed: %v", err)
 			}
-			_, err = s.SearchMessages("msg", "", "", "", "", 10)
+			_, err = s.SearchMessages("msg", "", "", "", "", "", "", 10)
 			if err != nil {
 				t.Errorf("concurrent searchMessages failed: %v", err)
 			}

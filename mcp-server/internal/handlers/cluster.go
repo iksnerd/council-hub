@@ -423,6 +423,8 @@ func (r *Registry) handleSearchMessagesCluster(args SearchMessagesInput) (*mcp.C
 		"message_type": args.MessageType,
 		"room_id":      args.RoomID,
 		"project":      args.Project,
+		"since":        args.Since,
+		"until":        args.Until,
 		"limit":        args.Limit,
 	}
 

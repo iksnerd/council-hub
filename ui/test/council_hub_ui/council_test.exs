@@ -48,7 +48,8 @@ defmodule CouncilHubUi.CouncilTest do
     end
 
     test "returns error for nonexistent room" do
-      assert {:error, "room 'nonexistent' not found"} = Council.get_room_with_messages("nonexistent")
+      assert {:error, "room 'nonexistent' not found"} =
+               Council.get_room_with_messages("nonexistent")
     end
   end
 
@@ -372,6 +373,46 @@ defmodule CouncilHubUi.CouncilTest do
       results = Council.search_messages(%{"room_id" => "sm-limit", "limit" => 2})
       assert length(results) == 2
     end
+
+    test "filters by since date" do
+      room = create_room(%{id: "sm-since"})
+      yesterday = NaiveDateTime.utc_now() |> NaiveDateTime.add(-86400, :second)
+      tomorrow = NaiveDateTime.utc_now() |> NaiveDateTime.add(86400, :second)
+
+      create_message(%{
+        room_id: room.id,
+        content: "recent msg",
+        timestamp: NaiveDateTime.utc_now()
+      })
+
+      # since yesterday -> found
+      results = Council.search_messages(%{"room_id" => "sm-since", "since" => yesterday})
+      assert length(results) == 1
+
+      # since tomorrow -> not found
+      results = Council.search_messages(%{"room_id" => "sm-since", "since" => tomorrow})
+      assert results == []
+    end
+
+    test "filters by until date" do
+      room = create_room(%{id: "sm-until"})
+      yesterday = NaiveDateTime.utc_now() |> NaiveDateTime.add(-86400, :second)
+      tomorrow = NaiveDateTime.utc_now() |> NaiveDateTime.add(86400, :second)
+
+      create_message(%{
+        room_id: room.id,
+        content: "recent msg",
+        timestamp: NaiveDateTime.utc_now()
+      })
+
+      # until tomorrow -> found
+      results = Council.search_messages(%{"room_id" => "sm-until", "until" => tomorrow})
+      assert length(results) == 1
+
+      # until yesterday -> not found
+      results = Council.search_messages(%{"room_id" => "sm-until", "until" => yesterday})
+      assert results == []
+    end
   end
 
   describe "list_rooms_filtered/1" do
@@ -409,6 +450,20 @@ defmodule CouncilHubUi.CouncilTest do
       results = Council.list_rooms_filtered(%{"search" => "auth"})
       assert length(results) == 1
       assert hd(results).id == "auth-migration"
+    end
+
+    test "multi-word search matches all words (AND logic)" do
+      create_room(%{id: "council-hub-test", description: "Main hub room", tags: "mcp"})
+      create_room(%{id: "unrelated-room", description: "Other", tags: ""})
+
+      # Both words present in the id
+      results = Council.list_rooms_filtered(%{"search" => "council hub"})
+      assert length(results) == 1
+      assert hd(results).id == "council-hub-test"
+
+      # One word doesn't match anything relevant
+      results = Council.list_rooms_filtered(%{"search" => "council nonexistent"})
+      assert results == []
     end
 
     test "returns all rooms with empty filters" do
@@ -456,9 +511,29 @@ defmodule CouncilHubUi.CouncilTest do
 
   describe "format_transcript/2" do
     test "formats room header and messages" do
-      room = create_room(%{id: "fmt-room", description: "Format test", project: "proj", tech_stack: "Go", tags: "tag1", status: "active"})
-      create_message(%{room_id: room.id, author: "Claude", content: "Hello", message_type: "thought"})
-      create_message(%{room_id: room.id, author: "Gemini", content: "World", message_type: "message"})
+      room =
+        create_room(%{
+          id: "fmt-room",
+          description: "Format test",
+          project: "proj",
+          tech_stack: "Go",
+          tags: "tag1",
+          status: "active"
+        })
+
+      create_message(%{
+        room_id: room.id,
+        author: "Claude",
+        content: "Hello",
+        message_type: "thought"
+      })
+
+      create_message(%{
+        room_id: room.id,
+        author: "Gemini",
+        content: "World",
+        message_type: "message"
+      })
 
       messages = Council.list_messages_for_room(room.id)
       transcript = Council.format_transcript(room, messages)
@@ -475,7 +550,13 @@ defmodule CouncilHubUi.CouncilTest do
 
     test "formats summary messages" do
       room = create_room(%{id: "sum-fmt", description: "Summary format"})
-      create_message(%{room_id: room.id, author: "System", content: "Summary here", is_summary: true})
+
+      create_message(%{
+        room_id: room.id,
+        author: "System",
+        content: "Summary here",
+        is_summary: true
+      })
 
       messages = Council.list_messages_for_room(room.id)
       transcript = Council.format_transcript(room, messages)
@@ -487,7 +568,14 @@ defmodule CouncilHubUi.CouncilTest do
     test "formats reply_to" do
       room = create_room(%{id: "reply-fmt", description: "Reply format"})
       m1 = create_message(%{room_id: room.id, author: "Claude", content: "Original"})
-      create_message(%{room_id: room.id, author: "Gemini", content: "Reply", message_type: "review", reply_to: m1.id})
+
+      create_message(%{
+        room_id: room.id,
+        author: "Gemini",
+        content: "Reply",
+        message_type: "review",
+        reply_to: m1.id
+      })
 
       messages = Council.list_messages_for_room(room.id)
       transcript = Council.format_transcript(room, messages)

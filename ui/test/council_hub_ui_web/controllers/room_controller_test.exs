@@ -6,8 +6,20 @@ defmodule CouncilHubUiWeb.RoomControllerTest do
   describe "export" do
     test "returns markdown transcript as download", %{conn: conn} do
       room = create_room(%{id: "export-room", description: "Export test", project: "proj"})
-      create_message(%{room_id: room.id, author: "Claude", content: "Hello world", message_type: "thought"})
-      create_message(%{room_id: room.id, author: "Gemini", content: "Reply here", message_type: "review"})
+
+      create_message(%{
+        room_id: room.id,
+        author: "Claude",
+        content: "Hello world",
+        message_type: "thought"
+      })
+
+      create_message(%{
+        room_id: room.id,
+        author: "Gemini",
+        content: "Reply here",
+        message_type: "review"
+      })
 
       conn = get(conn, "/rooms/export-room/export")
 
@@ -35,7 +47,14 @@ defmodule CouncilHubUiWeb.RoomControllerTest do
     test "includes reply_to in transcript", %{conn: conn} do
       room = create_room(%{id: "reply-export", description: "Reply test"})
       m1 = create_message(%{room_id: room.id, author: "Claude", content: "Original"})
-      create_message(%{room_id: room.id, author: "Gemini", content: "Reply", message_type: "review", reply_to: m1.id})
+
+      create_message(%{
+        room_id: room.id,
+        author: "Gemini",
+        content: "Reply",
+        message_type: "review",
+        reply_to: m1.id
+      })
 
       conn = get(conn, "/rooms/reply-export/export")
       assert conn.resp_body =~ "re: ##{String.slice(m1.id, 0, 8)}"

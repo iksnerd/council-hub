@@ -240,14 +240,16 @@ func (s *Server) GetLatestPerType(roomID string) ([]Message, error) {
 	return msgs, rows.Err()
 }
 
-func (s *Server) SearchMessages(query, author, messageType, roomID, project string, limit int) ([]Message, error) {
+func (s *Server) SearchMessages(query, author, messageType, roomID, project, since, until string, limit int) ([]Message, error) {
 	where := `WHERE 1=1`
 	var args []any
 	join := ""
 
 	if query != "" {
-		where += ` AND m.content LIKE '%' || ? || '%'`
-		args = append(args, query)
+		for _, word := range strings.Fields(query) {
+			where += ` AND m.content LIKE '%' || ? || '%'`
+			args = append(args, word)
+		}
 	}
 	if author != "" {
 		where += ` AND m.author = ?`
@@ -265,6 +267,14 @@ func (s *Server) SearchMessages(query, author, messageType, roomID, project stri
 		join = ` JOIN rooms r ON m.room_id = r.id`
 		where += ` AND r.project = ?`
 		args = append(args, project)
+	}
+	if since != "" {
+		where += ` AND m.timestamp >= ?`
+		args = append(args, since)
+	}
+	if until != "" {
+		where += ` AND m.timestamp <= ?`
+		args = append(args, until)
 	}
 
 	if limit <= 0 || limit > 100 {

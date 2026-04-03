@@ -142,8 +142,7 @@ defmodule CouncilHubUiWeb.CouncilComponents do
             download={"#{@room.id}.md"}
             class="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-gray-500/10 text-gray-400 text-xs border border-gray-500/15 hover:bg-gray-500/20 transition-colors"
           >
-            <span class="hero-arrow-down-tray w-3.5 h-3.5"></span>
-            export
+            <span class="hero-arrow-down-tray w-3.5 h-3.5"></span> export
           </a>
           <button
             :if={present?(@room.system_prompt)}
@@ -152,7 +151,7 @@ defmodule CouncilHubUiWeb.CouncilComponents do
             aria-expanded={to_string(@show_system_prompt)}
             class="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-amber-500/10 text-amber-400 text-xs border border-amber-500/15 hover:bg-amber-500/20 transition-colors cursor-pointer"
           >
-            <span class="text-[10px]"><%= if @show_system_prompt, do: "▼", else: "▶" %></span>
+            <span class="text-[10px]">{if @show_system_prompt, do: "▼", else: "▶"}</span>
             system prompt
           </button>
         </div>
@@ -175,7 +174,13 @@ defmodule CouncilHubUiWeb.CouncilComponents do
 
   def message_bubble(assigns) do
     ~H"""
-    <div class={["message-block group", if(Map.get(@msg, :pinned, false), do: "border-l-2 border-amber-500/50 pl-1 bg-amber-500/[0.03] rounded-r-lg", else: "")]}>
+    <div class={[
+      "message-block group",
+      if(Map.get(@msg, :pinned, false),
+        do: "border-l-2 border-amber-500/50 pl-1 bg-amber-500/[0.03] rounded-r-lg",
+        else: ""
+      )
+    ]}>
       <div class="flex gap-3">
         <div
           class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 text-[11px] font-bold border mt-0.5"
@@ -189,7 +194,10 @@ defmodule CouncilHubUiWeb.CouncilComponents do
             <span class="text-[13px] font-bold" style={"color: #{author_hex(@msg.author)}"}>
               {@msg.author}
             </span>
-            <span class={["inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border", type_color(@msg.message_type)]}>
+            <span class={[
+              "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border",
+              type_color(@msg.message_type)
+            ]}>
               <span class={[type_icon(@msg.message_type), "w-3 h-3"]}></span>
               {type_label(@msg.message_type)}
             </span>
@@ -197,15 +205,14 @@ defmodule CouncilHubUiWeb.CouncilComponents do
               :if={Map.get(@msg, :pinned, false)}
               class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30"
             >
-              <span class="hero-bookmark-solid w-3 h-3"></span>
-              PINNED
+              <span class="hero-bookmark-solid w-3 h-3"></span> PINNED
             </span>
             <span
               :if={Map.get(@msg, :reply_to, "") != ""}
               class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-cyan-500/10 text-cyan-400 border border-cyan-500/20"
             >
               <span class="hero-arrow-uturn-left w-3 h-3"></span>
-              re: #<%= String.slice(Map.get(@msg, :reply_to, ""), 0, 8) %>
+              re: #{String.slice(Map.get(@msg, :reply_to, ""), 0, 8)}
             </span>
             <span class="text-[10px] text-gray-600 font-mono tabular-nums">
               {format_timestamp(@msg.timestamp)}
@@ -259,7 +266,7 @@ defmodule CouncilHubUiWeb.CouncilComponents do
         <span class="text-[11px] font-bold text-amber-400 uppercase tracking-wider">Summary</span>
         <span class="text-[10px] text-gray-600 font-mono">{format_timestamp(@msg.timestamp)}</span>
         <span class="text-gray-600 text-[10px] ml-auto group-hover:text-gray-400 transition-colors">
-          <%= if @collapsed, do: "▶ expand", else: "▼ collapse" %>
+          {if @collapsed, do: "▶ expand", else: "▼ collapse"}
         </span>
       </button>
       <div class={[

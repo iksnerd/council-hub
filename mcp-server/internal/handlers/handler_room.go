@@ -410,40 +410,52 @@ func (r *Registry) handleListRooms(ctx context.Context, req *mcp.CallToolRequest
 
 	// Compact is the default. Verbose mode is opt-in via verbose=true.
 	// Legacy compact=false maps to verbose for backwards compat.
+	// Collect room IDs for batch queries
+	roomIDs := make([]string, len(rooms))
+	for i, rm := range rooms {
+		roomIDs[i] = rm.ID
+	}
+	msgCounts := r.Server.GetMessageCounts()
+	pinnedExcerpts := r.Server.GetPinnedExcerpts(roomIDs)
+
 	useVerbose := args.Verbose == "true" || args.Compact == "false"
 	if !useVerbose {
-		// Fetch message counts for compact display
-		msgCounts := r.Server.GetMessageCounts()
-
-		for _, r := range rooms {
-			topic := r.Description
+		for _, rm := range rooms {
+			topic := rm.Description
 			if len(topic) > 60 {
 				topic = topic[:60] + "..."
 			}
-			project := r.Project
+			project := rm.Project
 			if project == "" {
 				project = "-"
 			}
-			count := msgCounts[r.ID]
-			fmt.Fprintf(&b, "- **%s** | %s | %s | %d msgs | %s | %s\n", r.ID, project, r.Status, count, topic, r.UpdatedAt.Format("2006-01-02 15:04"))
+			count := msgCounts[rm.ID]
+			if excerpt, ok := pinnedExcerpts[rm.ID]; ok {
+				fmt.Fprintf(&b, "- **%s** | %s | %s | %d msgs | 📌 %s | %s | %s\n", rm.ID, project, rm.Status, count, excerpt, topic, rm.UpdatedAt.Format("2006-01-02 15:04"))
+			} else {
+				fmt.Fprintf(&b, "- **%s** | %s | %s | %d msgs | %s | %s\n", rm.ID, project, rm.Status, count, topic, rm.UpdatedAt.Format("2006-01-02 15:04"))
+			}
 		}
 	} else {
-		for _, r := range rooms {
-			fmt.Fprintf(&b, "- **%s** [%s]", r.ID, r.Status)
-			if r.Project != "" {
-				fmt.Fprintf(&b, " | project: %s", r.Project)
+		for _, rm := range rooms {
+			fmt.Fprintf(&b, "- **%s** [%s]", rm.ID, rm.Status)
+			if rm.Project != "" {
+				fmt.Fprintf(&b, " | project: %s", rm.Project)
 			}
-			if r.Tags != "" {
-				fmt.Fprintf(&b, " | tags: %s", r.Tags)
+			if rm.Tags != "" {
+				fmt.Fprintf(&b, " | tags: %s", rm.Tags)
 			}
-			fmt.Fprintf(&b, "\n  %s\n", r.Description)
-			if r.TechStack != "" {
-				fmt.Fprintf(&b, "  Tech: %s\n", r.TechStack)
+			fmt.Fprintf(&b, "\n  %s\n", rm.Description)
+			if excerpt, ok := pinnedExcerpts[rm.ID]; ok {
+				fmt.Fprintf(&b, "  📌 %s\n", excerpt)
 			}
-			if r.RelatedRooms != "" {
-				fmt.Fprintf(&b, "  Related: %s\n", r.RelatedRooms)
+			if rm.TechStack != "" {
+				fmt.Fprintf(&b, "  Tech: %s\n", rm.TechStack)
 			}
-			fmt.Fprintf(&b, "  Last activity: %s\n", r.UpdatedAt.Format("2006-01-02 15:04:05"))
+			if rm.RelatedRooms != "" {
+				fmt.Fprintf(&b, "  Related: %s\n", rm.RelatedRooms)
+			}
+			fmt.Fprintf(&b, "  Last activity: %s\n", rm.UpdatedAt.Format("2006-01-02 15:04:05"))
 		}
 	}
 

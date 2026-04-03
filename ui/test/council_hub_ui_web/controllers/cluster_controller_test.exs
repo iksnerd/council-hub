@@ -30,7 +30,13 @@ defmodule CouncilHubUiWeb.ClusterControllerTest do
 
     test "results include all expected fields", %{conn: conn} do
       room = create_room(%{id: "api-fields"})
-      create_message(%{room_id: room.id, author: "Claude", content: "test fields", message_type: "decision"})
+
+      create_message(%{
+        room_id: room.id,
+        author: "Claude",
+        content: "test fields",
+        message_type: "decision"
+      })
 
       conn =
         conn
@@ -51,9 +57,27 @@ defmodule CouncilHubUiWeb.ClusterControllerTest do
 
     test "filters by author and message_type", %{conn: conn} do
       room = create_room(%{id: "api-filter"})
-      create_message(%{room_id: room.id, author: "Claude", content: "claude thought", message_type: "thought"})
-      create_message(%{room_id: room.id, author: "Gemini", content: "gemini thought", message_type: "thought"})
-      create_message(%{room_id: room.id, author: "Claude", content: "claude msg", message_type: "message"})
+
+      create_message(%{
+        room_id: room.id,
+        author: "Claude",
+        content: "claude thought",
+        message_type: "thought"
+      })
+
+      create_message(%{
+        room_id: room.id,
+        author: "Gemini",
+        content: "gemini thought",
+        message_type: "thought"
+      })
+
+      create_message(%{
+        room_id: room.id,
+        author: "Claude",
+        content: "claude msg",
+        message_type: "message"
+      })
 
       conn =
         conn
@@ -76,7 +100,10 @@ defmodule CouncilHubUiWeb.ClusterControllerTest do
       conn =
         conn
         |> put_req_header("content-type", "application/json")
-        |> post("/api/internal/cluster/search_messages", %{"room_id" => "api-limit", "limit" => "2"})
+        |> post("/api/internal/cluster/search_messages", %{
+          "room_id" => "api-limit",
+          "limit" => "2"
+        })
 
       %{"results" => results} = json_response(conn, 200)
       assert length(results) == 2
@@ -98,7 +125,13 @@ defmodule CouncilHubUiWeb.ClusterControllerTest do
     end
 
     test "room results include all expected fields", %{conn: conn} do
-      create_room(%{id: "api-room-fields", project: "p", tech_stack: "Go", tags: "tag1", description: "desc"})
+      create_room(%{
+        id: "api-room-fields",
+        project: "p",
+        tech_stack: "Go",
+        tags: "tag1",
+        description: "desc"
+      })
 
       conn =
         conn

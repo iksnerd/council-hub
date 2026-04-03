@@ -1051,3 +1051,24 @@ func TestFormatClusterWarnings(t *testing.T) {
 		t.Error("should not add separator when no warnings")
 	}
 }
+
+func TestClusterCallTimeout(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(300 * time.Millisecond)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	reg := &Registry{
+		HTTPClient: &http.Client{Timeout: 50 * time.Millisecond},
+		PhoenixURL: server.URL,
+	}
+
+	_, _, err := reg.clusterCall("search_messages", map[string]any{"query": "test"})
+	if err == nil {
+		t.Fatal("expected timeout error")
+	}
+	if !strings.Contains(err.Error(), "cluster call") {
+		t.Errorf("expected 'cluster call' in error, got: %s", err.Error())
+	}
+}

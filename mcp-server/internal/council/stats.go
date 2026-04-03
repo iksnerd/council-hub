@@ -159,6 +159,48 @@ func (s *Server) GetMessageCounts() map[string]int {
 	return counts
 }
 
+// GetPinnedExcerpts returns a map of room_id -> truncated pinned message content.
+func (s *Server) GetPinnedExcerpts(roomIDs []string) map[string]string {
+	excerpts := make(map[string]string)
+	if len(roomIDs) == 0 {
+		return excerpts
+	}
+
+	placeholders := make([]string, len(roomIDs))
+	args := make([]any, len(roomIDs))
+	for i, id := range roomIDs {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+
+	query := fmt.Sprintf(
+		`SELECT room_id, content FROM messages WHERE pinned = 1 AND room_id IN (%s)`,
+		strings.Join(placeholders, ","),
+	)
+	rows, err := s.DB.Query(query, args...)
+	if err != nil {
+		return excerpts
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var roomID, content string
+		if err := rows.Scan(&roomID, &content); err != nil {
+			continue
+		}
+		content = strings.ReplaceAll(content, "\n", " ")
+		if len(content) > 60 {
+			truncated := content[:60]
+			if i := strings.LastIndex(truncated, " "); i > 40 {
+				truncated = truncated[:i]
+			}
+			content = truncated + "..."
+		}
+		excerpts[roomID] = content
+	}
+	return excerpts
+}
+
 // GetRoomsNeedingSummary returns room IDs with more than threshold unsummarized messages.
 func (s *Server) GetRoomsNeedingSummary(threshold int) ([]string, error) {
 	rows, err := s.DB.Query(`

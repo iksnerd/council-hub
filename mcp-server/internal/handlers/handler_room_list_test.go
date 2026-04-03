@@ -241,6 +241,37 @@ func TestHandleListRoomsSearchWithCompact(t *testing.T) {
 	}
 }
 
+// ========== list_rooms with pinned excerpts ==========
+
+func TestHandleListRoomsWithPinnedExcerpt(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-pin-room")
+	id := mustPost(t, reg.Server, "h-pin-room", "Claude", "Important decision about architecture")
+	reg.Server.PinMessage("h-pin-room", id)
+
+	// Default (compact) mode
+	res, _, _ := reg.handleListRooms(context.Background(), nil, ListRoomsInput{})
+	text := resultText(res)
+	if !strings.Contains(text, "\xf0\x9f\x93\x8c") { // 📌 in UTF-8
+		t.Errorf("expected pinned emoji in compact output, got: %s", text)
+	}
+	if !strings.Contains(text, "Important decision") {
+		t.Errorf("expected pinned content excerpt, got: %s", text)
+	}
+}
+
+func TestHandleListRoomsNoPinned(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-nopin-room")
+	mustPost(t, reg.Server, "h-nopin-room", "Claude", "Just a regular message")
+
+	res, _, _ := reg.handleListRooms(context.Background(), nil, ListRoomsInput{})
+	text := resultText(res)
+	if strings.Contains(text, "\xf0\x9f\x93\x8c") { // 📌 in UTF-8
+		t.Errorf("expected no pinned emoji in output, got: %s", text)
+	}
+}
+
 func TestHandleListRoomsDBError(t *testing.T) {
 	reg := setupHandlerServer(t)
 	reg.Server.DB.Close()

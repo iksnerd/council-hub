@@ -79,7 +79,9 @@ defmodule CouncilHubUi.Cluster do
   Returns %{results: [message_maps], warnings: [strings]}.
   """
   def get_messages(params) do
-    func = if Map.has_key?(params, "message_ids"), do: :get_messages_by_ids, else: :get_recent_messages
+    func =
+      if Map.has_key?(params, "message_ids"), do: :get_messages_by_ids, else: :get_recent_messages
+
     args =
       if func == :get_messages_by_ids do
         [Map.get(params, "message_ids")]
@@ -103,7 +105,8 @@ defmodule CouncilHubUi.Cluster do
   Returns %{results: [digest_maps], warnings: [strings]}.
   """
   def get_digest(params) do
-    {results, warnings} = fan_out(:get_project_digest, [Map.get(params, "project", ""), Map.get(params, "since", "")])
+    {results, warnings} =
+      fan_out(:get_project_digest, [Map.get(params, "project", ""), Map.get(params, "since", "")])
 
     merged =
       results
@@ -115,7 +118,13 @@ defmodule CouncilHubUi.Cluster do
         total_count = Enum.reduce(items, 0, &(&1.new_message_count + &2))
         latest_excerpt = List.first(items).latest_message_excerpt
         source_node = List.first(items).source_node
-        %{room_id: room_id, new_message_count: total_count, latest_message_excerpt: latest_excerpt, source_node: source_node}
+
+        %{
+          room_id: room_id,
+          new_message_count: total_count,
+          latest_message_excerpt: latest_excerpt,
+          source_node: source_node
+        }
       end)
       |> Enum.sort_by(& &1.new_message_count, :desc)
 

@@ -46,16 +46,35 @@ defmodule CouncilHubUi.ClusterTest do
 
     test "combines multiple filters" do
       room = create_room(%{id: "cluster-multi", project: "proj-multi"})
-      create_message(%{room_id: room.id, author: "Claude", content: "decision about auth", message_type: "decision"})
-      create_message(%{room_id: room.id, author: "Claude", content: "thought about auth", message_type: "thought"})
-      create_message(%{room_id: room.id, author: "Gemini", content: "decision about db", message_type: "decision"})
 
-      result = Cluster.search_messages(%{
-        "query" => "auth",
-        "author" => "Claude",
-        "message_type" => "decision",
-        "room_id" => "cluster-multi"
+      create_message(%{
+        room_id: room.id,
+        author: "Claude",
+        content: "decision about auth",
+        message_type: "decision"
       })
+
+      create_message(%{
+        room_id: room.id,
+        author: "Claude",
+        content: "thought about auth",
+        message_type: "thought"
+      })
+
+      create_message(%{
+        room_id: room.id,
+        author: "Gemini",
+        content: "decision about db",
+        message_type: "decision"
+      })
+
+      result =
+        Cluster.search_messages(%{
+          "query" => "auth",
+          "author" => "Claude",
+          "message_type" => "decision",
+          "room_id" => "cluster-multi"
+        })
 
       assert length(result.results) == 1
       assert hd(result.results).content =~ "decision about auth"
@@ -179,7 +198,7 @@ defmodule CouncilHubUi.ClusterTest do
       create_message(%{room_id: room.id, content: "Second", author: "Gemini", pinned: true})
 
       result = Cluster.read_transcript(room.id)
-      
+
       assert result.results != nil
       assert result.results.room.id == room.id
       assert length(result.results.messages) == 2
@@ -189,7 +208,7 @@ defmodule CouncilHubUi.ClusterTest do
 
     test "returns nil results for nonexistent room" do
       result = Cluster.read_transcript("nonexistent-room")
-      
+
       assert result.results == nil
       assert length(result.warnings) == 1
       assert hd(result.warnings) =~ "not found"
@@ -204,7 +223,7 @@ defmodule CouncilHubUi.ClusterTest do
       create_message(%{room_id: room.id, content: "Ignored message"})
 
       result = Cluster.get_messages(%{"message_ids" => [m1.id, m2.id]})
-      
+
       assert length(result.results) == 2
       contents = Enum.map(result.results, & &1.content)
       assert "Message 1" in contents
@@ -218,7 +237,7 @@ defmodule CouncilHubUi.ClusterTest do
       create_message(%{room_id: room.id, content: "Third"})
 
       result = Cluster.get_messages(%{"room_id" => room.id, "limit" => 2})
-      
+
       assert length(result.results) == 2
       contents = Enum.map(result.results, & &1.content)
       # order_by: [desc: m.id] -> limit 2 -> [Third, Second] -> sort_by(asc) -> [Second, Third]
@@ -233,13 +252,17 @@ defmodule CouncilHubUi.ClusterTest do
   describe "get_digest/1" do
     test "returns aggregated digest for a project" do
       create_room(%{id: "cluster-digest-room", project: "test-proj"})
+
       # Use an old timestamp so messages don't get filtered out by default 24h window in CI if tests run slow
-      since = NaiveDateTime.utc_now() |> NaiveDateTime.add(-86400, :second) |> NaiveDateTime.to_iso8601()
-      
+      since =
+        NaiveDateTime.utc_now()
+        |> NaiveDateTime.add(-86400, :second)
+        |> NaiveDateTime.to_iso8601()
+
       create_message(%{room_id: "cluster-digest-room", content: "Action required"})
 
       result = Cluster.get_digest(%{"project" => "test-proj", "since" => since})
-      
+
       assert length(result.results) == 1
       assert hd(result.results).room_id == "cluster-digest-room"
       assert hd(result.results).new_message_count == 1
@@ -250,20 +273,84 @@ defmodule CouncilHubUi.ClusterTest do
 
   describe "fan_out failure simulation" do
     test "handles raw :erpc error tuples gracefully" do
-      # To directly test the fan_out pattern match logic for erpc errors without 
-      # spinning up and crashing actual BEAM nodes, we can call the private 
+      # To directly test the fan_out pattern match logic for erpc errors without
+      # spinning up and crashing actual BEAM nodes, we can call the private
       # fan_out function using an apply trick or by mocking Node.list.
       # Since we don't want to mock the standard library, we'll test the one
       # public error path we can trigger easily: bad arguments to local_query.
-      
+
       # local_query/2 uses apply(Council, func, args). If we pass a bad func:
       nodes = [Node.self()]
-      
+
       # When erpc fails (e.g. bad function arity), it returns {:error, {:exception, %UndefinedFunctionError{...}}}
       # OR sometimes [error: {:exception, :undef, ...}]
-      replies = :erpc.multicall(nodes, CouncilHubUi.Cluster, :local_query, [:nonexistent_func, []])
-      
+      replies =
+        :erpc.multicall(nodes, CouncilHubUi.Cluster, :local_query, [:nonexistent_func, []])
+
       assert [{:error, {:exception, :undef, _}}] = replies
+    end
+  end
+
+  describe "local_query/2" do
+    test "executes valid Council function and returns result" do
+      create_room(%{id: "lq-room"})
+      result = Cluster.local_query(:list_rooms_filtered, [%{}])
+      assert is_list(result)
+      ids = Enum.map(result, & &1.id)
+      assert "lq-room" in ids
+    end
+
+    test "raises on unknown function (erpc catches this)" do
+      assert_raise UndefinedFunctionError, fn ->
+        Cluster.local_query(:totally_unknown_func_xyz, [])
+      end
+    end
+  end
+
+  describe "get_messages edge cases" do
+    test "returns empty results for empty message_ids list" do
+      result = Cluster.get_messages(%{"message_ids" => []})
+      assert result.results == []
+      assert result.warnings == []
+    end
+
+    test "ignores unknown message IDs gracefully" do
+      result = Cluster.get_messages(%{"message_ids" => ["nonexistent-id-abc"]})
+      assert result.results == []
+      assert result.warnings == []
+    end
+
+    test "deduplicates messages when same ID requested twice" do
+      room = create_room(%{id: "cluster-dedup"})
+      msg = create_message(%{room_id: room.id, content: "dedup me"})
+
+      result = Cluster.get_messages(%{"message_ids" => [msg.id, msg.id]})
+      assert length(result.results) == 1
+    end
+  end
+
+  describe "get_digest edge cases" do
+    test "returns empty results for unknown project" do
+      result = Cluster.get_digest(%{"project" => "no-such-project-xyz", "since" => ""})
+      assert result.results == []
+      assert result.warnings == []
+    end
+
+    test "returns results sorted by new_message_count descending" do
+      create_room(%{id: "digest-high", project: "proj-sort"})
+      create_room(%{id: "digest-low", project: "proj-sort"})
+
+      since =
+        NaiveDateTime.utc_now()
+        |> NaiveDateTime.add(-86400, :second)
+        |> NaiveDateTime.to_iso8601()
+
+      for _ <- 1..3, do: create_message(%{room_id: "digest-high", content: "msg"})
+      create_message(%{room_id: "digest-low", content: "msg"})
+
+      result = Cluster.get_digest(%{"project" => "proj-sort", "since" => since})
+      counts = Enum.map(result.results, & &1.new_message_count)
+      assert counts == Enum.sort(counts, :desc)
     end
   end
 end

@@ -89,8 +89,20 @@ defmodule CouncilHubUiWeb.CouncilLiveTest do
   describe "message display" do
     test "shows message types", %{conn: conn} do
       room = create_room(%{id: "type-room"})
-      create_message(%{room_id: room.id, author: "Claude", content: "A thought", message_type: "thought"})
-      create_message(%{room_id: room.id, author: "Gemini", content: "A critique", message_type: "critique"})
+
+      create_message(%{
+        room_id: room.id,
+        author: "Claude",
+        content: "A thought",
+        message_type: "thought"
+      })
+
+      create_message(%{
+        room_id: room.id,
+        author: "Gemini",
+        content: "A critique",
+        message_type: "critique"
+      })
 
       {:ok, _view, html} = live(conn, "/rooms/type-room")
       assert html =~ "thought"
@@ -108,7 +120,13 @@ defmodule CouncilHubUiWeb.CouncilLiveTest do
 
     test "shows summary blocks", %{conn: conn} do
       room = create_room(%{id: "summary-room"})
-      create_message(%{room_id: room.id, author: "System", content: "Summary content", is_summary: true})
+
+      create_message(%{
+        room_id: room.id,
+        author: "System",
+        content: "Summary content",
+        is_summary: true
+      })
 
       {:ok, _view, html} = live(conn, "/rooms/summary-room")
       assert html =~ "Summary"
@@ -147,7 +165,13 @@ defmodule CouncilHubUiWeb.CouncilLiveTest do
   describe "toggle_summary" do
     test "toggles summary collapsed state", %{conn: conn} do
       room = create_room(%{id: "toggle-room"})
-      create_message(%{room_id: room.id, author: "System", content: "Summary text", is_summary: true})
+
+      create_message(%{
+        room_id: room.id,
+        author: "System",
+        content: "Summary text",
+        is_summary: true
+      })
 
       {:ok, view, _html} = live(conn, "/rooms/toggle-room")
 
@@ -224,6 +248,7 @@ defmodule CouncilHubUiWeb.CouncilLiveTest do
 
       # Update room status directly in DB
       import Ecto.Query
+
       CouncilHubUi.Repo.update_all(
         from(r in CouncilHubUi.Council.Room, where: r.id == "status-poll"),
         set: [status: "resolved", updated_at: NaiveDateTime.add(NaiveDateTime.utc_now(), 1)]
@@ -267,8 +292,20 @@ defmodule CouncilHubUiWeb.CouncilLiveTest do
   describe "filter_type event" do
     test "filters messages by type", %{conn: conn} do
       room = create_room(%{id: "ft-room"})
-      create_message(%{room_id: room.id, author: "Claude", content: "A decision", message_type: "decision"})
-      create_message(%{room_id: room.id, author: "Gemini", content: "A thought", message_type: "thought"})
+
+      create_message(%{
+        room_id: room.id,
+        author: "Claude",
+        content: "A decision",
+        message_type: "decision"
+      })
+
+      create_message(%{
+        room_id: room.id,
+        author: "Gemini",
+        content: "A thought",
+        message_type: "thought"
+      })
 
       {:ok, view, _html} = live(conn, "/rooms/ft-room")
 
@@ -283,8 +320,20 @@ defmodule CouncilHubUiWeb.CouncilLiveTest do
 
     test "all filter shows all messages", %{conn: conn} do
       room = create_room(%{id: "ft-all-room"})
-      create_message(%{room_id: room.id, author: "Claude", content: "A decision", message_type: "decision"})
-      create_message(%{room_id: room.id, author: "Gemini", content: "A thought", message_type: "thought"})
+
+      create_message(%{
+        room_id: room.id,
+        author: "Claude",
+        content: "A decision",
+        message_type: "decision"
+      })
+
+      create_message(%{
+        room_id: room.id,
+        author: "Gemini",
+        content: "A thought",
+        message_type: "thought"
+      })
 
       {:ok, view, _html} = live(conn, "/rooms/ft-all-room")
 
@@ -296,7 +345,6 @@ defmodule CouncilHubUiWeb.CouncilLiveTest do
       assert html =~ "A decision"
       assert html =~ "A thought"
     end
-
   end
 
   describe "search_messages event" do
@@ -409,7 +457,6 @@ defmodule CouncilHubUiWeb.CouncilLiveTest do
     end
   end
 
-
   describe "filter_rooms/2" do
     test "empty query returns all" do
       rooms = [%{id: "a", description: "Alpha"}, %{id: "b", description: "Beta"}]
@@ -417,7 +464,11 @@ defmodule CouncilHubUiWeb.CouncilLiveTest do
     end
 
     test "filters by id and description" do
-      rooms = [%{id: "auth-room", description: "Auth work"}, %{id: "db-room", description: "DB stuff"}]
+      rooms = [
+        %{id: "auth-room", description: "Auth work"},
+        %{id: "db-room", description: "DB stuff"}
+      ]
+
       filtered = CouncilHubUiWeb.CouncilLive.filter_rooms(rooms, "auth")
       assert length(filtered) == 1
       assert hd(filtered).id == "auth-room"

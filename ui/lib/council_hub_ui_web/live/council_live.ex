@@ -175,7 +175,13 @@ defmodule CouncilHubUiWeb.CouncilLive do
 
         {:noreply,
          socket
-         |> assign(type_filter: type, last_msg_id: last_id, has_messages: messages != [], searching: false, message_search: "")
+         |> assign(
+           type_filter: type,
+           last_msg_id: last_id,
+           has_messages: messages != [],
+           searching: false,
+           message_search: ""
+         )
          |> stream(:messages, messages, reset: true)}
     end
   end
@@ -191,7 +197,12 @@ defmodule CouncilHubUiWeb.CouncilLive do
 
         {:noreply,
          socket
-         |> assign(message_search: "", searching: false, last_msg_id: last_id, has_messages: messages != [])
+         |> assign(
+           message_search: "",
+           searching: false,
+           last_msg_id: last_id,
+           has_messages: messages != []
+         )
          |> stream(:messages, messages, reset: true)}
     end
   end
@@ -218,7 +229,14 @@ defmodule CouncilHubUiWeb.CouncilLive do
   defp poll_active_room_messages(%{assigns: %{active_room: nil}} = socket), do: socket
 
   defp poll_active_room_messages(
-         %{assigns: %{active_room: room, last_msg_id: last_id, type_filter: type_filter, searching: searching}} =
+         %{
+           assigns: %{
+             active_room: room,
+             last_msg_id: last_id,
+             type_filter: type_filter,
+             searching: searching
+           }
+         } =
            socket
        ) do
     case Council.get_messages_since(room.id, last_id, type_filter) do

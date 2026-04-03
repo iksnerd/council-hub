@@ -27,10 +27,10 @@ end
 cluster_topology =
   case System.get_env("COUNCIL_SEEDS") do
     nil ->
-      [council_hub: [strategy: Cluster.Strategy.Gossip]]
+      [council_hub: [strategy: Cluster.Strategy.Gossip, config: [polling_interval: 3_000]]]
 
     "" ->
-      [council_hub: [strategy: Cluster.Strategy.Gossip]]
+      [council_hub: [strategy: Cluster.Strategy.Gossip, config: [polling_interval: 3_000]]]
 
     seeds_str ->
       seeds =
@@ -38,10 +38,12 @@ cluster_topology =
         |> String.split(",", trim: true)
         |> Enum.map(fn s -> String.to_atom(String.trim(s)) end)
 
-      [council_hub: [
-        strategy: Cluster.Strategy.Epmd,
-        config: [hosts: seeds]
-      ]]
+      [
+        council_hub: [
+          strategy: Cluster.Strategy.Epmd,
+          config: [hosts: seeds, polling_interval: 3_000]
+        ]
+      ]
   end
 
 config :libcluster, topologies: cluster_topology

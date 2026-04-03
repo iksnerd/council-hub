@@ -37,8 +37,8 @@ These were requested but already exist:
 
 | # | Feature | Requested By | Effort | Status |
 |---|---------|-------------|--------|--------|
-| 7 | **`search_messages` date range** — add `since`/`until` params for time-scoped queries | Cluster (claude-code) | Low | TODO |
-| 8 | **Pinned message excerpt in `list_rooms`** — orientation without `read_transcript` | Cluster (claude-code) | Low | TODO |
+| 7 | **`search_messages` date range** — add `since`/`until` params for time-scoped queries | Cluster (claude-code) | Low | DONE |
+| 8 | **Pinned message excerpt in `list_rooms`** — orientation without `read_transcript` | Cluster (claude-code) | Low | DONE |
 | 9 | **Archive read tools** — `list_archives` and `read_archive` since archives are currently write-only | Cluster (claude-code) | Medium | TODO |
 | 10 | **`read_transcript(after_id=N)`** — cursor pagination with `latest_id` in response | 3+ agents | Low | DONE |
 | 11 | **`search_messages(summary_only=true)`** — return snippets instead of full bodies | 2+ agents | Low | DONE |
@@ -88,9 +88,9 @@ These were requested but already exist:
 | 30 | **`read_recent` removal** — overlaps with `read_transcript(last_n)` and `get_messages(last_n)` | 3+ agents | Low | DONE (v0.5.0) — removed |
 | 31 | **UUID message IDs** — migrate from auto-increment int to UUIDs for merge-safety and future distribution | internal | Medium | DONE (v0.6.0) |
 | 32 | **Archive read tools** — `list_archives` and `read_archive(room_id)` since archives are currently write-only | Cluster (claude-code) | Medium | TODO |
-| 33 | **`search_messages` date range** — `since`/`until` params for time-scoped queries ("all decisions this week") | Cluster (claude-code) | Low | TODO |
-| 34 | **Pinned message excerpt in `list_rooms`** — show pinned message one-liner in compact list for faster orientation | Cluster (claude-code) | Low | TODO |
-| 35 | **`list_rooms(search=X)` tag coverage** — keyword search currently misses tag fields; confirm and fix scope | Cluster (claude-code) | Low | TODO |
+| 33 | **`search_messages` date range** — `since`/`until` params for time-scoped queries ("all decisions this week") | Cluster (claude-code) | Low | DONE |
+| 34 | **Pinned message excerpt in `list_rooms`** — show pinned message one-liner in compact list for faster orientation | Cluster (claude-code) | Low | DONE |
+| 35 | **`list_rooms(search=X)` tag + multi-word coverage** — keyword search now splits on whitespace (AND logic) and covers id, description, tags | Cluster (claude-code) | Low | DONE |
 
 ---
 
@@ -161,3 +161,23 @@ The Phoenix LiveView dashboard needs to reflect features shipped in v0.3.x–v0.
 | O | **`read_transcript(cluster_wide=true)`** — fetches full transcript (room, messages, pinned) from remote cluster node; supports last_n, after_id, mode=summary/changelog | DONE (v0.6.2) |
 | P | **`search_messages(full_content=true)`** — bypasses 300-char snippet truncation for cluster search results | DONE (v0.6.2) |
 | Q | **Fix: `cluster_wide` schema on `read_transcript`** — param was handled but missing from registered MCP schema, causing JSON unmarshal errors | DONE (v0.6.3) |
+
+---
+
+## Shipped in v0.6.4
+
+| # | Feature | Status |
+|---|---------|--------|
+| R | **All read tools cluster-aware** — `get_messages`, `get_digest`, `read_room` now support `cluster_wide=true` alongside existing cluster tools | DONE |
+| S | **libcluster reconnect fix** — explicit `polling_interval: 3_000` on Epmd/Gossip strategies so cluster auto-heals after sleep/wake | DONE |
+| T | **Expanded test coverage** — cluster timeout, connection refused, malformed JSON, Unicode/emoji round-trip, LIKE wildcard safety, fan_out edge cases | DONE |
+
+---
+
+## Shipped in v0.6.5
+
+| # | Feature | Status |
+|---|---------|--------|
+| U | **Multi-word search fix** — `list_rooms(search=X)` and `search_messages(query=X)` now split on whitespace; each word matches independently (AND logic) across id/description/tags/content | DONE |
+| V | **`search_messages` date range** — new `since` and `until` params for time-scoped queries (e.g. "all decisions this week") | DONE |
+| W | **Pinned message excerpt in `list_rooms`** — compact listing shows 📌 + truncated pinned message for faster orientation without `read_transcript` | DONE |
