@@ -78,12 +78,12 @@ func NewServer(dbPath string, logger *slog.Logger) (*Server, error) {
 	db.SetConnMaxLifetime(0)
 
 	if err := initSchema(db); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("failed to initialize schema: %w", err)
 	}
 
 	if err := migrateMessagesToUUIDs(db); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("failed to migrate message IDs to UUID: %w", err)
 	}
 
@@ -168,7 +168,7 @@ func initSchema(db *sql.DB) error {
 		`ALTER TABLE messages ADD COLUMN pinned BOOLEAN DEFAULT 0`,
 	}
 	for _, m := range migrations {
-		db.Exec(m) // Ignore "duplicate column" errors for already-migrated DBs
+		_, _ = db.Exec(m) // Ignore "duplicate column" errors for already-migrated DBs
 	}
 
 	// Indexes — CREATE IF NOT EXISTS is idempotent, safe to run every startup.
@@ -233,12 +233,12 @@ func migrateMessagesToUUIDs(db *sql.DB) error {
 	for rows.Next() {
 		var r oldRow
 		if err := rows.Scan(&r.OldID, &r.RoomID, &r.Author, &r.Content, &r.MessageType, &r.IsSummary, &r.OldReplyTo, &r.Pinned, &r.Timestamp); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return fmt.Errorf("scan old message: %w", err)
 		}
 		oldRows = append(oldRows, r)
 	}
-	rows.Close()
+	_ = rows.Close()
 	if err := rows.Err(); err != nil {
 		return fmt.Errorf("iterate old messages: %w", err)
 	}
@@ -255,7 +255,7 @@ func migrateMessagesToUUIDs(db *sql.DB) error {
 	}
 
 	if _, err := tx.Exec(`ALTER TABLE messages RENAME TO messages_old`); err != nil {
-		tx.Rollback()
+		_ = tx.Rollback()
 		return fmt.Errorf("rename old table: %w", err)
 	}
 
@@ -271,7 +271,7 @@ func migrateMessagesToUUIDs(db *sql.DB) error {
 		timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
 		FOREIGN KEY(room_id) REFERENCES rooms(id)
 	)`); err != nil {
-		tx.Rollback()
+		_ = tx.Rollback()
 		return fmt.Errorf("create new messages table: %w", err)
 	}
 
@@ -286,13 +286,13 @@ func migrateMessagesToUUIDs(db *sql.DB) error {
 			`INSERT INTO messages (id, room_id, author, content, message_type, is_summary, reply_to, pinned, timestamp) VALUES (?,?,?,?,?,?,?,?,?)`,
 			idMap[r.OldID], r.RoomID, r.Author, r.Content, r.MessageType, r.IsSummary, newReplyTo, r.Pinned, r.Timestamp,
 		); err != nil {
-			tx.Rollback()
+			_ = tx.Rollback()
 			return fmt.Errorf("insert migrated message: %w", err)
 		}
 	}
 
 	if _, err := tx.Exec(`DROP TABLE messages_old`); err != nil {
-		tx.Rollback()
+		_ = tx.Rollback()
 		return fmt.Errorf("drop old messages table: %w", err)
 	}
 
