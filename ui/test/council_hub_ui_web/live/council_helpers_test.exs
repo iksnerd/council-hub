@@ -249,18 +249,18 @@ defmodule CouncilHubUiWeb.CouncilHelpersTest do
     assert String.contains?(CouncilHelpers.type_color("review"), "teal")
   end
 
-  test "type_color thought is gray" do
-    assert String.contains?(CouncilHelpers.type_color("thought"), "gray")
+  test "type_color thought is zinc" do
+    assert String.contains?(CouncilHelpers.type_color("thought"), "zinc")
   end
 
-  test "type_color unknown falls back to gray" do
+  test "type_color unknown falls back to zinc" do
     result = CouncilHelpers.type_color("unknown")
-    assert String.contains?(result, "gray")
+    assert String.contains?(result, "zinc")
   end
 
-  test "type_color nil falls back to gray" do
+  test "type_color nil falls back to zinc" do
     result = CouncilHelpers.type_color(nil)
-    assert String.contains?(result, "gray")
+    assert String.contains?(result, "zinc")
   end
 
   # -- present? --
@@ -279,12 +279,12 @@ defmodule CouncilHubUiWeb.CouncilHelpersTest do
 
   # -- short_node --
 
-  test "short_node extracts hostname from node string" do
+  test "short_node extracts name from node string" do
     assert CouncilHelpers.short_node("council_hub@council_hub") == "council_hub"
   end
 
-  test "short_node extracts IP from node string" do
-    assert CouncilHelpers.short_node("council_hub@10.0.0.5") == "10.0.0.5"
+  test "short_node extracts name from node string with IP" do
+    assert CouncilHelpers.short_node("council_hub@10.0.0.5") == "council_hub"
   end
 
   test "short_node returns string unchanged when no @ present" do

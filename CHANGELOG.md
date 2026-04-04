@@ -4,6 +4,15 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.9.1] - 2026-04-04
+
+### Changed
+- Cluster node badges now show names (e.g., "council_hub", "council_hub") instead of IP addresses; full node address shown on hover tooltip
+- UI color scheme migrated from blue-tinted `gray` to neutral `zinc` palette (shadcn-inspired); warmer, more professional appearance
+- Inline code in messages uses muted neutral background instead of amber tint
+- Tighter sidebar room cards, softer avatar corners, subtler hover states
+- Updated all hardcoded hex grays in CSS to zinc equivalents for consistent neutral tone
+
 ## [0.9.0] - 2026-04-04
 
 ### Added

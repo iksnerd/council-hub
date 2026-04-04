@@ -81,8 +81,8 @@ defmodule CouncilHubUiWeb.CouncilHelpers do
       "critique" -> "bg-amber-500/15 text-amber-400 border-amber-500/30"
       "code" -> "bg-purple-500/15 text-purple-400 border-purple-500/30"
       "review" -> "bg-teal-500/15 text-teal-400 border-teal-500/30"
-      "thought" -> "bg-gray-700/50 text-gray-500 border-gray-600/30"
-      _ -> "bg-gray-800/80 text-gray-400 border-gray-700/50"
+      "thought" -> "bg-zinc-700/50 text-zinc-500 border-zinc-600/30"
+      _ -> "bg-zinc-800/80 text-zinc-400 border-zinc-700/50"
     end
   end
 
@@ -165,7 +165,16 @@ defmodule CouncilHubUiWeb.CouncilHelpers do
 
   def short_node(node_str) when is_binary(node_str) do
     case String.split(node_str, "@", parts: 2) do
-      [_, host] -> host
+      [name, _host] -> name
+      _ -> node_str
+    end
+  end
+
+  def node_host(nil), do: nil
+
+  def node_host(node_str) when is_binary(node_str) do
+    case String.split(node_str, "@", parts: 2) do
+      [_name, host] -> host
       _ -> node_str
     end
   end
