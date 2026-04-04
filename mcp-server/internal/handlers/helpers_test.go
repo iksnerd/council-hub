@@ -31,6 +31,22 @@ func setupTestServer(t *testing.T) *council.Server {
 	return s
 }
 
+// setupHandlerTestWithTempDB creates a registry using a real temp DB file so that
+// archive operations get an isolated directory per test.
+func setupHandlerTestWithTempDB(t *testing.T) *Registry {
+	t.Helper()
+	dir := t.TempDir()
+	dbPath := dir + "/test.db"
+	s, err := council.NewServer(dbPath, testLogger())
+	if err != nil {
+		t.Fatalf("Failed to create test server: %v", err)
+	}
+	t.Cleanup(func() { s.DB.Close() })
+	r := &Registry{Server: s}
+	r.RegisterTools()
+	return r
+}
+
 // setupHandlerTest creates a test registry with tools registered.
 func setupHandlerTest(t *testing.T) *Registry {
 	t.Helper()

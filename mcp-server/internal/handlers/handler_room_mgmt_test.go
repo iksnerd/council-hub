@@ -68,6 +68,82 @@ func TestHandleCreateRoomDBError(t *testing.T) {
 	}
 }
 
+// ========== duplicate room detection ==========
+
+func TestHandleCreateRoomDuplicateWarning(t *testing.T) {
+	reg := setupHandlerTest(t)
+	// Create an existing room with overlapping tags.
+	mustCreateRoom(t, reg.Server, "existing-auth", withProject("myapp"), withTags("go,auth,api"))
+
+	// Create a new room with overlapping tags — should get a warning.
+	res, _, _ := reg.handleCreateRoom(context.Background(), nil, CreateRoomInput{
+		ID:      "new-auth-service",
+		Topic:   "Authentication service",
+		Project: "myapp",
+		Tags:    "go,auth,backend",
+	})
+	text := resultText(res)
+	if !strings.Contains(text, "new-auth-service") {
+		t.Errorf("expected new room in response, got: %s", text)
+	}
+	if !strings.Contains(text, "Similar room") {
+		t.Errorf("expected duplicate warning, got: %s", text)
+	}
+	if !strings.Contains(text, "existing-auth") {
+		t.Errorf("expected existing room ID in warning, got: %s", text)
+	}
+}
+
+func TestHandleCreateRoomNoDuplicateWhenUnrelated(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "infra-room", withProject("ops"), withTags("kubernetes,terraform"))
+
+	res, _, _ := reg.handleCreateRoom(context.Background(), nil, CreateRoomInput{
+		ID:      "auth-room",
+		Topic:   "User authentication",
+		Project: "myapp",
+		Tags:    "oauth,jwt",
+	})
+	text := resultText(res)
+	if strings.Contains(text, "Similar room") {
+		t.Errorf("unexpected duplicate warning for unrelated rooms: %s", text)
+	}
+}
+
+func TestHandleGetOrCreateRoomDuplicateWarning(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "existing-cache", withProject("perf"), withTags("redis,caching,backend"))
+
+	// get_or_create a new room (different ID) with overlapping tags.
+	res, _, _ := reg.handleGetOrCreateRoom(context.Background(), nil, GetOrCreateRoomInput{
+		ID:      "new-cache-layer",
+		Topic:   "Cache layer design",
+		Project: "perf",
+		Tags:    "redis,caching,go",
+	})
+	text := resultText(res)
+	if !strings.Contains(text, "Similar room") {
+		t.Errorf("expected duplicate warning on get_or_create, got: %s", text)
+	}
+	if !strings.Contains(text, "existing-cache") {
+		t.Errorf("expected existing room in warning, got: %s", text)
+	}
+}
+
+func TestHandleGetOrCreateRoomNoWarningOnExisting(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "my-room", withProject("proj"), withTags("go,api"))
+
+	// Fetching an existing room should NOT trigger duplicate warning.
+	res, _, _ := reg.handleGetOrCreateRoom(context.Background(), nil, GetOrCreateRoomInput{
+		ID: "my-room",
+	})
+	text := resultText(res)
+	if strings.Contains(text, "Similar room") {
+		t.Errorf("unexpected duplicate warning when fetching existing room: %s", text)
+	}
+}
+
 // ========== update_room ==========
 
 func TestHandleUpdateRoom(t *testing.T) {
@@ -497,5 +573,76 @@ func TestHandleArchiveRoomDBError(t *testing.T) {
 	text := resultText(res)
 	if !strings.Contains(text, "Error") {
 		t.Errorf("expected error, got: %s", text)
+	}
+}
+
+// ========== list_archives ==========
+
+func TestHandleListArchivesEmpty(t *testing.T) {
+	reg := setupHandlerTestWithTempDB(t)
+
+	res, _, _ := reg.handleListArchives(context.Background(), nil, ListArchivesInput{})
+	if !strings.Contains(resultText(res), "No archives found") {
+		t.Error("expected no archives message")
+	}
+}
+
+func TestHandleListArchives(t *testing.T) {
+	reg := setupHandlerTestWithTempDB(t)
+	mustCreateRoom(t, reg.Server, "h-list-arch-a")
+	mustPost(t, reg.Server, "h-list-arch-a", "Claude", "Message A")
+	mustCreateRoom(t, reg.Server, "h-list-arch-b")
+	mustPost(t, reg.Server, "h-list-arch-b", "Claude", "Message B")
+
+	reg.handleArchiveRoom(context.Background(), nil, ArchiveRoomInput{RoomID: "h-list-arch-a"}) //nolint:errcheck
+	reg.handleArchiveRoom(context.Background(), nil, ArchiveRoomInput{RoomID: "h-list-arch-b"}) //nolint:errcheck
+
+	res, _, _ := reg.handleListArchives(context.Background(), nil, ListArchivesInput{})
+	text := resultText(res)
+	if !strings.Contains(text, "h-list-arch-a") {
+		t.Error("expected h-list-arch-a in listing")
+	}
+	if !strings.Contains(text, "h-list-arch-b") {
+		t.Error("expected h-list-arch-b in listing")
+	}
+	if !strings.Contains(text, "Found 2 archive") {
+		t.Errorf("expected count in header, got: %s", text)
+	}
+}
+
+// ========== read_archive ==========
+
+func TestHandleReadArchive(t *testing.T) {
+	reg := setupHandlerTestWithTempDB(t)
+	mustCreateRoom(t, reg.Server, "h-read-arch")
+	mustPost(t, reg.Server, "h-read-arch", "Claude", "Archived content here")
+
+	reg.handleArchiveRoom(context.Background(), nil, ArchiveRoomInput{RoomID: "h-read-arch"}) //nolint:errcheck
+
+	res, _, _ := reg.handleReadArchive(context.Background(), nil, ReadArchiveInput{RoomID: "h-read-arch"})
+	text := resultText(res)
+	if !strings.Contains(text, "h-read-arch") {
+		t.Error("expected room ID in archive content")
+	}
+	if !strings.Contains(text, "Archived content here") {
+		t.Error("expected message content in archive")
+	}
+}
+
+func TestHandleReadArchiveNotFound(t *testing.T) {
+	reg := setupHandlerTestWithTempDB(t)
+
+	res, _, _ := reg.handleReadArchive(context.Background(), nil, ReadArchiveInput{RoomID: "ghost-archive"})
+	if !strings.Contains(resultText(res), "not found") {
+		t.Error("expected not found error")
+	}
+}
+
+func TestHandleReadArchiveMissingID(t *testing.T) {
+	reg := setupHandlerTest(t)
+
+	res, _, _ := reg.handleReadArchive(context.Background(), nil, ReadArchiveInput{})
+	if !strings.Contains(resultText(res), "Error") {
+		t.Error("expected error for missing room_id")
 	}
 }

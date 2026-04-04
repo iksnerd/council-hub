@@ -4,6 +4,18 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.8.0] - 2026-04-04
+
+### Added
+- `list_archives` — list all archived room transcripts with file size and archive date, sorted most recent first
+- `read_archive` — read an archived room transcript by room ID; returns the full markdown content written by `archive_room`
+- Duplicate room detection — `create_room` and `get_or_create_room` emit advisory warnings (non-blocking) when rooms with overlapping project, tags, or topic keywords already exist; helps prevent accidental room proliferation
+- MCP dispatch integration tests — `handler_integration_test.go` exercises all 20 tools through the full `RegisterTools → CallTool` in-memory transport path to catch schema↔handler mismatches before they reach production
+
+### Changed
+- Internal: `ArchiveRoom` now uses a shared `archiveDir()` helper (no behaviour change)
+- Handler tests that exercise archive operations use isolated temp DB directories to avoid cross-test pollution
+
 ## [0.7.3] - 2026-04-04
 
 ### Added

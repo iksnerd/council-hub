@@ -292,6 +292,58 @@ func (r *Registry) readSingleTranscript(args ReadTranscriptInput) (*mcp.CallTool
 	return msg(transcript)
 }
 
+// ListArchivesInput is the (empty) parameter struct for list_archives.
+type ListArchivesInput struct{}
+
+// ReadArchiveInput holds parameters for read_archive.
+type ReadArchiveInput struct {
+	RoomID string `json:"room_id"`
+}
+
+func (r *Registry) handleListArchives(ctx context.Context, req *mcp.CallToolRequest, args ListArchivesInput) (*mcp.CallToolResult, ToolOutput, error) {
+	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: text}},
+		}, ToolOutput{Message: text}, nil
+	}
+
+	archives, err := r.Server.ListArchives()
+	if err != nil {
+		return msg(fmt.Sprintf("Error: %s", err.Error()))
+	}
+
+	if len(archives) == 0 {
+		return msg("No archives found.")
+	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "Found %d archive(s):\n\n", len(archives))
+	for _, a := range archives {
+		sizeKB := float64(a.Size) / 1024.0
+		date := a.ArchivedAt.Format("2006-01-02 15:04")
+		fmt.Fprintf(&b, "- **%s** | %.1f KB | archived %s\n", a.RoomID, sizeKB, date)
+	}
+	return msg(b.String())
+}
+
+func (r *Registry) handleReadArchive(ctx context.Context, req *mcp.CallToolRequest, args ReadArchiveInput) (*mcp.CallToolResult, ToolOutput, error) {
+	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: text}},
+		}, ToolOutput{Message: text}, nil
+	}
+
+	if args.RoomID == "" {
+		return msg("Error: room_id is required.")
+	}
+
+	content, err := r.Server.ReadArchive(args.RoomID)
+	if err != nil {
+		return msg(fmt.Sprintf("Error: %s", err.Error()))
+	}
+	return msg(content)
+}
+
 func (r *Registry) handleArchiveRoom(ctx context.Context, req *mcp.CallToolRequest, args ArchiveRoomInput) (*mcp.CallToolResult, ToolOutput, error) {
 	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
 		return &mcp.CallToolResult{

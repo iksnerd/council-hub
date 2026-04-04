@@ -4,9 +4,20 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
+	"time"
 
 	"github.com/google/uuid"
 )
+
+// ArchiveEntry holds metadata about a single archived room transcript.
+type ArchiveEntry struct {
+	RoomID     string
+	Path       string
+	Size       int64
+	ArchivedAt time.Time
+}
 
 // GetTranscript returns summaries + all individual messages after the latest summary.
 func (s *Server) GetTranscript(roomID string) ([]Message, error) {
@@ -96,12 +107,7 @@ func (s *Server) ArchiveRoom(roomID string) (string, error) {
 
 	transcript := FormatTranscript(room, messages)
 
-	// Derive archive dir from DB path
-	archiveDir := filepath.Join(filepath.Dir(s.DBPath), "archives")
-	if s.DBPath == ":memory:" {
-		archiveDir = "archives"
-	}
-
+	archiveDir := s.archiveDir()
 	if err := os.MkdirAll(archiveDir, 0755); err != nil {
 		return "", fmt.Errorf("failed to create archive directory: %w", err)
 	}
@@ -112,4 +118,63 @@ func (s *Server) ArchiveRoom(roomID string) (string, error) {
 	}
 
 	return archivePath, nil
+}
+
+// archiveDir returns the directory where archives are stored.
+func (s *Server) archiveDir() string {
+	if s.DBPath == ":memory:" {
+		return "archives"
+	}
+	return filepath.Join(filepath.Dir(s.DBPath), "archives")
+}
+
+// ListArchives scans the archives directory and returns metadata for each archived room,
+// sorted by archive date descending (most recent first). Returns an empty slice if no
+// archives exist.
+func (s *Server) ListArchives() ([]ArchiveEntry, error) {
+	dir := s.archiveDir()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []ArchiveEntry{}, nil
+		}
+		return nil, fmt.Errorf("failed to read archives directory: %w", err)
+	}
+
+	var archives []ArchiveEntry
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+			continue
+		}
+		path := filepath.Join(dir, e.Name())
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		archives = append(archives, ArchiveEntry{
+			RoomID:     strings.TrimSuffix(e.Name(), ".md"),
+			Path:       path,
+			Size:       info.Size(),
+			ArchivedAt: info.ModTime(),
+		})
+	}
+
+	sort.Slice(archives, func(i, j int) bool {
+		return archives[i].ArchivedAt.After(archives[j].ArchivedAt)
+	})
+
+	return archives, nil
+}
+
+// ReadArchive reads and returns the contents of an archived room transcript.
+func (s *Server) ReadArchive(roomID string) (string, error) {
+	path := filepath.Join(s.archiveDir(), roomID+".md")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", fmt.Errorf("archive for room '%s' not found", roomID)
+		}
+		return "", fmt.Errorf("failed to read archive: %w", err)
+	}
+	return string(data), nil
 }

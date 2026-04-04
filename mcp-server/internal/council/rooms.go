@@ -259,3 +259,133 @@ func (s *Server) ListRooms(project, tag, status, search string) ([]Room, error) 
 	}
 	return rooms, rows.Err()
 }
+
+// SimilarRoom represents a room that may overlap with a newly created one.
+type SimilarRoom struct {
+	ID          string
+	Description string
+	Tags        string
+	Project     string
+	MatchReason string
+}
+
+// stopWords are short/common words excluded from description keyword matching.
+var stopWords = map[string]bool{
+	"the": true, "and": true, "for": true, "with": true, "that": true,
+	"this": true, "are": true, "was": true, "from": true, "have": true,
+}
+
+// FindSimilarRooms returns rooms that overlap with the given metadata.
+// excludeID is the room to exclude (typically the one just created).
+// Returns at most limit results, sorted by similarity score descending.
+// Errors are non-fatal — callers should silently discard them.
+func (s *Server) FindSimilarRooms(excludeID, description, project, tags string, limit int) ([]SimilarRoom, error) {
+	// Parse input tags into a set.
+	inputTags := map[string]bool{}
+	for _, t := range strings.Split(tags, ",") {
+		t = strings.TrimSpace(strings.ToLower(t))
+		if t != "" {
+			inputTags[t] = true
+		}
+	}
+
+	// Extract significant words from description (len>=4, not stop words).
+	inputWords := map[string]bool{}
+	for _, w := range strings.Fields(strings.ToLower(description)) {
+		w = strings.Trim(w, ".,;:!?\"'()")
+		if len(w) >= 4 && !stopWords[w] {
+			inputWords[w] = true
+		}
+	}
+
+	// If no useful signal, skip the query.
+	if len(inputTags) == 0 && len(inputWords) == 0 {
+		return nil, nil
+	}
+
+	rooms, err := s.ListRooms(project, "", "active", "")
+	if err != nil {
+		return nil, err
+	}
+
+	type scored struct {
+		room   Room
+		score  int
+		reason []string
+	}
+
+	var candidates []scored
+	for _, r := range rooms {
+		if r.ID == excludeID {
+			continue
+		}
+
+		sc := scored{room: r}
+
+		// Tag overlap.
+		for _, t := range strings.Split(r.Tags, ",") {
+			t = strings.TrimSpace(strings.ToLower(t))
+			if t != "" && inputTags[t] {
+				sc.score += 2
+				sc.reason = append(sc.reason, "tag:"+t)
+			}
+		}
+
+		// Description keyword overlap.
+		for _, w := range strings.Fields(strings.ToLower(r.Description)) {
+			w = strings.Trim(w, ".,;:!?\"'()")
+			if len(w) >= 4 && inputWords[w] {
+				sc.score++
+				sc.reason = append(sc.reason, "topic:"+w)
+			}
+		}
+
+		if sc.score >= 3 {
+			candidates = append(candidates, sc)
+		}
+	}
+
+	// Sort by score descending.
+	for i := 1; i < len(candidates); i++ {
+		for j := i; j > 0 && candidates[j].score > candidates[j-1].score; j-- {
+			candidates[j], candidates[j-1] = candidates[j-1], candidates[j]
+		}
+	}
+
+	if limit > 0 && len(candidates) > limit {
+		candidates = candidates[:limit]
+	}
+
+	result := make([]SimilarRoom, len(candidates))
+	for i, c := range candidates {
+		// Summarise reason: shared tags first, then keywords.
+		var tags, words []string
+		seen := map[string]bool{}
+		for _, r := range c.reason {
+			if seen[r] {
+				continue
+			}
+			seen[r] = true
+			if strings.HasPrefix(r, "tag:") {
+				tags = append(tags, strings.TrimPrefix(r, "tag:"))
+			} else {
+				words = append(words, strings.TrimPrefix(r, "topic:"))
+			}
+		}
+		var parts []string
+		if len(tags) > 0 {
+			parts = append(parts, "shared tags: "+strings.Join(tags, ", "))
+		}
+		if len(words) > 0 {
+			parts = append(parts, "similar topic: "+strings.Join(words, ", "))
+		}
+		result[i] = SimilarRoom{
+			ID:          c.room.ID,
+			Description: c.room.Description,
+			Tags:        c.room.Tags,
+			Project:     c.room.Project,
+			MatchReason: strings.Join(parts, "; "),
+		}
+	}
+	return result, nil
+}

@@ -263,6 +263,20 @@ func (r *Registry) RegisterTools() {
 	}, r.handleDeleteMessages)
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
+		Name:        "list_archives",
+		Description: "List all archived room transcripts with file size and archive date. Archives are created by archive_room.",
+		InputSchema: schema(nil, map[string]map[string]any{}),
+	}, r.handleListArchives)
+
+	mcp.AddTool(r.Server.MCP, &mcp.Tool{
+		Name:        "read_archive",
+		Description: "Read an archived room transcript by room ID. Returns the full markdown content saved by archive_room.",
+		InputSchema: schema([]string{"room_id"}, map[string]map[string]any{
+			"room_id": prop("string", "Room ID of the archive to read (e.g. auth-migration)"),
+		}),
+	}, r.handleReadArchive)
+
+	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "archive_room",
 		Description: "Export a room's transcript to a markdown file in the archives directory. Optionally delete the room after archiving.",
 		InputSchema: schema([]string{"room_id"}, map[string]map[string]any{

@@ -39,7 +39,7 @@ These were requested but already exist:
 |---|---------|-------------|--------|--------|
 | 7 | **`search_messages` date range** — add `since`/`until` params for time-scoped queries | Cluster (claude-code) | Low | DONE |
 | 8 | **Pinned message excerpt in `list_rooms`** — orientation without `read_transcript` | Cluster (claude-code) | Low | DONE |
-| 9 | **Archive read tools** — `list_archives` and `read_archive` since archives are currently write-only | Cluster (claude-code) | Medium | TODO |
+| 9 | **Archive read tools** — `list_archives` and `read_archive` since archives are currently write-only | Cluster (claude-code) | Medium | DONE (v0.8.0) |
 | 10 | **`read_transcript(after_id=N)`** — cursor pagination with `latest_id` in response | 3+ agents | Low | DONE |
 | 11 | **`search_messages(summary_only=true)`** — return snippets instead of full bodies | 2+ agents | Low | DONE |
 | 12 | **Bulk status updates** — `bulk_status_update` tool accepting comma-separated IDs + status | 2+ agents | Medium | DONE |
@@ -82,12 +82,12 @@ These were requested but already exist:
 | 28 | **Work item export mode** — `read_transcript(mode=work_items)` for ADO/GitHub Issue format | 1 agent | Medium | TODO |
 | 29 | **Semantic/fuzzy search** — beyond exact keyword matching for concept discovery | 2+ agents | High | TODO |
 | 29b | **Batch `update_room`** — update metadata on multiple rooms in one call (reduces setup round-trips) | 1 agent (Amp) | Medium | DONE (v0.6.1) |
-| 29c | **Duplicate room detection** — warn or suggest existing rooms when creating one with overlapping topic/tags | 2+ agents (Amp, claude-code) | Medium | TODO |
+| 29c | **Duplicate room detection** — warn or suggest existing rooms when creating one with overlapping topic/tags | 2+ agents (Amp, claude-code) | Medium | DONE (v0.8.0) |
 | 29d | **`get_digest` smarter excerpts** — use first heading or first sentence instead of raw character cut-off | 1 agent | Low | DONE (v0.5.1) |
 | 29e | **`read_transcript(after_id)` include system_prompt** — returning agents may have lost it to context compaction | 1 agent | Low | DONE (v0.5.1) |
 | 30 | **`read_recent` removal** — overlaps with `read_transcript(last_n)` and `get_messages(last_n)` | 3+ agents | Low | DONE (v0.5.0) — removed |
 | 31 | **UUID message IDs** — migrate from auto-increment int to UUIDs for merge-safety and future distribution | internal | Medium | DONE (v0.6.0) |
-| 32 | **Archive read tools** — `list_archives` and `read_archive(room_id)` since archives are currently write-only | Cluster (claude-code) | Medium | TODO |
+| 32 | **Archive read tools** — `list_archives` and `read_archive(room_id)` since archives are currently write-only | Cluster (claude-code) | Medium | DONE (v0.8.0) |
 | 33 | **`search_messages` date range** — `since`/`until` params for time-scoped queries ("all decisions this week") | Cluster (claude-code) | Low | DONE |
 | 34 | **Pinned message excerpt in `list_rooms`** — show pinned message one-liner in compact list for faster orientation | Cluster (claude-code) | Low | DONE |
 | 35 | **`list_rooms(search=X)` tag + multi-word coverage** — keyword search now splits on whitespace (AND logic) and covers id, description, tags | Cluster (claude-code) | Low | DONE |
@@ -100,8 +100,9 @@ Issues found during v0.6.2/v0.6.3 development:
 
 | # | Item | Status |
 |---|------|--------|
-| Q1 | **Schema/handler integration tests** — tests call handlers directly (bypassing `RegisterTools`), so missing schema params go undetected. Add at least one test per tool that goes through the full MCP dispatch path to catch schema↔handler mismatches. | TODO |
+| Q1 | **Schema/handler integration tests** — tests call handlers directly (bypassing `RegisterTools`), so missing schema params go undetected. Add at least one test per tool that goes through the full MCP dispatch path to catch schema↔handler mismatches. | DONE (v0.8.0) |
 | Q2 | **`cluster_wide` missing from `read_transcript` schema** — handler supported it but schema didn't expose it, causing JSON unmarshal errors. Fixed in v0.6.3. | DONE |
+| Q3 | **CI/CD secrets missing** — `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` not set in GitHub repo secrets; `docker-publish.yml` can't push. Add secrets under Settings → Secrets and variables → Actions, then re-push tag for multi-arch build. Tracked in room `cicd-setup`. | TODO |
 
 ---
 
@@ -171,6 +172,17 @@ The Phoenix LiveView dashboard needs to reflect features shipped in v0.3.x–v0.
 | R | **All read tools cluster-aware** — `get_messages`, `get_digest`, `read_room` now support `cluster_wide=true` alongside existing cluster tools | DONE |
 | S | **libcluster reconnect fix** — explicit `polling_interval: 3_000` on Epmd/Gossip strategies so cluster auto-heals after sleep/wake | DONE |
 | T | **Expanded test coverage** — cluster timeout, connection refused, malformed JSON, Unicode/emoji round-trip, LIKE wildcard safety, fan_out edge cases | DONE |
+
+---
+
+## Shipped in v0.8.0
+
+| # | Feature | Status |
+|---|---------|--------|
+| AC | **`list_archives`** — list all archived room transcripts with file size and archive date | DONE |
+| AD | **`read_archive`** — read an archived room transcript by room ID | DONE |
+| AE | **Duplicate room detection** — `create_room` and `get_or_create_room` emit advisory warnings when rooms with overlapping project/tags/topic already exist | DONE |
+| AF | **MCP dispatch integration tests** — `handler_integration_test.go` exercises all 20 tools through the full `RegisterTools → CallTool` path to catch schema↔handler mismatches | DONE |
 
 ---
 

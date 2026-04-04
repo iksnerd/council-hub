@@ -159,6 +159,15 @@ func (r *Registry) handleCreateRoom(ctx context.Context, req *mcp.CallToolReques
 	if args.RelatedRooms != "" {
 		fmt.Fprintf(&b, "**Related rooms:** %s (bidirectional links created)\n", args.RelatedRooms)
 	}
+
+	// Advisory duplicate check — never blocks creation.
+	if similar, err := r.Server.FindSimilarRooms(args.ID, args.Topic, args.Project, args.Tags, 3); err == nil && len(similar) > 0 {
+		fmt.Fprintf(&b, "\n**Note:** Similar room(s) already exist:\n")
+		for _, sr := range similar {
+			fmt.Fprintf(&b, "- **%s** — %s (%s)\n", sr.ID, sr.Description, sr.MatchReason)
+		}
+	}
+
 	return msg(b.String())
 }
 
@@ -231,6 +240,16 @@ func (r *Registry) handleGetOrCreateRoom(ctx context.Context, req *mcp.CallToolR
 			}
 		} else {
 			b.WriteString("No messages yet.\n")
+		}
+	}
+
+	// Advisory duplicate check on newly created rooms only.
+	if created {
+		if similar, err := r.Server.FindSimilarRooms(args.ID, args.Topic, args.Project, args.Tags, 3); err == nil && len(similar) > 0 {
+			fmt.Fprintf(&b, "\n**Note:** Similar room(s) already exist:\n")
+			for _, sr := range similar {
+				fmt.Fprintf(&b, "- **%s** — %s (%s)\n", sr.ID, sr.Description, sr.MatchReason)
+			}
 		}
 	}
 
