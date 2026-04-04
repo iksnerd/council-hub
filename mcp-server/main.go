@@ -53,9 +53,8 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	// TODO: Re-enable once we have a summarization strategy that preserves
-	// decisions, actions, and code blocks instead of losing context.
-	// go cs.RunJanitor(ctx)
+	// Start the Knowledge Linter
+	go cs.RunJanitor(ctx)
 
 	transport := os.Getenv("COUNCIL_TRANSPORT")
 	if transport == "" {

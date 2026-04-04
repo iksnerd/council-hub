@@ -1,7 +1,6 @@
 package council
 
 import (
-	"context"
 	"strings"
 	"testing"
 )
@@ -105,70 +104,7 @@ func TestTranscriptWithRelatedRooms(t *testing.T) {
 	}
 }
 
-func TestJanitorSweep(t *testing.T) {
-	cs := setupTestServer(t)
-	setupRoomWithMessages(t, cs, "janitor-room", 25)
 
-	rooms, err := cs.GetRoomsNeedingSummary(20)
-	if err != nil {
-		t.Fatalf("getRoomsNeedingSummary failed: %v", err)
-	}
-	if len(rooms) != 1 || rooms[0] != "janitor-room" {
-		t.Fatalf("expected janitor-room to need summary, got %v", rooms)
-	}
-
-	cs.JanitorSweep()
-
-	msgs, _ := cs.GetTranscript("janitor-room")
-	hasSummary := false
-	for _, m := range msgs {
-		if m.IsSummary {
-			hasSummary = true
-			break
-		}
-	}
-	if !hasSummary {
-		t.Error("expected summary message after janitor sweep")
-	}
-
-	rooms, _ = cs.GetRoomsNeedingSummary(20)
-	if len(rooms) != 0 {
-		t.Errorf("expected no rooms needing summary after sweep, got %v", rooms)
-	}
-}
-
-func TestSummarize(t *testing.T) {
-	msgs := []Message{
-		{Author: "Claude", Content: "First point", MessageType: "thought"},
-		{Author: "Gemini", Content: "Second point", MessageType: "decision"},
-	}
-
-	summary := summarize(msgs)
-
-	if !strings.Contains(summary, "2 messages") {
-		t.Error("summary should mention message count")
-	}
-	if !strings.Contains(summary, "Claude") || !strings.Contains(summary, "Gemini") {
-		t.Error("summary should mention participants")
-	}
-}
-
-func TestSummarizeLongContent(t *testing.T) {
-	longContent := strings.Repeat("A", 300)
-	msgs := []Message{
-		{Author: "Claude", Content: longContent, MessageType: "message"},
-	}
-
-	summary := summarize(msgs)
-
-	// Summarize truncates to 200 chars + "..."
-	if !strings.Contains(summary, "...") {
-		t.Error("summary should truncate long content")
-	}
-	if !strings.Contains(summary, "1 messages") {
-		t.Error("summary should mention message count")
-	}
-}
 
 // -- formatTranscript edge: plain message with reply_to --
 
@@ -183,40 +119,6 @@ func TestFormatTranscriptReplyToPlainMessage(t *testing.T) {
 	if !strings.Contains(transcript, "Gemini (re: #uuid-000") {
 		t.Errorf("expected plain message reply rendering, got: %s", transcript)
 	}
-}
-
-// -- janitorSweep with no rooms needing summary --
-
-func TestJanitorSweepNoRooms(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "j-empty")
-	mustPost(t, cs, "j-empty", "Claude", "Hello")
-
-	// Should not panic or error with no rooms over threshold
-	cs.JanitorSweep()
-
-	msgs, _ := cs.GetTranscript("j-empty")
-	for _, m := range msgs {
-		if m.IsSummary {
-			t.Error("should not have summarized a room with 1 message")
-		}
-	}
-}
-
-// -- runJanitor cancellation --
-
-func TestRunJanitorCancellation(t *testing.T) {
-	cs := setupTestServer(t)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan struct{})
-	go func() {
-		cs.RunJanitor(ctx)
-		close(done)
-	}()
-
-	cancel()
-	<-done // Should return promptly after cancel
 }
 
 // -- formatTranscript with summary rendering --
@@ -236,69 +138,149 @@ func TestFormatTranscriptWithSummary(t *testing.T) {
 	}
 }
 
-// -- janitor.go:26-27 ticker fires --
+// ========== Janitor / Knowledge Linter ==========
 
-func TestJanitorTickerFires(t *testing.T) {
-	// This is tested by TestJanitorSweep which calls janitorSweep directly.
-	// The ticker.C branch in runJanitor requires waiting for the ticker interval.
-	// We test cancellation in TestRunJanitorCancellation.
-	// Not worth waiting 5 minutes for the ticker to fire in a unit test.
+func TestHasTag(t *testing.T) {
+	if !hasTag("foo,bar,baz", "bar") {
+		t.Error("expected hasTag to find 'bar'")
+	}
+	if hasTag("foo,bar,baz", "ba") {
+		t.Error("hasTag should not match substring 'ba'")
+	}
+	if hasTag("", "foo") {
+		t.Error("hasTag should return false for empty tags")
+	}
+	if !hasTag("needs-synthesis", "needs-synthesis") {
+		t.Error("hasTag should match single tag")
+	}
+	if hasTag("stale-review,other", "stale") {
+		t.Error("hasTag should not match prefix 'stale' in 'stale-review'")
+	}
 }
 
-// -- janitor.go error paths via closed DB --
+func TestAppendTag(t *testing.T) {
+	if result := appendTag("", "stale"); result != "stale" {
+		t.Errorf("expected 'stale', got '%s'", result)
+	}
+	if result := appendTag("foo,bar", "baz"); result != "foo,bar,baz" {
+		t.Errorf("expected 'foo,bar,baz', got '%s'", result)
+	}
+	if result := appendTag("foo,stale", "stale"); result != "foo,stale" {
+		t.Errorf("appendTag should not duplicate, got '%s'", result)
+	}
+}
 
-func TestJanitorSweepDBError(t *testing.T) {
+func TestLintNeedsSynthesis(t *testing.T) {
 	cs := setupTestServer(t)
-	cs.DB.Close()
+	mustCreateRoom(t, cs, "lint-synth")
+	mustPostTyped(t, cs, "lint-synth", "Claude", "We should use Postgres", "decision")
 
-	// Should not panic — just logs and returns
+	cs.lintNeedsSynthesis()
+
+	room, _ := cs.GetRoom("lint-synth")
+	if !hasTag(room.Tags, "needs-synthesis") {
+		t.Errorf("expected 'needs-synthesis' tag, got '%s'", room.Tags)
+	}
+
+	// Check that a system message was posted
+	msgs, _ := cs.GetRecentMessages("lint-synth", 5)
+	found := false
+	for _, m := range msgs {
+		if m.Author == "system" && strings.Contains(m.Content, "Knowledge Linter") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected linter system message in room")
+	}
+}
+
+func TestLintNeedsSynthesisSkipsWhenSynthesisExists(t *testing.T) {
+	cs := setupTestServer(t)
+	mustCreateRoom(t, cs, "lint-has-synth")
+	mustPostTyped(t, cs, "lint-has-synth", "Claude", "Decision made", "decision")
+	mustPostTyped(t, cs, "lint-has-synth", "Claude", "Compiled article", "synthesis")
+
+	cs.lintNeedsSynthesis()
+
+	room, _ := cs.GetRoom("lint-has-synth")
+	if hasTag(room.Tags, "needs-synthesis") {
+		t.Error("should not flag room that already has synthesis")
+	}
+}
+
+func TestLintNeedsSynthesisIdempotent(t *testing.T) {
+	cs := setupTestServer(t)
+	mustCreateRoom(t, cs, "lint-idem")
+	mustPostTyped(t, cs, "lint-idem", "Claude", "A decision", "decision")
+
+	cs.lintNeedsSynthesis()
+	cs.lintNeedsSynthesis() // run twice
+
+	room, _ := cs.GetRoom("lint-idem")
+	count := 0
+	for _, tag := range strings.Split(room.Tags, ",") {
+		if strings.TrimSpace(tag) == "needs-synthesis" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("expected exactly 1 'needs-synthesis' tag, got %d in '%s'", count, room.Tags)
+	}
+}
+
+func TestLintStaleRooms(t *testing.T) {
+	cs := setupTestServer(t)
+	mustCreateRoom(t, cs, "lint-stale")
+	mustPost(t, cs, "lint-stale", "Claude", "Old message")
+
+	// Backdate the message to 8 days ago
+	cs.DB.Exec(`UPDATE messages SET timestamp = datetime('now', '-8 days') WHERE room_id = 'lint-stale'`)
+
+	cs.lintStaleRooms()
+
+	room, _ := cs.GetRoom("lint-stale")
+	if !hasTag(room.Tags, "stale") {
+		t.Errorf("expected 'stale' tag, got '%s'", room.Tags)
+	}
+}
+
+func TestLintStaleSkipsRecentRooms(t *testing.T) {
+	cs := setupTestServer(t)
+	mustCreateRoom(t, cs, "lint-fresh")
+	mustPost(t, cs, "lint-fresh", "Claude", "Recent message")
+
+	cs.lintStaleRooms()
+
+	room, _ := cs.GetRoom("lint-fresh")
+	if hasTag(room.Tags, "stale") {
+		t.Error("should not flag room with recent activity")
+	}
+}
+
+func TestJanitorSweepRunsBothLinters(t *testing.T) {
+	cs := setupTestServer(t)
+
+	// Room needing synthesis
+	mustCreateRoom(t, cs, "sweep-synth")
+	mustPostTyped(t, cs, "sweep-synth", "Claude", "Decision here", "decision")
+
+	// Stale room
+	mustCreateRoom(t, cs, "sweep-stale")
+	mustPost(t, cs, "sweep-stale", "Claude", "Old msg")
+	cs.DB.Exec(`UPDATE messages SET timestamp = datetime('now', '-10 days') WHERE room_id = 'sweep-stale'`)
+
 	cs.JanitorSweep()
-}
 
-func TestJanitorSweepGetUnsummarizedError(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "j-err")
-	for i := 0; i < 25; i++ {
-		mustPost(t, cs, "j-err", "Claude", "msg")
+	r1, _ := cs.GetRoom("sweep-synth")
+	if !hasTag(r1.Tags, "needs-synthesis") {
+		t.Errorf("JanitorSweep should flag needs-synthesis, got '%s'", r1.Tags)
 	}
 
-	// Corrupt messages table so getUnsummarizedMessages fails
-	cs.DB.Exec("ALTER TABLE messages RENAME TO messages_backup")
-	cs.DB.Exec("CREATE TABLE messages (id INTEGER PRIMARY KEY, bad_col TEXT)")
-
-	cs.JanitorSweep() // Should hit error paths without panic
-}
-
-func TestJanitorSweepInsertSummaryError(t *testing.T) {
-	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "j-insert-err")
-	for i := 0; i < 25; i++ {
-		mustPost(t, cs, "j-insert-err", "Claude", "msg")
+	r2, _ := cs.GetRoom("sweep-stale")
+	if !hasTag(r2.Tags, "stale") {
+		t.Errorf("JanitorSweep should flag stale, got '%s'", r2.Tags)
 	}
-
-	// Make insertSummary fail by making messages table read-only isn't possible
-	// in SQLite easily, but we can drop the table after getRoomsNeedingSummary
-	// runs. Since janitorSweep calls them sequentially and we can't intercept,
-	// let's instead make the INSERT fail by adding a NOT NULL constraint violation.
-	// Hmm, that's not easy either.
-
-	// Alternative: close the DB after getting rooms needing summary but before
-	// insert. Can't do that in the same goroutine. Let's just verify the
-	// success path is covered and accept these error branches need a mock.
 }
 
-func TestJanitorSweepUnsummarizedMessagesError(t *testing.T) {
-	cs := setupTestServer(t)
-	setupRoomWithMessages(t, cs, "j-unsum-err", 25)
-
-	// Replace messages table with a schema that satisfies getRoomsNeedingSummary
-	// but causes GetUnsummarizedMessages to fail at scan time.
-	cs.DB.Exec("ALTER TABLE messages RENAME TO messages_old")
-	cs.DB.Exec("CREATE TABLE messages (room_id TEXT, is_summary BOOLEAN, author TEXT)")
-	for i := 0; i < 21; i++ {
-		cs.DB.Exec("INSERT INTO messages (room_id, is_summary) VALUES ('j-unsum-err', 0)")
-	}
-
-	// Should log the error and continue without panicking
-	cs.JanitorSweep()
-}
