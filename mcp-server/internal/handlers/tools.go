@@ -157,7 +157,7 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "list_rooms",
-		Description: "List council rooms, optionally filtered by project, tag, status, or keyword search. Returns compact one-line-per-room format by default (saves ~60-80% tokens vs verbose). Set verbose=true for full metadata.",
+		Description: "List council rooms, optionally filtered by project, tag, status, or keyword search. Returns compact one-line-per-room format by default (saves ~60-80% tokens vs verbose). Set verbose=true for full metadata. Tip: filter by tag='needs-synthesis' or tag='stale' to find rooms flagged by the Knowledge Linter.",
 		InputSchema: schema(nil, map[string]map[string]any{
 			"project":      prop("string", "Filter by project name"),
 			"tag":          prop("string", "Filter by tag"),
@@ -220,7 +220,7 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "get_messages",
-		Description: "Fetch specific messages by ID, or browse a room's recent messages. Best for: retrieving search results by ID, or getting raw message content without room headers. For formatted transcripts with room context, use read_transcript instead.",
+		Description: "Fetch specific messages by ID, browse a room's recent messages, or delta-read new messages since a known ID. Supports: message_ids for specific fetch, room_id+last_n for browsing, room_id+after_id for 'give me everything new since X'. For formatted transcripts with room context, use read_transcript instead.",
 		InputSchema: schema(nil, map[string]map[string]any{
 			"message_ids":  prop("string", "Comma-separated message IDs (e.g. 48,52,55)"),
 			"room_id":      prop("string", "Browse messages from this room (alternative to message_ids)"),
@@ -283,7 +283,7 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "archive_room",
-		Description: "Export a room's transcript to a markdown file in the archives directory. Optionally delete the room after archiving.",
+		Description: "Export a room's transcript to a markdown file in the archives directory, with an auto-generated Summary section (last decision + last action). Optionally delete the room after archiving.",
 		InputSchema: schema([]string{"room_id"}, map[string]map[string]any{
 			"room_id": prop("string", "Target room ID"),
 			"delete":  prop("string", "Set to 'true' to delete room after archiving"),
@@ -306,7 +306,7 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "get_digest",
-		Description: "Get a project activity digest showing rooms with new messages since a given timestamp. Returns room ID, new message count, and latest message excerpt per room. Perfect for start-of-session 'what changed?' orientation.",
+		Description: "Get a project activity and knowledge health digest. Shows rooms with new messages since a timestamp, plus rooms flagged by the Knowledge Linter (stale, needs-synthesis). Rooms with compiled synthesis articles show a [Compiled] badge. Perfect for start-of-session orientation: 'what changed?' + 'what needs attention?'.",
 		InputSchema: schema([]string{"since"}, map[string]map[string]any{
 			"project":      prop("string", "Filter to rooms in this project (optional \u2014 omit for all projects)"),
 			"since":        prop("string", "ISO timestamp (e.g. 2026-03-31T12:00:00). Returns only rooms with messages after this time."),
