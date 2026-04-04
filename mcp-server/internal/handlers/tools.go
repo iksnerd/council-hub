@@ -176,7 +176,7 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "update_room",
-		Description: "Update a room's metadata. Only provided fields are changed; omitted fields are left unchanged. Returns the full updated room state. Related rooms are bidirectionally linked. Use room_ids (comma-separated) to patch multiple rooms in one call.",
+		Description: "Update a room's metadata. Only provided fields are changed; omitted fields are left unchanged. Returns the full updated room state. Related rooms are bidirectionally linked. Use room_ids (comma-separated) to patch multiple rooms in one call. Use add_tags/remove_tags for surgical tag mutations without overwriting all existing tags.",
 		InputSchema: schema([]string{}, map[string]map[string]any{
 			"room_id":       prop("string", "Target room ID (single room)"),
 			"room_ids":      prop("string", "Comma-separated room IDs for batch updates — use instead of or alongside room_id"),
@@ -340,7 +340,7 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "get_digest",
-		Description: "Get a project activity and knowledge health digest. Shows rooms with new messages since a timestamp, plus rooms flagged by the Knowledge Linter (stale, needs-synthesis). Rooms with compiled synthesis articles show a [Compiled] badge. Perfect for start-of-session orientation: 'what changed?' + 'what needs attention?'.",
+		Description: "Get a project activity and knowledge health digest as a JSON array. Each entry has room_id, new_messages, latest_excerpt, tags, decision_count, synthesis_count. Rooms flagged by the Knowledge Linter (stale, needs-synthesis) are included. Machine-readable — parse room_id directly. Perfect for start-of-session orientation: 'what changed?' + 'what needs attention?'.",
 		InputSchema: schema([]string{"since"}, map[string]map[string]any{
 			"project":      prop("string", "Filter to rooms in this project (optional \u2014 omit for all projects)"),
 			"since":        prop("string", "ISO timestamp (e.g. 2026-03-31T12:00:00). Returns only rooms with messages after this time."),
