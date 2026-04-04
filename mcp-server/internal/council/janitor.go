@@ -2,21 +2,19 @@ package council
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"time"
 )
 
 const (
-	janitorInterval         = 5 * time.Minute
-	summaryMessageThreshold = 20
+	janitorInterval = 1 * time.Hour
 )
 
 func (s *Server) RunJanitor(ctx context.Context) {
 	ticker := time.NewTicker(janitorInterval)
 	defer ticker.Stop()
 
-	s.Logger.Info("Janitor started", "interval", janitorInterval, "threshold", summaryMessageThreshold)
+	s.Logger.Info("Knowledge Linter (Janitor) started", "interval", janitorInterval)
 
 	for {
 		select {
@@ -30,65 +28,123 @@ func (s *Server) RunJanitor(ctx context.Context) {
 }
 
 func (s *Server) JanitorSweep() {
-	rooms, err := s.GetRoomsNeedingSummary(summaryMessageThreshold)
+	s.lintNeedsSynthesis()
+	s.lintStaleRooms()
+}
+
+// hasTag checks whether a comma-separated tag string contains an exact tag.
+func hasTag(tags, tag string) bool {
+	for _, t := range strings.Split(tags, ",") {
+		if strings.TrimSpace(t) == tag {
+			return true
+		}
+	}
+	return false
+}
+
+// appendTag adds a tag to a comma-separated tag string if not already present.
+func appendTag(tags, tag string) string {
+	if hasTag(tags, tag) {
+		return tags
+	}
+	if tags == "" {
+		return tag
+	}
+	return tags + "," + tag
+}
+
+func (s *Server) lintNeedsSynthesis() {
+	query := `
+		SELECT id, tags FROM rooms
+		WHERE status IN ('active', 'resolved')
+		  AND EXISTS (SELECT 1 FROM messages WHERE room_id = rooms.id AND message_type = 'decision')
+		  AND NOT EXISTS (SELECT 1 FROM messages WHERE room_id = rooms.id AND message_type = 'synthesis')
+	`
+	rows, err := s.DB.Query(query)
 	if err != nil {
-		s.Logger.Error("Janitor: failed to find rooms needing summary", "error", err)
+		s.Logger.Error("Janitor: failed to query rooms needing synthesis", "error", err)
 		return
 	}
+	defer rows.Close()
 
-	for _, roomID := range rooms {
-		msgs, err := s.GetUnsummarizedMessages(roomID)
+	type candidate struct {
+		id   string
+		tags string
+	}
+	var candidates []candidate
+
+	for rows.Next() {
+		var id, tags string
+		if err := rows.Scan(&id, &tags); err != nil {
+			continue
+		}
+		if !hasTag(tags, "needs-synthesis") {
+			candidates = append(candidates, candidate{id, tags})
+		}
+	}
+
+	for _, c := range candidates {
+		newTags := appendTag(c.tags, "needs-synthesis")
+		s.Mu.Lock()
+		_, err := s.DB.Exec(`UPDATE rooms SET tags = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, newTags, c.id)
+		s.Mu.Unlock()
 		if err != nil {
-			s.Logger.Error("Janitor: failed to get unsummarized messages", "room_id", roomID, "error", err)
+			s.Logger.Error("Janitor: failed to update tags", "room_id", c.id, "error", err)
 			continue
 		}
 
-		summary := summarize(msgs)
-
-		if err := s.InsertSummary(roomID, summary); err != nil {
-			s.Logger.Error("Janitor: failed to insert summary", "room_id", roomID, "error", err)
-			continue
+		content := "### Knowledge Linter\nThis room contains decisions but lacks a `synthesis` message. " +
+			"Please read the deliberation and compile a structured article using `post_to_room(message_type=\"synthesis\")`."
+		if _, err := s.PostMessage(c.id, "system", content, "message", ""); err != nil {
+			s.Logger.Error("Janitor: failed to post linter message", "room_id", c.id, "error", err)
+		} else {
+			s.Logger.Info("Janitor: flagged room for synthesis", "room_id", c.id)
 		}
-
-		s.Logger.Info("Janitor: summarized room", "room_id", roomID, "messages_summarized", len(msgs))
 	}
 }
 
-// summarize produces a stub summary of messages.
-// Replace this with a real LLM API call for production use.
-func summarize(msgs []Message) string {
-	var b strings.Builder
-
-	first := msgs[0].Timestamp.Format("2006-01-02 15:04:05")
-	last := msgs[len(msgs)-1].Timestamp.Format("2006-01-02 15:04:05")
-
-	fmt.Fprintf(&b, "**Summary of %d messages (%s to %s):**\n\n", len(msgs), first, last)
-
-	authors := make(map[string]int)
-	for _, m := range msgs {
-		authors[m.Author]++
+func (s *Server) lintStaleRooms() {
+	query := `
+		SELECT id, tags FROM rooms
+		WHERE status = 'active'
+		  AND (SELECT MAX(timestamp) FROM messages WHERE room_id = rooms.id) < datetime('now', '-7 days')
+	`
+	rows, err := s.DB.Query(query)
+	if err != nil {
+		s.Logger.Error("Janitor: failed to query stale rooms", "error", err)
+		return
 	}
+	defer rows.Close()
 
-	b.WriteString("Participants: ")
-	i := 0
-	for author, count := range authors {
-		if i > 0 {
-			b.WriteString(", ")
+	type candidate struct {
+		id   string
+		tags string
+	}
+	var candidates []candidate
+
+	for rows.Next() {
+		var id, tags string
+		if err := rows.Scan(&id, &tags); err != nil {
+			continue
 		}
-		fmt.Fprintf(&b, "%s (%d msgs)", author, count)
-		i++
-	}
-	b.WriteString("\n\nKey points:\n")
-
-	for _, m := range msgs {
-		snippet := m.Content
-		if len(snippet) > 200 {
-			snippet = snippet[:200] + "..."
+		if !hasTag(tags, "stale") {
+			candidates = append(candidates, candidate{id, tags})
 		}
-		// Remove newlines for compact summary
-		snippet = strings.ReplaceAll(snippet, "\n", " ")
-		fmt.Fprintf(&b, "- **%s:** %s\n", m.Author, snippet)
 	}
 
-	return b.String()
+	for _, c := range candidates {
+		newTags := appendTag(c.tags, "stale")
+		s.Mu.Lock()
+		_, err := s.DB.Exec(`UPDATE rooms SET tags = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, newTags, c.id)
+		s.Mu.Unlock()
+		if err != nil {
+			continue
+		}
+
+		content := "### Knowledge Linter\nThis room has been inactive for over 7 days. " +
+			"Please review the context and either update the `status` to `paused`/`resolved`, or post an update to resume work."
+		if _, err := s.PostMessage(c.id, "system", content, "message", ""); err == nil {
+			s.Logger.Info("Janitor: flagged room as stale", "room_id", c.id)
+		}
+	}
 }
