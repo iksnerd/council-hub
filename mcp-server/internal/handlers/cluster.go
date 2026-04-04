@@ -8,12 +8,6 @@ import (
 	"net/http"
 )
 
-// clusterResponse is the generic response from Phoenix cluster API.
-type clusterResponse[T any] struct {
-	Results  T        `json:"results"`
-	Warnings []string `json:"warnings"`
-}
-
 // clusterCall makes an HTTP POST to the Phoenix internal cluster API.
 func (r *Registry) clusterCall(endpoint string, params map[string]any) (json.RawMessage, []string, error) {
 	if r.HTTPClient == nil || r.PhoenixURL == "" {
@@ -30,7 +24,7 @@ func (r *Registry) clusterCall(endpoint string, params map[string]any) (json.Raw
 	if err != nil {
 		return nil, nil, fmt.Errorf("cluster call to %s: %w", endpoint, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		msg, _ := io.ReadAll(resp.Body)

@@ -74,7 +74,7 @@ func (s *Server) GetRoomStats(roomID string) (RoomStats, error) {
 	if err != nil {
 		return stats, err
 	}
-	defer typeRows.Close()
+	defer func() { _ = typeRows.Close() }()
 
 	for typeRows.Next() {
 		var msgType string

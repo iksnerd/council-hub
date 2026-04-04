@@ -200,7 +200,7 @@ func initSchema(db *sql.DB) error {
 				projUpdates = append(projUpdates, projUpdate{id, normalized})
 			}
 		}
-		projRows.Close()
+		_ = projRows.Close()
 		for _, u := range projUpdates {
 			_, _ = db.Exec(`UPDATE rooms SET project = ? WHERE id = ?`, u.project, u.id)
 		}
