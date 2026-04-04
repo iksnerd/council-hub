@@ -1,9 +1,11 @@
 package handlers
 
 import (
+	"context"
 	"council-hub/internal/council"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -289,6 +291,32 @@ func (r *Registry) RegisterTools() {
 			"delete":  prop("string", "Set to 'true' to delete room after archiving"),
 		}),
 	}, r.handleArchiveRoom)
+
+	type KnowledgeLintInput struct{}
+	mcp.AddTool(r.Server.MCP, &mcp.Tool{
+		Name:        "knowledge_lint",
+		Description: "Run the Knowledge Linter on demand. Scans all active rooms and flags: 'needs-synthesis' (rooms with decisions but no synthesis article), 'stale' (active rooms with no activity for 7+ days). Posts system warnings into newly flagged rooms. Returns which rooms were flagged. Also runs automatically every hour.",
+		InputSchema: schema(nil, map[string]map[string]any{}),
+	}, func(ctx context.Context, req *mcp.CallToolRequest, args KnowledgeLintInput) (*mcp.CallToolResult, ToolOutput, error) {
+		result := r.Server.JanitorSweep()
+
+		var b strings.Builder
+		if len(result.NeedsSynthesis) == 0 && len(result.Stale) == 0 {
+			b.WriteString("All clear — no rooms need attention.")
+		} else {
+			if len(result.NeedsSynthesis) > 0 {
+				fmt.Fprintf(&b, "**Needs synthesis** (%d rooms): %s\n", len(result.NeedsSynthesis), strings.Join(result.NeedsSynthesis, ", "))
+			}
+			if len(result.Stale) > 0 {
+				fmt.Fprintf(&b, "**Stale** (%d rooms): %s\n", len(result.Stale), strings.Join(result.Stale, ", "))
+			}
+		}
+
+		text := b.String()
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: text}},
+		}, ToolOutput{Message: text}, nil
+	})
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "read_transcript",

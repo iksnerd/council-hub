@@ -352,3 +352,41 @@ func TestIntegration_ArchiveRoomEpitaph(t *testing.T) {
 		t.Errorf("expected last action in epitaph: %s", text)
 	}
 }
+
+func TestIntegration_KnowledgeLint(t *testing.T) {
+	cs, reg := setupIntegrationTest(t)
+
+	// Room with a decision but no synthesis — should be flagged
+	mustCreateRoom(t, reg.Server, "integ-lint-flag")
+	mustPostTyped(t, reg.Server, "integ-lint-flag", "Claude", "We chose Postgres", "decision")
+
+	// Room with a decision AND synthesis — should NOT be flagged
+	mustCreateRoom(t, reg.Server, "integ-lint-ok")
+	mustPostTyped(t, reg.Server, "integ-lint-ok", "Claude", "We chose Redis", "decision")
+	mustPostTyped(t, reg.Server, "integ-lint-ok", "Claude", "Compiled: Redis chosen for caching", "synthesis")
+
+	result := callTool(t, cs, "knowledge_lint", map[string]any{})
+	text := resultText(result)
+
+	if !strings.Contains(text, "integ-lint-flag") {
+		t.Errorf("expected integ-lint-flag in linter results: %s", text)
+	}
+	if strings.Contains(text, "integ-lint-ok") {
+		t.Errorf("integ-lint-ok should not be flagged (has synthesis): %s", text)
+	}
+	if !strings.Contains(text, "Needs synthesis") {
+		t.Errorf("expected 'Needs synthesis' label in output: %s", text)
+	}
+}
+
+func TestIntegration_KnowledgeLintAllClear(t *testing.T) {
+	cs, _ := setupIntegrationTest(t)
+
+	// No rooms with decisions — should report all clear
+	result := callTool(t, cs, "knowledge_lint", map[string]any{})
+	text := resultText(result)
+
+	if !strings.Contains(text, "All clear") {
+		t.Errorf("expected 'All clear' with no rooms, got: %s", text)
+	}
+}
