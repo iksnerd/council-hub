@@ -45,6 +45,8 @@ type UpdateRoomInput struct {
 	Project      string `json:"project"`
 	TechStack    string `json:"tech_stack"`
 	Tags         string `json:"tags"`
+	AddTags      string `json:"add_tags"`
+	RemoveTags   string `json:"remove_tags"`
 	SystemPrompt string `json:"system_prompt"`
 	RelatedRooms string `json:"related_rooms"`
 }
@@ -282,8 +284,8 @@ func (r *Registry) handleUpdateRoom(ctx context.Context, req *mcp.CallToolReques
 		return msg("Error: room_id or room_ids is required.")
 	}
 
-	if args.Topic == "" && args.Project == "" && args.TechStack == "" && args.Tags == "" && args.SystemPrompt == "" && args.RelatedRooms == "" {
-		return msg("Error: at least one field to update must be provided (topic, project, tech_stack, tags, system_prompt, related_rooms).")
+	if args.Topic == "" && args.Project == "" && args.TechStack == "" && args.Tags == "" && args.AddTags == "" && args.RemoveTags == "" && args.SystemPrompt == "" && args.RelatedRooms == "" {
+		return msg("Error: at least one field to update must be provided (topic, project, tech_stack, tags, add_tags, remove_tags, system_prompt, related_rooms).")
 	}
 
 	var updated []string
@@ -299,6 +301,12 @@ func (r *Registry) handleUpdateRoom(ctx context.Context, req *mcp.CallToolReques
 	if args.Tags != "" {
 		updated = append(updated, "tags")
 	}
+	if args.AddTags != "" {
+		updated = append(updated, "add_tags")
+	}
+	if args.RemoveTags != "" {
+		updated = append(updated, "remove_tags")
+	}
 	if args.SystemPrompt != "" {
 		updated = append(updated, "system_prompt")
 	}
@@ -309,7 +317,7 @@ func (r *Registry) handleUpdateRoom(ctx context.Context, req *mcp.CallToolReques
 
 	var b strings.Builder
 	for _, id := range ids {
-		if err := r.Server.UpdateRoom(id, args.Topic, args.Project, args.TechStack, args.Tags, args.SystemPrompt, args.RelatedRooms); err != nil {
+		if err := r.Server.UpdateRoom(id, args.Topic, args.Project, args.TechStack, args.Tags, args.AddTags, args.RemoveTags, args.SystemPrompt, args.RelatedRooms); err != nil {
 			fmt.Fprintf(&b, "Error updating '%s': %s\n", id, err.Error())
 			continue
 		}

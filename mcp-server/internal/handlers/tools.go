@@ -91,6 +91,10 @@ func prop(typ, desc string) map[string]any {
 	return map[string]any{"type": typ, "description": desc}
 }
 
+func enumProp(typ, desc string, enum []string) map[string]any {
+	return map[string]any{"type": typ, "description": desc, "enum": enum}
+}
+
 func (r *Registry) RegisterTools() {
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "create_room",
@@ -179,7 +183,9 @@ func (r *Registry) RegisterTools() {
 			"topic":         prop("string", "New topic/description"),
 			"project":       prop("string", "New project grouping"),
 			"tech_stack":    prop("string", "New tech stack"),
-			"tags":          prop("string", "New comma-separated tags"),
+			"tags":          prop("string", "New comma-separated tags (overwrites existing)"),
+			"add_tags":      prop("string", "Comma-separated tags to add to existing tags"),
+			"remove_tags":   prop("string", "Comma-separated tags to remove from existing tags"),
 			"system_prompt": prop("string", "New system prompt"),
 			"related_rooms": prop("string", "Comma-separated IDs of related rooms \u2014 bidirectional: linked rooms automatically link back"),
 		}),
@@ -326,7 +332,7 @@ func (r *Registry) RegisterTools() {
 			"room_ids":        prop("string", "Comma-separated room IDs for batch reads (e.g. room-a,room-b,room-c). Each room rendered with the same mode/last_n settings."),
 			"last_n":          prop("string", "Return only the last N messages (default: all). Keeps room header and system prompt."),
 			"after_id":        prop("string", "Return only messages with ID greater than this value. For delta reads after context compaction."),
-			"mode":            prop("string", "Set to 'summary' for system_prompt + latest per type, 'changelog' for only decision + action messages chronologically, or 'work_items' to export actions and decisions as structured work items (useful for ADO/GitHub Issues)."),
+			"mode":            enumProp("string", "Set to 'summary' for system_prompt + latest per type, 'changelog' for only decision + action messages chronologically, or 'work_items' to export actions and decisions as structured work items (useful for ADO/GitHub Issues).", []string{"summary", "changelog", "work_items"}),
 			"include_related": prop("string", "Set to 'true' to append a summary of each related room after the main transcript. Resolves related_rooms automatically."),
 			"cluster_wide":    prop("string", "Set to 'true' to fetch the transcript from the remote cluster node that owns it."),
 		}),

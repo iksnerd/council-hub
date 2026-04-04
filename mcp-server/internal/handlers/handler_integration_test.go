@@ -379,6 +379,43 @@ func TestIntegration_KnowledgeLint(t *testing.T) {
 	}
 }
 
+func TestIntegration_UpdateRoomAddRemoveTags(t *testing.T) {
+	cs, reg := setupIntegrationTest(t)
+	mustCreateRoom(t, reg.Server, "integ-tag-ops", withTags("go,api"))
+
+	// Add a tag via MCP dispatch
+	result := callTool(t, cs, "update_room", map[string]any{
+		"room_id":  "integ-tag-ops",
+		"add_tags": "mcp",
+	})
+	if strings.Contains(resultText(result), "Error") {
+		t.Errorf("unexpected error on add_tags: %s", resultText(result))
+	}
+
+	room, _ := reg.Server.GetRoom("integ-tag-ops")
+	for _, tag := range []string{"go", "api", "mcp"} {
+		if !strings.Contains(room.Tags, tag) {
+			t.Errorf("expected tag %q after add, got: %q", tag, room.Tags)
+		}
+	}
+
+	// Remove a tag via MCP dispatch
+	callTool(t, cs, "update_room", map[string]any{
+		"room_id":     "integ-tag-ops",
+		"remove_tags": "api",
+	})
+
+	room, _ = reg.Server.GetRoom("integ-tag-ops")
+	if strings.Contains(room.Tags, "api") {
+		t.Errorf("expected api removed, got: %q", room.Tags)
+	}
+	for _, tag := range []string{"go", "mcp"} {
+		if !strings.Contains(room.Tags, tag) {
+			t.Errorf("expected tag %q still present, got: %q", tag, room.Tags)
+		}
+	}
+}
+
 func TestIntegration_KnowledgeLintAllClear(t *testing.T) {
 	cs, _ := setupIntegrationTest(t)
 

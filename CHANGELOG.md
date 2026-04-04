@@ -4,6 +4,22 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.10.0] - 2026-04-05
+
+### Added
+- `add_tags` / `remove_tags` parameters on `update_room` — surgical tag mutations without overwriting the full tag list
+- Auto-clear `needs-synthesis` tag when a `synthesis` message is posted to a room
+- `enum` constraint on `read_transcript` `mode` parameter (`summary`, `changelog`, `work_items`) for better discoverability
+- `cluster.go` refactored into three focused files: `cluster.go` (HTTP transport), `cluster_types.go` (types + helpers), `cluster_handlers.go` (all cluster handler functions)
+
+### Changed
+- `get_digest` now returns structured JSON instead of formatted Markdown — agents can parse room IDs and health metrics directly without regex
+- `get_digest(cluster_wide=true)` likewise returns `{"results": [...], "warnings": [...]}` JSON
+
+### Tests
+- 37 new tests (427 → 464); overall coverage 84.9% → 91.0%
+- Added handler-level tests for `add_tags`/`remove_tags`, `since`/`until` on `search_messages`, `buildEpitaph`, `FindSimilarRooms` (was 0%), `GetUnsummarizedMessages`, `GetRoomsNeedingSummary`, `ListArchives`, `ReadArchive`, `RunJanitor` context cancellation, `handleReadTranscriptCluster` modes
+
 ## [0.9.4] - 2026-04-04
 
 ### Changed

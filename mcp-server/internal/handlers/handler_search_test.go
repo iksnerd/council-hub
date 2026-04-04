@@ -228,6 +228,82 @@ func TestHandleSearchMessagesProjectFilterNoResults(t *testing.T) {
 	}
 }
 
+func TestHandleSearchMessagesSince(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-search-since")
+	mustPost(t, reg.Server, "h-search-since", "Claude", "old message")
+
+	// Since far future — nothing should match
+	res, _, _ := reg.handleSearchMessages(context.Background(), nil, SearchMessagesInput{
+		RoomID: "h-search-since", Since: "2099-01-01T00:00:00",
+	})
+	text := resultText(res)
+	if !strings.Contains(text, "No messages found") {
+		t.Errorf("expected no results with future since, got: %s", text)
+	}
+
+	// Since past — message should match
+	res2, _, _ := reg.handleSearchMessages(context.Background(), nil, SearchMessagesInput{
+		RoomID: "h-search-since", Since: "2000-01-01T00:00:00",
+	})
+	text2 := resultText(res2)
+	if !strings.Contains(text2, "1 message(s)") {
+		t.Errorf("expected 1 message with past since, got: %s", text2)
+	}
+}
+
+func TestHandleSearchMessagesUntil(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-search-until")
+	mustPost(t, reg.Server, "h-search-until", "Claude", "a message")
+
+	// Until far future — message should match
+	res, _, _ := reg.handleSearchMessages(context.Background(), nil, SearchMessagesInput{
+		RoomID: "h-search-until", Until: "2099-01-01T00:00:00",
+	})
+	text := resultText(res)
+	if !strings.Contains(text, "1 message(s)") {
+		t.Errorf("expected 1 message with future until, got: %s", text)
+	}
+
+	// Until far past — nothing should match
+	res2, _, _ := reg.handleSearchMessages(context.Background(), nil, SearchMessagesInput{
+		RoomID: "h-search-until", Until: "2000-01-01T00:00:00",
+	})
+	text2 := resultText(res2)
+	if !strings.Contains(text2, "No messages found") {
+		t.Errorf("expected no results with past until, got: %s", text2)
+	}
+}
+
+func TestHandleSearchMessagesSinceAndUntil(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-search-range")
+	mustPost(t, reg.Server, "h-search-range", "Claude", "a message")
+
+	// Window that includes now — should match
+	res, _, _ := reg.handleSearchMessages(context.Background(), nil, SearchMessagesInput{
+		RoomID: "h-search-range",
+		Since:  "2000-01-01T00:00:00",
+		Until:  "2099-01-01T00:00:00",
+	})
+	text := resultText(res)
+	if !strings.Contains(text, "1 message(s)") {
+		t.Errorf("expected 1 message in valid range, got: %s", text)
+	}
+
+	// Window entirely in the past — should not match
+	res2, _, _ := reg.handleSearchMessages(context.Background(), nil, SearchMessagesInput{
+		RoomID: "h-search-range",
+		Since:  "2000-01-01T00:00:00",
+		Until:  "2000-12-31T23:59:59",
+	})
+	text2 := resultText(res2)
+	if !strings.Contains(text2, "No messages found") {
+		t.Errorf("expected no results with past window, got: %s", text2)
+	}
+}
+
 func TestHandleSearchMessagesDBError(t *testing.T) {
 	reg := setupHandlerServer(t)
 	reg.Server.DB.Close()

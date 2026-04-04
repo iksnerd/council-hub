@@ -25,6 +25,23 @@ func (s *Server) PostMessage(roomID, author, content, messageType string, replyT
 		return "", err
 	}
 
+	// Automatic tag clearing for synthesis messages
+	if messageType == "synthesis" {
+		var tags string
+		err := s.DB.QueryRow(`SELECT COALESCE(tags, '') FROM rooms WHERE id = ?`, roomID).Scan(&tags)
+		if err == nil && strings.Contains(tags, "needs-synthesis") {
+			parts := strings.Split(tags, ",")
+			var newParts []string
+			for _, p := range parts {
+				if p != "needs-synthesis" && p != "" {
+					newParts = append(newParts, p)
+				}
+			}
+			newTags := strings.Join(newParts, ",")
+			_, _ = s.DB.Exec(`UPDATE rooms SET tags = ? WHERE id = ?`, newTags, roomID)
+		}
+	}
+
 	// Update room's updated_at — best-effort, don't fail the post on this
 	_, _ = s.DB.Exec(`UPDATE rooms SET updated_at = CURRENT_TIMESTAMP WHERE id = ?`, roomID)
 

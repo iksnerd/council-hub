@@ -47,7 +47,7 @@ func TestUpdateStatusDBClosed(t *testing.T) {
 
 func TestUpdateRoomDBClosed(t *testing.T) {
 	s := setupAndClose(t)
-	err := s.UpdateRoom("pre-close", "new topic", "", "", "", "", "")
+	err := s.UpdateRoom("pre-close", "new topic", "", "", "", "", "", "", "")
 	if err == nil {
 		t.Error("expected error on closed DB")
 	}

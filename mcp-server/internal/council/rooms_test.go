@@ -112,7 +112,7 @@ func TestBidirectionalRelatedRoomsOnUpdate(t *testing.T) {
 	s.CreateRoom("upd-tgt", "Target", "", "", "", "", "")
 
 	// Update source to link to target
-	s.UpdateRoom("upd-src", "", "", "", "", "", "upd-tgt")
+	s.UpdateRoom("upd-src", "", "", "", "", "", "", "", "upd-tgt")
 
 	// Verify reverse link
 	tgt, _ := s.GetRoom("upd-tgt")
@@ -127,7 +127,7 @@ func TestBidirectionalNoDuplicateLinks(t *testing.T) {
 	s.CreateRoom("dup-b", "Room B", "", "", "", "", "dup-a")
 
 	// Update again with same link — should not duplicate
-	s.UpdateRoom("dup-b", "", "", "", "", "", "dup-a")
+	s.UpdateRoom("dup-b", "", "", "", "", "", "", "", "dup-a")
 
 	a, _ := s.GetRoom("dup-a")
 	if a.RelatedRooms != "dup-b" {
@@ -163,7 +163,7 @@ func TestUpdateRoom(t *testing.T) {
 	s.CreateRoom("update-room", "Original topic", "old-project", "Go", "old-tag", "Old prompt", "")
 
 	// Update only project and tags
-	if err := s.UpdateRoom("update-room", "", "new-project", "", "new-tag", "", ""); err != nil {
+	if err := s.UpdateRoom("update-room", "", "new-project", "", "new-tag", "", "", "", ""); err != nil {
 		t.Fatalf("updateRoom failed: %v", err)
 	}
 
@@ -190,7 +190,7 @@ func TestUpdateRoomRelatedRooms(t *testing.T) {
 	s := setupTestServer(t)
 	s.CreateRoom("link-room", "Link test", "", "", "", "", "")
 
-	if err := s.UpdateRoom("link-room", "", "", "", "", "", "room-a,room-b"); err != nil {
+	if err := s.UpdateRoom("link-room", "", "", "", "", "", "", "", "room-a,room-b"); err != nil {
 		t.Fatalf("updateRoom failed: %v", err)
 	}
 
@@ -203,7 +203,7 @@ func TestUpdateRoomRelatedRooms(t *testing.T) {
 func TestUpdateRoomNotFound(t *testing.T) {
 	s := setupTestServer(t)
 
-	err := s.UpdateRoom("nonexistent", "topic", "", "", "", "", "")
+	err := s.UpdateRoom("nonexistent", "topic", "", "", "", "", "", "", "")
 	if err == nil {
 		t.Fatal("expected error for nonexistent room")
 	}
@@ -402,7 +402,7 @@ func TestUpdateRoomAllFields(t *testing.T) {
 	s := setupTestServer(t)
 	mustCreateRoom(t, s, "upd-all", withDescription("Topic"), withProject("Proj"), withTechStack("Tech"), withTags("Tags"), withSystemPrompt("Prompt"), withRelatedRooms("Related"))
 
-	err := s.UpdateRoom("upd-all", "New Topic", "New Proj", "New Tech", "New Tags", "New Prompt", "New Related")
+	err := s.UpdateRoom("upd-all", "New Topic", "New Proj", "New Tech", "New Tags", "", "", "New Prompt", "New Related")
 	if err != nil {
 		t.Fatalf("updateRoom failed: %v", err)
 	}
@@ -712,7 +712,7 @@ func TestCreateRoomNormalizesProject(t *testing.T) {
 func TestUpdateRoomNormalizesProject(t *testing.T) {
 	s := setupTestServer(t)
 	s.CreateRoom("upd-norm-room", "desc", "old-project", "", "", "", "")
-	if err := s.UpdateRoom("upd-norm-room", "", "NEW_PROJECT", "", "", "", ""); err != nil {
+	if err := s.UpdateRoom("upd-norm-room", "", "NEW_PROJECT", "", "", "", "", "", ""); err != nil {
 		t.Fatalf("UpdateRoom failed: %v", err)
 	}
 	room, _ := s.GetRoom("upd-norm-room")
@@ -810,5 +810,122 @@ func TestDeleteRoomNoFalsePositiveCleanup(t *testing.T) {
 	got := strings.TrimSpace(holder.RelatedRooms)
 	if got != "room-extra" {
 		t.Errorf("expected holder.RelatedRooms = 'room-extra', got %q", got)
+	}
+}
+
+func TestUpdateRoomAddRemoveTags(t *testing.T) {
+	s := setupTestServer(t)
+	s.CreateRoom("tags-room", "", "", "", "foo,bar", "", "")
+
+	// Add a tag
+	err := s.UpdateRoom("tags-room", "", "", "", "", "baz", "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	room, _ := s.GetRoom("tags-room")
+	if !strings.Contains(room.Tags, "foo") || !strings.Contains(room.Tags, "bar") || !strings.Contains(room.Tags, "baz") {
+		t.Errorf("Expected tags to contain foo, bar, baz, got '%s'", room.Tags)
+	}
+
+	// Remove a tag
+	err = s.UpdateRoom("tags-room", "", "", "", "", "", "bar", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	room, _ = s.GetRoom("tags-room")
+	if strings.Contains(room.Tags, "bar") {
+		t.Errorf("Expected tags to NOT contain bar, got '%s'", room.Tags)
+	}
+	if !strings.Contains(room.Tags, "foo") || !strings.Contains(room.Tags, "baz") {
+		t.Errorf("Expected tags to contain foo and baz, got '%s'", room.Tags)
+	}
+
+	// Overwrite tags
+	err = s.UpdateRoom("tags-room", "", "", "", "new-only", "", "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	room, _ = s.GetRoom("tags-room")
+	if room.Tags != "new-only" {
+		t.Errorf("Expected tags to be 'new-only', got '%s'", room.Tags)
+	}
+}
+
+// ========== FindSimilarRooms ==========
+
+func TestFindSimilarRoomsByTag(t *testing.T) {
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "existing-auth", withProject("myapp"), withTags("go,auth,api"))
+	mustCreateRoom(t, s, "existing-db", withProject("myapp"), withTags("go,postgres,api"))
+
+	similar, err := s.FindSimilarRooms("new-room", "Auth service implementation", "myapp", "go,auth", 5)
+	if err != nil {
+		t.Fatalf("FindSimilarRooms error: %v", err)
+	}
+	if len(similar) == 0 {
+		t.Fatal("expected at least one similar room")
+	}
+	if similar[0].ID != "existing-auth" {
+		t.Errorf("expected existing-auth as top match, got %s", similar[0].ID)
+	}
+}
+
+func TestFindSimilarRoomsByDescription(t *testing.T) {
+	s := setupTestServer(t)
+	// Need score >= 3: use 3 overlapping keywords to reach threshold
+	mustCreateRoom(t, s, "auth-service", withDescription("Authentication middleware design patterns"))
+
+	similar, err := s.FindSimilarRooms("new-room", "Authentication middleware design overview", "", "", 5)
+	if err != nil {
+		t.Fatalf("FindSimilarRooms error: %v", err)
+	}
+	if len(similar) == 0 {
+		t.Fatal("expected a match on description keywords (authentication, middleware, design)")
+	}
+	if similar[0].ID != "auth-service" {
+		t.Errorf("expected auth-service as match, got %s", similar[0].ID)
+	}
+}
+
+func TestFindSimilarRoomsExcludesSelf(t *testing.T) {
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "self-room", withTags("go,auth"))
+
+	similar, err := s.FindSimilarRooms("self-room", "Auth", "", "go,auth", 5)
+	if err != nil {
+		t.Fatalf("FindSimilarRooms error: %v", err)
+	}
+	for _, r := range similar {
+		if r.ID == "self-room" {
+			t.Error("FindSimilarRooms should not return the excluded room")
+		}
+	}
+}
+
+func TestFindSimilarRoomsNoSignal(t *testing.T) {
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "some-room", withTags("go"))
+
+	similar, err := s.FindSimilarRooms("new-room", "the a to", "", "", 5)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(similar) != 0 {
+		t.Errorf("expected no results with no signal, got %d", len(similar))
+	}
+}
+
+func TestFindSimilarRoomsLimit(t *testing.T) {
+	s := setupTestServer(t)
+	for i := 0; i < 5; i++ {
+		mustCreateRoom(t, s, strings.Repeat("r", i+1)+"-room", withTags("go,auth,api"))
+	}
+
+	similar, err := s.FindSimilarRooms("new", "Auth", "", "go,auth,api", 2)
+	if err != nil {
+		t.Fatalf("FindSimilarRooms error: %v", err)
+	}
+	if len(similar) > 2 {
+		t.Errorf("expected at most 2 results, got %d", len(similar))
 	}
 }

@@ -856,3 +856,141 @@ func isValidUUIDv7(s string) bool {
 	// Version nibble at position 14 must be '7'
 	return s[14] == '7'
 }
+
+func TestPostMessageAutoClearSynthesis(t *testing.T) {
+	s := setupTestServer(t)
+	err := s.CreateRoom("synth-room", "", "", "", "foo,needs-synthesis,bar", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = s.PostMessage("synth-room", "Author", "Synthesis text", "synthesis", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	room, err := s.GetRoom("synth-room")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if room.Tags != "foo,bar" {
+		t.Errorf("Expected tags to be 'foo,bar', got '%s'", room.Tags)
+	}
+}
+
+// ========== GetUnsummarizedMessages ==========
+
+func TestGetUnsummarizedMessages(t *testing.T) {
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "unsumm-room")
+	mustPost(t, s, "unsumm-room", "Claude", "first")
+	mustPost(t, s, "unsumm-room", "Claude", "second")
+
+	msgs, err := s.GetUnsummarizedMessages("unsumm-room")
+	if err != nil {
+		t.Fatalf("GetUnsummarizedMessages error: %v", err)
+	}
+	if len(msgs) != 2 {
+		t.Errorf("expected 2 unsummarized messages, got %d", len(msgs))
+	}
+}
+
+func TestGetUnsummarizedMessagesAfterSummary(t *testing.T) {
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "summ-then-more")
+	mustPost(t, s, "summ-then-more", "Claude", "before summary")
+	if err := s.InsertSummary("summ-then-more", "Summary of above"); err != nil {
+		t.Fatalf("InsertSummary error: %v", err)
+	}
+	mustPost(t, s, "summ-then-more", "Claude", "after summary")
+
+	msgs, err := s.GetUnsummarizedMessages("summ-then-more")
+	if err != nil {
+		t.Fatalf("GetUnsummarizedMessages error: %v", err)
+	}
+	// Only message after summary should be returned
+	if len(msgs) != 1 {
+		t.Errorf("expected 1 unsummarized message after summary, got %d", len(msgs))
+	}
+	if msgs[0].Content != "after summary" {
+		t.Errorf("expected 'after summary', got %q", msgs[0].Content)
+	}
+}
+
+func TestGetUnsummarizedMessagesEmpty(t *testing.T) {
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "all-summarized")
+	mustPost(t, s, "all-summarized", "Claude", "msg")
+	if err := s.InsertSummary("all-summarized", "all caught up"); err != nil {
+		t.Fatalf("InsertSummary error: %v", err)
+	}
+
+	msgs, err := s.GetUnsummarizedMessages("all-summarized")
+	if err != nil {
+		t.Fatalf("GetUnsummarizedMessages error: %v", err)
+	}
+	if len(msgs) != 0 {
+		t.Errorf("expected 0 unsummarized messages after summary covers all, got %d", len(msgs))
+	}
+}
+
+// ========== GetRoomsNeedingSummary ==========
+
+func TestGetRoomsNeedingSummary(t *testing.T) {
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "needs-summ")
+	for i := 0; i < 6; i++ {
+		mustPost(t, s, "needs-summ", "Claude", "msg")
+	}
+	mustCreateRoom(t, s, "below-threshold")
+	mustPost(t, s, "below-threshold", "Claude", "just one")
+
+	rooms, err := s.GetRoomsNeedingSummary(5)
+	if err != nil {
+		t.Fatalf("GetRoomsNeedingSummary error: %v", err)
+	}
+	found := false
+	for _, id := range rooms {
+		if id == "needs-summ" {
+			found = true
+		}
+		if id == "below-threshold" {
+			t.Errorf("below-threshold should not appear (only 1 msg, threshold=5)")
+		}
+	}
+	if !found {
+		t.Errorf("needs-summ should appear (6 msgs > threshold 5), got: %v", rooms)
+	}
+}
+
+func TestGetRoomsNeedingSummaryAfterSummaryInserted(t *testing.T) {
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "caught-up")
+	for i := 0; i < 6; i++ {
+		mustPost(t, s, "caught-up", "Claude", "msg")
+	}
+	if err := s.InsertSummary("caught-up", "all summarized"); err != nil {
+		t.Fatalf("InsertSummary error: %v", err)
+	}
+
+	rooms, err := s.GetRoomsNeedingSummary(5)
+	if err != nil {
+		t.Fatalf("GetRoomsNeedingSummary error: %v", err)
+	}
+	for _, id := range rooms {
+		if id == "caught-up" {
+			t.Errorf("caught-up should not appear after summary inserted")
+		}
+	}
+}
+
+func TestGetRoomsNeedingSummaryEmpty(t *testing.T) {
+	s := setupTestServer(t)
+	rooms, err := s.GetRoomsNeedingSummary(5)
+	if err != nil {
+		t.Fatalf("GetRoomsNeedingSummary error: %v", err)
+	}
+	if len(rooms) != 0 {
+		t.Errorf("expected no rooms needing summary, got: %v", rooms)
+	}
+}

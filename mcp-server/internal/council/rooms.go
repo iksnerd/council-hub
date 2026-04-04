@@ -134,7 +134,7 @@ func (s *Server) UpdateStatus(roomID, status string) error {
 	return nil
 }
 
-func (s *Server) UpdateRoom(roomID, description, project, techStack, tags, systemPrompt, relatedRooms string) error {
+func (s *Server) UpdateRoom(roomID, description, project, techStack, tags, addTags, removeTags, systemPrompt, relatedRooms string) error {
 	s.Mu.Lock()
 	defer s.Mu.Unlock()
 
@@ -155,10 +155,42 @@ func (s *Server) UpdateRoom(roomID, description, project, techStack, tags, syste
 		setClauses = append(setClauses, "tech_stack = ?")
 		args = append(args, techStack)
 	}
+
 	if tags != "" {
 		setClauses = append(setClauses, "tags = ?")
 		args = append(args, tags)
+	} else if addTags != "" || removeTags != "" {
+		// Fetch current tags to modify them
+		var currentTags string
+		_ = s.DB.QueryRow(`SELECT COALESCE(tags, '') FROM rooms WHERE id = ?`, roomID).Scan(&currentTags)
+
+		tagMap := make(map[string]bool)
+		for _, t := range strings.Split(currentTags, ",") {
+			t = strings.TrimSpace(t)
+			if t != "" {
+				tagMap[t] = true
+			}
+		}
+		for _, t := range strings.Split(addTags, ",") {
+			t = strings.TrimSpace(t)
+			if t != "" {
+				tagMap[t] = true
+			}
+		}
+		for _, t := range strings.Split(removeTags, ",") {
+			t = strings.TrimSpace(t)
+			if t != "" {
+				delete(tagMap, t)
+			}
+		}
+		var newTags []string
+		for t := range tagMap {
+			newTags = append(newTags, t)
+		}
+		setClauses = append(setClauses, "tags = ?")
+		args = append(args, strings.Join(newTags, ","))
 	}
+
 	if systemPrompt != "" {
 		setClauses = append(setClauses, "system_prompt = ?")
 		args = append(args, systemPrompt)
