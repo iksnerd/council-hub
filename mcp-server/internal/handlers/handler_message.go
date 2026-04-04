@@ -86,7 +86,7 @@ func (r *Registry) handlePostToRoom(ctx context.Context, req *mcp.CallToolReques
 		args.MessageType = "message"
 	}
 	if !validMessageTypes[args.MessageType] {
-		return msg(fmt.Sprintf("Error: Invalid message_type '%s'. Must be one of: message, thought, decision, code, review, action, critique.", args.MessageType))
+		return msg(fmt.Sprintf("Error: Invalid message_type '%s'. Must be one of: message, thought, decision, code, review, action, critique, synthesis.", args.MessageType))
 	}
 
 	// Verify room exists
@@ -292,7 +292,7 @@ func (r *Registry) handleUpdateMessage(ctx context.Context, req *mcp.CallToolReq
 	}
 
 	if args.MessageType != "" && !validMessageTypes[args.MessageType] {
-		return msg(fmt.Sprintf("Error: invalid message_type '%s'. Valid types: message, thought, decision, code, review, action, critique.", args.MessageType))
+		return msg(fmt.Sprintf("Error: invalid message_type '%s'. Valid types: message, thought, decision, code, review, action, critique, synthesis.", args.MessageType))
 	}
 
 	m, err := r.Server.UpdateMessage(args.MessageID, args.Content, args.MessageType)

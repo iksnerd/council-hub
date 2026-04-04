@@ -52,7 +52,7 @@ func (r *Registry) handleReadTranscript(ctx context.Context, req *mcp.CallToolRe
 				Mode:        args.Mode,
 				ClusterWide: args.ClusterWide,
 			}
-			
+
 			var result *mcp.CallToolResult
 			var err error
 			if args.ClusterWide == "true" {

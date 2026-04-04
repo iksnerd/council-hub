@@ -362,7 +362,7 @@ func (r *Registry) handleReadTranscriptCluster(args ReadTranscriptInput, roomID 
 		if afterID != "" && m.ID <= afterID {
 			continue
 		}
-		
+
 		if args.Mode == "changelog" {
 			if m.MessageType != "decision" && m.MessageType != "action" && m.MessageType != "summary" {
 				continue
