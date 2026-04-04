@@ -220,9 +220,6 @@ func TestGetDigestBasic(t *testing.T) {
 	if !strings.Contains(text, "digest-b") {
 		t.Errorf("expected digest-b in output, got: %s", text)
 	}
-	if !strings.Contains(text, "2 rooms") {
-		t.Errorf("expected 2 rooms in digest, got: %s", text)
-	}
 }
 
 func TestGetDigestNoActivity(t *testing.T) {
@@ -237,8 +234,8 @@ func TestGetDigestNoActivity(t *testing.T) {
 		t.Fatalf("handleGetDigest error: %v", err)
 	}
 	text := resultText(res)
-	if !strings.Contains(text, "No new activity") {
-		t.Errorf("expected no activity message, got: %s", text)
+	if !strings.Contains(text, "[]") && !strings.Contains(text, "null") {
+		t.Errorf("expected empty JSON array for no activity, got: %s", text)
 	}
 }
 
@@ -285,8 +282,8 @@ func TestGetDigestFutureTimestamp(t *testing.T) {
 		t.Fatalf("handleGetDigest error: %v", err)
 	}
 	text := resultText(res)
-	if !strings.Contains(text, "No new activity") {
-		t.Errorf("expected no activity for future timestamp, got: %s", text)
+	if !strings.Contains(text, "[]") && !strings.Contains(text, "null") {
+		t.Errorf("expected empty JSON array for future timestamp, got: %s", text)
 	}
 }
 
@@ -364,5 +361,31 @@ func TestGetDigestWithLongExcerpt(t *testing.T) {
 func TestToolResultTextNil(t *testing.T) {
 	if got := toolResultText(nil); got != "" {
 		t.Errorf("expected empty string for nil, got: %s", got)
+	}
+}
+
+func TestGetDigestDBError(t *testing.T) {
+	reg := setupHandlerServer(t)
+	reg.Server.DB.Close()
+
+	res, _, err := reg.handleGetDigest(context.Background(), nil, DigestInput{
+		Since: "2000-01-01T00:00:00",
+	})
+	if err != nil {
+		t.Fatalf("handler should absorb DB error, got: %v", err)
+	}
+	if !strings.Contains(resultText(res), "Error") {
+		t.Errorf("expected error message, got: %s", resultText(res))
+	}
+}
+
+func TestGetDigestClusterMissingSince(t *testing.T) {
+	reg := setupHandlerTest(t)
+	res, _, err := reg.handleGetDigestCluster(DigestInput{Project: "proj"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(resultText(res), "Error") {
+		t.Errorf("expected error for missing since, got: %s", resultText(res))
 	}
 }

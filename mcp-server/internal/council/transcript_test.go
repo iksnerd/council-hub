@@ -1,8 +1,11 @@
 package council
 
 import (
+	"context"
+	"os"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestTranscriptFormatting(t *testing.T) {
@@ -281,6 +284,154 @@ func TestJanitorSweepRunsBothLinters(t *testing.T) {
 	r2, _ := cs.GetRoom("sweep-stale")
 	if !hasTag(r2.Tags, "stale") {
 		t.Errorf("JanitorSweep should flag stale, got '%s'", r2.Tags)
+	}
+}
+
+// ========== buildEpitaph ==========
+
+func TestBuildEpitaph(t *testing.T) {
+	room := Room{ID: "epi-room", Description: "Test"}
+	msgs := []Message{
+		{ID: "1", MessageType: "thought", Author: "Claude", Content: "a thought"},
+		{ID: "2", MessageType: "decision", Author: "Claude", Content: "use postgres"},
+		{ID: "3", MessageType: "action", Author: "Gemini", Content: "deployed to prod"},
+		{ID: "4", MessageType: "decision", Author: "Gemini", Content: "switch to redis"},
+	}
+
+	out := buildEpitaph(room, msgs)
+
+	if !strings.Contains(out, "## Summary") {
+		t.Error("expected ## Summary header")
+	}
+	if !strings.Contains(out, "switch to redis") {
+		t.Errorf("expected last decision, got: %s", out)
+	}
+	if !strings.Contains(out, "deployed to prod") {
+		t.Errorf("expected last action, got: %s", out)
+	}
+	// First decision should be superseded
+	if strings.Contains(out, "use postgres") {
+		t.Errorf("earlier decision should not appear, got: %s", out)
+	}
+}
+
+func TestBuildEpitaphNoMessages(t *testing.T) {
+	room := Room{ID: "epi-empty"}
+	out := buildEpitaph(room, []Message{})
+	if out != "" {
+		t.Errorf("expected empty epitaph with no messages, got: %s", out)
+	}
+}
+
+func TestBuildEpitaphDecisionOnly(t *testing.T) {
+	room := Room{ID: "epi-dec"}
+	msgs := []Message{
+		{ID: "1", MessageType: "decision", Author: "Claude", Content: "chose kafka"},
+	}
+	out := buildEpitaph(room, msgs)
+	if !strings.Contains(out, "chose kafka") {
+		t.Errorf("expected decision in epitaph, got: %s", out)
+	}
+	if strings.Contains(out, "Last action") {
+		t.Errorf("should not include Last action when none exists, got: %s", out)
+	}
+}
+
+// ========== ListArchives / ReadArchive ==========
+
+func TestListArchivesEmpty(t *testing.T) {
+	s := setupTestServer(t)
+	// Ensure the archive dir doesn't exist for this test
+	t.Cleanup(func() { _ = os.RemoveAll(s.archiveDir()) })
+	_ = os.RemoveAll(s.archiveDir())
+
+	archives, err := s.ListArchives()
+	if err != nil {
+		t.Fatalf("ListArchives error: %v", err)
+	}
+	if len(archives) != 0 {
+		t.Errorf("expected no archives, got %d", len(archives))
+	}
+}
+
+func TestListArchivesAndReadArchive(t *testing.T) {
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "arc-room")
+	mustPostTyped(t, s, "arc-room", "Claude", "we decided X", "decision")
+
+	path, err := s.ArchiveRoom("arc-room")
+	if err != nil {
+		t.Fatalf("ArchiveRoom error: %v", err)
+	}
+	if path == "" {
+		t.Fatal("expected non-empty archive path")
+	}
+
+	archives, err := s.ListArchives()
+	if err != nil {
+		t.Fatalf("ListArchives error: %v", err)
+	}
+	found := false
+	for _, a := range archives {
+		if a.RoomID == "arc-room" {
+			found = true
+			if a.Size == 0 {
+				t.Error("expected non-zero archive size")
+			}
+		}
+	}
+	if !found {
+		t.Errorf("arc-room not found in archives: %v", archives)
+	}
+
+	content, err := s.ReadArchive("arc-room")
+	if err != nil {
+		t.Fatalf("ReadArchive error: %v", err)
+	}
+	if !strings.Contains(content, "we decided X") {
+		t.Errorf("expected message content in archive, got: %s", content)
+	}
+}
+
+func TestReadArchiveNotFound(t *testing.T) {
+	s := setupTestServer(t)
+	_, err := s.ReadArchive("nonexistent-room")
+	if err == nil {
+		t.Error("expected error for nonexistent archive")
+	}
+}
+
+// ========== RunJanitor ==========
+
+func TestRunJanitorStopsOnContextCancel(t *testing.T) {
+	s := setupTestServer(t)
+	ctx, cancel := context.WithCancel(context.Background())
+
+	done := make(chan struct{})
+	go func() {
+		s.RunJanitor(ctx)
+		close(done)
+	}()
+
+	cancel()
+
+	select {
+	case <-done:
+		// passed
+	case <-time.After(2 * time.Second):
+		t.Error("RunJanitor did not stop after context cancellation")
+	}
+}
+
+func TestBuildEpitaphLongContentTruncated(t *testing.T) {
+	room := Room{ID: "epi-long"}
+	longContent := strings.Repeat("word ", 100) // 500 chars
+	msgs := []Message{
+		{ID: "1", MessageType: "decision", Author: "Claude", Content: longContent},
+	}
+	out := buildEpitaph(room, msgs)
+	if !strings.Contains(out, "...") {
+		t.Errorf("expected long content to be truncated with ..., got: %s", out)
 	}
 }
 

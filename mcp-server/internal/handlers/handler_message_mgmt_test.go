@@ -227,6 +227,19 @@ func TestHandleUpdateMessageNonExistentID(t *testing.T) {
 	}
 }
 
+func TestHandleUpdateMessageDBError(t *testing.T) {
+	reg := setupHandlerServer(t)
+	reg.Server.DB.Close()
+
+	_, _, err := reg.handleUpdateMessage(context.Background(), nil, UpdateMessageInput{
+		MessageID: "some-id",
+		Content:   "content",
+	})
+	if err == nil {
+		t.Error("expected error from closed DB")
+	}
+}
+
 func TestHandlePinMessageNonExistentID(t *testing.T) {
 	reg := setupHandlerTest(t)
 	mustCreateRoom(t, reg.Server, "pin-parse-err")

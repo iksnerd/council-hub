@@ -258,6 +258,105 @@ func TestHandleCreateRoomTemplate(t *testing.T) {
 	}
 }
 
+// ========== update_room add_tags / remove_tags ==========
+
+func TestHandleUpdateRoomAddTags(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-addtags", withTags("go,api"))
+
+	res, _, _ := reg.handleUpdateRoom(context.Background(), nil, UpdateRoomInput{
+		RoomID: "h-addtags", AddTags: "mcp",
+	})
+	text := resultText(res)
+	if !strings.Contains(text, "add_tags") {
+		t.Errorf("expected add_tags in updated fields, got: %s", text)
+	}
+
+	room, _ := reg.Server.GetRoom("h-addtags")
+	for _, tag := range []string{"go", "api", "mcp"} {
+		if !strings.Contains(room.Tags, tag) {
+			t.Errorf("expected tag %q in %q", tag, room.Tags)
+		}
+	}
+}
+
+func TestHandleUpdateRoomRemoveTags(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-removetags", withTags("go,api,mcp"))
+
+	res, _, _ := reg.handleUpdateRoom(context.Background(), nil, UpdateRoomInput{
+		RoomID: "h-removetags", RemoveTags: "mcp",
+	})
+	text := resultText(res)
+	if !strings.Contains(text, "remove_tags") {
+		t.Errorf("expected remove_tags in updated fields, got: %s", text)
+	}
+
+	room, _ := reg.Server.GetRoom("h-removetags")
+	if strings.Contains(room.Tags, "mcp") {
+		t.Errorf("expected mcp removed from tags, got: %q", room.Tags)
+	}
+	for _, tag := range []string{"go", "api"} {
+		if !strings.Contains(room.Tags, tag) {
+			t.Errorf("expected tag %q still present in %q", tag, room.Tags)
+		}
+	}
+}
+
+func TestHandleUpdateRoomAddAndRemoveTags(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-addremove", withTags("go,api"))
+
+	_, _, _ = reg.handleUpdateRoom(context.Background(), nil, UpdateRoomInput{
+		RoomID: "h-addremove", AddTags: "mcp", RemoveTags: "api",
+	})
+
+	room, _ := reg.Server.GetRoom("h-addremove")
+	if strings.Contains(room.Tags, "api") {
+		t.Errorf("expected api removed, got: %q", room.Tags)
+	}
+	for _, tag := range []string{"go", "mcp"} {
+		if !strings.Contains(room.Tags, tag) {
+			t.Errorf("expected tag %q in %q", tag, room.Tags)
+		}
+	}
+}
+
+func TestHandleUpdateRoomAddTagsDuplicate(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-adddup", withTags("go,api"))
+
+	_, _, _ = reg.handleUpdateRoom(context.Background(), nil, UpdateRoomInput{
+		RoomID: "h-adddup", AddTags: "go",
+	})
+
+	room, _ := reg.Server.GetRoom("h-adddup")
+	count := strings.Count(room.Tags, "go")
+	if count != 1 {
+		t.Errorf("expected go to appear once, got %d in %q", count, room.Tags)
+	}
+}
+
+func TestHandleUpdateRoomRemoveNonexistentTag(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-removemissing", withTags("go,api"))
+
+	res, _, _ := reg.handleUpdateRoom(context.Background(), nil, UpdateRoomInput{
+		RoomID: "h-removemissing", RemoveTags: "nonexistent",
+	})
+	text := resultText(res)
+	if strings.Contains(text, "Error") {
+		t.Errorf("should not error on removing nonexistent tag, got: %s", text)
+	}
+
+	room, _ := reg.Server.GetRoom("h-removemissing")
+	for _, tag := range []string{"go", "api"} {
+		if !strings.Contains(room.Tags, tag) {
+			t.Errorf("expected tag %q still present in %q", tag, room.Tags)
+		}
+	}
+}
+
 func TestHandleCreateRoomTemplateOverride(t *testing.T) {
 	reg := setupHandlerTest(t)
 
@@ -497,7 +596,7 @@ func TestHandleDeleteRoomCascadeClean(t *testing.T) {
 	reg := setupHandlerTest(t)
 	mustCreateRoom(t, reg.Server, "h-cascade-a")
 	mustCreateRoom(t, reg.Server, "h-cascade-b")
-	reg.Server.UpdateRoom("h-cascade-b", "", "", "", "", "", "h-cascade-a")
+	reg.Server.UpdateRoom("h-cascade-b", "", "", "", "", "", "", "", "h-cascade-a")
 
 	res, _, _ := reg.handleDeleteRoom(context.Background(), nil, DeleteRoomInput{RoomID: "h-cascade-a"})
 	if !strings.Contains(resultText(res), "permanently deleted") {

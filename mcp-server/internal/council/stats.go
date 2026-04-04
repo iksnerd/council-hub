@@ -90,13 +90,13 @@ func (s *Server) GetRoomStats(roomID string) (RoomStats, error) {
 
 // DigestEntry represents one room's activity in a project digest.
 type DigestEntry struct {
-	RoomID         string
-	NewMessages    int
-	LatestAuthor   string
-	LatestExcerpt  string
-	Tags           string
-	DecisionCount  int
-	SynthesisCount int
+	RoomID         string `json:"room_id"`
+	NewMessages    int    `json:"new_messages"`
+	LatestAuthor   string `json:"latest_author"`
+	LatestExcerpt  string `json:"latest_excerpt"`
+	Tags           string `json:"tags"`
+	DecisionCount  int    `json:"decision_count"`
+	SynthesisCount int    `json:"synthesis_count"`
 }
 
 // GetDigest returns rooms with messages since the given timestamp, plus any rooms needing attention.
