@@ -6,18 +6,21 @@ linters:
     - staticcheck
     - unused
 
-linters-settings:
-  errcheck:
-    # Don't require checking errors on defer Close() calls — standard Go pattern
-    check-type-assertions: false
+formatters:
+  enable:
+    - gofmt
 
 issues:
-  exclude-rules:
-    # Test files: errcheck is too noisy — helper calls, setup boilerplate
+  exclude-dirs:
+    - vendor
+
+exclusions:
+  rules:
+    # Test files: errcheck is too noisy for helper calls and setup boilerplate
     - path: "_test\\.go"
       linters:
         - errcheck
-    # Test files: nil context is acceptable in unit tests that don't use context
+    # Test files: nil context is acceptable in unit tests
     - path: "_test\\.go"
       text: "SA1012"
       linters:
@@ -27,7 +30,3 @@ issues:
       text: "QF1001"
       linters:
         - staticcheck
-    # rows.Close / body.Close defers are intentionally fire-and-forget
-    - text: "Error return value of .*(rows|body|Body)\\.Close"
-      linters:
-        - errcheck
