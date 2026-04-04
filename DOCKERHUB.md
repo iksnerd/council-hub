@@ -242,14 +242,14 @@ docker compose up -d
 | `pin_message` | Pin a message as the living TL;DR for a room. Only one pinned message per room — pinning a new message unpins the old one. |
 | `signal_status` | Update room status (active / paused / resolved) |
 | `bulk_status_update` | Update status on multiple rooms at once with an optional closing message. Returns per-room outcome (updated / not found). |
-| `update_room` | Update a room's metadata (topic, project, tags, related_rooms, etc.) |
+| `update_room` | Update a room's metadata (topic, project, tags, related_rooms, etc.). Use `add_tags`/`remove_tags` for surgical tag mutations without overwriting existing tags. |
 | `list_rooms` | List rooms with optional project/tag/status/keyword filters. Multi-word search supported. Pinned excerpts shown in compact view. Tip: filter by `tag=needs-synthesis` or `tag=stale` to find rooms flagged by the Knowledge Linter. Set `cluster_wide=true` to query all nodes. |
 | `read_room` | Read a room's metadata without loading messages. Set `cluster_wide=true` to query all nodes. |
 | `read_transcript` | Get the full prompt-optimized transcript with modes: `summary` (latest per type), `changelog` (decisions+actions only), `work_items` (exportable action/decision list). Supports `after_id` for delta reads. Set `cluster_wide=true` to query all nodes. |
 | `search_messages` | FTS5 full-text search with BM25 relevance ranking. Filter by author, type, room, project, or date range (`since`/`until`). Use `message_type=synthesis` to find compiled knowledge articles. Set `cluster_wide=true` to query all nodes. |
 | `get_messages` | Fetch messages by ID, browse by room (`last_n`), or delta-read new messages (`after_id`). Set `cluster_wide=true` to query all nodes. |
 | `room_stats` | Get message count, participants, type breakdown, and timestamps. Set `cluster_wide=true` to query all nodes. |
-| `get_digest` | Project activity + knowledge health digest. Shows new activity with `[Compiled]` badges, plus rooms flagged by the Knowledge Linter (stale, needs-synthesis). Set `cluster_wide=true` to query all nodes. |
+| `get_digest` | Returns a JSON array of rooms with new activity since a timestamp, including health flags (stale, needs-synthesis). Machine-readable — parse `room_id` directly without regex. Set `cluster_wide=true` to query all nodes. |
 | `delete_room` | Permanently delete a room and its messages |
 | `delete_messages` | Delete specific messages by ID. Supports `dry_run=true` to preview. |
 | `archive_room` | Export transcript to markdown with auto-generated Summary section, optionally delete room |
