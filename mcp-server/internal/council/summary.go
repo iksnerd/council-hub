@@ -105,7 +105,8 @@ func (s *Server) ArchiveRoom(roomID string) (string, error) {
 		return "", fmt.Errorf("failed to read transcript: %w", err)
 	}
 
-	transcript := FormatTranscript(room, messages)
+	epitaph := buildEpitaph(room, messages)
+	transcript := epitaph + FormatTranscript(room, messages)
 
 	archiveDir := s.archiveDir()
 	if err := os.MkdirAll(archiveDir, 0755); err != nil {
@@ -118,6 +119,51 @@ func (s *Server) ArchiveRoom(roomID string) (string, error) {
 	}
 
 	return archivePath, nil
+}
+
+// buildEpitaph generates a brief summary block from the last decision and action messages.
+func buildEpitaph(room Room, messages []Message) string {
+	var lastDecision, lastAction *Message
+	for i := range messages {
+		m := &messages[i]
+		switch m.MessageType {
+		case "decision":
+			lastDecision = m
+		case "action":
+			lastAction = m
+		}
+	}
+
+	if lastDecision == nil && lastAction == nil {
+		return ""
+	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "## Summary\n\n")
+	if lastDecision != nil {
+		excerpt := lastDecision.Content
+		if len(excerpt) > 300 {
+			excerpt = excerpt[:300]
+			if i := strings.LastIndex(excerpt, "\n"); i > 200 {
+				excerpt = excerpt[:i]
+			}
+			excerpt += "..."
+		}
+		fmt.Fprintf(&b, "**Last decision** (%s by %s):\n%s\n\n", lastDecision.Timestamp.Format("2006-01-02"), lastDecision.Author, excerpt)
+	}
+	if lastAction != nil {
+		excerpt := lastAction.Content
+		if len(excerpt) > 300 {
+			excerpt = excerpt[:300]
+			if i := strings.LastIndex(excerpt, "\n"); i > 200 {
+				excerpt = excerpt[:i]
+			}
+			excerpt += "..."
+		}
+		fmt.Fprintf(&b, "**Last action** (%s by %s):\n%s\n\n", lastAction.Timestamp.Format("2006-01-02"), lastAction.Author, excerpt)
+	}
+	b.WriteString("---\n\n")
+	return b.String()
 }
 
 // archiveDir returns the directory where archives are stored.

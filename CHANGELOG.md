@@ -4,6 +4,13 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.9.0] - 2026-04-04
+
+### Added
+- `get_messages(after_id)` — delta read on raw messages: `room_id` + `after_id` returns all messages after that ID without transcript formatting; complements `read_transcript(after_id)` for agents that want raw message objects
+- `read_transcript(mode=work_items)` — exports only action and decision messages as structured work items (date, type, author, ID, content); useful for ADO/GitHub Issues export at sprint close
+- `archive_room` epitaph — archived transcripts now open with a `## Summary` block containing the last decision and last action from the room; makes archives scannable without reading the full transcript
+
 ## [0.8.0] - 2026-04-04
 
 ### Added

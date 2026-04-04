@@ -66,7 +66,7 @@ func TestHandleGetMessagesNoParams(t *testing.T) {
 
 	res, _, _ := reg.handleGetMessages(context.Background(), nil, GetMessagesInput{})
 	text := resultText(res)
-	if !strings.Contains(text, "provide either message_ids or room_id") {
+	if !strings.Contains(text, "provide either message_ids") {
 		t.Errorf("expected parameter error, got: %s", text)
 	}
 }

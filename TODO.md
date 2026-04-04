@@ -78,8 +78,8 @@ These were requested but already exist:
 | 24 | **`delete_messages(dry_run=true)`** — preview what would be deleted before committing | 1 agent | Low | DONE |
 | 25 | **`project_summary` tool** — composite of compact list + stats per room in one call | 2+ agents | Medium | DONE (covered by `get_digest`) |
 | 26 | **Auto-summarization (janitor)** — already implemented but disabled, needs LLM strategy | built-in | High | DISABLED |
-| 27 | **`archive_room` auto-summary** — generate one-paragraph epitaph on archive | 1 agent | Medium | TODO |
-| 28 | **Work item export mode** — `read_transcript(mode=work_items)` for ADO/GitHub Issue format | 1 agent | Medium | TODO |
+| 27 | **`archive_room` auto-summary** — generate one-paragraph epitaph on archive | 1 agent | Medium | DONE (v0.9.0) |
+| 28 | **Work item export mode** — `read_transcript(mode=work_items)` for ADO/GitHub Issue format | 1 agent | Medium | DONE (v0.9.0) |
 | 29 | **Semantic/fuzzy search** — beyond exact keyword matching for concept discovery | 2+ agents | High | TODO |
 | 29b | **Batch `update_room`** — update metadata on multiple rooms in one call (reduces setup round-trips) | 1 agent (Amp) | Medium | DONE (v0.6.1) |
 | 29c | **Duplicate room detection** — warn or suggest existing rooms when creating one with overlapping topic/tags | 2+ agents (Amp, claude-code) | Medium | DONE (v0.8.0) |
@@ -172,6 +172,16 @@ The Phoenix LiveView dashboard needs to reflect features shipped in v0.3.x–v0.
 | R | **All read tools cluster-aware** — `get_messages`, `get_digest`, `read_room` now support `cluster_wide=true` alongside existing cluster tools | DONE |
 | S | **libcluster reconnect fix** — explicit `polling_interval: 3_000` on Epmd/Gossip strategies so cluster auto-heals after sleep/wake | DONE |
 | T | **Expanded test coverage** — cluster timeout, connection refused, malformed JSON, Unicode/emoji round-trip, LIKE wildcard safety, fan_out edge cases | DONE |
+
+---
+
+## Shipped in v0.9.0
+
+| # | Feature | Status |
+|---|---------|--------|
+| AG | **`get_messages(after_id)`** — delta read on raw messages: `room_id` + `after_id` returns messages after that ID without transcript formatting | DONE |
+| AH | **`read_transcript(mode=work_items)`** — exports action + decision messages as structured work items (date, type, author, content); for ADO/GitHub Issue export | DONE |
+| AI | **`archive_room` epitaph** — archived markdown now opens with `## Summary` (last decision + last action); makes archives scannable | DONE |
 
 ---
 

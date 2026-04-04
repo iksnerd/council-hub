@@ -289,3 +289,66 @@ func TestIntegration_ReadArchive(t *testing.T) {
 		t.Errorf("unexpected: %s", resultText(result))
 	}
 }
+
+func TestIntegration_GetMessagesAfterID(t *testing.T) {
+	cs, reg := setupIntegrationTest(t)
+	mustCreateRoom(t, reg.Server, "integ-after-id")
+	firstID := mustPost(t, reg.Server, "integ-after-id", "Claude", "first message")
+	mustPost(t, reg.Server, "integ-after-id", "Claude", "second message")
+
+	result := callTool(t, cs, "get_messages", map[string]any{
+		"room_id":  "integ-after-id",
+		"after_id": firstID,
+	})
+	text := resultText(result)
+	if !strings.Contains(text, "second message") {
+		t.Errorf("expected second message in after_id result: %s", text)
+	}
+	if strings.Contains(text, "first message") {
+		t.Errorf("should not contain first message in after_id result: %s", text)
+	}
+}
+
+func TestIntegration_ReadTranscriptWorkItems(t *testing.T) {
+	cs, reg := setupIntegrationTest(t)
+	mustCreateRoom(t, reg.Server, "integ-work-items")
+	mustPostTyped(t, reg.Server, "integ-work-items", "Claude", "thought content", "thought")
+	mustPostTyped(t, reg.Server, "integ-work-items", "Claude", "deploy the service", "action")
+	mustPostTyped(t, reg.Server, "integ-work-items", "Claude", "use postgres not sqlite", "decision")
+
+	result := callTool(t, cs, "read_transcript", map[string]any{
+		"room_id": "integ-work-items",
+		"mode":    "work_items",
+	})
+	text := resultText(result)
+	if !strings.Contains(text, "deploy the service") {
+		t.Errorf("expected action in work_items: %s", text)
+	}
+	if !strings.Contains(text, "use postgres not sqlite") {
+		t.Errorf("expected decision in work_items: %s", text)
+	}
+	if strings.Contains(text, "thought content") {
+		t.Errorf("should not contain thought in work_items: %s", text)
+	}
+}
+
+func TestIntegration_ArchiveRoomEpitaph(t *testing.T) {
+	cs, reg := setupIntegrationTest(t)
+	mustCreateRoom(t, reg.Server, "integ-epitaph")
+	mustPostTyped(t, reg.Server, "integ-epitaph", "Claude", "decided to use Redis", "decision")
+	mustPostTyped(t, reg.Server, "integ-epitaph", "Claude", "deployed to production", "action")
+
+	callTool(t, cs, "archive_room", map[string]any{"room_id": "integ-epitaph"})
+
+	result := callTool(t, cs, "read_archive", map[string]any{"room_id": "integ-epitaph"})
+	text := resultText(result)
+	if !strings.Contains(text, "## Summary") {
+		t.Errorf("expected epitaph ## Summary block in archive: %s", text)
+	}
+	if !strings.Contains(text, "decided to use Redis") {
+		t.Errorf("expected last decision in epitaph: %s", text)
+	}
+	if !strings.Contains(text, "deployed to production") {
+		t.Errorf("expected last action in epitaph: %s", text)
+	}
+}

@@ -37,6 +37,25 @@ Docker Hub image: `iksnerd/council-hub` ([hub.docker.com/r/iksnerd/council-hub](
 
 **Important:** Never move tags. If a fix is needed after tagging, bump to vX.Y.Z+1. Never push Docker images manually — let CI handle it for reproducible multi-arch builds.
 
+### Channel Plugin (Claude Code notifications)
+```bash
+cd channel-plugin
+bun install          # install dependencies (first time)
+bun run src/index.ts # run locally (for testing)
+```
+
+The channel plugin is a Claude Code MCP channel that watches for new messages in council-hub rooms and pushes them as `<channel>` notifications into the active Claude Code session. It polls the SQLite database directly (read-only, WAL mode — same pattern as Phoenix UI).
+
+**Configuration** (env vars):
+- `COUNCIL_DB` — SQLite path (default: `~/Documents/council-hub/council.db`)
+- `COUNCIL_ROOMS` — comma-separated room IDs to watch, or `*` for all (default: `*`)
+- `COUNCIL_POLL_INTERVAL` — milliseconds between polls (default: `3000`)
+- `COUNCIL_MCP_URL` — council-hub HTTP MCP endpoint for replies (default: `http://localhost:3001/mcp`)
+- `COUNCIL_AUTHOR` — author name used to suppress self-echo (default: `claude-code`)
+- `COUNCIL_CHANNEL_DEBUG` — set to `1` for debug logging to stderr
+
+**Usage:** Registered in `.mcp.json` as `council-hub-channel`. Start Claude Code with `--dangerously-load-development-channels` during the preview period.
+
 ### Go MCP Server
 ```bash
 cd mcp-server

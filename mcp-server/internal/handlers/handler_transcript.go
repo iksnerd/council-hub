@@ -181,6 +181,40 @@ func (r *Registry) readSingleTranscript(args ReadTranscriptInput) (*mcp.CallTool
 		return msg(b.String())
 	}
 
+	// Mode: work_items — action + decision messages formatted as exportable work items
+	if args.Mode == "work_items" {
+		messages, err := r.Server.GetTranscript(args.RoomID)
+		if err != nil {
+			r.Server.Logger.Error("Failed to get transcript", "room_id", args.RoomID, "error", err)
+			return nil, ToolOutput{}, err
+		}
+
+		var b strings.Builder
+		fmt.Fprintf(&b, "# %s — work items\n", room.ID)
+		if room.Description != "" {
+			fmt.Fprintf(&b, "**Topic:** %s\n", room.Description)
+		}
+		b.WriteString("---\n\n")
+
+		count := 0
+		for _, m := range messages {
+			if m.MessageType != "action" && m.MessageType != "decision" {
+				continue
+			}
+			count++
+			ts := m.Timestamp.Format("2006-01-02")
+			label := "Action"
+			if m.MessageType == "decision" {
+				label = "Decision"
+			}
+			fmt.Fprintf(&b, "## [%s] %s — %s (#%.8s)\n\n%s\n\n", ts, label, m.Author, m.ID, m.Content)
+		}
+		if count == 0 {
+			b.WriteString("No actions or decisions recorded yet.\n")
+		}
+		return msg(b.String())
+	}
+
 	// Mode: changelog \u2014 only decision + action messages, chronological
 	if args.Mode == "changelog" {
 		messages, err := r.Server.GetTranscript(args.RoomID)

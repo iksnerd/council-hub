@@ -1,0 +1,18 @@
+{
+  "name": "council-hub-channel",
+  "version": "0.1.0",
+  "description": "Claude Code channel plugin for council-hub — real-time room message notifications",
+  "type": "module",
+  "main": "./src/index.ts",
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.8.3"
+  }
+}

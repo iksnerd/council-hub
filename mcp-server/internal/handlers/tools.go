@@ -221,6 +221,7 @@ func (r *Registry) RegisterTools() {
 			"message_ids":  prop("string", "Comma-separated message IDs (e.g. 48,52,55)"),
 			"room_id":      prop("string", "Browse messages from this room (alternative to message_ids)"),
 			"last_n":       prop("string", "Number of recent messages to fetch when using room_id (default 10, max 50)"),
+			"after_id":     prop("string", "Return only messages with ID greater than this value (requires room_id). For delta reads without transcript formatting."),
 			"cluster_wide": prop("string", "Set to 'true' to fetch messages from all cluster nodes. Default: local only."),
 		}),
 	}, r.handleGetMessages)
@@ -293,7 +294,7 @@ func (r *Registry) RegisterTools() {
 			"room_ids":        prop("string", "Comma-separated room IDs for batch reads (e.g. room-a,room-b,room-c). Each room rendered with the same mode/last_n settings."),
 			"last_n":          prop("string", "Return only the last N messages (default: all). Keeps room header and system prompt."),
 			"after_id":        prop("string", "Return only messages with ID greater than this value. For delta reads after context compaction."),
-			"mode":            prop("string", "Set to 'summary' for system_prompt + latest per type, or 'changelog' for only decision + action messages chronologically (ideal for PR descriptions/release notes)."),
+			"mode":            prop("string", "Set to 'summary' for system_prompt + latest per type, 'changelog' for only decision + action messages chronologically, or 'work_items' to export actions and decisions as structured work items (useful for ADO/GitHub Issues)."),
 			"include_related": prop("string", "Set to 'true' to append a summary of each related room after the main transcript. Resolves related_rooms automatically."),
 			"cluster_wide":    prop("string", "Set to 'true' to fetch the transcript from the remote cluster node that owns it."),
 		}),

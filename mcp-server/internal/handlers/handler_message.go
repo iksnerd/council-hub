@@ -52,6 +52,7 @@ type GetMessagesInput struct {
 	MessageIDs  string `json:"message_ids"`
 	RoomID      string `json:"room_id"`
 	LastN       string `json:"last_n"`
+	AfterID     string `json:"after_id"`
 	ClusterWide string `json:"cluster_wide"`
 }
 
@@ -197,8 +198,15 @@ func (r *Registry) handleGetMessages(ctx context.Context, req *mcp.CallToolReque
 			r.Server.Logger.Error("Failed to get messages", "error", err)
 			return nil, ToolOutput{}, err
 		}
+	} else if args.RoomID != "" && args.AfterID != "" {
+		// Mode 2: delta read — messages after a known ID in a room
+		var err error
+		messages, err = r.Server.GetMessagesAfterID(args.RoomID, args.AfterID)
+		if err != nil {
+			return msg(fmt.Sprintf("Error: %s", err.Error()))
+		}
 	} else if args.RoomID != "" {
-		// Mode 2: browse room messages by last_n
+		// Mode 3: browse room messages by last_n
 		limit := 10
 		if args.LastN != "" {
 			if _, err := fmt.Sscanf(args.LastN, "%d", &limit); err != nil {
@@ -218,7 +226,7 @@ func (r *Registry) handleGetMessages(ctx context.Context, req *mcp.CallToolReque
 			return msg(fmt.Sprintf("Error: %s", err.Error()))
 		}
 	} else {
-		return msg("Error: provide either message_ids or room_id.")
+		return msg("Error: provide either message_ids, or room_id (with optional after_id or last_n).")
 	}
 
 	if len(messages) == 0 {
