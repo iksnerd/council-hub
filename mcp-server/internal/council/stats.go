@@ -90,31 +90,35 @@ func (s *Server) GetRoomStats(roomID string) (RoomStats, error) {
 
 // DigestEntry represents one room's activity in a project digest.
 type DigestEntry struct {
-	RoomID        string
-	NewMessages   int
-	LatestAuthor  string
-	LatestExcerpt string
+	RoomID         string
+	NewMessages    int
+	LatestAuthor   string
+	LatestExcerpt  string
+	Tags           string
+	DecisionCount  int
+	SynthesisCount int
 }
 
-// GetDigest returns rooms with messages since the given timestamp.
+// GetDigest returns rooms with messages since the given timestamp, plus any rooms needing attention.
 func (s *Server) GetDigest(project, since string) ([]DigestEntry, error) {
 	// Normalize timestamp — accept both "2026-03-31T12:00:00" and "2026-03-31 12:00:00"
 	since = strings.ReplaceAll(since, "T", " ")
 	project = normalizeProject(project)
 
 	query := `
-		SELECT m.room_id, COUNT(*) as new_msgs,
+		SELECT m.room_id, 
+		       SUM(CASE WHEN m.timestamp > ? THEN 1 ELSE 0 END) as new_msgs,
 		       (SELECT author FROM messages WHERE room_id = m.room_id ORDER BY id DESC LIMIT 1) as latest_author,
-		       (SELECT content FROM messages WHERE room_id = m.room_id ORDER BY id DESC LIMIT 1) as latest_content
-		FROM messages m`
+		       (SELECT content FROM messages WHERE room_id = m.room_id ORDER BY id DESC LIMIT 1) as latest_content,
+		       COALESCE(r.tags, '') as tags,
+		       (SELECT COUNT(*) FROM messages WHERE room_id = m.room_id AND message_type = 'decision') as decision_count,
+		       (SELECT COUNT(*) FROM messages WHERE room_id = m.room_id AND message_type = 'synthesis') as synthesis_count
+		FROM messages m
+		JOIN rooms r ON m.room_id = r.id
+		WHERE (m.timestamp > ? OR r.tags LIKE '%stale%' OR r.tags LIKE '%needs-synthesis%')`
+	
 	var args []any
-
-	if project != "" {
-		query += ` JOIN rooms r ON m.room_id = r.id`
-	}
-
-	query += ` WHERE m.timestamp > ?`
-	args = append(args, since)
+	args = append(args, since, since)
 
 	if project != "" {
 		query += ` AND r.project = ?`
@@ -132,7 +136,7 @@ func (s *Server) GetDigest(project, since string) ([]DigestEntry, error) {
 	var entries []DigestEntry
 	for rows.Next() {
 		var d DigestEntry
-		if err := rows.Scan(&d.RoomID, &d.NewMessages, &d.LatestAuthor, &d.LatestExcerpt); err != nil {
+		if err := rows.Scan(&d.RoomID, &d.NewMessages, &d.LatestAuthor, &d.LatestExcerpt, &d.Tags, &d.DecisionCount, &d.SynthesisCount); err != nil {
 			return nil, err
 		}
 		entries = append(entries, d)

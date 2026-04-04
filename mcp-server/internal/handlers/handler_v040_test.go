@@ -220,7 +220,7 @@ func TestGetDigestBasic(t *testing.T) {
 	if !strings.Contains(text, "digest-b") {
 		t.Errorf("expected digest-b in output, got: %s", text)
 	}
-	if !strings.Contains(text, "2 room(s)") {
+	if !strings.Contains(text, "2 rooms") {
 		t.Errorf("expected 2 rooms in digest, got: %s", text)
 	}
 }
