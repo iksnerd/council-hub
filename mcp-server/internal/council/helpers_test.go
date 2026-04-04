@@ -1,7 +1,6 @@
 package council
 
 import (
-	"fmt"
 	"log/slog"
 	"os"
 	"testing"
@@ -70,23 +69,4 @@ func mustPostTyped(t *testing.T, s *Server, roomID, author, content, msgType str
 		t.Fatalf("PostMessage failed: %v", err)
 	}
 	return id
-}
-
-func mustPostReply(t *testing.T, s *Server, roomID, author, content string, replyTo string) string {
-	t.Helper()
-	id, err := s.PostMessage(roomID, author, content, "message", replyTo)
-	if err != nil {
-		t.Fatalf("PostMessage (reply) failed: %v", err)
-	}
-	return id
-}
-
-// setupRoomWithMessages creates a room and posts n messages from alternating authors.
-func setupRoomWithMessages(t *testing.T, s *Server, roomID string, n int) {
-	t.Helper()
-	mustCreateRoom(t, s, roomID)
-	authors := []string{"Claude", "Gemini"}
-	for i := 0; i < n; i++ {
-		mustPost(t, s, roomID, authors[i%2], fmt.Sprintf("Message %d", i+1))
-	}
 }

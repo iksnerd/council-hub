@@ -124,7 +124,7 @@ func (r *Registry) handleReadRoomCluster(args ReadRoomInput) (*mcp.CallToolResul
 
 	if room == nil {
 		var b strings.Builder
-		b.WriteString(fmt.Sprintf("Error: room '%s' not found on any cluster node.", args.RoomID))
+		fmt.Fprintf(&b, "Error: room '%s' not found on any cluster node.", args.RoomID)
 		formatClusterWarnings(&b, warnings)
 		return msg(b.String())
 	}
@@ -177,7 +177,7 @@ func (r *Registry) handleReadTranscriptCluster(args ReadTranscriptInput, roomID 
 
 	if result == nil {
 		var b strings.Builder
-		b.WriteString(fmt.Sprintf("Error: room '%s' not found on any cluster node.", roomID))
+		fmt.Fprintf(&b, "Error: room '%s' not found on any cluster node.", roomID)
 		formatClusterWarnings(&b, warnings)
 		return msg(b.String())
 	}
@@ -188,7 +188,7 @@ func (r *Registry) handleReadTranscriptCluster(args ReadTranscriptInput, roomID 
 	// Filter down the cluster messages just like Go does
 	limit := 0
 	if args.LastN != "" {
-		fmt.Sscanf(args.LastN, "%d", &limit)
+		_, _ = fmt.Sscanf(args.LastN, "%d", &limit)
 	}
 	afterID := ""
 	if args.AfterID != "" {
@@ -415,7 +415,7 @@ func (r *Registry) handleRoomStatsCluster(args RoomStatsInput) (*mcp.CallToolRes
 
 	if stats == nil {
 		var b strings.Builder
-		b.WriteString(fmt.Sprintf("Error: room '%s' not found on any cluster node.", args.RoomID))
+		fmt.Fprintf(&b, "Error: room '%s' not found on any cluster node.", args.RoomID)
 		formatClusterWarnings(&b, warnings)
 		return msg(b.String())
 	}

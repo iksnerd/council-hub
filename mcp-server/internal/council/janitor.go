@@ -72,7 +72,7 @@ func (s *Server) lintNeedsSynthesis() []string {
 		s.Logger.Error("Linter: failed to query rooms needing synthesis", "error", err)
 		return nil
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	type candidate struct {
 		id   string
@@ -124,7 +124,7 @@ func (s *Server) lintStaleRooms() []string {
 		s.Logger.Error("Linter: failed to query stale rooms", "error", err)
 		return nil
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	type candidate struct {
 		id   string

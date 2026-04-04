@@ -148,7 +148,7 @@ func (s *Server) GetMessagesByIDs(ids []string) ([]Message, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var msgs []Message
 	for rows.Next() {
