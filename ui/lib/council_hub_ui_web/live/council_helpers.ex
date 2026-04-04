@@ -160,4 +160,13 @@ defmodule CouncilHubUiWeb.CouncilHelpers do
   def present?(nil), do: false
   def present?(""), do: false
   def present?(_), do: true
+
+  def short_node(nil), do: nil
+
+  def short_node(node_str) when is_binary(node_str) do
+    case String.split(node_str, "@", parts: 2) do
+      [_, host] -> host
+      _ -> node_str
+    end
+  end
 end

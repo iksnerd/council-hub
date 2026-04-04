@@ -430,6 +430,42 @@ defmodule CouncilHubUiWeb.CouncilLiveTest do
     end
   end
 
+  describe "toggle_cluster_wide" do
+    test "defaults to local mode", %{conn: conn} do
+      {:ok, view, html} = live(conn, "/")
+      assert html =~ "○ local"
+      assert :sys.get_state(view.pid).socket.assigns.cluster_wide == false
+    end
+
+    test "toggles to all-nodes mode and back", %{conn: conn} do
+      create_room(%{id: "toggle-cw-room"})
+      {:ok, view, html} = live(conn, "/")
+      assert html =~ "○ local"
+
+      html = view |> element("button[phx-click='toggle_cluster_wide']") |> render_click()
+      assert html =~ "● all"
+      assert :sys.get_state(view.pid).socket.assigns.cluster_wide == true
+
+      html = view |> element("button[phx-click='toggle_cluster_wide']") |> render_click()
+      assert html =~ "○ local"
+      assert :sys.get_state(view.pid).socket.assigns.cluster_wide == false
+    end
+
+    test "poll_rooms when cluster_wide always reloads", %{conn: conn} do
+      create_room(%{id: "cw-poll-room"})
+      {:ok, view, _html} = live(conn, "/")
+
+      # Enable cluster_wide
+      view |> element("button[phx-click='toggle_cluster_wide']") |> render_click()
+
+      # Add a new room and trigger poll — should show up even without DB change sentinel
+      create_room(%{id: "cw-poll-room-2"})
+      send(view.pid, :poll_rooms)
+
+      assert render(view) =~ "cw-poll-room-2"
+    end
+  end
+
   describe "cluster tracking" do
     test "assigns nodes on mount", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/")

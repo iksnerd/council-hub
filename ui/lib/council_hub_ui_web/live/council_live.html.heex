@@ -55,8 +55,8 @@
     </div>
 
     <%!-- Sidebar Search --%>
-    <div :if={@rooms != []} class="px-3 pt-2">
-      <form phx-change="filter_rooms" class="relative">
+    <div class="px-3 pt-2 flex items-center gap-2">
+      <form :if={@rooms != []} phx-change="filter_rooms" class="relative flex-1">
         <span class="hero-magnifying-glass w-3.5 h-3.5 text-gray-600 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none">
         </span>
         <input
@@ -69,6 +69,23 @@
           class="w-full bg-gray-800/50 border border-gray-700/50 rounded-lg text-xs text-gray-300 placeholder-gray-600 pl-8 pr-3 py-1.5 focus:outline-none focus:border-amber-500/30 focus:ring-1 focus:ring-amber-500/20"
         />
       </form>
+      <button
+        phx-click="toggle_cluster_wide"
+        title={
+          if @cluster_wide,
+            do: "Showing all nodes — click for local only",
+            else: "Click to show all nodes"
+        }
+        class={[
+          "shrink-0 px-2 py-1.5 rounded-lg border text-[10px] font-mono transition-colors",
+          if(@cluster_wide,
+            do: "bg-blue-500/15 border-blue-500/30 text-blue-400",
+            else: "bg-gray-800/50 border-gray-700/50 text-gray-500 hover:text-gray-300"
+          )
+        ]}
+      >
+        {if @cluster_wide, do: "● all", else: "○ local"}
+      </button>
     </div>
 
     <%!-- Room List --%>
@@ -110,6 +127,7 @@
                   active={@active_room && @active_room.id == room.id}
                   count={Map.get(@room_counts, room.id, 0)}
                   participants={Map.get(@participant_counts, room.id, 0)}
+                  source_node={Map.get(room, :source_node)}
                 />
               <% end %>
             </div>
@@ -126,7 +144,7 @@
 
     <%!-- Footer --%>
     <div class="px-4 py-2.5 border-t border-gray-800/80 text-[10px] text-gray-600 font-mono flex items-center justify-between">
-      <span>{length(@rooms)} rooms</span>
+      <span>{length(@rooms)} rooms{if @cluster_wide, do: " (all nodes)", else: ""}</span>
       <span>v{Application.spec(:council_hub_ui, :vsn)}</span>
       <span class="flex items-center gap-1">
         <span class="w-1.5 h-1.5 rounded-full bg-green-500/60 animate-pulse"></span> live

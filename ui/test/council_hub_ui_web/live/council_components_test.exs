@@ -63,6 +63,42 @@ defmodule CouncilHubUiWeb.CouncilComponentsTest do
       html = render_component(&CouncilComponents.room_card/1, assigns)
       assert html =~ "paused"
     end
+
+    test "renders source_node badge for remote room" do
+      assigns = %{
+        room: %{
+          id: "remote-room",
+          status: "active",
+          description: "",
+          tags: "",
+          updated_at: ~N[2026-03-29 14:00:00]
+        },
+        active: false,
+        count: 0,
+        source_node: "council_hub@council_hub"
+      }
+
+      html = render_component(&CouncilComponents.room_card/1, assigns)
+      assert html =~ "council_hub"
+    end
+
+    test "no source_node badge when source_node is nil" do
+      assigns = %{
+        room: %{
+          id: "local-room",
+          status: "active",
+          description: "",
+          tags: "",
+          updated_at: ~N[2026-03-29 14:00:00]
+        },
+        active: false,
+        count: 0,
+        source_node: nil
+      }
+
+      html = render_component(&CouncilComponents.room_card/1, assigns)
+      refute html =~ "bg-blue-500/10"
+    end
   end
 
   describe "room_header" do

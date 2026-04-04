@@ -12,6 +12,7 @@ defmodule CouncilHubUiWeb.CouncilComponents do
   attr :active, :boolean, default: false
   attr :count, :integer, default: 0
   attr :participants, :integer, default: 0
+  attr :source_node, :string, default: nil
 
   def room_card(assigns) do
     ~H"""
@@ -54,6 +55,13 @@ defmodule CouncilHubUiWeb.CouncilComponents do
           {tag}
         </span>
       </div>
+      <span
+        :if={present?(@source_node)}
+        class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 text-[9px] font-mono mt-1"
+      >
+        <span class="w-1 h-1 rounded-full bg-blue-400"></span>
+        {short_node(@source_node)}
+      </span>
       <div class="mt-1.5 flex items-center justify-between gap-2">
         <div
           :if={@room.updated_at}

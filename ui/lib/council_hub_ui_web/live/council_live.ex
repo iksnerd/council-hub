@@ -1,7 +1,7 @@
 defmodule CouncilHubUiWeb.CouncilLive do
   use CouncilHubUiWeb, :live_view
 
-  alias CouncilHubUi.Council
+  alias CouncilHubUi.{Council, Cluster}
   import CouncilHubUiWeb.CouncilComponents
 
   require Logger
@@ -39,7 +39,9 @@ defmodule CouncilHubUiWeb.CouncilLive do
        type_filter: "all",
        message_search: "",
        searching: false,
-       nodes: [Node.self() | Node.list()]
+       nodes: [Node.self() | Node.list()],
+       cluster_wide: false,
+       cluster_warnings: []
      )
      |> stream(:messages, [])}
   end
@@ -94,13 +96,17 @@ defmodule CouncilHubUiWeb.CouncilLive do
   def handle_info(:poll_rooms, socket) do
     schedule_poll(:poll_rooms, @rooms_poll_interval)
 
-    # Fast check: skip full reload if nothing changed
-    latest = safe_latest_update()
-
-    if latest == socket.assigns.last_room_update do
-      {:noreply, socket}
+    if socket.assigns.cluster_wide do
+      poll_rooms_full(socket, socket.assigns.last_room_update)
     else
-      poll_rooms_full(socket, latest)
+      # Fast check: skip full reload if nothing changed
+      latest = safe_latest_update()
+
+      if latest == socket.assigns.last_room_update do
+        {:noreply, socket}
+      else
+        poll_rooms_full(socket, latest)
+      end
     end
   end
 
@@ -110,35 +116,46 @@ defmodule CouncilHubUiWeb.CouncilLive do
   end
 
   defp poll_rooms_full(socket, latest) do
-    {rooms, db_connected} = load_rooms()
-    new_counts = safe_room_counts(db_connected)
-    new_participants = safe_participant_counts(db_connected)
+    if socket.assigns.cluster_wide do
+      {rooms, warnings} = load_cluster_rooms()
 
-    socket =
-      assign(socket,
-        rooms: rooms,
-        rooms_by_project: group_rooms_by_project(rooms),
-        room_counts: new_counts,
-        participant_counts: new_participants,
-        db_connected: db_connected,
-        last_room_update: latest
-      )
+      {:noreply,
+       assign(socket,
+         rooms: rooms,
+         rooms_by_project: group_rooms_by_project(rooms),
+         cluster_warnings: warnings
+       )}
+    else
+      {rooms, db_connected} = load_rooms()
+      new_counts = safe_room_counts(db_connected)
+      new_participants = safe_participant_counts(db_connected)
 
-    # Update active room status if changed
-    socket =
-      case socket.assigns.active_room do
-        nil ->
-          socket
+      socket =
+        assign(socket,
+          rooms: rooms,
+          rooms_by_project: group_rooms_by_project(rooms),
+          room_counts: new_counts,
+          participant_counts: new_participants,
+          db_connected: db_connected,
+          last_room_update: latest
+        )
 
-        active ->
-          case Enum.find(rooms, &(&1.id == active.id)) do
-            nil -> socket
-            updated when updated.status != active.status -> assign(socket, active_room: updated)
-            _ -> socket
-          end
-      end
+      # Update active room status if changed
+      socket =
+        case socket.assigns.active_room do
+          nil ->
+            socket
 
-    {:noreply, socket}
+          active ->
+            case Enum.find(rooms, &(&1.id == active.id)) do
+              nil -> socket
+              updated when updated.status != active.status -> assign(socket, active_room: updated)
+              _ -> socket
+            end
+        end
+
+      {:noreply, socket}
+    end
   end
 
   # -- Events --
@@ -158,6 +175,28 @@ defmodule CouncilHubUiWeb.CouncilLive do
 
   def handle_event("toggle_system_prompt", _params, socket) do
     {:noreply, assign(socket, show_system_prompt: !socket.assigns.show_system_prompt)}
+  end
+
+  def handle_event("toggle_cluster_wide", _params, socket) do
+    new_val = !socket.assigns.cluster_wide
+
+    {rooms, db_connected, warnings} =
+      if new_val do
+        {rooms, warns} = load_cluster_rooms()
+        {rooms, socket.assigns.db_connected, warns}
+      else
+        {rooms, connected} = load_rooms()
+        {rooms, connected, []}
+      end
+
+    {:noreply,
+     assign(socket,
+       cluster_wide: new_val,
+       rooms: rooms,
+       rooms_by_project: group_rooms_by_project(rooms),
+       db_connected: db_connected,
+       cluster_warnings: warnings
+     )}
   end
 
   def handle_event("filter_rooms", %{"query" => query}, socket) do
@@ -272,6 +311,15 @@ defmodule CouncilHubUiWeb.CouncilLive do
     e in [DBConnection.ConnectionError, Exqlite.Error] ->
       Logger.warning("Failed to load rooms: #{inspect(e)}")
       {[], false}
+  end
+
+  defp load_cluster_rooms do
+    %{results: rooms, warnings: warnings} = Cluster.list_rooms(%{})
+    {rooms, warnings}
+  rescue
+    e ->
+      Logger.warning("Failed to load cluster rooms: #{inspect(e)}")
+      {[], ["cluster query failed"]}
   end
 
   def group_rooms_by_project(rooms) do

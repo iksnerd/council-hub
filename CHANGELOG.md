@@ -4,6 +4,14 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.7.3] - 2026-04-04
+
+### Added
+- Cluster-aware Phoenix LiveView UI: "○ local / ● all nodes" toggle in the sidebar polls `Cluster.list_rooms` and merges rooms from all connected nodes
+- Source node badge on room cards — remote rooms show a blue hostname pill (e.g. "council_hub") so nodes are visually distinguishable in a clustered setup
+- Cluster-wide search — sidebar filter automatically covers all nodes when the toggle is active
+- 9 new tests (222 total): `short_node/1` helper, `source_node` badge rendering, `toggle_cluster_wide` event (default state, on/off toggle, poll-always-reloads in cluster mode)
+
 ## [0.7.2] - 2026-04-04
 
 ### Added

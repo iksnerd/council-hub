@@ -276,4 +276,22 @@ defmodule CouncilHubUiWeb.CouncilHelpersTest do
   test "present? non-empty string is true" do
     assert CouncilHelpers.present?("hello")
   end
+
+  # -- short_node --
+
+  test "short_node extracts hostname from node string" do
+    assert CouncilHelpers.short_node("council_hub@council_hub") == "council_hub"
+  end
+
+  test "short_node extracts IP from node string" do
+    assert CouncilHelpers.short_node("council_hub@10.0.0.5") == "10.0.0.5"
+  end
+
+  test "short_node returns string unchanged when no @ present" do
+    assert CouncilHelpers.short_node("noatsign") == "noatsign"
+  end
+
+  test "short_node returns nil for nil" do
+    assert CouncilHelpers.short_node(nil) == nil
+  end
 end
