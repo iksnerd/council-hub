@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 )
+
 func TestSearchMessages(t *testing.T) {
 	s := setupTestServer(t)
 	s.CreateRoom("search-room-1", "Room 1", "proj", "", "", "", "")

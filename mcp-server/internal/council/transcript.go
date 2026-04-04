@@ -52,11 +52,11 @@ func FormatTranscript(room Room, messages []Message) string {
 		if m.IsSummary {
 			fmt.Fprintf(&b, "\n**[%s] SUMMARY:**\n%s\n", ts, m.Content)
 		} else if m.MessageType != "" && m.MessageType != "message" {
-			fmt.Fprintf(&b, "\n**[%s] %s (%s%s):**\n%s\n", ts, m.Author, m.MessageType, replyTag, m.Content)
+			fmt.Fprintf(&b, "\n**[#%.8s %s] %s (%s%s):**\n%s\n", m.ID, ts, m.Author, m.MessageType, replyTag, m.Content)
 		} else if m.ReplyTo != "" {
-			fmt.Fprintf(&b, "\n**[%s] %s (re: #%.8s):**\n%s\n", ts, m.Author, m.ReplyTo, m.Content)
+			fmt.Fprintf(&b, "\n**[#%.8s %s] %s (re: #%.8s):**\n%s\n", m.ID, ts, m.Author, m.ReplyTo, m.Content)
 		} else {
-			fmt.Fprintf(&b, "\n**[%s] %s:**\n%s\n", ts, m.Author, m.Content)
+			fmt.Fprintf(&b, "\n**[#%.8s %s] %s:**\n%s\n", m.ID, ts, m.Author, m.Content)
 		}
 	}
 

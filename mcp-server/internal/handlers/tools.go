@@ -61,13 +61,14 @@ type ToolOutput struct {
 }
 
 var validMessageTypes = map[string]bool{
-	"message":  true,
-	"thought":  true,
-	"decision": true,
-	"code":     true,
-	"review":   true,
-	"action":   true,
-	"critique": true,
+	"message":   true,
+	"thought":   true,
+	"decision":  true,
+	"code":      true,
+	"review":    true,
+	"action":    true,
+	"critique":  true,
+	"synthesis": true,
 }
 
 // schema builds a JSON Schema object with additionalProperties: true.
@@ -121,13 +122,16 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "post_to_room",
-		Description: "Post a message, thought, critique, or code snippet to a council room's ledger. Returns JSON with message_id and latest_message_id for delta-read cursor tracking via read_transcript(after_id).",
+		Description: "Post a message to a council room's ledger. Returns JSON with message_id and latest_message_id for delta-read cursor tracking via read_transcript(after_id).",
 		InputSchema: schema([]string{"room_id", "author", "message"}, map[string]map[string]any{
-			"room_id":      prop("string", "Target room ID"),
-			"author":       prop("string", "Name of the posting agent"),
-			"message":      prop("string", "Message content (markdown supported)"),
-			"message_type": prop("string", "One of: message, thought, decision, code, review, action, critique (default: message)"),
-			"reply_to":     prop("string", "Message ID this is a reply to (e.g. 42). Renders as 're: #42' in transcripts"),
+			"room_id": prop("string", "Target room ID"),
+			"author":  prop("string", "Name of the posting agent"),
+			"message": prop("string", "Message content (markdown supported)"),
+			"message_type": prop("string", "Type of message. Use: 'thought' for reasoning/exploration, 'decision' for choices made, "+
+				"'action' for work done/shipped, 'review' for feedback on others' work, 'critique' for pushback/concerns, "+
+				"'code' for code snippets, 'synthesis' for distilled knowledge articles that compile a room's conclusions "+
+				"(the 'compiled output' — use after deliberation to capture what was learned). Default: 'message'."),
+			"reply_to": prop("string", "Message ID this is a reply to (e.g. 42). Renders as 're: #42' in transcripts"),
 		}),
 	}, r.handlePostToRoom)
 
@@ -202,7 +206,7 @@ func (r *Registry) RegisterTools() {
 		InputSchema: schema(nil, map[string]map[string]any{
 			"query":        prop("string", "Text to search for in message content"),
 			"author":       prop("string", "Filter by author name"),
-			"message_type": prop("string", "Filter by type: message, thought, decision, code, review, action, critique"),
+			"message_type": prop("string", "Filter by type: message, thought, decision, action, review, critique, code, synthesis. Use 'synthesis' to find compiled knowledge articles."),
 			"room_id":      prop("string", "Scope search to a specific room"),
 			"project":      prop("string", "Scope search to rooms in this project"),
 			"limit":        prop("string", "Max results to return (default 20, max 100)"),
@@ -241,7 +245,7 @@ func (r *Registry) RegisterTools() {
 		InputSchema: schema([]string{"message_id", "content"}, map[string]map[string]any{
 			"message_id":   prop("string", "ID of the message to update"),
 			"content":      prop("string", "New message content (replaces existing)"),
-			"message_type": prop("string", "Optionally change message type (message, thought, decision, code, review, action, critique)"),
+			"message_type": prop("string", "Optionally change message type: message, thought, decision, action, review, critique, code, synthesis"),
 		}),
 	}, r.handleUpdateMessage)
 
@@ -288,7 +292,7 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "read_transcript",
-		Description: "Read a room's transcript with full context (room header, system_prompt, pinned message, messages). The primary tool for reading rooms. Supports: last_n for recent messages, after_id for delta reads (includes pinned message for context), mode=summary for orientation (pinned + latest per type), mode=changelog for decisions+actions only. Use room_ids for batch multi-room reads. Use include_related=true to auto-append related room summaries.",
+		Description: "Read a room's transcript with full context (room header, system_prompt, pinned message, messages). The primary tool for reading rooms. Supports: last_n for recent messages, after_id for delta reads (includes pinned message for context), mode=summary for orientation (pinned + latest per type), mode=changelog for decisions+actions only, mode=work_items for exportable action/decision list. Use room_ids for batch multi-room reads. Use include_related=true to auto-append related room summaries.",
 		InputSchema: schema(nil, map[string]map[string]any{
 			"room_id":         prop("string", "Target room ID (use this OR room_ids, not both)"),
 			"room_ids":        prop("string", "Comma-separated room IDs for batch reads (e.g. room-a,room-b,room-c). Each room rendered with the same mode/last_n settings."),
