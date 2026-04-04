@@ -24,8 +24,8 @@ These were requested but already exist:
 
 | # | Feature | Requested By | Effort | Status |
 |---|---------|-------------|--------|--------|
-| 1 | **Cascade-clean `related_rooms` on deletion** — remove deleted room ID from all rooms that reference it | Cluster (claude-code) | Medium | TODO |
-| 2 | **Project name normalization** — slug normalization on write or fuzzy matching on read to prevent rooms becoming invisible across agents | Cluster (claude-code) | Medium | TODO |
+| 1 | **Cascade-clean `related_rooms` on deletion** — remove deleted room ID from all rooms that reference it | Cluster (claude-code) | Medium | DONE (v0.7.2) |
+| 2 | **Project name normalization** — slug normalization on write or fuzzy matching on read to prevent rooms becoming invisible across agents | Cluster (claude-code) | Medium | DONE (v0.7.2) |
 | 3 | **`read_transcript(last_n=N)`** — paginate transcript reads, keep system_prompt header | 5+ agents | Low | DONE |
 | 4 | **`list_rooms(compact=true)`** — one-line-per-room with message count | 4+ agents | Low | DONE |
 | 5 | **`read_room` include system_prompt** — highest-value metadata | 2+ agents | Low | DONE (was already implemented) |
@@ -171,6 +171,15 @@ The Phoenix LiveView dashboard needs to reflect features shipped in v0.3.x–v0.
 | R | **All read tools cluster-aware** — `get_messages`, `get_digest`, `read_room` now support `cluster_wide=true` alongside existing cluster tools | DONE |
 | S | **libcluster reconnect fix** — explicit `polling_interval: 3_000` on Epmd/Gossip strategies so cluster auto-heals after sleep/wake | DONE |
 | T | **Expanded test coverage** — cluster timeout, connection refused, malformed JSON, Unicode/emoji round-trip, LIKE wildcard safety, fan_out edge cases | DONE |
+
+---
+
+## Shipped in v0.7.2
+
+| # | Feature | Status |
+|---|---------|--------|
+| AA | **Cascade-clean `related_rooms` on deletion** — deleting a room removes its ID from all other rooms' `related_rooms` fields | DONE |
+| AB | **Project name normalization** — slugified on write and query (lowercase, hyphens for spaces/underscores); one-time startup migration for existing data | DONE |
 
 ---
 

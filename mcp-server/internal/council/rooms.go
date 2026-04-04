@@ -2,12 +2,34 @@ package council
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 )
+
+var nonSlugRe = regexp.MustCompile(`[^a-z0-9-]`)
+
+// normalizeProject converts a project name to a URL-safe slug: lowercase,
+// spaces/underscores become hyphens, non-alphanumeric chars stripped,
+// consecutive hyphens collapsed, leading/trailing hyphens trimmed.
+func normalizeProject(s string) string {
+	if s == "" {
+		return ""
+	}
+	s = strings.ToLower(s)
+	s = strings.ReplaceAll(s, " ", "-")
+	s = strings.ReplaceAll(s, "_", "-")
+	s = nonSlugRe.ReplaceAllString(s, "")
+	for strings.Contains(s, "--") {
+		s = strings.ReplaceAll(s, "--", "-")
+	}
+	return strings.Trim(s, "-")
+}
 
 func (s *Server) CreateRoom(id, description, project, techStack, tags, systemPrompt, relatedRooms string) error {
 	s.Mu.Lock()
 	defer s.Mu.Unlock()
+
+	project = normalizeProject(project)
 
 	_, err := s.DB.Exec(
 		`INSERT OR IGNORE INTO rooms (id, description, project, tech_stack, tags, system_prompt, related_rooms) VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -59,6 +81,41 @@ func (s *Server) syncReverseLinks(roomID, relatedRooms string) {
 	}
 }
 
+// removeRoomFromRelatedLinks removes roomID from every other room's related_rooms field.
+// Must be called while s.Mu is held.
+func (s *Server) removeRoomFromRelatedLinks(roomID string) {
+	rows, err := s.DB.Query(
+		`SELECT id, related_rooms FROM rooms WHERE related_rooms LIKE '%' || ? || '%'`,
+		roomID,
+	)
+	if err != nil {
+		s.Logger.Warn("removeRoomFromRelatedLinks: query failed", "error", err)
+		return
+	}
+	type update struct{ id, newRR string }
+	var updates []update
+	for rows.Next() {
+		var id, rr string
+		if err := rows.Scan(&id, &rr); err != nil {
+			continue
+		}
+		var kept []string
+		for _, rel := range strings.Split(rr, ",") {
+			rel = strings.TrimSpace(rel)
+			if rel != "" && rel != roomID {
+				kept = append(kept, rel)
+			}
+		}
+		updates = append(updates, update{id, strings.Join(kept, ", ")})
+	}
+	rows.Close()
+	for _, u := range updates {
+		if _, err := s.DB.Exec(`UPDATE rooms SET related_rooms = ? WHERE id = ?`, u.newRR, u.id); err != nil {
+			s.Logger.Warn("removeRoomFromRelatedLinks: update failed", "room", u.id, "error", err)
+		}
+	}
+}
+
 func (s *Server) UpdateStatus(roomID, status string) error {
 	s.Mu.Lock()
 	defer s.Mu.Unlock()
@@ -90,6 +147,7 @@ func (s *Server) UpdateRoom(roomID, description, project, techStack, tags, syste
 		args = append(args, description)
 	}
 	if project != "" {
+		project = normalizeProject(project)
 		setClauses = append(setClauses, "project = ?")
 		args = append(args, project)
 	}
@@ -142,6 +200,8 @@ func (s *Server) DeleteRoom(roomID string) error {
 	s.Mu.Lock()
 	defer s.Mu.Unlock()
 
+	s.removeRoomFromRelatedLinks(roomID)
+
 	res, err := s.DB.Exec(`DELETE FROM rooms WHERE id = ?`, roomID)
 	if err != nil {
 		return fmt.Errorf("delete room '%s': %w", roomID, err)
@@ -164,7 +224,7 @@ func (s *Server) ListRooms(project, tag, status, search string) ([]Room, error) 
 
 	if project != "" {
 		query += ` AND project = ?`
-		args = append(args, project)
+		args = append(args, normalizeProject(project))
 	}
 	if tag != "" {
 		query += ` AND (',' || tags || ',') LIKE '%,' || ? || ',%'`

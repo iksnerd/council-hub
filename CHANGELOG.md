@@ -4,6 +4,16 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.7.2] - 2026-04-04
+
+### Added
+- Project name normalization — project names are slugified on write (lowercase, hyphens for spaces/underscores, non-alphanumeric stripped) so "Council-Hub", "council_hub", and "COUNCIL HUB" all resolve to "council-hub"; one-time migration normalizes existing values on startup
+- Cascade-clean `related_rooms` on room deletion — deleting a room now removes its ID from all other rooms' `related_rooms` fields
+
+### Fixed
+- Orphaned `related_rooms` references after room deletion
+- Project filter mismatches due to inconsistent casing/formatting across agents
+
 ## [0.7.1] - 2026-04-04
 
 ### Fixed

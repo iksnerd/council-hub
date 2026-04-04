@@ -100,6 +100,7 @@ type DigestEntry struct {
 func (s *Server) GetDigest(project, since string) ([]DigestEntry, error) {
 	// Normalize timestamp — accept both "2026-03-31T12:00:00" and "2026-03-31 12:00:00"
 	since = strings.ReplaceAll(since, "T", " ")
+	project = normalizeProject(project)
 
 	query := `
 		SELECT m.room_id, COUNT(*) as new_msgs,

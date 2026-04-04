@@ -89,7 +89,7 @@ func NewServer(dbPath string, logger *slog.Logger) (*Server, error) {
 
 	mcpServer := mcp.NewServer(&mcp.Implementation{
 		Name:    "council-hub",
-		Version: "0.7.1",
+		Version: "0.7.2",
 	}, &mcp.ServerOptions{
 		Logger:       logger,
 		Capabilities: &mcp.ServerCapabilities{},
@@ -183,6 +183,26 @@ func initSchema(db *sql.DB) error {
 	for _, idx := range indexes {
 		if _, err := db.Exec(idx); err != nil {
 			return fmt.Errorf("create index: %w", err)
+		}
+	}
+
+	// Normalize existing project names to slug format (v0.7.2 migration).
+	// Idempotent: already-normalized values are unchanged by normalizeProject.
+	if projRows, err := db.Query(`SELECT id, project FROM rooms WHERE project != ''`); err == nil {
+		type projUpdate struct{ id, project string }
+		var projUpdates []projUpdate
+		for projRows.Next() {
+			var id, proj string
+			if err := projRows.Scan(&id, &proj); err != nil {
+				continue
+			}
+			if normalized := normalizeProject(proj); normalized != proj {
+				projUpdates = append(projUpdates, projUpdate{id, normalized})
+			}
+		}
+		projRows.Close()
+		for _, u := range projUpdates {
+			_, _ = db.Exec(`UPDATE rooms SET project = ? WHERE id = ?`, u.project, u.id)
 		}
 	}
 

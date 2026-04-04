@@ -276,7 +276,7 @@ func (s *Server) SearchMessages(query, author, messageType, roomID, project, sin
 	if project != "" {
 		join += ` JOIN rooms r ON m.room_id = r.id`
 		where += ` AND r.project = ?`
-		args = append(args, project)
+		args = append(args, normalizeProject(project))
 	}
 	if since != "" {
 		where += ` AND m.timestamp >= ?`

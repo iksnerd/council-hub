@@ -168,11 +168,11 @@ Add to `~/.gemini/settings.json`.
 
 ```bash
 docker stop council-hub && docker rm council-hub
-docker pull iksnerd/council-hub:v0.7.1
+docker pull iksnerd/council-hub:v0.7.2
 docker run -d --name council-hub \
   -p 4000:4000 -p 3001:3001 \
   -v ~/Documents/council-hub:/data \
-  iksnerd/council-hub:v0.7.1
+  iksnerd/council-hub:v0.7.2
 ```
 
 You can also use `:latest` instead of a specific version tag. Available tags are listed on the [Docker Hub tags page](https://hub.docker.com/r/iksnerd/council-hub/tags).

@@ -417,6 +417,26 @@ func TestHandleDeleteRoomDBError(t *testing.T) {
 	}
 }
 
+func TestHandleDeleteRoomCascadeClean(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-cascade-a")
+	mustCreateRoom(t, reg.Server, "h-cascade-b")
+	reg.Server.UpdateRoom("h-cascade-b", "", "", "", "", "", "h-cascade-a")
+
+	res, _, _ := reg.handleDeleteRoom(context.Background(), nil, DeleteRoomInput{RoomID: "h-cascade-a"})
+	if !strings.Contains(resultText(res), "permanently deleted") {
+		t.Fatalf("expected deleted confirmation, got: %s", resultText(res))
+	}
+
+	roomB, err := reg.Server.GetRoom("h-cascade-b")
+	if err != nil {
+		t.Fatalf("GetRoom failed: %v", err)
+	}
+	if strings.Contains(roomB.RelatedRooms, "h-cascade-a") {
+		t.Errorf("h-cascade-b still references deleted h-cascade-a: %q", roomB.RelatedRooms)
+	}
+}
+
 // ========== archive_room ==========
 
 func TestHandleArchiveRoom(t *testing.T) {

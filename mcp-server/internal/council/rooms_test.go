@@ -674,3 +674,141 @@ func TestRoomLifecycle(t *testing.T) {
 		t.Error("expected error for deleted room")
 	}
 }
+
+// -- normalizeProject --
+
+func TestNormalizeProject(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"council-hub", "council-hub"},
+		{"Council-Hub", "council-hub"},
+		{"COUNCIL_HUB", "council-hub"},
+		{"My Project", "my-project"},
+		{"  spaces  ", "spaces"},
+		{"a--b", "a-b"},
+		{"special!@#chars", "specialchars"},
+		{"", ""},
+		{"---", ""},
+		{"foo_bar_baz", "foo-bar-baz"},
+	}
+	for _, tc := range cases {
+		got := normalizeProject(tc.in)
+		if got != tc.want {
+			t.Errorf("normalizeProject(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestCreateRoomNormalizesProject(t *testing.T) {
+	s := setupTestServer(t)
+	if err := s.CreateRoom("norm-room", "desc", "Council-Hub", "", "", "", ""); err != nil {
+		t.Fatalf("CreateRoom failed: %v", err)
+	}
+	room, _ := s.GetRoom("norm-room")
+	if room.Project != "council-hub" {
+		t.Errorf("expected project 'council-hub', got '%s'", room.Project)
+	}
+}
+
+func TestUpdateRoomNormalizesProject(t *testing.T) {
+	s := setupTestServer(t)
+	s.CreateRoom("upd-norm-room", "desc", "old-project", "", "", "", "")
+	if err := s.UpdateRoom("upd-norm-room", "", "NEW_PROJECT", "", "", "", ""); err != nil {
+		t.Fatalf("UpdateRoom failed: %v", err)
+	}
+	room, _ := s.GetRoom("upd-norm-room")
+	if room.Project != "new-project" {
+		t.Errorf("expected project 'new-project', got '%s'", room.Project)
+	}
+}
+
+func TestListRoomsNormalizesProjectFilter(t *testing.T) {
+	s := setupTestServer(t)
+	s.CreateRoom("filter-room", "desc", "My Project", "", "", "", "")
+
+	// Verify stored value is normalized
+	room, _ := s.GetRoom("filter-room")
+	if room.Project != "my-project" {
+		t.Fatalf("expected stored project 'my-project', got '%s'", room.Project)
+	}
+
+	// Filter with different casing/format — should still find it
+	rooms, err := s.ListRooms("MY_PROJECT", "", "", "")
+	if err != nil {
+		t.Fatalf("ListRooms failed: %v", err)
+	}
+	if len(rooms) != 1 {
+		t.Errorf("expected 1 room, got %d", len(rooms))
+	}
+}
+
+// -- cascade-clean related_rooms on deletion --
+
+func TestDeleteRoomCleansRelatedRooms(t *testing.T) {
+	s := setupTestServer(t)
+	s.CreateRoom("room-a", "A", "", "", "", "", "")
+	s.CreateRoom("room-b", "B", "", "", "", "", "room-a")
+	s.CreateRoom("room-c", "C", "", "", "", "", "room-a")
+
+	if err := s.DeleteRoom("room-a"); err != nil {
+		t.Fatalf("DeleteRoom failed: %v", err)
+	}
+
+	roomB, _ := s.GetRoom("room-b")
+	if strings.Contains(roomB.RelatedRooms, "room-a") {
+		t.Errorf("room-b still references deleted room-a: %q", roomB.RelatedRooms)
+	}
+
+	roomC, _ := s.GetRoom("room-c")
+	if strings.Contains(roomC.RelatedRooms, "room-a") {
+		t.Errorf("room-c still references deleted room-a: %q", roomC.RelatedRooms)
+	}
+}
+
+func TestDeleteRoomCleansReverseLinks(t *testing.T) {
+	s := setupTestServer(t)
+	s.CreateRoom("target", "Target", "", "", "", "", "")
+	// Creating source with related_rooms=target triggers syncReverseLinks,
+	// so target gets a reverse link back to source.
+	s.CreateRoom("source", "Source", "", "", "", "", "target")
+
+	// Verify bidirectional link was established
+	target, _ := s.GetRoom("target")
+	if !strings.Contains(target.RelatedRooms, "source") {
+		t.Fatalf("reverse link not established; target.RelatedRooms=%q", target.RelatedRooms)
+	}
+
+	// Delete source — should clean the reverse link from target
+	if err := s.DeleteRoom("source"); err != nil {
+		t.Fatalf("DeleteRoom failed: %v", err)
+	}
+
+	target, _ = s.GetRoom("target")
+	if strings.Contains(target.RelatedRooms, "source") {
+		t.Errorf("target still references deleted source: %q", target.RelatedRooms)
+	}
+}
+
+func TestDeleteRoomNoFalsePositiveCleanup(t *testing.T) {
+	s := setupTestServer(t)
+	s.CreateRoom("room", "Short name", "", "", "", "", "")
+	s.CreateRoom("room-extra", "Longer name", "", "", "", "", "")
+	s.CreateRoom("holder", "Holds both", "", "", "", "", "room, room-extra")
+
+	if err := s.DeleteRoom("room"); err != nil {
+		t.Fatalf("DeleteRoom failed: %v", err)
+	}
+
+	holder, _ := s.GetRoom("holder")
+	if strings.Contains(holder.RelatedRooms, "room-extra") == false {
+		t.Errorf("room-extra was incorrectly removed from holder: %q", holder.RelatedRooms)
+	}
+	if strings.Contains(holder.RelatedRooms, "room") && !strings.Contains(holder.RelatedRooms, "room-extra") {
+		// This would mean "room" is still there but "room-extra" is gone — wrong
+		t.Errorf("cleanup removed too much: %q", holder.RelatedRooms)
+	}
+	// Exact check: only "room-extra" should remain
+	got := strings.TrimSpace(holder.RelatedRooms)
+	if got != "room-extra" {
+		t.Errorf("expected holder.RelatedRooms = 'room-extra', got %q", got)
+	}
+}
