@@ -3,6 +3,7 @@ defmodule CouncilHubUiWeb.CouncilLive do
 
   alias CouncilHubUi.{Council, Cluster}
   import CouncilHubUiWeb.CouncilComponents
+  import CouncilHubUiWeb.CouncilHelpers, only: [short_node: 1]
 
   require Logger
 

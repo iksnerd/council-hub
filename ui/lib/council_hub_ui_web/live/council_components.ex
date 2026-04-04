@@ -19,19 +19,19 @@ defmodule CouncilHubUiWeb.CouncilComponents do
     <.link
       patch={"/rooms/#{@room.id}"}
       class={[
-        "block p-3 rounded-lg transition-all duration-150 group border",
+        "block p-2.5 rounded-lg transition-all duration-150 group border",
         if(@active,
           do: "bg-amber-500/10 border-amber-500/30 shadow-sm shadow-amber-500/5",
-          else: "border-transparent hover:bg-gray-800/50 hover:border-gray-700/40"
+          else: "border-transparent hover:bg-zinc-800/40 hover:border-zinc-700/30"
         )
       ]}
     >
       <div class="flex items-start justify-between gap-2 mb-1">
-        <span class="text-[13px] font-semibold text-gray-200 truncate font-mono leading-tight">
+        <span class="text-[13px] font-semibold text-zinc-200 truncate font-mono leading-tight">
           {@room.id}
         </span>
         <div class="flex items-center gap-1.5 shrink-0">
-          <span :if={@count > 0} class="text-[10px] text-gray-500 font-mono">{@count}</span>
+          <span :if={@count > 0} class="text-[10px] text-zinc-500 font-mono">{@count}</span>
           <span class={[
             "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium",
             status_badge_class(@room.status)
@@ -43,14 +43,14 @@ defmodule CouncilHubUiWeb.CouncilComponents do
       </div>
       <p
         :if={present?(@room.description)}
-        class="text-xs text-gray-400 leading-relaxed mb-1.5 line-clamp-2"
+        class="text-xs text-zinc-400 leading-relaxed mb-1.5 line-clamp-2"
       >
         {@room.description}
       </p>
       <div :if={parse_tags(@room.tags) != []} class="flex items-center gap-1 flex-wrap">
         <span
           :for={tag <- Enum.take(parse_tags(@room.tags), 3)}
-          class="inline-flex items-center px-1.5 py-0.5 rounded-md bg-gray-700/40 text-gray-500 text-[10px]"
+          class="inline-flex items-center px-1.5 py-0.5 rounded-md bg-zinc-700/40 text-zinc-500 text-[10px]"
         >
           {tag}
         </span>
@@ -68,10 +68,10 @@ defmodule CouncilHubUiWeb.CouncilComponents do
           id={"room-time-#{@room.id}"}
           phx-hook="RelativeTime"
           data-timestamp={NaiveDateTime.to_iso8601(@room.updated_at)}
-          class="text-[10px] text-gray-600 font-mono"
+          class="text-[10px] text-zinc-600 font-mono"
         >
         </div>
-        <span :if={@participants > 1} class="text-[9px] text-gray-700 font-mono shrink-0">
+        <span :if={@participants > 1} class="text-[9px] text-zinc-700 font-mono shrink-0">
           {@participants} agents
         </span>
       </div>
@@ -87,11 +87,11 @@ defmodule CouncilHubUiWeb.CouncilComponents do
 
   def room_header(assigns) do
     ~H"""
-    <header class="bg-gray-900/40 border-b border-gray-800/80 px-6 py-4 shrink-0 backdrop-blur-sm">
+    <header class="bg-zinc-900/50 border-b border-zinc-800/60 px-6 py-4 shrink-0 backdrop-blur-sm">
       <div class="flex items-start justify-between gap-4">
         <div class="min-w-0 flex-1">
           <div class="flex items-center gap-3 mb-1">
-            <h2 class="text-lg font-bold text-gray-100 font-mono truncate">{@room.id}</h2>
+            <h2 class="text-lg font-bold text-zinc-100 font-mono truncate">{@room.id}</h2>
             <span class={[
               "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-medium shrink-0",
               status_badge_class(@room.status)
@@ -102,14 +102,14 @@ defmodule CouncilHubUiWeb.CouncilComponents do
           </div>
           <p
             :if={present?(@room.description)}
-            class="text-sm text-gray-300 leading-relaxed"
+            class="text-sm text-zinc-300 leading-relaxed"
           >
             {@room.description}
           </p>
         </div>
         <div class="flex flex-col items-end gap-1 shrink-0 text-right">
-          <span class="text-xs text-gray-500 font-mono tabular-nums">{@count} msgs</span>
-          <span :if={@room.created_at} class="text-[10px] text-gray-600 font-mono">
+          <span class="text-xs text-zinc-500 font-mono tabular-nums">{@count} msgs</span>
+          <span :if={@room.created_at} class="text-[10px] text-zinc-600 font-mono">
             {format_date(@room.created_at)}
           </span>
         </div>
@@ -131,7 +131,7 @@ defmodule CouncilHubUiWeb.CouncilComponents do
         </span>
         <span
           :for={tag <- parse_tags(@room.tags)}
-          class="inline-flex items-center px-2 py-1 rounded-md bg-gray-700/40 text-gray-400 text-xs"
+          class="inline-flex items-center px-2 py-1 rounded-md bg-zinc-700/40 text-zinc-400 text-xs"
         >
           #{tag}
         </span>
@@ -148,7 +148,7 @@ defmodule CouncilHubUiWeb.CouncilComponents do
           <a
             href={"/rooms/#{@room.id}/export"}
             download={"#{@room.id}.md"}
-            class="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-gray-500/10 text-gray-400 text-xs border border-gray-500/15 hover:bg-gray-500/20 transition-colors"
+            class="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-zinc-500/10 text-zinc-400 text-xs border border-zinc-500/15 hover:bg-zinc-500/20 transition-colors"
           >
             <span class="hero-arrow-down-tray w-3.5 h-3.5"></span> export
           </a>
@@ -168,7 +168,7 @@ defmodule CouncilHubUiWeb.CouncilComponents do
       <%!-- System prompt content --%>
       <div
         :if={@show_system_prompt && present?(@room.system_prompt)}
-        class="mt-3 p-3 rounded-lg bg-amber-500/5 border border-amber-500/15 text-sm text-gray-300 council-prose"
+        class="mt-3 p-3 rounded-lg bg-amber-500/5 border border-amber-500/15 text-sm text-zinc-300 council-prose"
       >
         {raw(render_markdown(@room.system_prompt))}
       </div>
@@ -191,7 +191,7 @@ defmodule CouncilHubUiWeb.CouncilComponents do
     ]}>
       <div class="flex gap-3">
         <div
-          class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 text-[11px] font-bold border mt-0.5"
+          class="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 text-[11px] font-bold border mt-0.5"
           style={"background: #{author_hex(@msg.author)}15; border-color: #{author_hex(@msg.author)}30; color: #{author_hex(@msg.author)}"}
         >
           {author_initials(@msg.author)}
@@ -222,21 +222,21 @@ defmodule CouncilHubUiWeb.CouncilComponents do
               <span class="hero-arrow-uturn-left w-3 h-3"></span>
               re: #{String.slice(Map.get(@msg, :reply_to, ""), 0, 8)}
             </span>
-            <span class="text-[10px] text-gray-600 font-mono tabular-nums">
+            <span class="text-[10px] text-zinc-600 font-mono tabular-nums">
               {format_timestamp(@msg.timestamp)}
             </span>
             <span
               id={"msg-time-#{@msg.id}"}
               phx-hook="RelativeTime"
               data-timestamp={NaiveDateTime.to_iso8601(@msg.timestamp)}
-              class="text-[10px] text-gray-700 font-mono opacity-0 group-hover:opacity-100 transition-opacity"
+              class="text-[10px] text-zinc-700 font-mono opacity-0 group-hover:opacity-100 transition-opacity"
             >
             </span>
             <button
               id={"copy-msg-#{@msg.id}"}
               phx-hook="CopyMessage"
               data-copy={"##{@msg.id} | #{format_timestamp(@msg.timestamp)} | #{@msg.author} (#{@msg.message_type})\n\n#{@msg.content}"}
-              class="ml-auto opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded text-gray-600 hover:text-gray-300 hover:bg-white/5 cursor-pointer"
+              class="ml-auto opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded text-zinc-600 hover:text-zinc-300 hover:bg-white/5 cursor-pointer"
               title="Copy message"
               type="button"
             >
@@ -244,7 +244,7 @@ defmodule CouncilHubUiWeb.CouncilComponents do
             </button>
           </div>
 
-          <div class={"council-prose text-[0.9rem] leading-relaxed text-gray-200 border-l-2 pl-3 #{author_classes(@msg.author)}"}>
+          <div class={"council-prose text-[0.9rem] leading-relaxed text-zinc-200 border-l-2 pl-3 #{author_classes(@msg.author)}"}>
             {raw(render_markdown(@msg.content))}
           </div>
         </div>
@@ -272,13 +272,13 @@ defmodule CouncilHubUiWeb.CouncilComponents do
           <span class="hero-clipboard-document-list w-4 h-4 text-amber-400"></span>
         </div>
         <span class="text-[11px] font-bold text-amber-400 uppercase tracking-wider">Summary</span>
-        <span class="text-[10px] text-gray-600 font-mono">{format_timestamp(@msg.timestamp)}</span>
-        <span class="text-gray-600 text-[10px] ml-auto group-hover:text-gray-400 transition-colors">
+        <span class="text-[10px] text-zinc-600 font-mono">{format_timestamp(@msg.timestamp)}</span>
+        <span class="text-zinc-600 text-[10px] ml-auto group-hover:text-zinc-400 transition-colors">
           {if @collapsed, do: "▶ expand", else: "▼ collapse"}
         </span>
       </button>
       <div class={[
-        "council-prose text-sm text-gray-300 ml-9 transition-all",
+        "council-prose text-sm text-zinc-300 ml-9 transition-all",
         if(@collapsed, do: "line-clamp-2 opacity-60", else: "")
       ]}>
         {raw(render_markdown(@msg.content))}

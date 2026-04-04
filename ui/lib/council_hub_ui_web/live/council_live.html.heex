@@ -1,15 +1,15 @@
-<div class="flex h-screen bg-gray-950 text-gray-100 overflow-hidden">
+<div class="flex h-screen bg-zinc-950 text-zinc-100 overflow-hidden">
   <%!-- SIDEBAR --%>
-  <aside class="w-80 bg-gray-900/80 border-r border-gray-800/80 flex flex-col shrink-0">
+  <aside class="w-80 bg-zinc-900/80 border-r border-zinc-800/80 flex flex-col shrink-0">
     <%!-- Logo / Title --%>
-    <div class="px-5 py-4 border-b border-gray-800/80">
+    <div class="px-5 py-4 border-b border-zinc-800/80">
       <div class="flex items-center gap-3">
         <div class="w-9 h-9 rounded-lg bg-gradient-to-br from-amber-500/30 to-amber-600/10 flex items-center justify-center border border-amber-500/20">
           <span class="text-amber-400 font-bold text-sm">CH</span>
         </div>
         <div>
-          <h1 class="text-sm font-bold text-gray-100 tracking-wider uppercase">Council Hub</h1>
-          <p class="text-[10px] text-gray-500 font-mono tracking-wide">
+          <h1 class="text-sm font-bold text-zinc-100 tracking-wider uppercase">Council Hub</h1>
+          <p class="text-[10px] text-zinc-500 font-mono tracking-wide">
             LLM Collaboration Monitor
           </p>
         </div>
@@ -26,29 +26,32 @@
     </div>
 
     <%!-- Cluster Nodes --%>
-    <div class="px-3 pt-4 pb-2 border-b border-gray-800/40">
+    <div class="px-3 pt-4 pb-2 border-b border-zinc-800/40">
       <div class="flex items-center gap-2 px-3 mb-2">
         <div class="w-1 h-1 rounded-full bg-amber-400/60 animate-pulse"></div>
-        <span class="text-[10px] font-semibold text-gray-500 uppercase tracking-widest">
+        <span class="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">
           Cluster Nodes
         </span>
-        <span class="text-[10px] text-gray-600 font-mono ml-auto">{length(@nodes)}</span>
+        <span class="text-[10px] text-zinc-600 font-mono ml-auto">{length(@nodes)}</span>
       </div>
       <div class="flex flex-wrap gap-1 px-2">
         <%= for node <- @nodes do %>
-          <div class={[
-            "px-2 py-0.5 rounded text-[9px] font-mono border flex items-center gap-1.5 truncate max-w-full",
-            if(node == Node.self(),
-              do: "bg-amber-500/10 text-amber-400 border-amber-500/20",
-              else: "bg-blue-500/10 text-blue-400 border-blue-500/20"
-            )
-          ]}>
+          <div
+            class={[
+              "px-2 py-0.5 rounded text-[9px] font-mono border flex items-center gap-1.5 truncate max-w-full",
+              if(node == Node.self(),
+                do: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+                else: "bg-blue-500/10 text-blue-400 border-blue-500/20"
+              )
+            ]}
+            title={to_string(node)}
+          >
             <span class={[
               "w-1 h-1 rounded-full",
               if(node == Node.self(), do: "bg-amber-400", else: "bg-blue-400")
             ]}>
             </span>
-            {node}
+            {short_node(to_string(node))}
           </div>
         <% end %>
       </div>
@@ -57,7 +60,7 @@
     <%!-- Sidebar Search --%>
     <div class="px-3 pt-2 flex items-center gap-2">
       <form :if={@rooms != []} phx-change="filter_rooms" class="relative flex-1">
-        <span class="hero-magnifying-glass w-3.5 h-3.5 text-gray-600 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none">
+        <span class="hero-magnifying-glass w-3.5 h-3.5 text-zinc-600 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none">
         </span>
         <input
           type="text"
@@ -66,7 +69,7 @@
           placeholder="Filter rooms..."
           autocomplete="off"
           phx-debounce="150"
-          class="w-full bg-gray-800/50 border border-gray-700/50 rounded-lg text-xs text-gray-300 placeholder-gray-600 pl-8 pr-3 py-1.5 focus:outline-none focus:border-amber-500/30 focus:ring-1 focus:ring-amber-500/20"
+          class="w-full bg-zinc-800/50 border border-zinc-700/50 rounded-lg text-xs text-zinc-300 placeholder-gray-600 pl-8 pr-3 py-1.5 focus:outline-none focus:border-amber-500/30 focus:ring-1 focus:ring-amber-500/20"
         />
       </form>
       <button
@@ -80,7 +83,7 @@
           "shrink-0 px-2 py-1.5 rounded-lg border text-[10px] font-mono transition-colors",
           if(@cluster_wide,
             do: "bg-blue-500/15 border-blue-500/30 text-blue-400",
-            else: "bg-gray-800/50 border-gray-700/50 text-gray-500 hover:text-gray-300"
+            else: "bg-zinc-800/50 border-zinc-700/50 text-zinc-500 hover:text-zinc-300"
           )
         ]}
       >
@@ -91,12 +94,12 @@
     <%!-- Room List --%>
     <nav class="flex-1 overflow-y-auto px-3 pt-2 pb-3 scrollbar-thin">
       <%= if @rooms == [] do %>
-        <div class="text-center text-gray-500 text-xs py-12 px-4">
+        <div class="text-center text-zinc-500 text-xs py-12 px-4">
           <%= if !@db_connected do %>
-            <span class="hero-signal-slash w-8 h-8 text-gray-600 mb-2"></span>
+            <span class="hero-signal-slash w-8 h-8 text-zinc-600 mb-2"></span>
             Waiting for database...
           <% else %>
-            <span class="hero-building-library w-8 h-8 text-gray-600 mb-2"></span>
+            <span class="hero-building-library w-8 h-8 text-zinc-600 mb-2"></span>
             No rooms yet.<br />Start the council via MCP.
           <% end %>
         </div>
@@ -110,15 +113,15 @@
             }
             class="mb-3 group/details"
           >
-            <summary class="flex items-center gap-2 px-3 pt-2 pb-1.5 cursor-pointer list-none select-none hover:text-gray-300 transition-colors">
-              <span class="text-gray-600 group-open/details:rotate-90 transition-transform duration-150 text-[10px]">
+            <summary class="flex items-center gap-2 px-3 pt-2 pb-1.5 cursor-pointer list-none select-none hover:text-zinc-300 transition-colors">
+              <span class="text-zinc-600 group-open/details:rotate-90 transition-transform duration-150 text-[10px]">
                 ▶
               </span>
               <div class="w-1 h-1 rounded-full bg-blue-400/60"></div>
-              <span class="text-[10px] font-semibold text-gray-500 uppercase tracking-widest flex-1">
+              <span class="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest flex-1">
                 {project}
               </span>
-              <span class="text-[10px] text-gray-600 font-mono">{length(rooms)}</span>
+              <span class="text-[10px] text-zinc-600 font-mono">{length(rooms)}</span>
             </summary>
             <div class="space-y-1">
               <%= for room <- rooms do %>
@@ -135,7 +138,7 @@
         <% end %>
         <div
           :if={filtered == [] && @room_filter != ""}
-          class="text-center text-gray-500 text-xs py-8"
+          class="text-center text-zinc-500 text-xs py-8"
         >
           No rooms matching "{@room_filter}"
         </div>
@@ -143,7 +146,7 @@
     </nav>
 
     <%!-- Footer --%>
-    <div class="px-4 py-2.5 border-t border-gray-800/80 text-[10px] text-gray-600 font-mono flex items-center justify-between">
+    <div class="px-4 py-2.5 border-t border-zinc-800/80 text-[10px] text-zinc-600 font-mono flex items-center justify-between">
       <span>{length(@rooms)} rooms{if @cluster_wide, do: " (all nodes)", else: ""}</span>
       <span>v{Application.spec(:council_hub_ui, :vsn)}</span>
       <span class="flex items-center gap-1">
@@ -163,11 +166,11 @@
       />
 
       <%!-- Message Search + Type Filter --%>
-      <div class="px-6 py-2 border-b border-gray-800/60 flex items-center gap-3 flex-wrap">
+      <div class="px-6 py-2 border-b border-zinc-800/60 flex items-center gap-3 flex-wrap">
         <form phx-change="search_messages" class="relative flex-1 min-w-36">
           <span class={[
             "w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none hero-magnifying-glass",
-            if(@searching, do: "text-amber-400", else: "text-gray-600")
+            if(@searching, do: "text-amber-400", else: "text-zinc-600")
           ]}>
           </span>
           <input
@@ -177,7 +180,7 @@
             placeholder="Search messages..."
             autocomplete="off"
             phx-debounce="300"
-            class="w-full bg-gray-800/50 border border-gray-700/50 rounded-lg text-xs text-gray-300 placeholder-gray-600 pl-8 pr-3 py-1.5 focus:outline-none focus:border-amber-500/30 focus:ring-1 focus:ring-amber-500/20"
+            class="w-full bg-zinc-800/50 border border-zinc-700/50 rounded-lg text-xs text-zinc-300 placeholder-gray-600 pl-8 pr-3 py-1.5 focus:outline-none focus:border-amber-500/30 focus:ring-1 focus:ring-amber-500/20"
           />
         </form>
         <div class="flex items-center gap-1 flex-wrap">
@@ -190,7 +193,7 @@
                 if(@type_filter == value && !@searching,
                   do: "bg-amber-500/20 text-amber-400 border-amber-500/30",
                   else:
-                    "bg-gray-800/60 text-gray-500 border-gray-700/40 hover:text-gray-300 hover:border-gray-600/60"
+                    "bg-zinc-800/60 text-zinc-500 border-zinc-700/40 hover:text-zinc-300 hover:border-zinc-600/60"
                 )
               ]}
             >
@@ -224,24 +227,24 @@
       <%!-- Empty state for room with no messages --%>
       <div :if={!@has_messages} class="flex-1 flex items-center justify-center -mt-16">
         <div class="text-center">
-          <span class="hero-chat-bubble-left-right w-10 h-10 text-gray-700 mb-3 mx-auto block">
+          <span class="hero-chat-bubble-left-right w-10 h-10 text-zinc-700 mb-3 mx-auto block">
           </span>
-          <p class="text-sm text-gray-500">No messages yet</p>
-          <p class="text-xs text-gray-600 mt-1">Agents will post here via MCP tools</p>
+          <p class="text-sm text-zinc-500">No messages yet</p>
+          <p class="text-xs text-zinc-600 mt-1">Agents will post here via MCP tools</p>
         </div>
       </div>
     <% else %>
       <%!-- No Room Selected --%>
       <div class="flex-1 flex items-center justify-center">
         <div class="text-center max-w-md">
-          <span class="hero-building-library w-16 h-16 text-gray-700 mb-6 mx-auto block opacity-40">
+          <span class="hero-building-library w-16 h-16 text-zinc-700 mb-6 mx-auto block opacity-40">
           </span>
-          <h2 class="text-2xl font-bold text-gray-500 mb-3">Council Hub</h2>
-          <p class="text-gray-500 text-sm leading-relaxed">
+          <h2 class="text-2xl font-bold text-zinc-500 mb-3">Council Hub</h2>
+          <p class="text-zinc-500 text-sm leading-relaxed">
             Select a room from the sidebar to observe the council.
             Rooms are created by LLM agents via MCP tools.
           </p>
-          <div class="mt-6 flex items-center justify-center gap-2 text-[10px] text-gray-700 font-mono">
+          <div class="mt-6 flex items-center justify-center gap-2 text-[10px] text-zinc-700 font-mono">
             <span class="w-1.5 h-1.5 rounded-full bg-green-500/40 animate-pulse"></span>
             polling every 1s
           </div>
