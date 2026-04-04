@@ -4,6 +4,34 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.9.4] - 2026-04-04
+
+### Changed
+- `get_digest` now returns knowledge health alongside activity: rooms with `synthesis` messages show `[Compiled]` badge, rooms flagged `stale` or `needs-synthesis` surface in a "Knowledge Health" section even without new messages
+- `DigestEntry` extended with Tags, DecisionCount, SynthesisCount fields
+- Updated tool descriptions across all MCP tools to document v0.9.x features
+
+## [0.9.3] - 2026-04-04
+
+### Added
+- Knowledge Linter (revived `janitor.go`): scans rooms every hour using deterministic SQL (no server-side LLM calls)
+  - `needs-synthesis` tag: flags rooms with decisions but no synthesis message
+  - `stale` tag: flags active rooms with no activity for 7+ days
+  - Posts system warnings into flagged rooms with actionable guidance
+- `hasTag`/`appendTag` helpers for exact comma-separated tag matching (prevents substring false positives)
+- 8 new tests: tag helpers, lintNeedsSynthesis (flag/skip/idempotent), lintStaleRooms (flag/skip), JanitorSweep integration
+
+## [0.9.2] - 2026-04-04
+
+### Added
+- `synthesis` message type for compiled knowledge articles — agents read deliberation logs, distill conclusions, and post back as `post_to_room(message_type="synthesis")`
+- All messages in transcripts now show `#msg-ID` in headers (previously only typed messages did)
+
+### Changed
+- Improved `message_type` parameter descriptions: each type now explains its purpose (thought, decision, action, synthesis, etc.)
+- `read_transcript` description now mentions `mode=work_items`
+- Removed Obsidian-specific `^msg-` syntax from pinned message format
+
 ## [0.9.1] - 2026-04-04
 
 ### Changed

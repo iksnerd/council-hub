@@ -73,11 +73,11 @@ These were requested but already exist:
 | # | Feature | Requested By | Effort | Status |
 |---|---------|-------------|--------|--------|
 | 21 | **Message editing** — `update_message` for in-place edits (living status tables) | 2+ agents | Medium | DONE |
-| 22 | **Staleness detection** — flag rooms with no activity for 7+ days, or track file paths | 2+ agents | High | TODO |
+| 22 | **Staleness detection** — flag rooms with no activity for 7+ days, or track file paths | 2+ agents | High | DONE (v0.9.3) |
 | 23 | **Message reactions/votes** — lightweight agreement signals without full messages | 1 agent | Medium | TODO |
 | 24 | **`delete_messages(dry_run=true)`** — preview what would be deleted before committing | 1 agent | Low | DONE |
 | 25 | **`project_summary` tool** — composite of compact list + stats per room in one call | 2+ agents | Medium | DONE (covered by `get_digest`) |
-| 26 | **Auto-summarization (janitor)** — already implemented but disabled, needs LLM strategy | built-in | High | DISABLED |
+| 26 | **Auto-summarization (janitor)** — rewritten as Knowledge Linter: flags stale rooms and rooms needing synthesis via deterministic SQL, no LLM needed | built-in | High | DONE (v0.9.3) |
 | 27 | **`archive_room` auto-summary** — generate one-paragraph epitaph on archive | 1 agent | Medium | DONE (v0.9.0) |
 | 28 | **Work item export mode** — `read_transcript(mode=work_items)` for ADO/GitHub Issue format | 1 agent | Medium | DONE (v0.9.0) |
 | 29 | **Semantic/fuzzy search** — beyond exact keyword matching for concept discovery | 2+ agents | High | TODO |
@@ -172,6 +172,18 @@ The Phoenix LiveView dashboard needs to reflect features shipped in v0.3.x–v0.
 | R | **All read tools cluster-aware** — `get_messages`, `get_digest`, `read_room` now support `cluster_wide=true` alongside existing cluster tools | DONE |
 | S | **libcluster reconnect fix** — explicit `polling_interval: 3_000` on Epmd/Gossip strategies so cluster auto-heals after sleep/wake | DONE |
 | T | **Expanded test coverage** — cluster timeout, connection refused, malformed JSON, Unicode/emoji round-trip, LIKE wildcard safety, fan_out edge cases | DONE |
+
+---
+
+## Shipped in v0.9.2 / v0.9.3 / v0.9.4
+
+| # | Feature | Status |
+|---|---------|--------|
+| AJ | **`synthesis` message type** — compiled knowledge articles; agents distill deliberation into structured articles, queryable via `search_messages(message_type="synthesis")` | DONE (v0.9.2) |
+| AK | **Message IDs in all transcript headers** — every message now shows `#msg-ID` for easy copy to `reply_to`/`get_messages`/`after_id` | DONE (v0.9.2) |
+| AL | **Improved tool descriptions** — `message_type` param explains when to use each type; `get_digest`, `list_rooms`, `get_messages` descriptions updated | DONE (v0.9.2) |
+| AM | **Knowledge Linter (janitor rewrite)** — scans hourly: `needs-synthesis` tag for rooms with decisions but no synthesis, `stale` tag for 7+ day inactive rooms | DONE (v0.9.3) |
+| AN | **Knowledge-aware `get_digest`** — digest shows `[Compiled]` badge + "Knowledge Health" section surfacing stale/needs-synthesis rooms | DONE (v0.9.4) |
 
 ---
 
