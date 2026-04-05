@@ -1,6 +1,9 @@
-name: Docker Hub Publish (ARM only)
+name: Docker Hub Publish (fast)
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
 env:
