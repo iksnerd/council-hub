@@ -19,8 +19,10 @@ fmt: ## Format code
 vet: ## Run go vet
 	go vet ./...
 
-lint: ## Run golangci-lint (if installed)
-	@command -v golangci-lint >/dev/null 2>&1 && golangci-lint run ./... || echo "golangci-lint not installed, skipping"
+lint: ## Run golangci-lint
+	@command -v golangci-lint >/dev/null 2>&1 && golangci-lint run || \
+	 (test -x "$$(go env GOPATH)/bin/golangci-lint" && "$$(go env GOPATH)/bin/golangci-lint" run) || \
+	 (echo "golangci-lint not found. Install: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest" && exit 1)
 
 clean: ## Remove build artifacts
 	rm -rf $(BUILD_DIR)
@@ -29,4 +31,4 @@ clean: ## Remove build artifacts
 run: build ## Build and run locally
 	./$(BUILD_DIR)/$(BINARY)
 
-all: fmt vet test build ## Format, vet, test, and build
+all: fmt vet lint test build ## Format, vet, lint, test, and build
