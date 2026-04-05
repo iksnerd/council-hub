@@ -5,28 +5,25 @@ linters:
     - errcheck
     - staticcheck
     - unused
+  exclusions:
+    rules:
+      # Test files: errcheck is too noisy for helper calls and setup boilerplate
+      - path: "_test\\.go"
+        linters:
+          - errcheck
+      # Test files: nil context is acceptable in unit tests
+      - path: "_test\\.go"
+        text: "SA1012"
+        linters:
+          - staticcheck
+      # Test files: De Morgan's law style is a matter of taste
+      - path: "_test\\.go"
+        text: "QF1001"
+        linters:
+          - staticcheck
+    paths:
+      - vendor
 
 formatters:
   enable:
     - gofmt
-
-issues:
-  exclude-dirs:
-    - vendor
-
-exclusions:
-  rules:
-    # Test files: errcheck is too noisy for helper calls and setup boilerplate
-    - path: "_test\\.go"
-      linters:
-        - errcheck
-    # Test files: nil context is acceptable in unit tests
-    - path: "_test\\.go"
-      text: "SA1012"
-      linters:
-        - staticcheck
-    # Test files: De Morgan's law style is a matter of taste
-    - path: "_test\\.go"
-      text: "QF1001"
-      linters:
-        - staticcheck
