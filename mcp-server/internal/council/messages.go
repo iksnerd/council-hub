@@ -315,7 +315,7 @@ func (s *Server) SearchMessages(query, author, messageType, roomID, project, sin
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var msgs []Message
 	for rows.Next() {

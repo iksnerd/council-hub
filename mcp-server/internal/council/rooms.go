@@ -108,7 +108,7 @@ func (s *Server) removeRoomFromRelatedLinks(roomID string) {
 		}
 		updates = append(updates, update{id, strings.Join(kept, ", ")})
 	}
-	rows.Close()
+	_ = rows.Close()
 	for _, u := range updates {
 		if _, err := s.DB.Exec(`UPDATE rooms SET related_rooms = ? WHERE id = ?`, u.newRR, u.id); err != nil {
 			s.Logger.Warn("removeRoomFromRelatedLinks: update failed", "room", u.id, "error", err)
@@ -279,7 +279,7 @@ func (s *Server) ListRooms(project, tag, status, search string) ([]Room, error) 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var rooms []Room
 	for rows.Next() {
