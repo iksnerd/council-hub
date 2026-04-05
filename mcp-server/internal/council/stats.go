@@ -55,7 +55,7 @@ func (s *Server) GetRoomStats(roomID string) (RoomStats, error) {
 	if err != nil {
 		return stats, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		var author string
@@ -131,7 +131,7 @@ func (s *Server) GetDigest(project, since string) ([]DigestEntry, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var entries []DigestEntry
 	for rows.Next() {
@@ -151,7 +151,7 @@ func (s *Server) GetMessageCounts() map[string]int {
 	if err != nil {
 		return counts
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		var roomID string
@@ -186,7 +186,7 @@ func (s *Server) GetPinnedExcerpts(roomIDs []string) map[string]string {
 	if err != nil {
 		return excerpts
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		var roomID, content string
@@ -222,7 +222,7 @@ func (s *Server) GetRoomsNeedingSummary(threshold int) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var roomIDs []string
 	for rows.Next() {
