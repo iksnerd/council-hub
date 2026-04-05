@@ -180,7 +180,7 @@ func (s *Server) GetRecentMessages(roomID string, limit int) ([]Message, error) 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var msgs []Message
 	for rows.Next() {
@@ -213,7 +213,7 @@ func (s *Server) GetMessagesAfterID(roomID string, afterID string) ([]Message, e
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var msgs []Message
 	for rows.Next() {
@@ -244,7 +244,7 @@ func (s *Server) GetLatestPerType(roomID string) ([]Message, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var msgs []Message
 	for rows.Next() {

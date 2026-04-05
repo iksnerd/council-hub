@@ -107,8 +107,6 @@ func TestTranscriptWithRelatedRooms(t *testing.T) {
 	}
 }
 
-
-
 // -- formatTranscript edge: plain message with reply_to --
 
 func TestFormatTranscriptReplyToPlainMessage(t *testing.T) {
@@ -434,4 +432,3 @@ func TestBuildEpitaphLongContentTruncated(t *testing.T) {
 		t.Errorf("expected long content to be truncated with ..., got: %s", out)
 	}
 }
-

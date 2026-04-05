@@ -116,7 +116,7 @@ func (s *Server) GetDigest(project, since string) ([]DigestEntry, error) {
 		FROM messages m
 		JOIN rooms r ON m.room_id = r.id
 		WHERE (m.timestamp > ? OR r.tags LIKE '%stale%' OR r.tags LIKE '%needs-synthesis%')`
-	
+
 	var args []any
 	args = append(args, since, since)
 

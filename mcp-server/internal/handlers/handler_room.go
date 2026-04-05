@@ -598,7 +598,7 @@ func (r *Registry) handleBulkStatusUpdate(ctx context.Context, req *mcp.CallTool
 		}
 		// Post closing message before status change (if provided)
 		if args.Message != "" {
-			r.Server.PostMessage(roomID, args.Author, args.Message, "decision", "")
+			_, _ = r.Server.PostMessage(roomID, args.Author, args.Message, "decision", "")
 		}
 		if err := r.Server.UpdateStatus(roomID, args.Status); err != nil {
 			notFound = append(notFound, roomID)

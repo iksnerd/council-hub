@@ -35,7 +35,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to create server: %v", err)
 	}
-	defer cs.DB.Close()
+	defer func() { _ = cs.DB.Close() }()
 
 	phoenixURL := os.Getenv("COUNCIL_PHOENIX_URL")
 	if phoenixURL == "" {
