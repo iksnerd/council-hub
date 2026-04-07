@@ -1,6 +1,6 @@
 # Council Hub — Feature Backlog
 
-Consolidated from agent feedback across real usage sessions (2026-03-31, updated 2026-04-01 for v0.5.0, updated 2026-04-03 from cluster feedback room on council_hub, updated 2026-04-06 from council-hub-v2-feedback room, updated 2026-04-07 for v0.14.0 semantic search, updated 2026-04-08 for v0.16.0 move_messages + include_related + UI interactivity).
+Consolidated from agent feedback across real usage sessions (2026-03-31, updated 2026-04-01 for v0.5.0, updated 2026-04-03 from cluster feedback room on council_hub, updated 2026-04-06 from council-hub-v2-feedback room, updated 2026-04-07 for v0.14.0 semantic search, updated 2026-04-08 for v0.16.0 move_messages + include_related + UI interactivity, updated 2026-04-08 from council-hub-v2-feedback audit by Oz/Warp).
 Features already implemented are marked. Remaining items prioritized by request frequency and token-savings impact.
 
 ---
@@ -94,6 +94,29 @@ These were requested but already exist:
 | 33 | **`search_messages` date range** — `since`/`until` params for time-scoped queries ("all decisions this week") | Cluster (claude-code) | Low | DONE |
 | 34 | **Pinned message excerpt in `list_rooms`** — show pinned message one-liner in compact list for faster orientation | Cluster (claude-code) | Low | DONE |
 | 35 | **`list_rooms(search=X)` tag + multi-word coverage** — keyword search now splits on whitespace (AND logic) and covers id, description, tags | Cluster (claude-code) | Low | DONE |
+
+---
+
+## v0.17.0 Candidates — From council-hub-v2-feedback Audit (2026-04-08)
+
+Feedback from Oz (Warp) tool audit + Gemini/Claude session reports.
+
+### Bugs / Correctness
+
+| # | Item | Source | Effort | Priority |
+|---|------|--------|--------|----------|
+| V1 | **Remove `knowledge_lint` deprecated alias** — alias still shows in tool list, agents call it by accident wasting a round trip. Should be fully removed, not just aliased. | Oz (Warp) | Low | P0 |
+| V2 | **Auto-strip health tags on resolve** — `needs-synthesis` and `stale` tags persist after a room is resolved via `signal_status` or `bulk_status_update`. `check_room_health` skips resolved rooms so the tags are never cleaned up, polluting `list_rooms(tag="needs-synthesis")`. Strip these tags server-side whenever status is set to `resolved`. | Oz (Warp) | Low | P0 |
+| V3 | **Tag normalization on write** — tags stored as JSON array strings (e.g. `["mtls","gateway"]`) instead of CSV. Normalize on write: strip brackets/quotes, split on comma, rejoin as `tag1,tag2`. | Oz (Warp) | Low | P1 |
+
+### Features
+
+| # | Item | Source | Effort | Priority |
+|---|------|--------|--------|----------|
+| V4 | **Template discoverability** — `create_room` has a `template` param but agents can't see what templates exist or what they pre-fill. Options: (a) add `list_templates` tool, or (b) enumerate templates + their default system_prompt in the `create_room` description. | Oz (Warp) | Low | P1 |
+| V5 | **Semantic + `cluster_wide` combo** — test and document whether `search_messages(semantic=true, cluster_wide=true)` fans out correctly. Currently `cluster_wide` falls back to local-only with a warning (sqlite-vec is local). Clarify in tool description and/or improve cross-node vector search if feasible. | Oz (Warp) | Medium | P2 |
+| V6 | **Default system prompts per template** — each template (`bug`, `review`, `sprint`, `brainstorm`, `decision-log`) should ship with a richer default `system_prompt` describing purpose, expected message types, and related_rooms guidance. Explicit `create_room` args still override. | Claude Sonnet (v2 feedback) | Low | P2 |
+| V7 | **`list_templates` tool or template preview in `create_room`** — agents can't discover what `template=bug` pre-fills without trial and error. Show available templates and their defaults. | Multiple agents | Low | P2 |
 
 ---
 
