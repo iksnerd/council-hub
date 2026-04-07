@@ -108,6 +108,14 @@ func (s *Server) CreateRoom(id, description, project, techStack, tags, systemPro
 	}
 
 	s.syncReverseLinks(id, relatedRooms)
+
+	// Embed room description + system prompt (non-fatal)
+	text := description
+	if systemPrompt != "" {
+		text += " " + systemPrompt
+	}
+	s.EmbedAsync("room_vectors", id, text)
+
 	return nil
 }
 
@@ -281,6 +289,19 @@ func (s *Server) UpdateRoom(roomID, description, project, techStack, tags, addTa
 	}
 
 	s.syncReverseLinks(roomID, relatedRooms)
+
+	// Re-embed if description or system_prompt changed (non-fatal)
+	if description != "" || systemPrompt != "" {
+		room, err := s.GetRoom(roomID)
+		if err == nil {
+			text := room.Description
+			if room.SystemPrompt != "" {
+				text += " " + room.SystemPrompt
+			}
+			s.EmbedAsync("room_vectors", roomID, text)
+		}
+	}
+
 	return nil
 }
 
@@ -311,9 +332,14 @@ func (s *Server) DeleteRoom(roomID string) error {
 		return fmt.Errorf("room '%s' not found", roomID)
 	}
 
+	// Clean up vectors before deleting messages (best-effort)
+	_, _ = s.DB.Exec(`DELETE FROM message_vectors WHERE message_id IN (SELECT id FROM messages WHERE room_id = ?)`, roomID)
+	_, _ = s.DB.Exec(`DELETE FROM room_vectors WHERE room_id = ?`, roomID)
+
 	if _, err := s.DB.Exec(`DELETE FROM messages WHERE room_id = ?`, roomID); err != nil {
 		return fmt.Errorf("delete messages for room '%s': %w", roomID, err)
 	}
+
 	return nil
 }
 

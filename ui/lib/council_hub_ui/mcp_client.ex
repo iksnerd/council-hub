@@ -29,7 +29,10 @@ defmodule CouncilHubUi.McpClient do
       })
 
     url = String.to_charlist(mcp_url())
-    headers = [{~c"Content-Type", ~c"application/json"}, {~c"Accept", ~c"application/json"}]
+    headers = [
+      {~c"Content-Type", ~c"application/json"},
+      {~c"Accept", ~c"application/json, text/event-stream"}
+    ]
 
     :httpc.request(:post, {url, headers, ~c"application/json", body}, [{:timeout, 5000}], [])
     |> handle_response()

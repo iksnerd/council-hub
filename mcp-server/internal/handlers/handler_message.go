@@ -33,6 +33,7 @@ type SearchMessagesInput struct {
 	SummaryOnly string `json:"summary_only"`
 	FullContent string `json:"full_content"`
 	ClusterWide string `json:"cluster_wide"`
+	Semantic    string `json:"semantic"`
 }
 
 // UpdateMessageInput represents the parameters for editing a message in-place.
@@ -133,7 +134,17 @@ func (r *Registry) handleSearchMessages(ctx context.Context, req *mcp.CallToolRe
 		}
 	}
 
-	messages, err := r.Server.SearchMessages(args.Query, args.Author, args.MessageType, effectiveRoomIDs, args.Project, args.Since, args.Until, limit)
+	var messages []council.Message
+	var err error
+
+	if args.Semantic == "true" {
+		if args.Query == "" {
+			return msg("Error: query is required for semantic search.")
+		}
+		messages, err = r.Server.SearchMessagesSemantic(args.Query, effectiveRoomIDs, args.Project, args.Author, args.MessageType, args.Since, args.Until, limit)
+	} else {
+		messages, err = r.Server.SearchMessages(args.Query, args.Author, args.MessageType, effectiveRoomIDs, args.Project, args.Since, args.Until, limit)
+	}
 	if err != nil {
 		r.Server.Logger.Error("Failed to search messages", "error", err)
 		return nil, ToolOutput{}, err

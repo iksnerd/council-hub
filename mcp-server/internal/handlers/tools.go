@@ -227,6 +227,7 @@ func (r *Registry) RegisterTools() {
 			"summary_only": prop("string", "Set to 'true' for compact output: id, author, timestamp, room, type, and 120-char excerpt"),
 			"full_content": prop("string", "Set to 'true' to return the full un-truncated message body instead of a 300-char snippet"),
 			"cluster_wide": prop("string", "Set to 'true' to search across all cluster nodes. Default: local only."),
+			"semantic":     prop("string", "Set to 'true' for vector similarity search instead of keyword matching. Finds conceptually similar messages even without exact keyword overlap. Requires an embedding provider (COUNCIL_OLLAMA_URL)."),
 		}),
 	}, r.handleSearchMessages)
 

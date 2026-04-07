@@ -4,6 +4,14 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.14.0] - 2026-04-07
+
+### Added
+- **Semantic vector search** — `search_messages(semantic="true")` finds conceptually similar messages via cosine distance, even without keyword overlap. Powered by sqlite-vec (pure-C SQLite extension) with 384-dimension vectors.
+- **Ollama embedding integration** — set `COUNCIL_OLLAMA_URL` and `COUNCIL_EMBED_MODEL` to generate embeddings via Ollama (e.g., nomic-embed-text). Embeddings generated at write time on all message/room mutations.
+- **Automatic backfill** — existing messages and rooms without vectors are embedded on startup via background goroutine.
+- Write hooks on 6 paths: PostMessage, UpdateMessage, DeleteMessages, CreateRoom, UpdateRoom, DeleteRoom. Non-fatal — FTS5 keyword search always works as fallback.
+
 ## [0.13.2] - 2026-04-07
 
 ### Added

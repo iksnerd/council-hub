@@ -46,6 +46,9 @@ func (s *Server) PostMessage(roomID, author, content, messageType string, replyT
 	// Update room's updated_at — best-effort, don't fail the post on this
 	_, _ = s.DB.Exec(`UPDATE rooms SET updated_at = CURRENT_TIMESTAMP WHERE id = ?`, roomID)
 
+	// Generate embedding asynchronously (non-fatal)
+	s.EmbedAsync("message_vectors", id, content)
+
 	return id, nil
 }
 
@@ -81,6 +84,11 @@ func (s *Server) UpdateMessage(messageID string, newContent, newMessageType stri
 
 	// Update room's updated_at
 	_, _ = s.DB.Exec(`UPDATE rooms SET updated_at = CURRENT_TIMESTAMP WHERE id = ?`, m.RoomID)
+
+	// Re-embed if content changed (non-fatal)
+	if newContent != "" {
+		s.EmbedAsync("message_vectors", messageID, newContent)
+	}
 
 	return &m, nil
 }
@@ -416,6 +424,9 @@ func (s *Server) DeleteMessages(ids []string) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
+
+	// Clean up vectors (best-effort, already holding lock)
+	s.deleteVectorsLocked("message_vectors", ids)
 
 	return res.RowsAffected()
 }
