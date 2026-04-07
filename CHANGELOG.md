@@ -4,6 +4,19 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.11.0] - 2026-04-06
+
+### Added
+- `latest_message_id` now included in `get_digest` (per room), `list_rooms` (cursor per room), `read_transcript(after_id)` (JSON footer), and `bulk_status_update` (per room) — eliminates `room_stats` round-trips for cursor tracking
+- `GetLatestMessageIDs()` batch helper in data layer for efficient cursor lookups
+- `check_room_health` tool — renamed from `knowledge_lint` for clarity; old name kept as deprecated alias
+- `create_room` and `get_or_create_room` now show a tip when no `related_rooms` are set
+
+### Changed
+- `get_digest` `since` parameter is now optional — defaults to last 24 hours; description updated for session-start orientation
+- Expanded tool descriptions: `search_messages` (when to prefer over read_transcript), `post_to_room` (message_type workflow guide), `pin_message` (when to pin), `update_message` (edit vs new message), `archive_room` (when to archive)
+- All 5 room templates (decision-log, sprint, bug, brainstorm, review) now include expanded system prompts with message type flow, related_rooms guidance, and synthesis expectations
+
 ## [0.10.0] - 2026-04-05
 
 ### Added

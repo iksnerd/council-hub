@@ -293,6 +293,11 @@ func (r *Registry) readSingleTranscript(args ReadTranscriptInput) (*mcp.CallTool
 				fmt.Fprintf(&b, "\n**[#%.8s %s] %s:**\n%s\n", m.ID, ts, m.Author, m.Content)
 			}
 		}
+
+		// Structured JSON footer for machine-parseable cursor tracking
+		if latestID != "" {
+			fmt.Fprintf(&b, "\n```json\n{\"latest_message_id\":\"%s\",\"new_count\":%d}\n```\n", latestID, len(messages))
+		}
 		return msg(b.String())
 	}
 

@@ -90,13 +90,14 @@ func (s *Server) GetRoomStats(roomID string) (RoomStats, error) {
 
 // DigestEntry represents one room's activity in a project digest.
 type DigestEntry struct {
-	RoomID         string `json:"room_id"`
-	NewMessages    int    `json:"new_messages"`
-	LatestAuthor   string `json:"latest_author"`
-	LatestExcerpt  string `json:"latest_excerpt"`
-	Tags           string `json:"tags"`
-	DecisionCount  int    `json:"decision_count"`
-	SynthesisCount int    `json:"synthesis_count"`
+	RoomID          string `json:"room_id"`
+	NewMessages     int    `json:"new_messages"`
+	LatestAuthor    string `json:"latest_author"`
+	LatestExcerpt   string `json:"latest_excerpt"`
+	Tags            string `json:"tags"`
+	DecisionCount   int    `json:"decision_count"`
+	SynthesisCount  int    `json:"synthesis_count"`
+	LatestMessageID string `json:"latest_message_id"`
 }
 
 // GetDigest returns rooms with messages since the given timestamp, plus any rooms needing attention.
@@ -106,13 +107,14 @@ func (s *Server) GetDigest(project, since string) ([]DigestEntry, error) {
 	project = normalizeProject(project)
 
 	query := `
-		SELECT m.room_id, 
+		SELECT m.room_id,
 		       SUM(CASE WHEN m.timestamp > ? THEN 1 ELSE 0 END) as new_msgs,
 		       (SELECT author FROM messages WHERE room_id = m.room_id ORDER BY id DESC LIMIT 1) as latest_author,
 		       (SELECT content FROM messages WHERE room_id = m.room_id ORDER BY id DESC LIMIT 1) as latest_content,
 		       COALESCE(r.tags, '') as tags,
 		       (SELECT COUNT(*) FROM messages WHERE room_id = m.room_id AND message_type = 'decision') as decision_count,
-		       (SELECT COUNT(*) FROM messages WHERE room_id = m.room_id AND message_type = 'synthesis') as synthesis_count
+		       (SELECT COUNT(*) FROM messages WHERE room_id = m.room_id AND message_type = 'synthesis') as synthesis_count,
+		       (SELECT MAX(id) FROM messages WHERE room_id = m.room_id) as latest_message_id
 		FROM messages m
 		JOIN rooms r ON m.room_id = r.id
 		WHERE (m.timestamp > ? OR r.tags LIKE '%stale%' OR r.tags LIKE '%needs-synthesis%')`
@@ -136,7 +138,7 @@ func (s *Server) GetDigest(project, since string) ([]DigestEntry, error) {
 	var entries []DigestEntry
 	for rows.Next() {
 		var d DigestEntry
-		if err := rows.Scan(&d.RoomID, &d.NewMessages, &d.LatestAuthor, &d.LatestExcerpt, &d.Tags, &d.DecisionCount, &d.SynthesisCount); err != nil {
+		if err := rows.Scan(&d.RoomID, &d.NewMessages, &d.LatestAuthor, &d.LatestExcerpt, &d.Tags, &d.DecisionCount, &d.SynthesisCount, &d.LatestMessageID); err != nil {
 			return nil, err
 		}
 		entries = append(entries, d)
@@ -204,6 +206,25 @@ func (s *Server) GetPinnedExcerpts(roomIDs []string) map[string]string {
 		excerpts[roomID] = content
 	}
 	return excerpts
+}
+
+// GetLatestMessageIDs returns a map of room_id -> latest message ID for all rooms.
+func (s *Server) GetLatestMessageIDs() map[string]string {
+	ids := make(map[string]string)
+	rows, err := s.DB.Query(`SELECT room_id, MAX(id) FROM messages GROUP BY room_id`)
+	if err != nil {
+		return ids
+	}
+	defer func() { _ = rows.Close() }()
+
+	for rows.Next() {
+		var roomID, latestID string
+		if err := rows.Scan(&roomID, &latestID); err != nil {
+			continue
+		}
+		ids[roomID] = latestID
+	}
+	return ids
 }
 
 // GetRoomsNeedingSummary returns room IDs with more than threshold unsummarized messages.

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -29,7 +30,7 @@ func (r *Registry) handleGetDigest(ctx context.Context, req *mcp.CallToolRequest
 	}
 
 	if args.Since == "" {
-		return msg("Error: since is required (ISO timestamp, e.g. 2026-03-31T12:00:00).")
+		args.Since = time.Now().Add(-24 * time.Hour).UTC().Format("2006-01-02T15:04:05")
 	}
 
 	digest, err := r.Server.GetDigest(args.Project, args.Since)

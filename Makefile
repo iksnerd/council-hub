@@ -4,6 +4,12 @@ IMAGE    = iksnerd/council-hub
 VERSION ?= latest
 DATA_DIR = $(HOME)/Documents/council-hub
 
+# Clustering defaults (override with e.g. make docker-run SEEDS=other@10.0.0.1)
+LOCAL_IP  ?= $(shell ipconfig getifaddr en0 2>/dev/null || echo 127.0.0.1)
+NODE_NAME ?= council_hub@$(LOCAL_IP)
+SEEDS     ?= council_hub@192.168.0.5
+COOKIE    ?= council
+
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-18s %s\n", $$1, $$2}'
 
@@ -16,6 +22,10 @@ docker-run: ## Run council-hub (MCP on :3001, UI on :4000, cluster on :4369/:900
 	docker run -d --name council-hub \
 		-p 4000:4000 -p 3001:3001 -p 4369:4369 -p 9000:9000 \
 		-v $(DATA_DIR):/data \
+		-e COUNCIL_TRANSPORT=http \
+		-e RELEASE_NODE=$(NODE_NAME) \
+		-e COUNCIL_SEEDS=$(SEEDS) \
+		-e RELEASE_COOKIE=$(COOKIE) \
 		$(IMAGE):latest
 	@echo "Council Hub running — UI: http://localhost:4000, MCP: http://localhost:3001/mcp"
 
