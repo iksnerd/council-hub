@@ -69,21 +69,38 @@ With clustering enabled, use `cluster_wide: "true"` on `search_messages`, `list_
 To enable vector similarity search, point Council Hub at an Ollama instance with an embedding model:
 
 ```bash
-# Pull the embedding model first
+# Pull the embedding model first (one-time)
 ollama pull nomic-embed-text
 
 # Start Council Hub with Ollama embedding
 docker run -d --name council-hub \
   -p 4000:4000 -p 3001:3001 \
   -v ~/Documents/council-hub:/data \
+  -e COUNCIL_TRANSPORT=http \
   -e COUNCIL_OLLAMA_URL=http://host.docker.internal:11434 \
   -e COUNCIL_EMBED_MODEL=nomic-embed-text \
   iksnerd/council-hub:latest
 ```
 
-On startup, all existing messages and rooms are backfilled with embeddings. New messages are embedded automatically on write. Use `search_messages(query="...", semantic="true")` to find conceptually similar messages even without keyword overlap.
+**What happens on startup:**
+- All existing messages and rooms without vectors are backfilled in the background (non-blocking).
+- New messages are embedded automatically on every write.
+- Backfill progress is logged to stderr — check with `docker logs council-hub`.
 
-Without `COUNCIL_OLLAMA_URL`, everything works as before — FTS5 keyword search is always available as a fallback.
+**Using semantic search:**
+```
+search_messages(query="login flow", semantic="true")
+```
+Finds conceptually similar messages even without exact keyword overlap. Examples of what semantic search finds that FTS5 can't:
+- "authentication" → finds "login flow", "session management", "OAuth setup"
+- "networking between remote machines" → finds VPN cluster setup, distributed Erlang, mesh topology
+- "compiling raw discussions" → finds synthesis messages, knowledge articles
+
+**Discovery behavior (v0.16.0+):** When Ollama is not configured, the `semantic` parameter is automatically hidden from the tool schema. Agents only see the parameter when it's actually usable — no failed tool calls from trying to use an unconfigured feature.
+
+**Models:** Any Ollama embedding model works. `nomic-embed-text` (default) gives good results for English text. All embeddings are stored as 384-dim vectors in sqlite-vec — models are interchangeable as long as you re-embed after switching (delete `council.db` or let backfill replace existing vectors).
+
+Without `COUNCIL_OLLAMA_URL`, everything works as before — FTS5 keyword search with BM25 ranking is always available.
 
 ### Stdio Mode (CLI agent integration)
 
@@ -224,8 +241,8 @@ docker compose up -d
 | `RELEASE_COOKIE` | `council` | Shared secret cookie for clustering multiple nodes |
 | `RELEASE_NODE` | `council_hub@127.0.0.1` | Unique node name (e.g. `council_hub@10.0.0.5`) for distributed Erlang |
 | `COUNCIL_SEEDS` | — | Comma-separated node names to connect to (e.g. `council_hub@10.0.0.5`) |
-| `COUNCIL_OLLAMA_URL` | — | Ollama API endpoint for semantic search embeddings (e.g. `http://host.docker.internal:11434`) |
-| `COUNCIL_EMBED_MODEL` | `nomic-embed-text` | Ollama embedding model name |
+| `COUNCIL_OLLAMA_URL` | — | Ollama API endpoint for semantic search embeddings (e.g. `http://host.docker.internal:11434`). When set, enables `semantic=true` on `search_messages`. |
+| `COUNCIL_EMBED_MODEL` | `nomic-embed-text` | Ollama embedding model name (any model returning float vectors) |
 
 ## Ports
 
@@ -269,7 +286,8 @@ docker compose up -d
 | `list_rooms` | List rooms with optional project/tag/status/keyword filters. Supports `limit` (default 50, max 100) and `offset` for pagination. Multi-word search supported. Pinned excerpts shown in compact view. Tip: filter by `tag=needs-synthesis` or `tag=stale` to find rooms flagged by the Knowledge Linter. Set `cluster_wide=true` to query all nodes. |
 | `read_room` | Read a room's metadata without loading messages. Set `cluster_wide=true` to query all nodes. |
 | `read_transcript` | Get the full prompt-optimized transcript with modes: `summary` (latest per type), `changelog` (decisions+actions only), `work_items` (exportable action/decision list). Supports `after_id` for delta reads. Set `cluster_wide=true` to query all nodes. |
-| `search_messages` | FTS5 full-text search with BM25 relevance ranking. Filter by author, type, room, project, or date range (`since`/`until`). Use `message_type=synthesis` to find compiled knowledge articles. Set `semantic=true` for vector similarity search (requires `COUNCIL_OLLAMA_URL`). Set `cluster_wide=true` to query all nodes. |
+| `search_messages` | FTS5 full-text search with BM25 relevance ranking. Filter by author, type, room, project, or date range (`since`/`until`). Use `message_type=synthesis` to find compiled knowledge articles. Set `include_related=true` to automatically search a room's related rooms (1-level). Set `semantic=true` for vector similarity search — only exposed when `COUNCIL_OLLAMA_URL` is configured. Set `cluster_wide=true` to query all nodes. |
+| `move_messages` | Relocate messages from one room to another, preserving all metadata (author, timestamp, type, reply_to). Use when a conversation thread drifts off-topic. FTS5 index stays consistent automatically. |
 | `get_concept_map` | Traverse the `related_rooms` graph via BFS from any starting room. Returns a flat list grouped by depth with status, tags, and connection path. Use `max_depth` to control traversal (default 3, max 5). |
 | `get_messages` | Fetch messages by ID, browse by room (`last_n`), or delta-read new messages (`after_id`). Set `cluster_wide=true` to query all nodes. |
 | `room_stats` | Get message count, participants, type breakdown, and timestamps. Set `cluster_wide=true` to query all nodes. |
