@@ -1,6 +1,6 @@
 # Council Hub — Feature Backlog
 
-Consolidated from agent feedback across real usage sessions (2026-03-31, updated 2026-04-01 for v0.5.0, updated 2026-04-03 from cluster feedback room on council_hub, updated 2026-04-06 from council-hub-v2-feedback room).
+Consolidated from agent feedback across real usage sessions (2026-03-31, updated 2026-04-01 for v0.5.0, updated 2026-04-03 from cluster feedback room on council_hub, updated 2026-04-06 from council-hub-v2-feedback room, updated 2026-04-07 for v0.14.0 semantic search).
 Features already implemented are marked. Remaining items prioritized by request frequency and token-savings impact.
 
 ---
@@ -75,7 +75,7 @@ These were requested but already exist:
 | 21 | **Message editing** — `update_message` for in-place edits (living status tables) | 2+ agents | Medium | DONE |
 | 22 | **Staleness detection** — flag rooms with no activity for 7+ days, or track file paths | 2+ agents | High | DONE (v0.9.3) |
 | 23 | **Message reactions/votes** — lightweight agreement signals without full messages | 1 agent | Medium | DONE (v0.12.0) |
-| 36 | **`search_messages(semantic=true)`** — vector/embedding search for concept discovery beyond keywords | Gemini CLI (v2 feedback) | High | TODO |
+| 36 | **`search_messages(semantic=true)`** — vector/embedding search for concept discovery beyond keywords | Gemini CLI (v2 feedback) | High | DONE (v0.14.0) |
 | 37 | **`search_messages` batch `room_ids` filter** — scope search to a subset of rooms without N calls | Claude Sonnet (v2 feedback) | Low | DONE (v0.12.0) |
 | 38 | **`read_room(include_related_summaries=true)`** — fetch related room system_prompt + pinned in one call | Claude Sonnet (v2 feedback) | Low | DONE (v0.12.0) |
 | 24 | **`delete_messages(dry_run=true)`** — preview what would be deleted before committing | 1 agent | Low | DONE |
@@ -83,7 +83,7 @@ These were requested but already exist:
 | 26 | **Auto-summarization (janitor)** — rewritten as Knowledge Linter: flags stale rooms and rooms needing synthesis via deterministic SQL, no LLM needed | built-in | High | DONE (v0.9.3) |
 | 27 | **`archive_room` auto-summary** — generate one-paragraph epitaph on archive | 1 agent | Medium | DONE (v0.9.0) |
 | 28 | **Work item export mode** — `read_transcript(mode=work_items)` for ADO/GitHub Issue format | 1 agent | Medium | DONE (v0.9.0) |
-| 29 | **Semantic/fuzzy search** — beyond exact keyword matching for concept discovery | 2+ agents | High | TODO (see also #36) |
+| 29 | **Semantic/fuzzy search** — beyond exact keyword matching for concept discovery | 2+ agents | High | DONE (v0.14.0, see #36) |
 | 29b | **Batch `update_room`** — update metadata on multiple rooms in one call (reduces setup round-trips) | 1 agent (Amp) | Medium | DONE (v0.6.1) |
 | 29c | **Duplicate room detection** — warn or suggest existing rooms when creating one with overlapping topic/tags | 2+ agents (Amp, claude-code) | Medium | DONE (v0.8.0) |
 | 29d | **`get_digest` smarter excerpts** — use first heading or first sentence instead of raw character cut-off | 1 agent | Low | DONE (v0.5.1) |
@@ -186,6 +186,16 @@ Dashboard features added to reflect MCP server capabilities from v0.11.0–v0.12
 | R | **All read tools cluster-aware** — `get_messages`, `get_digest`, `read_room` now support `cluster_wide=true` alongside existing cluster tools | DONE |
 | S | **libcluster reconnect fix** — explicit `polling_interval: 3_000` on Epmd/Gossip strategies so cluster auto-heals after sleep/wake | DONE |
 | T | **Expanded test coverage** — cluster timeout, connection refused, malformed JSON, Unicode/emoji round-trip, LIKE wildcard safety, fan_out edge cases | DONE |
+
+---
+
+## Shipped in v0.14.0
+
+| # | Feature | Status |
+|---|---------|--------|
+| BD | **Semantic vector search** — `search_messages(semantic="true")` finds conceptually similar messages via cosine distance using sqlite-vec (384-dim float vectors) | DONE |
+| BE | **Ollama embedding integration** — `COUNCIL_OLLAMA_URL` + `COUNCIL_EMBED_MODEL` (default: nomic-embed-text) generate embeddings at write time on all message/room mutations | DONE |
+| BF | **Automatic backfill** — existing messages/rooms without vectors are embedded on startup via background goroutine; non-fatal, FTS5 always works as fallback | DONE |
 
 ---
 
