@@ -105,13 +105,24 @@ Issues found during v0.6.2/v0.6.3 development:
 |---|------|--------|
 | Q1 | **Schema/handler integration tests** — tests call handlers directly (bypassing `RegisterTools`), so missing schema params go undetected. Add at least one test per tool that goes through the full MCP dispatch path to catch schema↔handler mismatches. | DONE (v0.8.0) |
 | Q2 | **`cluster_wide` missing from `read_transcript` schema** — handler supported it but schema didn't expose it, causing JSON unmarshal errors. Fixed in v0.6.3. | DONE |
-| Q3 | **CI/CD secrets missing** — `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` not set in GitHub repo secrets; `docker-publish.yml` can't push. Add secrets under Settings → Secrets and variables → Actions, then re-push tag for multi-arch build. Tracked in room `cicd-setup`. | TODO |
+| Q3 | **CI/CD secrets missing** — `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` not set in GitHub repo secrets; `docker-publish.yml` can't push. Add secrets under Settings → Secrets and variables → Actions, then re-push tag for multi-arch build. Tracked in room `cicd-setup`. | DONE (secrets added, v0.11.0+ builds succeed) |
 
 ---
 
-## UI Dashboard Updates (v0.5.0)
+## UI Dashboard Updates (v0.12.0)
 
-The Phoenix LiveView dashboard needs to reflect features shipped in v0.3.x–v0.4.0:
+The Phoenix LiveView dashboard needs to reflect features shipped in v0.11.0–v0.12.0:
+
+| # | Feature | Effort | Status |
+|---|---------|--------|--------|
+| U6 | **Emoji reactions display** — render reactions inline below messages (e.g. "👍 3  🎉 1"); add `reactions` column to Ecto schema/migration | Medium | TODO |
+| U7 | **Synthesis message type** — add "Synthesis" filter button + purple/gold badge; currently synthesis messages render as summary blocks but lack type badge and filter | Low | TODO |
+| U8 | **Room health flag highlights** — visually distinguish `stale` and `needs-synthesis` tags with warning colors (amber/red) and icons instead of plain tag chips | Low | TODO |
+| U9 | **Clickable related room links** — related rooms shown in header but not navigable; add `phx-click` patch to switch rooms | Low | TODO |
+| U10 | **Reaction interaction** — allow users to add reactions from the UI (click emoji picker → POST via internal API or LiveView event) | Medium | TODO |
+| U11 | **Room cursor in sidebar** — show `latest_message_id` (truncated) in room stats for transparency; useful for debugging delta reads | Low | TODO |
+
+### Previously completed (v0.4.1–v0.5.0)
 
 | # | Feature | Effort | Status |
 |---|---------|--------|--------|
