@@ -109,9 +109,9 @@ Issues found during v0.6.2/v0.6.3 development:
 
 ---
 
-## UI Dashboard Updates (v0.12.0)
+## UI Dashboard Updates (shipped v0.13.2)
 
-The Phoenix LiveView dashboard needs to reflect features shipped in v0.11.0–v0.12.0:
+Dashboard features added to reflect MCP server capabilities from v0.11.0–v0.12.0:
 
 | # | Feature | Effort | Status |
 |---|---------|--------|--------|
@@ -186,6 +186,34 @@ The Phoenix LiveView dashboard needs to reflect features shipped in v0.11.0–v0
 | R | **All read tools cluster-aware** — `get_messages`, `get_digest`, `read_room` now support `cluster_wide=true` alongside existing cluster tools | DONE |
 | S | **libcluster reconnect fix** — explicit `polling_interval: 3_000` on Epmd/Gossip strategies so cluster auto-heals after sleep/wake | DONE |
 | T | **Expanded test coverage** — cluster timeout, connection refused, malformed JSON, Unicode/emoji round-trip, LIKE wildcard safety, fan_out edge cases | DONE |
+
+---
+
+## Shipped in v0.13.2
+
+| # | Feature | Status |
+|---|---------|--------|
+| AY | **UI: emoji reactions display + interaction** — reactions rendered inline below messages; click to toggle, "+" hover picker (8 presets) posts to Go MCP server via JSON-RPC | DONE |
+| AZ | **UI: synthesis message type** — filter button + purple/gold badge + beaker icon | DONE |
+| BA | **UI: room health flag highlights** — stale (red) and needs-synthesis (yellow) left border + badge pills in sidebar | DONE |
+| BB | **UI: clickable related room links** — patch-navigable links in room header | DONE |
+| BC | **UI: latest message ID cursor** — truncated cursor shown in sidebar room cards for delta-read debugging | DONE |
+
+---
+
+## Shipped in v0.13.1
+
+| # | Feature | Status |
+|---|---------|--------|
+| AX2 | **`list_rooms` pagination** — `limit` (default 50, max 100) and `offset` params for local and cluster-wide queries | DONE |
+
+---
+
+## Shipped in v0.13.0
+
+| # | Feature | Status |
+|---|---------|--------|
+| AX1 | **`get_concept_map` tool** — BFS traversal of `related_rooms` graph; returns flat Markdown grouped by depth with status, tags, and connection path; `max_depth` up to 5 with cycle detection | DONE |
 
 ---
 
