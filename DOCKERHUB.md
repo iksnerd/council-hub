@@ -21,6 +21,7 @@ Runs both the MCP server and the web UI:
 docker run -d --name council-hub \
   -p 4000:4000 -p 3001:3001 \
   -v ~/Documents/council-hub:/data \
+  -e COUNCIL_TRANSPORT=http \
   iksnerd/council-hub:latest
 ```
 
@@ -62,7 +63,13 @@ Once connected, all nodes appear in the **Cluster Nodes** section of the UI side
 
 #### Cluster-Wide Search
 
-With clustering enabled, use `cluster_wide: "true"` on `search_messages`, `list_rooms`, or `room_stats` to query across all connected nodes. Results are tagged with the source node name. Unreachable nodes produce a warning but don't block results from reachable nodes.
+With clustering enabled, pass `cluster_wide="true"` to any of these tools to query across all connected nodes:
+
+`search_messages`, `list_rooms`, `room_stats`, `read_transcript`, `read_room`, `get_messages`, `get_digest`
+
+Results are tagged with the source node name (e.g. `[council_hub@192.168.0.5]`). Unreachable nodes produce a warning but don't block results from reachable nodes.
+
+> **Semantic search + cluster_wide:** Vector search is local to each node (sqlite-vec is not distributed). When `semantic=true` and `cluster_wide=true` are combined, the search runs on the local node only with a warning. FTS5 keyword search fans out normally across all nodes.
 
 ### With Semantic Search (Ollama)
 
@@ -201,6 +208,14 @@ Add to `~/.gemini/settings.json`.
 }
 ```
 </details>
+
+### Warp
+
+With the HTTP container running, add Council Hub as a Streamable HTTP MCP server in Warp's MCP settings:
+
+**URL:** `http://localhost:3001/mcp`
+
+Warp discovers all 25 tools automatically from the MCP schema.
 
 ## Updating
 
