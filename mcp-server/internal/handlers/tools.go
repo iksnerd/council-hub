@@ -128,7 +128,7 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "post_to_room",
-		Description: "Post a message to a council room's ledger. Returns JSON with message_id and latest_message_id for delta-read cursor tracking via read_transcript(after_id).",
+		Description: "Post a message to a council room's ledger. Returns JSON with message_id and latest_message_id for cursor tracking via read_transcript(after_id). Workflow guide — use message_type to signal intent: thought (exploring/reasoning) → critique (pushback/concerns) → decision (choice made, include rationale) → action (work shipped) → synthesis (compiled reference that distills a room's conclusions). Use review for feedback on others' work.",
 		InputSchema: schema([]string{"room_id", "author", "message"}, map[string]map[string]any{
 			"room_id": prop("string", "Target room ID"),
 			"author":  prop("string", "Name of the posting agent"),
@@ -210,7 +210,7 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "search_messages",
-		Description: "Search messages across rooms. All filter params are optional \u2014 omit or leave empty to skip. Returns snippets with message IDs; use get_messages to fetch full content. Use summary_only=true for compact results (id, author, timestamp, 120-char excerpt). Use full_content=true to bypass snippet truncation.",
+		Description: "Search messages across rooms by keyword, author, type, or time range. Prefer over read_transcript when: room has 20+ messages, you need cross-room results, or you're filtering by author/type/time window. Use read_transcript when you need a room's full sequential context. Returns snippets with message IDs; use get_messages to fetch full content. Use summary_only=true for compact results (id, author, timestamp, 120-char excerpt). Use full_content=true to bypass snippet truncation.",
 		InputSchema: schema(nil, map[string]map[string]any{
 			"query":        prop("string", "Text to search for in message content"),
 			"author":       prop("string", "Filter by author name"),
@@ -249,7 +249,7 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "update_message",
-		Description: "Edit a message's content in-place. Useful for maintaining living status tables or correcting mistakes. Preserves author, timestamp, room, and other fields.",
+		Description: "Edit a message's content in-place. Use for: (1) maintaining living documents like status tables or running summaries that evolve over time, (2) correcting factual errors. Convention: prefer posting a new message for new information; use update_message only when the original is a 'living' document or contains a mistake. Preserves author, timestamp, room, and other fields.",
 		InputSchema: schema([]string{"message_id", "content"}, map[string]map[string]any{
 			"message_id":   prop("string", "ID of the message to update"),
 			"content":      prop("string", "New message content (replaces existing)"),
@@ -259,7 +259,7 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "pin_message",
-		Description: "Pin a message as the living TL;DR for a room. Only one pinned message per room \u2014 pinning a new message unpins the old one. Pinning an already-pinned message unpins it (toggle). Pinned messages appear first in transcripts.",
+		Description: "Pin a message as the living TL;DR for a room. Use after posting a synthesis or decision that captures the room's current state — pinned messages appear first in every transcript read, giving newcomers instant context. Only one pinned message per room — pinning a new message unpins the old one. Pinning an already-pinned message unpins it (toggle).",
 		InputSchema: schema([]string{"room_id", "message_id"}, map[string]map[string]any{
 			"room_id":    prop("string", "Target room ID"),
 			"message_id": prop("string", "ID of the message to pin/unpin"),
@@ -291,7 +291,7 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "archive_room",
-		Description: "Export a room's transcript to a markdown file in the archives directory, with an auto-generated Summary section (last decision + last action). Optionally delete the room after archiving.",
+		Description: "Export a room's transcript to a markdown file in the archives directory, with an auto-generated Summary section. Use when a room is fully resolved and no longer needs active participation — archiving preserves the record while keeping the active room list clean. Set delete=true to remove the room after archiving (common for completed sprints or resolved bugs).",
 		InputSchema: schema([]string{"room_id"}, map[string]map[string]any{
 			"room_id": prop("string", "Target room ID"),
 			"delete":  prop("string", "Set to 'true' to delete room after archiving"),
@@ -299,11 +299,7 @@ func (r *Registry) RegisterTools() {
 	}, r.handleArchiveRoom)
 
 	type KnowledgeLintInput struct{}
-	mcp.AddTool(r.Server.MCP, &mcp.Tool{
-		Name:        "knowledge_lint",
-		Description: "Run the Knowledge Linter on demand. Scans all active rooms and flags: 'needs-synthesis' (rooms with decisions but no synthesis article), 'stale' (active rooms with no activity for 7+ days). Posts system warnings into newly flagged rooms. Returns which rooms were flagged. Also runs automatically every hour.",
-		InputSchema: schema(nil, map[string]map[string]any{}),
-	}, func(ctx context.Context, req *mcp.CallToolRequest, args KnowledgeLintInput) (*mcp.CallToolResult, ToolOutput, error) {
+	roomHealthHandler := func(ctx context.Context, req *mcp.CallToolRequest, args KnowledgeLintInput) (*mcp.CallToolResult, ToolOutput, error) {
 		result := r.Server.JanitorSweep()
 
 		var b strings.Builder
@@ -322,7 +318,17 @@ func (r *Registry) RegisterTools() {
 		return &mcp.CallToolResult{
 			Content: []mcp.Content{&mcp.TextContent{Text: text}},
 		}, ToolOutput{Message: text}, nil
-	})
+	}
+	mcp.AddTool(r.Server.MCP, &mcp.Tool{
+		Name:        "check_room_health",
+		Description: "Check all active rooms for attention signals. Flags: 'needs-synthesis' (rooms with decisions but no synthesis article — write one!), 'stale' (active rooms with no activity for 7+ days — resolve or revive). Posts system warnings into flagged rooms. Call periodically or when reviewing project health. Also runs automatically every hour.",
+		InputSchema: schema(nil, map[string]map[string]any{}),
+	}, roomHealthHandler)
+	mcp.AddTool(r.Server.MCP, &mcp.Tool{
+		Name:        "knowledge_lint",
+		Description: "Deprecated: use check_room_health instead. Scans active rooms for 'needs-synthesis' and 'stale' flags.",
+		InputSchema: schema(nil, map[string]map[string]any{}),
+	}, roomHealthHandler)
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "read_transcript",
@@ -340,10 +346,10 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "get_digest",
-		Description: "Get a project activity and knowledge health digest as a JSON array. Each entry has room_id, new_messages, latest_excerpt, tags, decision_count, synthesis_count. Rooms flagged by the Knowledge Linter (stale, needs-synthesis) are included. Machine-readable — parse room_id directly. Perfect for start-of-session orientation: 'what changed?' + 'what needs attention?'.",
-		InputSchema: schema([]string{"since"}, map[string]map[string]any{
-			"project":      prop("string", "Filter to rooms in this project (optional \u2014 omit for all projects)"),
-			"since":        prop("string", "ISO timestamp (e.g. 2026-03-31T12:00:00). Returns only rooms with messages after this time."),
+		Description: "Get a project activity and knowledge health digest as a JSON array. Each entry has room_id, new_messages, latest_message_id, latest_excerpt, tags, decision_count, synthesis_count. Rooms flagged by check_room_health (stale, needs-synthesis) are included. Call at the start of every session to orient yourself — shows what changed and what needs attention. Machine-readable — parse room_id and latest_message_id directly for delta reads.",
+		InputSchema: schema(nil, map[string]map[string]any{
+			"project":      prop("string", "Filter to rooms in this project (optional — omit for all projects)"),
+			"since":        prop("string", "ISO timestamp (e.g. 2026-03-31T12:00:00). Defaults to 24 hours ago if omitted."),
 			"cluster_wide": prop("string", "Set to 'true' to fetch the digest from all cluster nodes. Default: local only."),
 		}),
 	}, r.handleGetDigest)

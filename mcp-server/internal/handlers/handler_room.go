@@ -162,6 +162,10 @@ func (r *Registry) handleCreateRoom(ctx context.Context, req *mcp.CallToolReques
 		fmt.Fprintf(&b, "**Related rooms:** %s (bidirectional links created)\n", args.RelatedRooms)
 	}
 
+	if args.RelatedRooms == "" {
+		fmt.Fprintf(&b, "\n**Tip:** No related_rooms set — link parent/sibling rooms for cross-room navigation.\n")
+	}
+
 	// Advisory duplicate check — never blocks creation.
 	if similar, err := r.Server.FindSimilarRooms(args.ID, args.Topic, args.Project, args.Tags, 3); err == nil && len(similar) > 0 {
 		fmt.Fprintf(&b, "\n**Note:** Similar room(s) already exist:\n")
@@ -243,6 +247,11 @@ func (r *Registry) handleGetOrCreateRoom(ctx context.Context, req *mcp.CallToolR
 		} else {
 			b.WriteString("No messages yet.\n")
 		}
+	}
+
+	// Hint to link related rooms on creation
+	if created && args.RelatedRooms == "" {
+		fmt.Fprintf(&b, "\n**Tip:** No related_rooms set — link parent/sibling rooms for cross-room navigation.\n")
 	}
 
 	// Advisory duplicate check on newly created rooms only.
@@ -444,6 +453,7 @@ func (r *Registry) handleListRooms(ctx context.Context, req *mcp.CallToolRequest
 	}
 	msgCounts := r.Server.GetMessageCounts()
 	pinnedExcerpts := r.Server.GetPinnedExcerpts(roomIDs)
+	latestIDs := r.Server.GetLatestMessageIDs()
 
 	useVerbose := args.Verbose == "true" || args.Compact == "false"
 	if !useVerbose {
@@ -457,10 +467,14 @@ func (r *Registry) handleListRooms(ctx context.Context, req *mcp.CallToolRequest
 				project = "-"
 			}
 			count := msgCounts[rm.ID]
+			cursor := ""
+			if lid, ok := latestIDs[rm.ID]; ok {
+				cursor = fmt.Sprintf(" | cursor:%.8s", lid)
+			}
 			if excerpt, ok := pinnedExcerpts[rm.ID]; ok {
-				fmt.Fprintf(&b, "- **%s** | %s | %s | %d msgs | 📌 %s | %s | %s\n", rm.ID, project, rm.Status, count, excerpt, topic, rm.UpdatedAt.Format("2006-01-02 15:04"))
+				fmt.Fprintf(&b, "- **%s** | %s | %s | %d msgs%s | 📌 %s | %s | %s\n", rm.ID, project, rm.Status, count, cursor, excerpt, topic, rm.UpdatedAt.Format("2006-01-02 15:04"))
 			} else {
-				fmt.Fprintf(&b, "- **%s** | %s | %s | %d msgs | %s | %s\n", rm.ID, project, rm.Status, count, topic, rm.UpdatedAt.Format("2006-01-02 15:04"))
+				fmt.Fprintf(&b, "- **%s** | %s | %s | %d msgs%s | %s | %s\n", rm.ID, project, rm.Status, count, cursor, topic, rm.UpdatedAt.Format("2006-01-02 15:04"))
 			}
 		}
 	} else {
@@ -481,6 +495,9 @@ func (r *Registry) handleListRooms(ctx context.Context, req *mcp.CallToolRequest
 			}
 			if rm.RelatedRooms != "" {
 				fmt.Fprintf(&b, "  Related: %s\n", rm.RelatedRooms)
+			}
+			if lid, ok := latestIDs[rm.ID]; ok {
+				fmt.Fprintf(&b, "  Latest msg: %.8s\n", lid)
 			}
 			fmt.Fprintf(&b, "  Last activity: %s\n", rm.UpdatedAt.Format("2006-01-02 15:04:05"))
 		}
@@ -609,7 +626,15 @@ func (r *Registry) handleBulkStatusUpdate(ctx context.Context, req *mcp.CallTool
 
 	var b strings.Builder
 	if len(updated) > 0 {
-		fmt.Fprintf(&b, "Updated %d room(s) to '%s': %s", len(updated), args.Status, strings.Join(updated, ", "))
+		latestIDs := r.Server.GetLatestMessageIDs()
+		fmt.Fprintf(&b, "Updated %d room(s) to '%s':\n", len(updated), args.Status)
+		for _, id := range updated {
+			if lid, ok := latestIDs[id]; ok {
+				fmt.Fprintf(&b, "- %s (latest_message_id: %.8s)\n", id, lid)
+			} else {
+				fmt.Fprintf(&b, "- %s\n", id)
+			}
+		}
 	}
 	if len(notFound) > 0 {
 		if b.Len() > 0 {

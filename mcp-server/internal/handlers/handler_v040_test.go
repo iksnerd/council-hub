@@ -239,13 +239,22 @@ func TestGetDigestNoActivity(t *testing.T) {
 	}
 }
 
-func TestGetDigestMissingSince(t *testing.T) {
+func TestGetDigestDefaultSince(t *testing.T) {
 	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "digest-default", withProject("p"))
+	mustPost(t, reg.Server, "digest-default", "Agent", "Recent msg")
 
-	res, _, _ := reg.handleGetDigest(context.Background(), nil, DigestInput{})
+	// Omitting since should default to last 24h, not error
+	res, _, err := reg.handleGetDigest(context.Background(), nil, DigestInput{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	text := resultText(res)
-	if !strings.Contains(text, "since is required") {
-		t.Errorf("expected error for missing since, got: %s", text)
+	if strings.Contains(text, "Error") {
+		t.Errorf("expected valid digest with default since, got: %s", text)
+	}
+	if !strings.Contains(text, "digest-default") {
+		t.Errorf("expected recent room in default digest, got: %s", text)
 	}
 }
 
