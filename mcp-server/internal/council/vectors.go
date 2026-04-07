@@ -166,7 +166,7 @@ func (s *Server) SearchMessagesSemantic(query string, roomID, project, author, m
 	if err != nil {
 		return nil, fmt.Errorf("fetch messages: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var messages []Message
 	for rows.Next() {
@@ -247,7 +247,7 @@ func (s *Server) BackfillEmbeddings(ctx context.Context) {
 		}
 		pending = append(pending, struct{ id, content string }{id, content})
 	}
-	rows.Close()
+	_ = rows.Close()
 
 	for _, p := range pending {
 		if ctx.Err() != nil {
@@ -285,7 +285,7 @@ func (s *Server) BackfillEmbeddings(ctx context.Context) {
 		}
 		roomPending = append(roomPending, struct{ id, desc, prompt string }{id, desc, prompt})
 	}
-	rows.Close()
+	_ = rows.Close()
 
 	for _, p := range roomPending {
 		if ctx.Err() != nil {

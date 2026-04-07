@@ -942,7 +942,7 @@ func TestGetConceptMap(t *testing.T) {
 	// NOTE: CreateRoom triggers syncReverseLinks, so root <-> a, root <-> b, a <-> c, etc.
 	s.CreateRoom("root", "Root topic", "proj", "", "tag1", "", "a, b")
 	s.CreateRoom("a", "Topic A", "proj", "", "tag2", "", "c")
-	s.CreateRoom("b", "Topic B", "proj", "","tag3", "", "d")
+	s.CreateRoom("b", "Topic B", "proj", "", "tag3", "", "d")
 	s.CreateRoom("c", "Topic C", "proj", "", "tag4", "", "root")
 	s.CreateRoom("d", "Topic D", "proj", "", "tag5", "", "")
 	s.CreateRoom("e", "Topic E", "proj", "", "tag6", "", "")

@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	janitorInterval = 6 * time.Hour
+	janitorInterval       = 6 * time.Hour
 	synthesisMinDecisions = 3
 	synthesisMinMessages  = 20
 	graceperiod           = 24 * time.Hour
