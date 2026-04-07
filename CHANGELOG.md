@@ -4,6 +4,11 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.13.1] - 2026-04-07
+
+### Added
+- `list_rooms` pagination — `limit` (default 50, max 100) and `offset` params for both local and cluster-wide queries. Prevents context blowup as room count grows.
+
 ## [0.13.0] - 2026-04-07
 
 ### Added

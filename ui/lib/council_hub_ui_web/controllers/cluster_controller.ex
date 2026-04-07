@@ -28,7 +28,9 @@ defmodule CouncilHubUiWeb.ClusterController do
       "project" => Map.get(params, "project", ""),
       "tag" => Map.get(params, "tag", ""),
       "status" => Map.get(params, "status", ""),
-      "search" => Map.get(params, "search", "")
+      "search" => Map.get(params, "search", ""),
+      "limit" => parse_limit(Map.get(params, "limit", "50")),
+      "offset" => parse_offset(Map.get(params, "offset", "0"))
     }
 
     result = Cluster.list_rooms(cluster_params)
@@ -127,6 +129,16 @@ defmodule CouncilHubUiWeb.ClusterController do
 
   defp parse_limit(val) when is_integer(val), do: min(max(val, 1), 100)
   defp parse_limit(_), do: 20
+
+  defp parse_offset(val) when is_binary(val) do
+    case Integer.parse(val) do
+      {n, _} when n >= 0 -> n
+      _ -> 0
+    end
+  end
+
+  defp parse_offset(val) when is_integer(val), do: max(val, 0)
+  defp parse_offset(_), do: 0
 
   defp serialize_message_optional(nil), do: nil
   defp serialize_message_optional(msg), do: serialize_message(msg)

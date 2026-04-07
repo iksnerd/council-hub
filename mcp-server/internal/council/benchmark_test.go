@@ -141,7 +141,7 @@ func BenchmarkListRooms(b *testing.B) {
 
 	b.Run("unfiltered", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			_, err := s.ListRooms("", "", "", "")
+			_, err := s.ListRooms("", "", "", "", 100, 0)
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -150,7 +150,7 @@ func BenchmarkListRooms(b *testing.B) {
 
 	b.Run("by_project", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			_, err := s.ListRooms("alpha", "", "", "")
+			_, err := s.ListRooms("alpha", "", "", "", 100, 0)
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -159,7 +159,7 @@ func BenchmarkListRooms(b *testing.B) {
 
 	b.Run("by_search", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			_, err := s.ListRooms("", "", "", "room-2")
+			_, err := s.ListRooms("", "", "", "room-2", 100, 0)
 			if err != nil {
 				b.Fatal(err)
 			}

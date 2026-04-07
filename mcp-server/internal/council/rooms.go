@@ -318,7 +318,7 @@ func (s *Server) DeleteRoom(roomID string) error {
 }
 
 // ListRooms returns rooms matching optional filters.
-func (s *Server) ListRooms(project, tag, status, search string) ([]Room, error) {
+func (s *Server) ListRooms(project, tag, status, search string, limit, offset int) ([]Room, error) {
 	query := `SELECT id, description, status, project, tech_stack, tags, system_prompt, related_rooms, created_at, updated_at FROM rooms WHERE 1=1`
 	var args []any
 
@@ -341,7 +341,18 @@ func (s *Server) ListRooms(project, tag, status, search string) ([]Room, error) 
 		}
 	}
 
-	query += ` ORDER BY updated_at DESC`
+	query += ` ORDER BY updated_at DESC LIMIT ? OFFSET ?`
+	
+	if limit <= 0 {
+		limit = 50 // default to 50
+	} else if limit > 100 {
+		limit = 100 // cap at 100
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	
+	args = append(args, limit, offset)
 
 	rows, err := s.DB.Query(query, args...)
 	if err != nil {
@@ -403,7 +414,7 @@ func (s *Server) FindSimilarRooms(excludeID, description, project, tags string, 
 		return nil, nil
 	}
 
-	rooms, err := s.ListRooms(project, "", "active", "")
+	rooms, err := s.ListRooms(project, "", "active", "", 100, 0)
 	if err != nil {
 		return nil, err
 	}

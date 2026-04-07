@@ -169,6 +169,8 @@ func (r *Registry) RegisterTools() {
 			"tag":          prop("string", "Filter by tag"),
 			"status":       prop("string", "Filter by status (active, paused, resolved)"),
 			"search":       prop("string", "Keyword search across room ID, topic/description, and tags"),
+			"limit":        prop("string", "Max rooms to return (default 50, max 100)"),
+			"offset":       prop("string", "Offset for pagination (default 0)"),
 			"verbose":      prop("string", "Set to 'true' for full metadata per room (system_prompt, tech_stack, tags, related_rooms)"),
 			"cluster_wide": prop("string", "Set to 'true' to search across all cluster nodes. Default: local only."),
 		}),

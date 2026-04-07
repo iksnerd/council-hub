@@ -71,7 +71,7 @@ func TestGetTranscriptDBClosed(t *testing.T) {
 
 func TestListRoomsDBClosed(t *testing.T) {
 	s := setupAndClose(t)
-	_, err := s.ListRooms("", "", "", "")
+	_, err := s.ListRooms("", "", "", "", 100, 0)
 	if err == nil {
 		t.Error("expected error on closed DB")
 	}
@@ -525,7 +525,7 @@ func corruptRooms(t *testing.T) *Server {
 
 func TestListRoomsScanError(t *testing.T) {
 	s := corruptRooms(t)
-	_, err := s.ListRooms("", "", "", "")
+	_, err := s.ListRooms("", "", "", "", 100, 0)
 	if err == nil {
 		t.Error("expected scan error")
 	}

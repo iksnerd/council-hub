@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -279,5 +280,44 @@ func TestHandleListRoomsDBError(t *testing.T) {
 	_, _, err := reg.handleListRooms(context.Background(), nil, ListRoomsInput{})
 	if err == nil {
 		t.Error("expected error")
+	}
+}
+
+func TestHandleListRoomsPagination(t *testing.T) {
+	reg := setupHandlerTest(t)
+	// Create 5 rooms
+	for i := 1; i <= 5; i++ {
+		mustCreateRoom(t, reg.Server, fmt.Sprintf("h-page-%d", i))
+		// SQLite CURRENT_TIMESTAMP is 1s resolution. Force distinct timestamps for deterministic sorting.
+		reg.Server.DB.Exec(`UPDATE rooms SET updated_at = datetime('now', '+' || ? || ' seconds') WHERE id = ?`, i, fmt.Sprintf("h-page-%d", i))
+	}
+
+	// Test Limit
+	res, _, _ := reg.handleListRooms(context.Background(), nil, ListRoomsInput{Limit: "2"})
+	text := resultText(res)
+	if !strings.Contains(text, "2 room(s)") {
+		t.Errorf("expected 2 rooms due to limit, got: %s", text)
+	}
+
+	// Test Offset
+	res, _, _ = reg.handleListRooms(context.Background(), nil, ListRoomsInput{Limit: "2", Offset: "2"})
+	text = resultText(res)
+	if !strings.Contains(text, "2 room(s)") {
+		t.Errorf("expected 2 rooms with offset, got: %s", text)
+	}
+	// Due to order_by updated_at desc, rooms are ordered 5, 4, 3, 2, 1
+	// offset 2 skips 5 and 4. The result should be 3 and 2.
+	if strings.Contains(text, "h-page-5") || strings.Contains(text, "h-page-4") {
+		t.Errorf("expected offset to skip latest rooms, got: %s", text)
+	}
+	if !strings.Contains(text, "h-page-3") || !strings.Contains(text, "h-page-2") {
+		t.Errorf("expected rooms 3 and 2, got: %s", text)
+	}
+
+	// Test Limit Cap
+	res, _, _ = reg.handleListRooms(context.Background(), nil, ListRoomsInput{Limit: "200"})
+	text = resultText(res)
+	if !strings.Contains(text, "5 room(s)") {
+		t.Errorf("expected 5 rooms (all), got: %s", text)
 	}
 }

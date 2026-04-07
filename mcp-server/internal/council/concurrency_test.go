@@ -15,7 +15,7 @@ func TestConcurrentReads(t *testing.T) {
 	done := make(chan bool, 10)
 	for i := 0; i < 10; i++ {
 		go func() {
-			_, err := s.ListRooms("", "", "", "")
+			_, err := s.ListRooms("", "", "", "", 100, 0)
 			if err != nil {
 				t.Errorf("concurrent listRooms failed: %v", err)
 			}
