@@ -53,8 +53,9 @@ type UpdateRoomInput struct {
 
 // ReadRoomInput represents the parameters for reading a room's metadata.
 type ReadRoomInput struct {
-	RoomID      string `json:"room_id"`
-	ClusterWide string `json:"cluster_wide"`
+	RoomID                  string `json:"room_id"`
+	ClusterWide             string `json:"cluster_wide"`
+	IncludeRelatedSummaries string `json:"include_related_summaries"`
 }
 
 // DeleteRoomInput represents the parameters for deleting a room.
@@ -397,6 +398,39 @@ func (r *Registry) handleReadRoom(ctx context.Context, req *mcp.CallToolRequest,
 	}
 	fmt.Fprintf(&b, "**Created:** %s\n", room.CreatedAt.Format("2006-01-02 15:04:05"))
 	fmt.Fprintf(&b, "**Updated:** %s\n", room.UpdatedAt.Format("2006-01-02 15:04:05"))
+
+	// Append related room summaries if requested
+	if args.IncludeRelatedSummaries == "true" && room.RelatedRooms != "" {
+		relatedIDs := strings.Split(room.RelatedRooms, ",")
+		for _, rid := range relatedIDs {
+			rid = strings.TrimSpace(rid)
+			if rid == "" {
+				continue
+			}
+			relRoom, err := r.Server.GetRoom(rid)
+			if err != nil {
+				fmt.Fprintf(&b, "\n---\n**%s** — (not found)\n", rid)
+				continue
+			}
+			fmt.Fprintf(&b, "\n---\n**%s** [%s]\n", relRoom.ID, relRoom.Status)
+			fmt.Fprintf(&b, "**Topic:** %s\n", relRoom.Description)
+			if relRoom.SystemPrompt != "" {
+				fmt.Fprintf(&b, "**System Prompt:** %s\n", relRoom.SystemPrompt)
+			}
+			pinned, _ := r.Server.GetPinnedMessage(rid)
+			if pinned != nil {
+				excerpt := pinned.Content
+				if len(excerpt) > 200 {
+					excerpt = excerpt[:200]
+					if i := strings.LastIndex(excerpt, " "); i > 120 {
+						excerpt = excerpt[:i]
+					}
+					excerpt += "..."
+				}
+				fmt.Fprintf(&b, "📌 %s\n", excerpt)
+			}
+		}
+	}
 
 	return msg(b.String())
 }

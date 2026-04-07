@@ -25,6 +25,7 @@ type SearchMessagesInput struct {
 	Author      string `json:"author"`
 	MessageType string `json:"message_type"`
 	RoomID      string `json:"room_id"`
+	RoomIDs     string `json:"room_ids"`
 	Project     string `json:"project"`
 	Limit       string `json:"limit"`
 	Since       string `json:"since"`
@@ -115,8 +116,14 @@ func (r *Registry) handleSearchMessages(ctx context.Context, req *mcp.CallToolRe
 		}, ToolOutput{Message: text}, nil
 	}
 
-	if args.Query == "" && args.Author == "" && args.MessageType == "" && args.RoomID == "" && args.Project == "" {
-		return msg("Error: at least one search filter is required (query, author, message_type, room_id, or project).")
+	if args.Query == "" && args.Author == "" && args.MessageType == "" && args.RoomID == "" && args.RoomIDs == "" && args.Project == "" {
+		return msg("Error: at least one search filter is required (query, author, message_type, room_id, room_ids, or project).")
+	}
+
+	// Merge room_id into room_ids for unified handling
+	effectiveRoomIDs := args.RoomIDs
+	if args.RoomID != "" && args.RoomIDs == "" {
+		effectiveRoomIDs = args.RoomID
 	}
 
 	limit := 20
@@ -126,7 +133,7 @@ func (r *Registry) handleSearchMessages(ctx context.Context, req *mcp.CallToolRe
 		}
 	}
 
-	messages, err := r.Server.SearchMessages(args.Query, args.Author, args.MessageType, args.RoomID, args.Project, args.Since, args.Until, limit)
+	messages, err := r.Server.SearchMessages(args.Query, args.Author, args.MessageType, effectiveRoomIDs, args.Project, args.Since, args.Until, limit)
 	if err != nil {
 		r.Server.Logger.Error("Failed to search messages", "error", err)
 		return nil, ToolOutput{}, err
@@ -272,6 +279,58 @@ func (r *Registry) handlePinMessage(ctx context.Context, req *mcp.CallToolReques
 	}
 	r.Server.Logger.Info("Message unpinned", "id", args.MessageID, "room", args.RoomID)
 	return msg(fmt.Sprintf("Message #%.8s unpinned in room '%s'.", args.MessageID, args.RoomID))
+}
+
+// ReactInput represents the parameters for adding/removing a reaction.
+type ReactInput struct {
+	MessageID string `json:"message_id"`
+	Emoji     string `json:"emoji"`
+	Author    string `json:"author"`
+}
+
+func (r *Registry) handleReactToMessage(ctx context.Context, req *mcp.CallToolRequest, args ReactInput) (*mcp.CallToolResult, ToolOutput, error) {
+	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: text}},
+		}, ToolOutput{Message: text}, nil
+	}
+
+	if args.MessageID == "" {
+		return msg("Error: message_id is required.")
+	}
+	if args.Emoji == "" {
+		return msg("Error: emoji is required.")
+	}
+	if args.Author == "" {
+		return msg("Error: author is required.")
+	}
+
+	reactions, added, err := r.Server.ReactToMessage(args.MessageID, args.Emoji, args.Author)
+	if err != nil {
+		r.Server.Logger.Error("Failed to react", "id", args.MessageID, "error", err)
+		return msg(fmt.Sprintf("Error: %s", err.Error()))
+	}
+
+	// Format reaction summary
+	var b strings.Builder
+	if added {
+		fmt.Fprintf(&b, "%s reaction added to #%.8s by %s.\n", args.Emoji, args.MessageID, args.Author)
+	} else {
+		fmt.Fprintf(&b, "%s reaction removed from #%.8s by %s.\n", args.Emoji, args.MessageID, args.Author)
+	}
+	if len(reactions) > 0 {
+		b.WriteString("Reactions: ")
+		first := true
+		for emoji, authors := range reactions {
+			if !first {
+				b.WriteString("  ")
+			}
+			fmt.Fprintf(&b, "%s %d", emoji, len(authors))
+			first = false
+		}
+		b.WriteString("\n")
+	}
+	return msg(b.String())
 }
 
 func (r *Registry) handleUpdateMessage(ctx context.Context, req *mcp.CallToolRequest, args UpdateMessageInput) (*mcp.CallToolResult, ToolOutput, error) {

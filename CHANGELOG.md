@@ -4,6 +4,17 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.12.0] - 2026-04-07
+
+### Added
+- `react_to_message` tool — emoji reactions on messages (toggle behavior), stored as JSON; displayed inline in transcripts
+- `search_messages` batch `room_ids` parameter — search across a subset of rooms in one call (e.g. `room_ids=bug-123,bug-456`)
+- `read_room(include_related_summaries=true)` — fetches topic, system_prompt, and pinned message from each related room in one call
+
+### Changed
+- `reactions` column added to messages table (JSON, auto-migrated)
+- `messages` CREATE TABLE schema now includes `pinned` and `reactions` columns directly
+
 ## [0.11.0] - 2026-04-06
 
 ### Added

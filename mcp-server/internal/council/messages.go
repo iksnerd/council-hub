@@ -2,6 +2,7 @@ package council
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -115,6 +116,55 @@ func (s *Server) PinMessage(roomID string, messageID string) (bool, error) {
 	}
 
 	return true, nil
+}
+
+// ReactToMessage toggles an emoji reaction by an author on a message.
+// Returns the updated reactions map and whether the reaction was added (true) or removed (false).
+func (s *Server) ReactToMessage(messageID, emoji, author string) (map[string][]string, bool, error) {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+
+	var reactionsJSON string
+	var actualRoomID string
+	err := s.DB.QueryRow(`SELECT room_id, reactions FROM messages WHERE id = ?`, messageID).Scan(&actualRoomID, &reactionsJSON)
+	if err != nil {
+		return nil, false, fmt.Errorf("message '%.8s' not found", messageID)
+	}
+
+	reactions := make(map[string][]string)
+	if reactionsJSON != "" && reactionsJSON != "{}" {
+		if err := json.Unmarshal([]byte(reactionsJSON), &reactions); err != nil {
+			reactions = make(map[string][]string)
+		}
+	}
+
+	// Toggle: remove if already present, add otherwise
+	added := true
+	authors := reactions[emoji]
+	found := -1
+	for i, a := range authors {
+		if a == author {
+			found = i
+			break
+		}
+	}
+	if found >= 0 {
+		reactions[emoji] = append(authors[:found], authors[found+1:]...)
+		if len(reactions[emoji]) == 0 {
+			delete(reactions, emoji)
+		}
+		added = false
+	} else {
+		reactions[emoji] = append(authors, author)
+	}
+
+	out, _ := json.Marshal(reactions)
+	_, err = s.DB.Exec(`UPDATE messages SET reactions = ? WHERE id = ?`, string(out), messageID)
+	if err != nil {
+		return nil, false, err
+	}
+
+	return reactions, added, nil
 }
 
 func (s *Server) GetPinnedMessage(roomID string) (*Message, error) {
@@ -231,7 +281,7 @@ func (s *Server) GetLatestPerType(roomID string) ([]Message, error) {
 	// Return up to 2 most recent messages per type so agents see both the latest
 	// and its predecessor (useful when the latest superseded an earlier key message).
 	rows, err := s.DB.Query(`
-		SELECT id, room_id, author, content, message_type, is_summary, reply_to, pinned, timestamp
+		SELECT id, room_id, author, content, message_type, is_summary, reply_to, pinned, reactions, timestamp
 		FROM (
 			SELECT *, ROW_NUMBER() OVER (PARTITION BY message_type ORDER BY id DESC) as rn
 			FROM messages
@@ -287,8 +337,24 @@ func (s *Server) SearchMessages(query, author, messageType, roomID, project, sin
 		args = append(args, messageType)
 	}
 	if roomID != "" {
-		where += ` AND m.room_id = ?`
-		args = append(args, roomID)
+		// Support comma-separated room IDs for batch filtering
+		parts := strings.Split(roomID, ",")
+		if len(parts) == 1 {
+			where += ` AND m.room_id = ?`
+			args = append(args, strings.TrimSpace(parts[0]))
+		} else {
+			placeholders := make([]string, 0, len(parts))
+			for _, p := range parts {
+				p = strings.TrimSpace(p)
+				if p != "" {
+					placeholders = append(placeholders, "?")
+					args = append(args, p)
+				}
+			}
+			if len(placeholders) > 0 {
+				where += ` AND m.room_id IN (` + strings.Join(placeholders, ",") + `)`
+			}
+		}
 	}
 	if project != "" {
 		join += ` JOIN rooms r ON m.room_id = r.id`
@@ -308,7 +374,9 @@ func (s *Server) SearchMessages(query, author, messageType, roomID, project, sin
 		limit = 20
 	}
 
-	q := fmt.Sprintf(`SELECT m.id, m.room_id, m.author, m.content, m.message_type, m.is_summary, m.reply_to, m.pinned, m.timestamp FROM messages m%s %s %s LIMIT ?`, join, where, orderBy)
+	// Prefix each column with "m." for the join-capable query
+	prefixed := "m." + strings.ReplaceAll(messageColumns, ", ", ", m.")
+	q := fmt.Sprintf(`SELECT %s FROM messages m%s %s %s LIMIT ?`, prefixed, join, where, orderBy)
 	args = append(args, limit)
 
 	rows, err := s.DB.Query(q, args...)

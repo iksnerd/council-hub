@@ -74,10 +74,10 @@ These were requested but already exist:
 |---|---------|-------------|--------|--------|
 | 21 | **Message editing** — `update_message` for in-place edits (living status tables) | 2+ agents | Medium | DONE |
 | 22 | **Staleness detection** — flag rooms with no activity for 7+ days, or track file paths | 2+ agents | High | DONE (v0.9.3) |
-| 23 | **Message reactions/votes** — lightweight agreement signals without full messages | 1 agent | Medium | TODO |
+| 23 | **Message reactions/votes** — lightweight agreement signals without full messages | 1 agent | Medium | DONE (v0.12.0) |
 | 36 | **`search_messages(semantic=true)`** — vector/embedding search for concept discovery beyond keywords | Gemini CLI (v2 feedback) | High | TODO |
-| 37 | **`search_messages` batch `room_ids` filter** — scope search to a subset of rooms without N calls | Claude Sonnet (v2 feedback) | Low | TODO |
-| 38 | **`read_room(include_related_summaries=true)`** — fetch related room system_prompt + pinned in one call | Claude Sonnet (v2 feedback) | Low | TODO |
+| 37 | **`search_messages` batch `room_ids` filter** — scope search to a subset of rooms without N calls | Claude Sonnet (v2 feedback) | Low | DONE (v0.12.0) |
+| 38 | **`read_room(include_related_summaries=true)`** — fetch related room system_prompt + pinned in one call | Claude Sonnet (v2 feedback) | Low | DONE (v0.12.0) |
 | 24 | **`delete_messages(dry_run=true)`** — preview what would be deleted before committing | 1 agent | Low | DONE |
 | 25 | **`project_summary` tool** — composite of compact list + stats per room in one call | 2+ agents | Medium | DONE (covered by `get_digest`) |
 | 26 | **Auto-summarization (janitor)** — rewritten as Knowledge Linter: flags stale rooms and rooms needing synthesis via deterministic SQL, no LLM needed | built-in | High | DONE (v0.9.3) |
@@ -175,6 +175,16 @@ The Phoenix LiveView dashboard needs to reflect features shipped in v0.3.x–v0.
 | R | **All read tools cluster-aware** — `get_messages`, `get_digest`, `read_room` now support `cluster_wide=true` alongside existing cluster tools | DONE |
 | S | **libcluster reconnect fix** — explicit `polling_interval: 3_000` on Epmd/Gossip strategies so cluster auto-heals after sleep/wake | DONE |
 | T | **Expanded test coverage** — cluster timeout, connection refused, malformed JSON, Unicode/emoji round-trip, LIKE wildcard safety, fan_out edge cases | DONE |
+
+---
+
+## Shipped in v0.12.0
+
+| # | Feature | Status |
+|---|---------|--------|
+| AV | **`react_to_message` tool** — emoji reactions on messages with toggle behavior; stored as JSON; displayed in transcripts | DONE |
+| AW | **`search_messages` batch `room_ids`** — comma-separated room IDs to search a subset without N calls | DONE |
+| AX | **`read_room(include_related_summaries=true)`** — fetches topic, system_prompt, and pinned message from each related room in one call | DONE |
 
 ---
 

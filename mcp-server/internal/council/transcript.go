@@ -1,9 +1,26 @@
 package council
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 )
+
+// formatReactions returns a compact inline reaction string like "👍 3  🎉 1", or "" if none.
+func formatReactions(reactionsJSON string) string {
+	if reactionsJSON == "" || reactionsJSON == "{}" {
+		return ""
+	}
+	var reactions map[string][]string
+	if err := json.Unmarshal([]byte(reactionsJSON), &reactions); err != nil || len(reactions) == 0 {
+		return ""
+	}
+	var parts []string
+	for emoji, authors := range reactions {
+		parts = append(parts, fmt.Sprintf("%s %d", emoji, len(authors)))
+	}
+	return strings.Join(parts, "  ")
+}
 
 func FormatTranscript(room Room, messages []Message) string {
 	var b strings.Builder
@@ -57,6 +74,9 @@ func FormatTranscript(room Room, messages []Message) string {
 			fmt.Fprintf(&b, "\n**[#%.8s %s] %s (re: #%.8s):**\n%s\n", m.ID, ts, m.Author, m.ReplyTo, m.Content)
 		} else {
 			fmt.Fprintf(&b, "\n**[#%.8s %s] %s:**\n%s\n", m.ID, ts, m.Author, m.Content)
+		}
+		if r := formatReactions(m.Reactions); r != "" {
+			fmt.Fprintf(&b, "  Reactions: %s\n", r)
 		}
 	}
 
