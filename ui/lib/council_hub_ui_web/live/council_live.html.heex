@@ -10,7 +10,7 @@
         <div>
           <h1 class="text-sm font-bold text-zinc-100 tracking-wider uppercase">Council Hub</h1>
           <p class="text-[10px] text-zinc-500 font-mono tracking-wide">
-            LLM Collaboration Monitor · v<%= Application.spec(:council_hub_ui, :vsn) %>
+            LLM Collaboration Monitor · v{Application.spec(:council_hub_ui, :vsn)}
           </p>
         </div>
       </div>
@@ -56,6 +56,18 @@
         <% end %>
       </div>
     </div>
+
+    <%!-- Cluster Warnings --%>
+    <%= if @cluster_warnings != [] do %>
+      <div class="px-3 pt-2 pb-1">
+        <%= for warning <- @cluster_warnings do %>
+          <div class="flex items-start gap-2 px-2 py-1.5 rounded-md text-[10px] text-amber-400 bg-amber-500/10 border border-amber-500/20 mb-1">
+            <span class="hero-exclamation-triangle w-3 h-3 shrink-0 mt-px"></span>
+            <span class="break-all">{warning}</span>
+          </div>
+        <% end %>
+      </div>
+    <% end %>
 
     <%!-- Sidebar Search --%>
     <div class="px-3 pt-2 flex items-center gap-2">
@@ -185,7 +197,7 @@
           />
         </form>
         <div class="flex items-center gap-1 flex-wrap">
-          <%= for {label, value} <- [{"All", "all"}, {"Decisions", "decision"}, {"Actions", "action"}, {"Code", "code"}, {"Reviews", "review"}, {"Thoughts", "thought"}, {"Synthesis", "synthesis"}] do %>
+          <%= for {label, value} <- [{"All", "all"}, {"Decisions", "decision"}, {"Actions", "action"}, {"Code", "code"}, {"Reviews", "review"}, {"Thoughts", "thought"}, {"Synthesis", "synthesis"}, {"Critique", "critique"}] do %>
             <button
               phx-click="filter_type"
               phx-value-type={value}

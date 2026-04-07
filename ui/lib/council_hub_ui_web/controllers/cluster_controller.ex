@@ -9,6 +9,7 @@ defmodule CouncilHubUiWeb.ClusterController do
       "author" => Map.get(params, "author", ""),
       "message_type" => Map.get(params, "message_type", ""),
       "room_id" => Map.get(params, "room_id", ""),
+      "room_ids" => Map.get(params, "room_ids", ""),
       "project" => Map.get(params, "project", ""),
       "since" => Map.get(params, "since", ""),
       "until" => Map.get(params, "until", ""),

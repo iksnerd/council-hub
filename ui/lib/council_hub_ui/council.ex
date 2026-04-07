@@ -226,6 +226,19 @@ defmodule CouncilHubUi.Council do
       end
 
     base =
+      case Map.get(params, "room_ids") do
+        nil ->
+          base
+
+        "" ->
+          base
+
+        ids_str ->
+          ids = ids_str |> String.split(",", trim: true) |> Enum.map(&String.trim/1)
+          from([msg: m] in base, where: m.room_id in ^ids)
+      end
+
+    base =
       case Map.get(params, "project") do
         nil ->
           base
@@ -427,7 +440,9 @@ defmodule CouncilHubUi.Council do
     limit = if limit > 100, do: 100, else: limit
     offset = if offset < 0, do: 0, else: offset
 
-    Repo.all(from [room: r] in base, order_by: [desc: r.updated_at], limit: ^limit, offset: ^offset)
+    Repo.all(
+      from [room: r] in base, order_by: [desc: r.updated_at], limit: ^limit, offset: ^offset
+    )
   end
 
   @doc """

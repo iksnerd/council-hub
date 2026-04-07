@@ -169,6 +169,7 @@ defmodule CouncilHubUiWeb.CouncilHelpers do
 
   def room_health_flags(room) do
     tags = parse_tags(Map.get(room, :tags) || Map.get(room, "tags"))
+
     %{
       stale: "stale" in tags,
       needs_synthesis: "needs-synthesis" in tags

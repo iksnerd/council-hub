@@ -175,6 +175,9 @@ func TestLintNeedsSynthesis(t *testing.T) {
 	cs := setupTestServer(t)
 	mustCreateRoom(t, cs, "lint-synth")
 	mustPostTyped(t, cs, "lint-synth", "Claude", "We should use Postgres", "decision")
+	mustPostTyped(t, cs, "lint-synth", "Claude", "We should use Go", "decision")
+	mustPostTyped(t, cs, "lint-synth", "Claude", "We should use Docker", "decision")
+	cs.DB.Exec(`UPDATE rooms SET created_at = datetime('now', '-2 days') WHERE id = 'lint-synth'`)
 
 	cs.lintNeedsSynthesis()
 
@@ -214,7 +217,10 @@ func TestLintNeedsSynthesisSkipsWhenSynthesisExists(t *testing.T) {
 func TestLintNeedsSynthesisIdempotent(t *testing.T) {
 	cs := setupTestServer(t)
 	mustCreateRoom(t, cs, "lint-idem")
-	mustPostTyped(t, cs, "lint-idem", "Claude", "A decision", "decision")
+	mustPostTyped(t, cs, "lint-idem", "Claude", "Decision 1", "decision")
+	mustPostTyped(t, cs, "lint-idem", "Claude", "Decision 2", "decision")
+	mustPostTyped(t, cs, "lint-idem", "Claude", "Decision 3", "decision")
+	cs.DB.Exec(`UPDATE rooms SET created_at = datetime('now', '-2 days') WHERE id = 'lint-idem'`)
 
 	cs.lintNeedsSynthesis()
 	cs.lintNeedsSynthesis() // run twice
@@ -236,8 +242,9 @@ func TestLintStaleRooms(t *testing.T) {
 	mustCreateRoom(t, cs, "lint-stale")
 	mustPost(t, cs, "lint-stale", "Claude", "Old message")
 
-	// Backdate the message to 8 days ago
+	// Backdate the message to 8 days ago and room to bypass grace period
 	cs.DB.Exec(`UPDATE messages SET timestamp = datetime('now', '-8 days') WHERE room_id = 'lint-stale'`)
+	cs.DB.Exec(`UPDATE rooms SET created_at = datetime('now', '-2 days') WHERE id = 'lint-stale'`)
 
 	cs.lintStaleRooms()
 
@@ -263,14 +270,18 @@ func TestLintStaleSkipsRecentRooms(t *testing.T) {
 func TestJanitorSweepRunsBothLinters(t *testing.T) {
 	cs := setupTestServer(t)
 
-	// Room needing synthesis
+	// Room needing synthesis: 3 decisions, older than 24h grace period
 	mustCreateRoom(t, cs, "sweep-synth")
-	mustPostTyped(t, cs, "sweep-synth", "Claude", "Decision here", "decision")
+	mustPostTyped(t, cs, "sweep-synth", "Claude", "Decision 1", "decision")
+	mustPostTyped(t, cs, "sweep-synth", "Claude", "Decision 2", "decision")
+	mustPostTyped(t, cs, "sweep-synth", "Claude", "Decision 3", "decision")
+	cs.DB.Exec(`UPDATE rooms SET created_at = datetime('now', '-2 days') WHERE id = 'sweep-synth'`)
 
-	// Stale room
+	// Stale room: message older than 7 days, room older than 24h
 	mustCreateRoom(t, cs, "sweep-stale")
 	mustPost(t, cs, "sweep-stale", "Claude", "Old msg")
 	cs.DB.Exec(`UPDATE messages SET timestamp = datetime('now', '-10 days') WHERE room_id = 'sweep-stale'`)
+	cs.DB.Exec(`UPDATE rooms SET created_at = datetime('now', '-2 days') WHERE id = 'sweep-stale'`)
 
 	cs.JanitorSweep()
 

@@ -189,6 +189,18 @@ Dashboard features added to reflect MCP server capabilities from v0.11.0–v0.12
 
 ---
 
+## Shipped in v0.15.0
+
+| # | Feature | Status |
+|---|---------|--------|
+| BG | **Knowledge Linter threshold tuning** — `needs-synthesis` threshold raised to 3+ decisions OR 20+ total messages; 24h grace period after room creation; scan interval reduced from 1h to 6h | DONE |
+| BH | **Cluster passthrough for semantic search** — `semantic` and `room_ids` params now forwarded through `handleSearchMessagesCluster`; semantic+cluster_wide falls back to local search with a clear warning (sqlite-vec is local-only); `room_ids` filter added to Phoenix cluster controller and Elixir `Council.search_messages` | DONE |
+| BI | **Critique type filter button** — "Critique" button added to message type filter bar in dashboard; icon and color were already defined, just missing from the filter list | DONE |
+| BJ | **Cluster warnings display** — `cluster_warnings` are now rendered as amber banners below the Cluster Nodes section in the sidebar (was assigned but never shown) | DONE |
+| BK | **Room `updated_at` in header** — room header now shows "Updated X ago" via RelativeTime hook, matching the existing sidebar card display | DONE |
+
+---
+
 ## Shipped in v0.14.0
 
 | # | Feature | Status |

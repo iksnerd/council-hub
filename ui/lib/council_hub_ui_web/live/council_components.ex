@@ -27,7 +27,11 @@ defmodule CouncilHubUiWeb.CouncilComponents do
         ),
         if(room_health_flags(@room).stale,
           do: "border-l-2 border-l-red-500/50",
-          else: if(room_health_flags(@room).needs_synthesis, do: "border-l-2 border-l-yellow-500/50", else: nil)
+          else:
+            if(room_health_flags(@room).needs_synthesis,
+              do: "border-l-2 border-l-yellow-500/50",
+              else: nil
+            )
         )
       ]}
     >
@@ -141,6 +145,14 @@ defmodule CouncilHubUiWeb.CouncilComponents do
           <span :if={@room.created_at} class="text-[10px] text-zinc-600 font-mono">
             {format_date(@room.created_at)}
           </span>
+          <div
+            :if={Map.get(@room, :updated_at)}
+            id={"header-updated-#{@room.id}"}
+            phx-hook="RelativeTime"
+            data-timestamp={NaiveDateTime.to_iso8601(Map.get(@room, :updated_at))}
+            class="text-[10px] text-zinc-600 font-mono"
+          >
+          </div>
         </div>
       </div>
 
@@ -299,15 +311,20 @@ defmodule CouncilHubUiWeb.CouncilComponents do
                 type="button"
                 class="emoji-picker-trigger inline-flex items-center justify-center w-5 h-5 rounded-full bg-zinc-800/60 border border-zinc-700/40 text-zinc-600 hover:text-zinc-300 hover:border-zinc-500/60 transition-colors cursor-pointer text-[10px]"
                 title="Add reaction"
-              >+</button>
+              >
+                +
+              </button>
               <div class="emoji-picker-panel hidden absolute bottom-7 left-0 z-50 flex gap-1 p-1.5 rounded-lg bg-zinc-900 border border-zinc-700/60 shadow-xl">
-                <button :for={e <- ~w(👍 ❤️ 🎉 🚀 👀 ✅ 🤔 🔥)}
+                <button
+                  :for={e <- ~w(👍 ❤️ 🎉 🚀 👀 ✅ 🤔 🔥)}
                   type="button"
                   phx-click="react"
                   phx-value-message-id={@msg.id}
                   phx-value-emoji={e}
                   class="text-base hover:scale-125 transition-transform cursor-pointer p-0.5 rounded"
-                >{e}</button>
+                >
+                  {e}
+                </button>
               </div>
             </div>
           </div>

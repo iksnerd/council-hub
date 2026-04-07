@@ -29,6 +29,7 @@ defmodule CouncilHubUi.McpClient do
       })
 
     url = String.to_charlist(mcp_url())
+
     headers = [
       {~c"Content-Type", ~c"application/json"},
       {~c"Accept", ~c"application/json, text/event-stream"}

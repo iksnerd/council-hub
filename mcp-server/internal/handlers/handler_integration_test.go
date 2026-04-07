@@ -356,9 +356,13 @@ func TestIntegration_ArchiveRoomEpitaph(t *testing.T) {
 func TestIntegration_KnowledgeLint(t *testing.T) {
 	cs, reg := setupIntegrationTest(t)
 
-	// Room with a decision but no synthesis — should be flagged
+	// Room with 3 decisions but no synthesis — should be flagged (meets threshold)
+	// Backdate created_at to bypass 24h grace period
 	mustCreateRoom(t, reg.Server, "integ-lint-flag")
 	mustPostTyped(t, reg.Server, "integ-lint-flag", "Claude", "We chose Postgres", "decision")
+	mustPostTyped(t, reg.Server, "integ-lint-flag", "Claude", "We chose Go", "decision")
+	mustPostTyped(t, reg.Server, "integ-lint-flag", "Claude", "We chose Docker", "decision")
+	reg.Server.DB.Exec(`UPDATE rooms SET created_at = datetime('now', '-2 days') WHERE id = 'integ-lint-flag'`)
 
 	// Room with a decision AND synthesis — should NOT be flagged
 	mustCreateRoom(t, reg.Server, "integ-lint-ok")
