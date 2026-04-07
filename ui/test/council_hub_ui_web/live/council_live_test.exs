@@ -616,7 +616,13 @@ defmodule CouncilHubUiWeb.CouncilLiveTest do
 
     test "compiled badge absent on room without synthesis messages", %{conn: conn} do
       room = create_room(%{id: "no-synth-room"})
-      create_message(%{room_id: room.id, author: "Claude", content: "Just a thought", message_type: "thought"})
+
+      create_message(%{
+        room_id: room.id,
+        author: "Claude",
+        content: "Just a thought",
+        message_type: "thought"
+      })
 
       {:ok, _view, html} = live(conn, "/")
       assert html =~ "no-synth-room"
@@ -687,7 +693,11 @@ defmodule CouncilHubUiWeb.CouncilLiveTest do
 
       html =
         view
-        |> form("form[phx-change='apply_search_filters']", %{"author" => "Claude", "since" => "", "until" => ""})
+        |> form("form[phx-change='apply_search_filters']", %{
+          "author" => "Claude",
+          "since" => "",
+          "until" => ""
+        })
         |> render_change()
 
       assert html =~ "From Claude"
