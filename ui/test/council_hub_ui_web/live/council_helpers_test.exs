@@ -253,6 +253,12 @@ defmodule CouncilHubUiWeb.CouncilHelpersTest do
     assert String.contains?(CouncilHelpers.type_color("thought"), "zinc")
   end
 
+  test "type_color synthesis uses purple and amber" do
+    result = CouncilHelpers.type_color("synthesis")
+    assert String.contains?(result, "purple")
+    assert String.contains?(result, "amber")
+  end
+
   test "type_color unknown falls back to zinc" do
     result = CouncilHelpers.type_color("unknown")
     assert String.contains?(result, "zinc")
@@ -261,6 +267,69 @@ defmodule CouncilHubUiWeb.CouncilHelpersTest do
   test "type_color nil falls back to zinc" do
     result = CouncilHelpers.type_color(nil)
     assert String.contains?(result, "zinc")
+  end
+
+  # -- type_icon (synthesis) --
+
+  test "type_icon synthesis is beaker" do
+    assert CouncilHelpers.type_icon("synthesis") == "hero-beaker"
+  end
+
+  # -- parse_reactions --
+
+  test "parse_reactions nil returns empty map" do
+    assert CouncilHelpers.parse_reactions(nil) == %{}
+  end
+
+  test "parse_reactions empty string returns empty map" do
+    assert CouncilHelpers.parse_reactions("") == %{}
+  end
+
+  test "parse_reactions empty JSON object returns empty map" do
+    assert CouncilHelpers.parse_reactions("{}") == %{}
+  end
+
+  test "parse_reactions decodes emoji map" do
+    json = ~s({"👍": ["claude", "gemini"], "🎉": ["admin"]})
+    result = CouncilHelpers.parse_reactions(json)
+    assert Map.get(result, "👍") == ["claude", "gemini"]
+    assert Map.get(result, "🎉") == ["admin"]
+  end
+
+  test "parse_reactions invalid JSON returns empty map" do
+    assert CouncilHelpers.parse_reactions("not json") == %{}
+  end
+
+  # -- room_health_flags --
+
+  test "room_health_flags no health tags" do
+    flags = CouncilHelpers.room_health_flags(%{tags: "feature,auth"})
+    refute flags.stale
+    refute flags.needs_synthesis
+  end
+
+  test "room_health_flags detects stale" do
+    flags = CouncilHelpers.room_health_flags(%{tags: "stale,auth"})
+    assert flags.stale
+    refute flags.needs_synthesis
+  end
+
+  test "room_health_flags detects needs-synthesis" do
+    flags = CouncilHelpers.room_health_flags(%{tags: "needs-synthesis"})
+    refute flags.stale
+    assert flags.needs_synthesis
+  end
+
+  test "room_health_flags detects both flags" do
+    flags = CouncilHelpers.room_health_flags(%{tags: "stale,needs-synthesis"})
+    assert flags.stale
+    assert flags.needs_synthesis
+  end
+
+  test "room_health_flags nil tags" do
+    flags = CouncilHelpers.room_health_flags(%{tags: nil})
+    refute flags.stale
+    refute flags.needs_synthesis
   end
 
   # -- present? --

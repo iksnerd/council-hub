@@ -131,6 +131,7 @@
                   count={Map.get(@room_counts, room.id, 0)}
                   participants={Map.get(@participant_counts, room.id, 0)}
                   source_node={Map.get(room, :source_node)}
+                  latest_id={Map.get(@latest_ids, room.id)}
                 />
               <% end %>
             </div>
@@ -184,7 +185,7 @@
           />
         </form>
         <div class="flex items-center gap-1 flex-wrap">
-          <%= for {label, value} <- [{"All", "all"}, {"Decisions", "decision"}, {"Actions", "action"}, {"Code", "code"}, {"Reviews", "review"}, {"Thoughts", "thought"}] do %>
+          <%= for {label, value} <- [{"All", "all"}, {"Decisions", "decision"}, {"Actions", "action"}, {"Code", "code"}, {"Reviews", "review"}, {"Thoughts", "thought"}, {"Synthesis", "synthesis"}] do %>
             <button
               phx-click="filter_type"
               phx-value-type={value}

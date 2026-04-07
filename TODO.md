@@ -115,12 +115,12 @@ The Phoenix LiveView dashboard needs to reflect features shipped in v0.11.0–v0
 
 | # | Feature | Effort | Status |
 |---|---------|--------|--------|
-| U6 | **Emoji reactions display** — render reactions inline below messages (e.g. "👍 3  🎉 1"); add `reactions` column to Ecto schema/migration | Medium | TODO |
-| U7 | **Synthesis message type** — add "Synthesis" filter button + purple/gold badge; currently synthesis messages render as summary blocks but lack type badge and filter | Low | TODO |
-| U8 | **Room health flag highlights** — visually distinguish `stale` and `needs-synthesis` tags with warning colors (amber/red) and icons instead of plain tag chips | Low | TODO |
-| U9 | **Clickable related room links** — related rooms shown in header but not navigable; add `phx-click` patch to switch rooms | Low | TODO |
-| U10 | **Reaction interaction** — allow users to add reactions from the UI (click emoji picker → POST via internal API or LiveView event) | Medium | TODO |
-| U11 | **Room cursor in sidebar** — show `latest_message_id` (truncated) in room stats for transparency; useful for debugging delta reads | Low | TODO |
+| U6 | **Emoji reactions display** — render reactions inline below messages (e.g. "👍 3  🎉 1"); add `reactions` column to Ecto schema/migration | Medium | DONE |
+| U7 | **Synthesis message type** — add "Synthesis" filter button + purple/gold badge; currently synthesis messages render as summary blocks but lack type badge and filter | Low | DONE |
+| U8 | **Room health flag highlights** — visually distinguish `stale` and `needs-synthesis` tags with warning colors (amber/red) and icons instead of plain tag chips | Low | DONE |
+| U9 | **Clickable related room links** — related rooms shown in header but not navigable; add `phx-click` patch to switch rooms | Low | DONE |
+| U10 | **Reaction interaction** — allow users to add reactions from the UI (click emoji picker → POST via internal API or LiveView event) | Medium | DONE |
+| U11 | **Room cursor in sidebar** — show `latest_message_id` (truncated) in room stats for transparency; useful for debugging delta reads | Low | DONE |
 
 ### Previously completed (v0.4.1–v0.5.0)
 

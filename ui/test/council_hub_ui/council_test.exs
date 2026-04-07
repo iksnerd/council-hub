@@ -597,4 +597,32 @@ defmodule CouncilHubUi.CouncilTest do
       assert transcript =~ "**Related Rooms:** a,b"
     end
   end
+
+  describe "all_room_latest_message_ids/0" do
+    test "returns empty map when no messages" do
+      assert Council.all_room_latest_message_ids() == %{}
+    end
+
+    test "returns latest message id per room" do
+      r1 = create_room(%{id: "latest-r1"})
+      r2 = create_room(%{id: "latest-r2"})
+      _m1 = create_message(%{room_id: r1.id, content: "first"})
+      m2 = create_message(%{room_id: r1.id, content: "second"})
+      m3 = create_message(%{room_id: r2.id, content: "only"})
+
+      result = Council.all_room_latest_message_ids()
+      assert result[r1.id] == m2.id
+      assert result[r2.id] == m3.id
+    end
+
+    test "only includes rooms that have messages" do
+      r1 = create_room(%{id: "has-msgs"})
+      r2 = create_room(%{id: "no-msgs"})
+      create_message(%{room_id: r1.id, content: "a message"})
+
+      result = Council.all_room_latest_message_ids()
+      assert Map.has_key?(result, r1.id)
+      refute Map.has_key?(result, r2.id)
+    end
+  end
 end

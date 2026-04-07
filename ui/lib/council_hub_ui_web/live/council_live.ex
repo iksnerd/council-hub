@@ -28,6 +28,7 @@ defmodule CouncilHubUiWeb.CouncilLive do
        rooms_by_project: group_rooms_by_project(rooms),
        room_counts: safe_room_counts(db_connected),
        participant_counts: safe_participant_counts(db_connected),
+       latest_ids: safe_latest_ids(db_connected),
        active_room: nil,
        last_msg_id: "",
        collapsed_summaries: MapSet.new(),
@@ -130,6 +131,7 @@ defmodule CouncilHubUiWeb.CouncilLive do
       {rooms, db_connected} = load_rooms()
       new_counts = safe_room_counts(db_connected)
       new_participants = safe_participant_counts(db_connected)
+      new_latest_ids = safe_latest_ids(db_connected)
 
       socket =
         assign(socket,
@@ -137,6 +139,7 @@ defmodule CouncilHubUiWeb.CouncilLive do
           rooms_by_project: group_rooms_by_project(rooms),
           room_counts: new_counts,
           participant_counts: new_participants,
+          latest_ids: new_latest_ids,
           db_connected: db_connected,
           last_room_update: latest
         )
@@ -262,6 +265,17 @@ defmodule CouncilHubUiWeb.CouncilLive do
     end
   end
 
+  def handle_event("react", %{"message-id" => message_id, "emoji" => emoji}, socket) do
+    author = socket.assigns[:current_user] || "dashboard"
+
+    case CouncilHubUi.McpClient.react_to_message(message_id, emoji, author) do
+      :ok -> :ok
+      {:error, reason} -> Logger.warning("react_to_message failed: #{inspect(reason)}")
+    end
+
+    {:noreply, socket}
+  end
+
   # -- Helpers --
 
   defp schedule_poll(msg, interval), do: Process.send_after(self(), msg, interval)
@@ -363,6 +377,16 @@ defmodule CouncilHubUiWeb.CouncilLive do
   rescue
     e in [DBConnection.ConnectionError, Exqlite.Error] ->
       Logger.warning("Failed to load participant counts: #{inspect(e)}")
+      %{}
+  end
+
+  defp safe_latest_ids(false), do: %{}
+
+  defp safe_latest_ids(true) do
+    Council.all_room_latest_message_ids()
+  rescue
+    e in [DBConnection.ConnectionError, Exqlite.Error] ->
+      Logger.warning("Failed to load latest message ids: #{inspect(e)}")
       %{}
   end
 end
