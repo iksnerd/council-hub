@@ -193,10 +193,11 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "read_room",
-		Description: "Read a room's metadata (topic, project, tech_stack, tags, status, system_prompt) without loading messages.",
+		Description: "Read a room's metadata (topic, project, tech_stack, tags, status, system_prompt) without loading messages. Use include_related_summaries=true to also fetch the topic, system_prompt, and pinned message of each related room — provides lateral context in one call.",
 		InputSchema: schema([]string{"room_id"}, map[string]map[string]any{
-			"room_id":      prop("string", "Target room ID"),
-			"cluster_wide": prop("string", "Set to 'true' to search across all cluster nodes. Default: local only."),
+			"room_id":                    prop("string", "Target room ID"),
+			"include_related_summaries":  prop("string", "Set to 'true' to append topic, system_prompt, and pinned message from each related room."),
+			"cluster_wide":               prop("string", "Set to 'true' to search across all cluster nodes. Default: local only."),
 		}),
 	}, r.handleReadRoom)
 
@@ -216,6 +217,7 @@ func (r *Registry) RegisterTools() {
 			"author":       prop("string", "Filter by author name"),
 			"message_type": prop("string", "Filter by type: message, thought, decision, action, review, critique, code, synthesis. Use 'synthesis' to find compiled knowledge articles."),
 			"room_id":      prop("string", "Scope search to a specific room"),
+			"room_ids":     prop("string", "Comma-separated room IDs to search across a subset (e.g. bug-123,bug-456). Use instead of room_id for multi-room scoping."),
 			"project":      prop("string", "Scope search to rooms in this project"),
 			"limit":        prop("string", "Max results to return (default 20, max 100)"),
 			"since":        prop("string", "ISO timestamp (e.g. 2026-04-01T00:00:00). Only return messages at or after this time."),
@@ -265,6 +267,16 @@ func (r *Registry) RegisterTools() {
 			"message_id": prop("string", "ID of the message to pin/unpin"),
 		}),
 	}, r.handlePinMessage)
+
+	mcp.AddTool(r.Server.MCP, &mcp.Tool{
+		Name:        "react_to_message",
+		Description: "Add or remove an emoji reaction on a message. Toggle behavior: reacting with the same emoji by the same author removes it. Reactions are lightweight agreement/acknowledgment signals — use instead of posting a full message when a simple thumbs-up or checkmark suffices.",
+		InputSchema: schema([]string{"message_id", "emoji", "author"}, map[string]map[string]any{
+			"message_id": prop("string", "ID of the message to react to"),
+			"emoji":      prop("string", "Emoji to react with (e.g. 👍, ✅, 🎉, ❌)"),
+			"author":     prop("string", "Name of the reacting agent"),
+		}),
+	}, r.handleReactToMessage)
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "delete_messages",

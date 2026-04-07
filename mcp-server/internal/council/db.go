@@ -37,16 +37,17 @@ type Message struct {
 	IsSummary   bool
 	ReplyTo     string // UUID of parent message, or ""
 	Pinned      bool
+	Reactions   string // JSON: {"emoji": ["author1", "author2"], ...}
 	Timestamp   time.Time
 }
 
 // messageColumns is the canonical column list for SELECT queries on messages.
-const messageColumns = `id, room_id, author, content, message_type, is_summary, reply_to, pinned, timestamp`
+const messageColumns = `id, room_id, author, content, message_type, is_summary, reply_to, pinned, reactions, timestamp`
 
 // scanMessage scans a single row into a Message struct. Use with messageColumns.
 func scanMessage(scanner interface{ Scan(...any) error }) (Message, error) {
 	var m Message
-	err := scanner.Scan(&m.ID, &m.RoomID, &m.Author, &m.Content, &m.MessageType, &m.IsSummary, &m.ReplyTo, &m.Pinned, &m.Timestamp)
+	err := scanner.Scan(&m.ID, &m.RoomID, &m.Author, &m.Content, &m.MessageType, &m.IsSummary, &m.ReplyTo, &m.Pinned, &m.Reactions, &m.Timestamp)
 	return m, err
 }
 
@@ -89,7 +90,7 @@ func NewServer(dbPath string, logger *slog.Logger) (*Server, error) {
 
 	mcpServer := mcp.NewServer(&mcp.Implementation{
 		Name:    "council-hub",
-		Version: "0.11.0",
+		Version: "0.12.0",
 	}, &mcp.ServerOptions{
 		Logger:       logger,
 		Capabilities: &mcp.ServerCapabilities{},
@@ -126,6 +127,8 @@ func initSchema(db *sql.DB) error {
 		message_type TEXT DEFAULT 'message',
 		is_summary BOOLEAN DEFAULT 0,
 		reply_to TEXT DEFAULT '',
+		pinned BOOLEAN DEFAULT 0,
+		reactions TEXT DEFAULT '{}',
 		timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
 		FOREIGN KEY(room_id) REFERENCES rooms(id)
 	);
@@ -166,6 +169,7 @@ func initSchema(db *sql.DB) error {
 		`ALTER TABLE rooms ADD COLUMN related_rooms TEXT DEFAULT ''`,
 		`ALTER TABLE messages ADD COLUMN reply_to TEXT DEFAULT ''`,
 		`ALTER TABLE messages ADD COLUMN pinned BOOLEAN DEFAULT 0`,
+		`ALTER TABLE messages ADD COLUMN reactions TEXT DEFAULT '{}'`,
 	}
 	for _, m := range migrations {
 		_, _ = db.Exec(m) // Ignore "duplicate column" errors for already-migrated DBs
