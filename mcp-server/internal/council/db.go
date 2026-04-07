@@ -53,11 +53,12 @@ func scanMessage(scanner interface{ Scan(...any) error }) (Message, error) {
 
 // Server holds the database, mutex, MCP server, and logger.
 type Server struct {
-	DB     *sql.DB
-	DBPath string
-	Mu     sync.RWMutex
-	MCP    *mcp.Server
-	Logger *slog.Logger
+	DB       *sql.DB
+	DBPath   string
+	Mu       sync.RWMutex
+	MCP      *mcp.Server
+	Logger   *slog.Logger
+	Embedder Embedder // nil if no embedding provider configured
 }
 
 // NewServer creates a new Server with an initialized SQLite database.
@@ -90,7 +91,7 @@ func NewServer(dbPath string, logger *slog.Logger) (*Server, error) {
 
 	mcpServer := mcp.NewServer(&mcp.Implementation{
 		Name:    "council-hub",
-		Version: "0.13.2",
+		Version: "0.14.0",
 	}, &mcp.ServerOptions{
 		Logger:       logger,
 		Capabilities: &mcp.ServerCapabilities{},
@@ -218,6 +219,23 @@ func initSchema(db *sql.DB) error {
 	if msgCount > 0 {
 		if _, err := db.Exec(`INSERT INTO messages_fts(messages_fts) VALUES('rebuild')`); err != nil {
 			return fmt.Errorf("rebuild fts index: %w", err)
+		}
+	}
+
+	// Create sqlite-vec virtual tables for vector search (idempotent).
+	vecTables := []string{
+		fmt.Sprintf(`CREATE VIRTUAL TABLE IF NOT EXISTS message_vectors USING vec0(
+			message_id TEXT PRIMARY KEY,
+			embedding float[%d] distance_metric=cosine
+		)`, EmbedDim),
+		fmt.Sprintf(`CREATE VIRTUAL TABLE IF NOT EXISTS room_vectors USING vec0(
+			room_id TEXT PRIMARY KEY,
+			embedding float[%d] distance_metric=cosine
+		)`, EmbedDim),
+	}
+	for _, t := range vecTables {
+		if _, err := db.Exec(t); err != nil {
+			return fmt.Errorf("create vector table: %w", err)
 		}
 	}
 

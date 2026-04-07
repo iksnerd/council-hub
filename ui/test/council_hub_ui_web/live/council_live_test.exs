@@ -289,6 +289,37 @@ defmodule CouncilHubUiWeb.CouncilLiveTest do
     end
   end
 
+  describe "react event" do
+    test "react event does not crash when MCP server is unreachable", %{conn: conn} do
+      room = create_room(%{id: "react-room"})
+      create_message(%{room_id: room.id, author: "Claude", content: "React to this"})
+
+      {:ok, view, _html} = live(conn, "/rooms/react-room")
+
+      # McpClient will fail to connect (no server running in test) but must not crash the LiveView
+      view
+      |> render_hook("react", %{"message-id" => "some-msg-id", "emoji" => "👍"})
+
+      assert render(view) =~ "react-room"
+    end
+  end
+
+  describe "latest_ids assign" do
+    test "latest_ids is populated on mount when messages exist", %{conn: conn} do
+      room = create_room(%{id: "lid-room"})
+      msg = create_message(%{room_id: room.id, author: "Claude", content: "msg"})
+
+      {:ok, view, _html} = live(conn, "/")
+      latest_ids = :sys.get_state(view.pid).socket.assigns.latest_ids
+      assert Map.get(latest_ids, room.id) == msg.id
+    end
+
+    test "latest_ids is empty map when no messages", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/")
+      assert :sys.get_state(view.pid).socket.assigns.latest_ids == %{}
+    end
+  end
+
   describe "filter_type event" do
     test "filters messages by type", %{conn: conn} do
       room = create_room(%{id: "ft-room"})
@@ -315,6 +346,34 @@ defmodule CouncilHubUiWeb.CouncilLiveTest do
         |> render_click()
 
       assert html =~ "A decision"
+      refute html =~ "A thought"
+    end
+
+    test "filters messages by synthesis type", %{conn: conn} do
+      room = create_room(%{id: "ft-synth-room"})
+
+      create_message(%{
+        room_id: room.id,
+        author: "Claude",
+        content: "A synthesis article",
+        message_type: "synthesis"
+      })
+
+      create_message(%{
+        room_id: room.id,
+        author: "Gemini",
+        content: "A thought",
+        message_type: "thought"
+      })
+
+      {:ok, view, _html} = live(conn, "/rooms/ft-synth-room")
+
+      html =
+        view
+        |> element("button[phx-click='filter_type'][phx-value-type='synthesis']")
+        |> render_click()
+
+      assert html =~ "A synthesis article"
       refute html =~ "A thought"
     end
 

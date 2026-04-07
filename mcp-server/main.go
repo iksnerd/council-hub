@@ -37,6 +37,13 @@ func main() {
 	}
 	defer func() { _ = cs.DB.Close() }()
 
+	// Initialize embedder if configured
+	if ollamaURL := os.Getenv("COUNCIL_OLLAMA_URL"); ollamaURL != "" {
+		model := os.Getenv("COUNCIL_EMBED_MODEL")
+		cs.Embedder = council.NewOllamaEmbedder(ollamaURL, model)
+		logger.Info("Semantic search enabled", "provider", "ollama", "url", ollamaURL, "model", model)
+	}
+
 	phoenixURL := os.Getenv("COUNCIL_PHOENIX_URL")
 	if phoenixURL == "" {
 		phoenixURL = "http://127.0.0.1:4000"
@@ -55,6 +62,9 @@ func main() {
 
 	// Start the Knowledge Linter
 	go cs.RunJanitor(ctx)
+
+	// Backfill embeddings for existing messages/rooms (background)
+	go cs.BackfillEmbeddings(ctx)
 
 	transport := os.Getenv("COUNCIL_TRANSPORT")
 	if transport == "" {
