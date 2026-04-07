@@ -480,7 +480,7 @@ func (r *Registry) handleListRooms(ctx context.Context, req *mcp.CallToolRequest
 			limit = 50
 		}
 	}
-	
+
 	offset := 0
 	if args.Offset != "" {
 		if _, err := fmt.Sscanf(args.Offset, "%d", &offset); err != nil {

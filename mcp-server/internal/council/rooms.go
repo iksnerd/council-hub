@@ -368,7 +368,7 @@ func (s *Server) ListRooms(project, tag, status, search string, limit, offset in
 	}
 
 	query += ` ORDER BY updated_at DESC LIMIT ? OFFSET ?`
-	
+
 	if limit <= 0 {
 		limit = 50 // default to 50
 	} else if limit > 100 {
@@ -377,7 +377,7 @@ func (s *Server) ListRooms(project, tag, status, search string, limit, offset in
 	if offset < 0 {
 		offset = 0
 	}
-	
+
 	args = append(args, limit, offset)
 
 	rows, err := s.DB.Query(query, args...)

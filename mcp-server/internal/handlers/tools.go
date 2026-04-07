@@ -197,9 +197,9 @@ func (r *Registry) RegisterTools() {
 		Name:        "read_room",
 		Description: "Read a room's metadata (topic, project, tech_stack, tags, status, system_prompt) without loading messages. Use include_related_summaries=true to also fetch the topic, system_prompt, and pinned message of each related room — provides lateral context in one call.",
 		InputSchema: schema([]string{"room_id"}, map[string]map[string]any{
-			"room_id":                    prop("string", "Target room ID"),
-			"include_related_summaries":  prop("string", "Set to 'true' to append topic, system_prompt, and pinned message from each related room."),
-			"cluster_wide":               prop("string", "Set to 'true' to search across all cluster nodes. Default: local only."),
+			"room_id":                   prop("string", "Target room ID"),
+			"include_related_summaries": prop("string", "Set to 'true' to append topic, system_prompt, and pinned message from each related room."),
+			"cluster_wide":              prop("string", "Set to 'true' to search across all cluster nodes. Default: local only."),
 		}),
 	}, r.handleReadRoom)
 
