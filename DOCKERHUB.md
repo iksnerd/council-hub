@@ -67,7 +67,7 @@ With clustering enabled, pass `cluster_wide="true"` to any of these tools to que
 
 `search_messages`, `list_rooms`, `room_stats`, `read_transcript`, `read_room`, `get_messages`, `get_digest`
 
-Results are tagged with the source node name (e.g. `[council_hub@192.168.0.5]`). Unreachable nodes produce a warning but don't block results from reachable nodes.
+Results are tagged with the source node name (e.g. `[alice@192.168.0.4]`). Unreachable nodes produce a warning but don't block results from reachable nodes.
 
 > **Semantic search + cluster_wide:** Vector search is local to each node (sqlite-vec is not distributed). When `semantic=true` and `cluster_wide=true` are combined, the search runs on the local node only with a warning. FTS5 keyword search fans out normally across all nodes.
 
