@@ -36,6 +36,8 @@ type ListRoomsInput struct {
 	Compact     string `json:"compact"` // deprecated: compact is now default; kept for backwards compat
 	Verbose     string `json:"verbose"`
 	ClusterWide string `json:"cluster_wide"`
+	Limit       string `json:"limit"`
+	Offset      string `json:"offset"`
 }
 
 // UpdateRoomInput represents the parameters for updating a room's metadata.
@@ -472,7 +474,21 @@ func (r *Registry) handleListRooms(ctx context.Context, req *mcp.CallToolRequest
 		}, ToolOutput{Message: text}, nil
 	}
 
-	rooms, err := r.Server.ListRooms(args.Project, args.Tag, args.Status, args.Search)
+	limit := 50
+	if args.Limit != "" {
+		if _, err := fmt.Sscanf(args.Limit, "%d", &limit); err != nil {
+			limit = 50
+		}
+	}
+	
+	offset := 0
+	if args.Offset != "" {
+		if _, err := fmt.Sscanf(args.Offset, "%d", &offset); err != nil {
+			offset = 0
+		}
+	}
+
+	rooms, err := r.Server.ListRooms(args.Project, args.Tag, args.Status, args.Search, limit, offset)
 	if err != nil {
 		r.Server.Logger.Error("Failed to list rooms", "error", err)
 		return nil, ToolOutput{}, err

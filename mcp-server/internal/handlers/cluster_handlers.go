@@ -329,6 +329,8 @@ func (r *Registry) handleListRoomsCluster(args ListRoomsInput) (*mcp.CallToolRes
 		"tag":     args.Tag,
 		"status":  args.Status,
 		"search":  args.Search,
+		"limit":   args.Limit,
+		"offset":  args.Offset,
 	}
 
 	raw, warnings, err := r.clusterCall("list_rooms", params)

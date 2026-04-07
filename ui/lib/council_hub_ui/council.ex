@@ -397,7 +397,27 @@ defmodule CouncilHubUi.Council do
           end)
       end
 
-    Repo.all(from [room: r] in base, order_by: [desc: r.updated_at])
+    limit =
+      case Map.get(params, "limit") do
+        nil -> 50
+        "" -> 50
+        val when is_integer(val) -> val
+        val when is_binary(val) -> String.to_integer(val)
+      end
+
+    offset =
+      case Map.get(params, "offset") do
+        nil -> 0
+        "" -> 0
+        val when is_integer(val) -> val
+        val when is_binary(val) -> String.to_integer(val)
+      end
+
+    limit = if limit <= 0, do: 50, else: limit
+    limit = if limit > 100, do: 100, else: limit
+    offset = if offset < 0, do: 0, else: offset
+
+    Repo.all(from [room: r] in base, order_by: [desc: r.updated_at], limit: ^limit, offset: ^offset)
   end
 
   @doc """
