@@ -4,6 +4,19 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.16.0] - 2026-04-08
+
+### Added
+- **`move_messages` tool** — relocate messages between rooms preserving all metadata (author, timestamp, type, reply_to). Useful when a conversation drifts off-topic. FTS5 index stays consistent via existing UPDATE triggers.
+- **`search_messages(include_related=true)`** — when `room_id` is set, automatically expands the search scope to include 1-level related rooms. Eliminates manual `room_ids` construction. Response includes a note listing all rooms searched.
+- **Semantic search discoverability** — `semantic` parameter is now omitted from the `search_messages` schema when no embedding provider is configured. Agents no longer see a param that will fail at runtime.
+- **UI: Compiled badge on room cards** — rooms with at least one `synthesis` message show a 📖 badge in the sidebar. Instant signal that a room has compiled knowledge.
+- **UI: Interactive status toggle** — status badge on each room card is now a clickable button that cycles `active → paused → resolved → active`. Calls `signal_status` on the Go MCP server via the existing McpClient JSON-RPC bridge.
+- **UI: Advanced search filters** — a filter toggle button (⚙) next to the search bar reveals author, date-from, and date-until inputs. When active, routes through `Council.search_messages/1` for server-side filtering. Active filter count shown inline.
+
+### Changed
+- `search_messages` description updated to mention `include_related=true`.
+
 ## [0.14.0] - 2026-04-07
 
 ### Added

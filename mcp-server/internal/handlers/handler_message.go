@@ -21,19 +21,26 @@ type PostToRoomInput struct {
 
 // SearchMessagesInput represents the parameters for searching messages.
 type SearchMessagesInput struct {
-	Query       string `json:"query"`
-	Author      string `json:"author"`
-	MessageType string `json:"message_type"`
-	RoomID      string `json:"room_id"`
-	RoomIDs     string `json:"room_ids"`
-	Project     string `json:"project"`
-	Limit       string `json:"limit"`
-	Since       string `json:"since"`
-	Until       string `json:"until"`
-	SummaryOnly string `json:"summary_only"`
-	FullContent string `json:"full_content"`
-	ClusterWide string `json:"cluster_wide"`
-	Semantic    string `json:"semantic"`
+	Query          string `json:"query"`
+	Author         string `json:"author"`
+	MessageType    string `json:"message_type"`
+	RoomID         string `json:"room_id"`
+	RoomIDs        string `json:"room_ids"`
+	IncludeRelated string `json:"include_related"`
+	Project        string `json:"project"`
+	Limit          string `json:"limit"`
+	Since          string `json:"since"`
+	Until          string `json:"until"`
+	SummaryOnly    string `json:"summary_only"`
+	FullContent    string `json:"full_content"`
+	ClusterWide    string `json:"cluster_wide"`
+	Semantic       string `json:"semantic"`
+}
+
+// MoveMessagesInput represents the parameters for moving messages between rooms.
+type MoveMessagesInput struct {
+	MessageIDs   string `json:"message_ids"`
+	TargetRoomID string `json:"target_room_id"`
 }
 
 // UpdateMessageInput represents the parameters for editing a message in-place.
@@ -159,10 +166,27 @@ func (r *Registry) handleSearchMessages(ctx context.Context, req *mcp.CallToolRe
 		return msg("Error: at least one search filter is required (query, author, message_type, room_id, room_ids, or project).")
 	}
 
-	// Merge room_id into room_ids for unified handling
+	// Merge room_id into room_ids for unified handling, expanding related rooms if requested.
 	effectiveRoomIDs := args.RoomIDs
 	if args.RoomID != "" && args.RoomIDs == "" {
 		effectiveRoomIDs = args.RoomID
+	}
+
+	// include_related: expand scope to 1-level related rooms when room_id is set.
+	var relatedNote string
+	if args.IncludeRelated == "true" && args.RoomID != "" {
+		room, err := r.Server.GetRoom(args.RoomID)
+		if err == nil && room.RelatedRooms != "" {
+			allIDs := []string{args.RoomID}
+			for _, rel := range strings.Split(room.RelatedRooms, ",") {
+				rel = strings.TrimSpace(rel)
+				if rel != "" {
+					allIDs = append(allIDs, rel)
+				}
+			}
+			effectiveRoomIDs = strings.Join(allIDs, ",")
+			relatedNote = fmt.Sprintf("(searched %d rooms: %s)\n\n", len(allIDs), effectiveRoomIDs)
+		}
 	}
 
 	limit := 20
@@ -189,10 +213,15 @@ func (r *Registry) handleSearchMessages(ctx context.Context, req *mcp.CallToolRe
 	}
 
 	if len(messages) == 0 {
-		return msg("No messages found matching the given filters.")
+		noResult := "No messages found matching the given filters."
+		if relatedNote != "" {
+			noResult = relatedNote + noResult
+		}
+		return msg(noResult)
 	}
 
 	var b strings.Builder
+	b.WriteString(relatedNote)
 	fmt.Fprintf(&b, "Found %d message(s):\n\n", len(messages))
 
 	if args.SummaryOnly == "true" {
@@ -476,4 +505,48 @@ func (r *Registry) handleDeleteMessages(ctx context.Context, req *mcp.CallToolRe
 
 	r.Server.Logger.Info("Messages deleted", "count", count, "ids", args.MessageIDs)
 	return msg(fmt.Sprintf("Deleted %d message(s).", count))
+}
+
+func (r *Registry) handleMoveMessages(ctx context.Context, req *mcp.CallToolRequest, args MoveMessagesInput) (*mcp.CallToolResult, ToolOutput, error) {
+	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: text}},
+		}, ToolOutput{Message: text}, nil
+	}
+
+	if args.MessageIDs == "" {
+		return msg("Error: message_ids is required (comma-separated list of message IDs).")
+	}
+	if args.TargetRoomID == "" {
+		return msg("Error: target_room_id is required.")
+	}
+	if err := validateSize("target_room_id", args.TargetRoomID, maxIDLen); err != nil {
+		return msg("Error: " + err.Error())
+	}
+
+	parts := strings.Split(args.MessageIDs, ",")
+	var ids []string
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			ids = append(ids, p)
+		}
+	}
+	if len(ids) == 0 {
+		return msg("Error: no valid message IDs provided.")
+	}
+
+	moved, err := r.Server.MoveMessages(ids, args.TargetRoomID)
+	if err != nil {
+		return msg(fmt.Sprintf("Error: %s", err.Error()))
+	}
+
+	notMoved := len(ids) - moved
+	var b strings.Builder
+	fmt.Fprintf(&b, "Moved %d message(s) to room '%s'.", moved, args.TargetRoomID)
+	if notMoved > 0 {
+		fmt.Fprintf(&b, " %d ID(s) not found and were skipped.", notMoved)
+	}
+	r.Server.Logger.Info("Messages moved", "count", moved, "target", args.TargetRoomID)
+	return msg(b.String())
 }

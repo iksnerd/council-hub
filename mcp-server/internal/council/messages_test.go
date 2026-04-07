@@ -994,3 +994,96 @@ func TestGetRoomsNeedingSummaryEmpty(t *testing.T) {
 		t.Errorf("expected no rooms needing summary, got: %v", rooms)
 	}
 }
+
+// ========== MoveMessages ==========
+
+func TestMoveMessages(t *testing.T) {
+	s := setupTestServer(t)
+	s.CreateRoom("src-room", "Source", "", "", "", "", "")
+	s.CreateRoom("dst-room", "Destination", "", "", "", "", "")
+
+	id1, _ := s.PostMessage("src-room", "Claude", "Move me", "decision", "")
+	id2, _ := s.PostMessage("src-room", "Gemini", "Move me too", "action", "")
+	_, _ = s.PostMessage("src-room", "Claude", "Stay here", "message", "")
+
+	moved, err := s.MoveMessages([]string{id1, id2}, "dst-room")
+	if err != nil {
+		t.Fatalf("MoveMessages failed: %v", err)
+	}
+	if moved != 2 {
+		t.Errorf("expected 2 moved, got %d", moved)
+	}
+
+	// Verify messages are in dst-room
+	msgs, err := s.GetTranscript("dst-room")
+	if err != nil {
+		t.Fatalf("GetTranscript dst-room failed: %v", err)
+	}
+	if len(msgs) != 2 {
+		t.Errorf("expected 2 messages in dst-room, got %d", len(msgs))
+	}
+
+	// Verify src-room has only 1 message remaining
+	srcMsgs, err := s.GetTranscript("src-room")
+	if err != nil {
+		t.Fatalf("GetTranscript src-room failed: %v", err)
+	}
+	if len(srcMsgs) != 1 {
+		t.Errorf("expected 1 message remaining in src-room, got %d", len(srcMsgs))
+	}
+}
+
+func TestMoveMessagesTargetNotFound(t *testing.T) {
+	s := setupTestServer(t)
+	s.CreateRoom("mv-src", "Source", "", "", "", "", "")
+	id, _ := s.PostMessage("mv-src", "Claude", "Hello", "message", "")
+
+	_, err := s.MoveMessages([]string{id}, "nonexistent-room")
+	if err == nil {
+		t.Error("expected error for nonexistent target room, got nil")
+	}
+}
+
+func TestMoveMessagesEmpty(t *testing.T) {
+	s := setupTestServer(t)
+	s.CreateRoom("mv-empty-dst", "Dst", "", "", "", "", "")
+
+	moved, err := s.MoveMessages([]string{}, "mv-empty-dst")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if moved != 0 {
+		t.Errorf("expected 0 moved for empty IDs, got %d", moved)
+	}
+}
+
+func TestMoveMessagesPreservesMetadata(t *testing.T) {
+	s := setupTestServer(t)
+	s.CreateRoom("mv-meta-src", "Source", "", "", "", "", "")
+	s.CreateRoom("mv-meta-dst", "Destination", "", "", "", "", "")
+
+	id, _ := s.PostMessage("mv-meta-src", "Gemini", "Important decision", "decision", "")
+
+	_, err := s.MoveMessages([]string{id}, "mv-meta-dst")
+	if err != nil {
+		t.Fatalf("MoveMessages failed: %v", err)
+	}
+
+	msgs, err := s.GetTranscript("mv-meta-dst")
+	if err != nil {
+		t.Fatalf("GetTranscript failed: %v", err)
+	}
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(msgs))
+	}
+	m := msgs[0]
+	if m.Author != "Gemini" {
+		t.Errorf("expected author Gemini, got %s", m.Author)
+	}
+	if m.MessageType != "decision" {
+		t.Errorf("expected type decision, got %s", m.MessageType)
+	}
+	if m.RoomID != "mv-meta-dst" {
+		t.Errorf("expected room mv-meta-dst, got %s", m.RoomID)
+	}
+}

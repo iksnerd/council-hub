@@ -211,24 +211,30 @@ func (r *Registry) RegisterTools() {
 		}),
 	}, r.handleDeleteRoom)
 
+	searchProps := map[string]map[string]any{
+		"query":           prop("string", "Text to search for in message content"),
+		"author":          prop("string", "Filter by author name"),
+		"message_type":    prop("string", "Filter by type: message, thought, decision, action, review, critique, code, synthesis. Use 'synthesis' to find compiled knowledge articles."),
+		"room_id":         prop("string", "Scope search to a specific room"),
+		"room_ids":        prop("string", "Comma-separated room IDs to search across a subset (e.g. bug-123,bug-456). Use instead of room_id for multi-room scoping."),
+		"include_related": prop("string", "Set to 'true' to automatically include the room's related_rooms in the search scope (requires room_id). Expands search to 1-level neighbours without specifying room_ids manually."),
+		"project":         prop("string", "Scope search to rooms in this project"),
+		"limit":           prop("string", "Max results to return (default 20, max 100)"),
+		"since":           prop("string", "ISO timestamp (e.g. 2026-04-01T00:00:00). Only return messages at or after this time."),
+		"until":           prop("string", "ISO timestamp (e.g. 2026-04-03T23:59:59). Only return messages at or before this time."),
+		"summary_only":    prop("string", "Set to 'true' for compact output: id, author, timestamp, room, type, and 120-char excerpt"),
+		"full_content":    prop("string", "Set to 'true' to return the full un-truncated message body instead of a 300-char snippet"),
+		"cluster_wide":    prop("string", "Set to 'true' to search across all cluster nodes. Default: local only."),
+	}
+	// Only expose semantic param when an embedding provider is configured.
+	// Avoids agents wasting turns on a feature that will return an error.
+	if r.Server.Embedder != nil {
+		searchProps["semantic"] = prop("string", "Set to 'true' for vector similarity search instead of keyword matching. Finds conceptually similar messages even without exact keyword overlap. Requires COUNCIL_OLLAMA_URL (already configured on this server).")
+	}
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "search_messages",
-		Description: "Search messages across rooms by keyword, author, type, or time range. Prefer over read_transcript when: room has 20+ messages, you need cross-room results, or you're filtering by author/type/time window. Use read_transcript when you need a room's full sequential context. Returns snippets with message IDs; use get_messages to fetch full content. Use summary_only=true for compact results (id, author, timestamp, 120-char excerpt). Use full_content=true to bypass snippet truncation.",
-		InputSchema: schema(nil, map[string]map[string]any{
-			"query":        prop("string", "Text to search for in message content"),
-			"author":       prop("string", "Filter by author name"),
-			"message_type": prop("string", "Filter by type: message, thought, decision, action, review, critique, code, synthesis. Use 'synthesis' to find compiled knowledge articles."),
-			"room_id":      prop("string", "Scope search to a specific room"),
-			"room_ids":     prop("string", "Comma-separated room IDs to search across a subset (e.g. bug-123,bug-456). Use instead of room_id for multi-room scoping."),
-			"project":      prop("string", "Scope search to rooms in this project"),
-			"limit":        prop("string", "Max results to return (default 20, max 100)"),
-			"since":        prop("string", "ISO timestamp (e.g. 2026-04-01T00:00:00). Only return messages at or after this time."),
-			"until":        prop("string", "ISO timestamp (e.g. 2026-04-03T23:59:59). Only return messages at or before this time."),
-			"summary_only": prop("string", "Set to 'true' for compact output: id, author, timestamp, room, type, and 120-char excerpt"),
-			"full_content": prop("string", "Set to 'true' to return the full un-truncated message body instead of a 300-char snippet"),
-			"cluster_wide": prop("string", "Set to 'true' to search across all cluster nodes. Default: local only."),
-			"semantic":     prop("string", "Set to 'true' for vector similarity search instead of keyword matching. Finds conceptually similar messages even without exact keyword overlap. Requires an embedding provider (COUNCIL_OLLAMA_URL)."),
-		}),
+		Description: "Search messages across rooms by keyword, author, type, or time range. Prefer over read_transcript when: room has 20+ messages, you need cross-room results, or you're filtering by author/type/time window. Use read_transcript when you need a room's full sequential context. Returns snippets with message IDs; use get_messages to fetch full content. Use summary_only=true for compact results (id, author, timestamp, 120-char excerpt). Use full_content=true to bypass snippet truncation. Use include_related=true to automatically include related rooms in the search scope.",
+		InputSchema: schema(nil, searchProps),
 	}, r.handleSearchMessages)
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
@@ -289,6 +295,15 @@ func (r *Registry) RegisterTools() {
 			"dry_run":     prop("string", "Set to 'true' to preview deletions without executing. Returns message details (id, author, timestamp, room, excerpt)."),
 		}),
 	}, r.handleDeleteMessages)
+
+	mcp.AddTool(r.Server.MCP, &mcp.Tool{
+		Name:        "move_messages",
+		Description: "Move messages from their current room to a different room, preserving all metadata (author, timestamp, type, reply_to). Useful when a conversation thread drifts off-topic and belongs in a more appropriate room. Returns the count of moved messages and their new room. Note: message IDs and content are unchanged — existing references and cursors remain valid.",
+		InputSchema: schema([]string{"message_ids", "target_room_id"}, map[string]map[string]any{
+			"message_ids":    prop("string", "Comma-separated message IDs to move (e.g. abc123,def456)"),
+			"target_room_id": prop("string", "Room ID to move the messages into"),
+		}),
+	}, r.handleMoveMessages)
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "list_archives",

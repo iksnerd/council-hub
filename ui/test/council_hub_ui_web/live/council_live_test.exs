@@ -596,4 +596,102 @@ defmodule CouncilHubUiWeb.CouncilLiveTest do
       assert html =~ "header-updated-updated-header-room"
     end
   end
+
+  describe "v0.16.0 features" do
+    test "compiled badge appears on room card when room has a synthesis message", %{conn: conn} do
+      room = create_room(%{id: "synth-badge-room"})
+
+      create_message(%{
+        room_id: room.id,
+        author: "Claude",
+        content: "Compiled knowledge article",
+        message_type: "synthesis"
+      })
+
+      {:ok, _view, html} = live(conn, "/")
+      # The compiled badge (book-open icon) should appear for this room
+      assert html =~ "synth-badge-room"
+      assert html =~ "hero-book-open"
+    end
+
+    test "compiled badge absent on room without synthesis messages", %{conn: conn} do
+      room = create_room(%{id: "no-synth-room"})
+      create_message(%{room_id: room.id, author: "Claude", content: "Just a thought", message_type: "thought"})
+
+      {:ok, _view, html} = live(conn, "/")
+      assert html =~ "no-synth-room"
+      # hero-book-open only appears for synthesized rooms
+      refute html =~ "hero-book-open"
+    end
+
+    test "status badge is a clickable button with toggle_status handler", %{conn: conn} do
+      create_room(%{id: "toggle-status-room", status: "active"})
+      {:ok, _view, html} = live(conn, "/")
+      assert html =~ "phx-click=\"toggle_status\""
+      assert html =~ "phx-value-room-id=\"toggle-status-room\""
+    end
+
+    test "toggle_status event does not crash when MCP server is unreachable", %{conn: conn} do
+      create_room(%{id: "toggle-crash-room", status: "active"})
+      {:ok, view, _html} = live(conn, "/")
+      # McpClient will fail to connect but must not crash the LiveView
+      view
+      |> render_hook("toggle_status", %{"room-id" => "toggle-crash-room", "status" => "active"})
+
+      assert render(view) =~ "toggle-crash-room"
+    end
+
+    test "synthesis_flags assign is populated on mount for rooms with synthesis", %{conn: conn} do
+      room = create_room(%{id: "synth-flags-room"})
+
+      create_message(%{
+        room_id: room.id,
+        author: "Gemini",
+        content: "Knowledge synthesis",
+        message_type: "synthesis"
+      })
+
+      {:ok, view, _html} = live(conn, "/")
+      # The MapSet is in assigns — test indirectly via compiled badge in rendered HTML
+      assert render(view) =~ "synth-flags-room"
+      assert render(view) =~ "hero-book-open"
+    end
+
+    test "filter toggle button is present in message search bar", %{conn: conn} do
+      create_room(%{id: "filter-btn-room"})
+      {:ok, _view, html} = live(conn, "/rooms/filter-btn-room")
+      assert html =~ "toggle_search_filters"
+      assert html =~ "hero-adjustments-horizontal"
+    end
+
+    test "toggle_search_filters shows and hides the filter panel", %{conn: conn} do
+      create_room(%{id: "filter-panel-room"})
+      {:ok, view, html} = live(conn, "/rooms/filter-panel-room")
+      # Panel hidden by default
+      refute html =~ "apply_search_filters"
+
+      view |> element("button[phx-click='toggle_search_filters']") |> render_click()
+      assert render(view) =~ "apply_search_filters"
+      assert render(view) =~ ~s(name="author")
+      assert render(view) =~ ~s(name="since")
+      assert render(view) =~ ~s(name="until")
+    end
+
+    test "apply_search_filters by author returns filtered messages", %{conn: conn} do
+      room = create_room(%{id: "filter-author-room"})
+      create_message(%{room_id: room.id, author: "Claude", content: "From Claude"})
+      create_message(%{room_id: room.id, author: "Gemini", content: "From Gemini"})
+
+      {:ok, view, _html} = live(conn, "/rooms/filter-author-room")
+      view |> element("button[phx-click='toggle_search_filters']") |> render_click()
+
+      html =
+        view
+        |> form("form[phx-change='apply_search_filters']", %{"author" => "Claude", "since" => "", "until" => ""})
+        |> render_change()
+
+      assert html =~ "From Claude"
+      refute html =~ "From Gemini"
+    end
+  end
 end

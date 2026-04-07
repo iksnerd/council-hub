@@ -43,6 +43,37 @@ defmodule CouncilHubUi.McpClient do
       {:error, :request_failed}
   end
 
+  @doc """
+  Sends a signal_status tool call to the MCP server.
+  Returns :ok on success or {:error, reason} on failure.
+  """
+  def signal_status(room_id, status) do
+    body =
+      Jason.encode!(%{
+        jsonrpc: "2.0",
+        id: System.unique_integer([:positive]),
+        method: "tools/call",
+        params: %{
+          name: "signal_status",
+          arguments: %{room_id: room_id, status: status}
+        }
+      })
+
+    url = String.to_charlist(mcp_url())
+
+    headers = [
+      {~c"Content-Type", ~c"application/json"},
+      {~c"Accept", ~c"application/json, text/event-stream"}
+    ]
+
+    :httpc.request(:post, {url, headers, ~c"application/json", body}, [{:timeout, 5000}], [])
+    |> handle_response()
+  rescue
+    e ->
+      Logger.warning("McpClient error: #{inspect(e)}")
+      {:error, :request_failed}
+  end
+
   defp handle_response({:ok, {{_http, status, _reason}, _headers, _body}})
        when status in 200..299 do
     :ok

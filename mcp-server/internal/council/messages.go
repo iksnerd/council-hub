@@ -404,6 +404,46 @@ func (s *Server) SearchMessages(query, author, messageType, roomID, project, sin
 	return msgs, rows.Err()
 }
 
+// MoveMessages relocates messages to a different room, preserving all metadata
+// (author, timestamp, type, reply_to). The FTS5 content-sync triggers fire on
+// UPDATE, so the search index stays consistent automatically.
+func (s *Server) MoveMessages(ids []string, targetRoomID string) (int, error) {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+
+	// Verify target room exists.
+	var count int
+	if err := s.DB.QueryRow(`SELECT COUNT(*) FROM rooms WHERE id = ?`, targetRoomID).Scan(&count); err != nil {
+		return 0, err
+	}
+	if count == 0 {
+		return 0, fmt.Errorf("target room '%s' not found", targetRoomID)
+	}
+
+	placeholders := make([]string, len(ids))
+	args := make([]any, len(ids)+1)
+	args[0] = targetRoomID
+	for i, id := range ids {
+		placeholders[i] = "?"
+		args[i+1] = id
+	}
+
+	res, err := s.DB.Exec(
+		fmt.Sprintf(`UPDATE messages SET room_id = ? WHERE id IN (%s)`, strings.Join(placeholders, ",")),
+		args...,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	moved, _ := res.RowsAffected()
+
+	// Bump target room's updated_at (best-effort).
+	_, _ = s.DB.Exec(`UPDATE rooms SET updated_at = CURRENT_TIMESTAMP WHERE id = ?`, targetRoomID)
+
+	return int(moved), nil
+}
+
 func (s *Server) DeleteMessages(ids []string) (int64, error) {
 	s.Mu.Lock()
 	defer s.Mu.Unlock()
