@@ -200,11 +200,15 @@
           </form>
           <button
             phx-click="toggle_search_filters"
-            title={if @show_search_filters, do: "Hide filters", else: "Show author & date filters"}
+            title={
+              if @show_search_filters, do: "Hide filters", else: "Show author & date filters"
+            }
             type="button"
             class={[
               "shrink-0 inline-flex items-center gap-1 px-2 py-1.5 rounded-lg border text-[10px] font-mono transition-colors",
-              if(@show_search_filters or @search_author != "" or @search_since != "" or @search_until != "",
+              if(
+                @show_search_filters or @search_author != "" or @search_since != "" or
+                  @search_until != "",
                 do: "bg-amber-500/15 border-amber-500/30 text-amber-400",
                 else: "bg-zinc-800/50 border-zinc-700/50 text-zinc-500 hover:text-zinc-300"
               )
@@ -265,7 +269,8 @@
                 class="bg-zinc-800/50 border border-zinc-700/50 rounded text-[11px] text-zinc-300 px-2 py-1 focus:outline-none focus:border-amber-500/30"
               />
             </div>
-            <% active_filters = Enum.count([@search_author, @search_since, @search_until], &(&1 != "")) %>
+            <% active_filters =
+              Enum.count([@search_author, @search_since, @search_until], &(&1 != "")) %>
             <span :if={active_filters > 0} class="text-[9px] text-amber-400 font-mono">
               {active_filters} filter{if active_filters > 1, do: "s", else: ""} active
             </span>
