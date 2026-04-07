@@ -260,10 +260,12 @@ func (r *Registry) handleSearchMessagesCluster(args SearchMessagesInput) (*mcp.C
 		"author":       args.Author,
 		"message_type": args.MessageType,
 		"room_id":      args.RoomID,
+		"room_ids":     args.RoomIDs,
 		"project":      args.Project,
 		"since":        args.Since,
 		"until":        args.Until,
 		"limit":        args.Limit,
+		"semantic":     args.Semantic,
 	}
 
 	raw, warnings, err := r.clusterCall("search_messages", params)

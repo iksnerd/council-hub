@@ -304,6 +304,43 @@ func TestHandleSearchMessagesSinceAndUntil(t *testing.T) {
 	}
 }
 
+func TestHandleSearchMessagesSemanticClusterWide(t *testing.T) {
+	// semantic=true + cluster_wide=true must NOT go through the cluster fan-out path
+	// (Phoenix fan-out uses LIKE search, not sqlite-vec). It should attempt local
+	// semantic search and return a user-friendly error when no embedder is configured
+	// (test environment has no Ollama), rather than silently doing keyword search.
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "sem-cluster-room")
+	mustPost(t, reg.Server, "sem-cluster-room", "Claude", "Using Postgres for persistence")
+
+	res, _, err := reg.handleSearchMessages(context.Background(), nil, SearchMessagesInput{
+		Query:       "Postgres",
+		Semantic:    "true",
+		ClusterWide: "true",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	text := resultText(res)
+	// In tests no embedder is configured, so we expect a graceful error message
+	// (not a panic or nil pointer — the cluster fan-out path must NOT be taken).
+	if !strings.Contains(text, "Error") && !strings.Contains(text, "local-only") {
+		t.Errorf("expected error or local-only note for semantic+cluster_wide, got: %s", text)
+	}
+}
+
+func TestHandleSearchMessagesSemanticClusterWideMissingQuery(t *testing.T) {
+	reg := setupHandlerTest(t)
+	res, _, _ := reg.handleSearchMessages(context.Background(), nil, SearchMessagesInput{
+		Semantic:    "true",
+		ClusterWide: "true",
+	})
+	text := resultText(res)
+	if !strings.Contains(text, "Error") {
+		t.Errorf("expected error for missing query, got: %s", text)
+	}
+}
+
 func TestHandleSearchMessagesDBError(t *testing.T) {
 	reg := setupHandlerServer(t)
 	reg.Server.DB.Close()

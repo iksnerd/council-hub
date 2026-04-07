@@ -108,6 +108,44 @@ func (r *Registry) handlePostToRoom(ctx context.Context, req *mcp.CallToolReques
 
 func (r *Registry) handleSearchMessages(ctx context.Context, req *mcp.CallToolRequest, args SearchMessagesInput) (*mcp.CallToolResult, ToolOutput, error) {
 	if args.ClusterWide == "true" {
+		if args.Semantic == "true" {
+			// Semantic search uses sqlite-vec which is local-only; the Phoenix
+			// cluster fan-out path uses Elixir LIKE queries and cannot do vector
+			// search. Fall back to local semantic search with a warning.
+			msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
+				return &mcp.CallToolResult{
+					Content: []mcp.Content{&mcp.TextContent{Text: text}},
+				}, ToolOutput{Message: text}, nil
+			}
+			if args.Query == "" {
+				return msg("Error: query is required for semantic search.")
+			}
+			effectiveRoomIDs := args.RoomIDs
+			if args.RoomID != "" && args.RoomIDs == "" {
+				effectiveRoomIDs = args.RoomID
+			}
+			limit := 20
+			if args.Limit != "" {
+				if _, err := fmt.Sscanf(args.Limit, "%d", &limit); err != nil {
+					limit = 20
+				}
+			}
+			messages, err := r.Server.SearchMessagesSemantic(args.Query, effectiveRoomIDs, args.Project, args.Author, args.MessageType, args.Since, args.Until, limit)
+			if err != nil {
+				return msg(fmt.Sprintf("Error: semantic search unavailable — %s", err.Error()))
+			}
+			var b strings.Builder
+			b.WriteString("Note: semantic search is local-only (cluster_wide ignored — vector search requires sqlite-vec, not available on remote nodes).\n\n")
+			if len(messages) == 0 {
+				b.WriteString("No messages found matching the given filters.")
+			} else {
+				fmt.Fprintf(&b, "Found %d message(s):\n\n", len(messages))
+				for _, m := range messages {
+					fmt.Fprintf(&b, "**[#%.8s %s] %s (%s):** %s\n\n", m.ID, m.Timestamp.Format("2006-01-02"), m.Author, m.MessageType, m.Content)
+				}
+			}
+			return msg(b.String())
+		}
 		return r.handleSearchMessagesCluster(args)
 	}
 

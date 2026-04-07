@@ -7,7 +7,10 @@ import (
 )
 
 const (
-	janitorInterval = 1 * time.Hour
+	janitorInterval = 6 * time.Hour
+	synthesisMinDecisions = 3
+	synthesisMinMessages  = 20
+	graceperiod           = 24 * time.Hour
 )
 
 // LintResult holds the outcome of a linter sweep.
@@ -64,10 +67,15 @@ func (s *Server) lintNeedsSynthesis() []string {
 	query := `
 		SELECT id, tags FROM rooms
 		WHERE status = 'active'
-		  AND EXISTS (SELECT 1 FROM messages WHERE room_id = rooms.id AND message_type = 'decision')
+		  AND created_at < datetime('now', '-1 day')
 		  AND NOT EXISTS (SELECT 1 FROM messages WHERE room_id = rooms.id AND message_type = 'synthesis')
+		  AND (
+		    (SELECT COUNT(*) FROM messages WHERE room_id = rooms.id AND message_type = 'decision') >= ?
+		    OR
+		    (SELECT COUNT(*) FROM messages WHERE room_id = rooms.id) >= ?
+		  )
 	`
-	rows, err := s.DB.Query(query)
+	rows, err := s.DB.Query(query, synthesisMinDecisions, synthesisMinMessages)
 	if err != nil {
 		s.Logger.Error("Linter: failed to query rooms needing synthesis", "error", err)
 		return nil
@@ -117,6 +125,7 @@ func (s *Server) lintStaleRooms() []string {
 	query := `
 		SELECT id, tags FROM rooms
 		WHERE status = 'active'
+		  AND created_at < datetime('now', '-1 day')
 		  AND (SELECT MAX(timestamp) FROM messages WHERE room_id = rooms.id) < datetime('now', '-7 days')
 	`
 	rows, err := s.DB.Query(query)

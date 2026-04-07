@@ -91,7 +91,7 @@ func NewServer(dbPath string, logger *slog.Logger) (*Server, error) {
 
 	mcpServer := mcp.NewServer(&mcp.Implementation{
 		Name:    "council-hub",
-		Version: "0.14.0",
+		Version: "0.15.0",
 	}, &mcp.ServerOptions{
 		Logger:       logger,
 		Capabilities: &mcp.ServerCapabilities{},

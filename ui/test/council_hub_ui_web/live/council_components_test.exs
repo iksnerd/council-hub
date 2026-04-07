@@ -32,8 +32,13 @@ defmodule CouncilHubUiWeb.CouncilComponentsTest do
 
     test "shows stale health badge when tagged stale" do
       assigns = %{
-        room: %{id: "stale-room", status: "active", description: "", tags: "stale",
-                updated_at: ~N[2026-03-29 14:00:00]},
+        room: %{
+          id: "stale-room",
+          status: "active",
+          description: "",
+          tags: "stale",
+          updated_at: ~N[2026-03-29 14:00:00]
+        },
         active: false,
         count: 0
       }
@@ -45,8 +50,13 @@ defmodule CouncilHubUiWeb.CouncilComponentsTest do
 
     test "shows needs-synthesis health badge" do
       assigns = %{
-        room: %{id: "synth-room", status: "active", description: "", tags: "needs-synthesis",
-                updated_at: ~N[2026-03-29 14:00:00]},
+        room: %{
+          id: "synth-room",
+          status: "active",
+          description: "",
+          tags: "needs-synthesis",
+          updated_at: ~N[2026-03-29 14:00:00]
+        },
         active: false,
         count: 0
       }
@@ -58,8 +68,13 @@ defmodule CouncilHubUiWeb.CouncilComponentsTest do
 
     test "no health badges for healthy room" do
       assigns = %{
-        room: %{id: "healthy-room", status: "active", description: "", tags: "auth,api",
-                updated_at: ~N[2026-03-29 14:00:00]},
+        room: %{
+          id: "healthy-room",
+          status: "active",
+          description: "",
+          tags: "auth,api",
+          updated_at: ~N[2026-03-29 14:00:00]
+        },
         active: false,
         count: 0
       }
@@ -71,8 +86,13 @@ defmodule CouncilHubUiWeb.CouncilComponentsTest do
 
     test "shows truncated latest_id as cursor" do
       assigns = %{
-        room: %{id: "cursor-room", status: "active", description: "", tags: "",
-                updated_at: ~N[2026-03-29 14:00:00]},
+        room: %{
+          id: "cursor-room",
+          status: "active",
+          description: "",
+          tags: "",
+          updated_at: ~N[2026-03-29 14:00:00]
+        },
         active: false,
         count: 0,
         latest_id: "019d0000-0000-7000-8000-abcdef123456"
@@ -85,8 +105,13 @@ defmodule CouncilHubUiWeb.CouncilComponentsTest do
 
     test "no cursor shown when latest_id is nil" do
       assigns = %{
-        room: %{id: "no-cursor-room", status: "active", description: "", tags: "",
-                updated_at: ~N[2026-03-29 14:00:00]},
+        room: %{
+          id: "no-cursor-room",
+          status: "active",
+          description: "",
+          tags: "",
+          updated_at: ~N[2026-03-29 14:00:00]
+        },
         active: false,
         count: 0,
         latest_id: nil
@@ -465,6 +490,53 @@ defmodule CouncilHubUiWeb.CouncilComponentsTest do
 
       html = render_component(&CouncilComponents.summary_block/1, assigns)
       assert html =~ "expand"
+    end
+  end
+
+  describe "v0.15.0 features" do
+    test "room_header renders updated_at RelativeTime hook when present" do
+      assigns = %{
+        room: %{
+          id: "updated-at-room",
+          status: "active",
+          description: "Test",
+          project: "",
+          tech_stack: "",
+          tags: "",
+          system_prompt: "",
+          related_rooms: "",
+          created_at: ~N[2026-03-29 14:00:00],
+          updated_at: ~N[2026-04-07 10:00:00]
+        },
+        count: 3,
+        show_system_prompt: false
+      }
+
+      html = render_component(&CouncilComponents.room_header/1, assigns)
+      assert html =~ "header-updated-updated-at-room"
+      assert html =~ "RelativeTime"
+      assert html =~ "2026-04-07"
+    end
+
+    test "room_header omits updated_at div when not present" do
+      assigns = %{
+        room: %{
+          id: "no-updated-at",
+          status: "active",
+          description: "",
+          project: "",
+          tech_stack: "",
+          tags: "",
+          system_prompt: "",
+          related_rooms: "",
+          created_at: ~N[2026-03-29 14:00:00]
+        },
+        count: 0,
+        show_system_prompt: false
+      }
+
+      html = render_component(&CouncilComponents.room_header/1, assigns)
+      refute html =~ "header-updated-no-updated-at"
     end
   end
 end

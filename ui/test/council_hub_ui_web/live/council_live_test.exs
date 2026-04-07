@@ -574,4 +574,26 @@ defmodule CouncilHubUiWeb.CouncilLiveTest do
       assert length(CouncilHubUiWeb.CouncilLive.filter_rooms(rooms, "jwt")) == 1
     end
   end
+
+  describe "v0.15.0 features" do
+    test "critique filter button is present in message type bar", %{conn: conn} do
+      create_room(%{id: "critique-filter-room"})
+      {:ok, _view, html} = live(conn, "/rooms/critique-filter-room")
+      assert html =~ "Critique"
+    end
+
+    test "cluster warnings section is absent when no warnings", %{conn: conn} do
+      create_room(%{id: "warn-room"})
+      {:ok, _view, html} = live(conn, "/rooms/warn-room")
+      # When cluster_warnings is empty (default), the amber banner section must not render
+      refute html =~ "hero-exclamation-triangle"
+    end
+
+    test "room header renders updated_at hook div when present", %{conn: conn} do
+      create_room(%{id: "updated-header-room"})
+      {:ok, _view, html} = live(conn, "/rooms/updated-header-room")
+      # updated_at RelativeTime hook div has id starting with "header-updated-"
+      assert html =~ "header-updated-updated-header-room"
+    end
+  end
 end
