@@ -4,6 +4,11 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.13.0] - 2026-04-07
+
+### Added
+- `get_concept_map` tool — BFS traversal of the `related_rooms` graph starting from any room. Returns a flat Markdown list grouped by depth with status, tags, and connection path (`via`). Supports `max_depth` (default 3, max 5) with cycle detection. Helps agents orient within complex project topologies without reading every transcript.
+
 ## [0.12.0] - 2026-04-07
 
 ### Added

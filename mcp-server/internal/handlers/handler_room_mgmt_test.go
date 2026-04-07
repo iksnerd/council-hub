@@ -745,3 +745,58 @@ func TestHandleReadArchiveMissingID(t *testing.T) {
 		t.Error("expected error for missing room_id")
 	}
 }
+
+// ========== get_concept_map ==========
+
+func TestHandleGetConceptMap(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "root-node", withDescription("Root of graph"), withTags("tag0"))
+	mustCreateRoom(t, reg.Server, "child-node", withDescription("Direct child"), withTags("tag1"), withRelatedRooms("root-node"))
+
+	// Test basic traversal
+	res, _, err := reg.handleGetConceptMap(context.Background(), nil, GetConceptMapInput{
+		RoomID: "root-node",
+	})
+	if err != nil {
+		t.Fatalf("handleGetConceptMap error: %v", err)
+	}
+	text := resultText(res)
+	if !strings.Contains(text, "Concept Map: root-node") {
+		t.Errorf("missing header: %s", text)
+	}
+	if !strings.Contains(text, "root-node") || !strings.Contains(text, "child-node") {
+		t.Errorf("missing nodes: %s", text)
+	}
+	if !strings.Contains(text, "tag0") || !strings.Contains(text, "tag1") {
+		t.Errorf("missing tags: %s", text)
+	}
+	if !strings.Contains(text, "via: root-node") {
+		t.Errorf("missing link info: %s", text)
+	}
+
+	// Test depth limiting
+	res, _, _ = reg.handleGetConceptMap(context.Background(), nil, GetConceptMapInput{
+		RoomID:   "root-node",
+		MaxDepth: "0",
+	})
+	text = resultText(res)
+	if strings.Contains(text, "child-node") {
+		t.Errorf("depth 0 should only return root, got: %s", text)
+	}
+}
+
+func TestHandleGetConceptMapMissingID(t *testing.T) {
+	reg := setupHandlerTest(t)
+	res, _, _ := reg.handleGetConceptMap(context.Background(), nil, GetConceptMapInput{})
+	if !strings.Contains(resultText(res), "Error") {
+		t.Error("expected error for missing room_id")
+	}
+}
+
+func TestHandleGetConceptMapNotFound(t *testing.T) {
+	reg := setupHandlerTest(t)
+	res, _, _ := reg.handleGetConceptMap(context.Background(), nil, GetConceptMapInput{RoomID: "ghost"})
+	if !strings.Contains(resultText(res), "Error") {
+		t.Error("expected error for nonexistent room")
+	}
+}
