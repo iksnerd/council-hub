@@ -357,6 +357,15 @@ func (r *Registry) RegisterTools() {
 	}, r.handleReadTranscript)
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
+		Name:        "get_concept_map",
+		Description: "Traverse the conceptual relationship graph between rooms starting from a given room. Returns a flat Markdown list grouped by depth, showing how topics relate across the project. Use this to orient yourself within a complex project topology.",
+		InputSchema: schema([]string{"room_id"}, map[string]map[string]any{
+			"room_id":   prop("string", "The starting room ID for the graph traversal."),
+			"max_depth": prop("string", "The maximum depth to traverse (default 3, max 5)."),
+		}),
+	}, r.handleGetConceptMap)
+
+	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "get_digest",
 		Description: "Get a project activity and knowledge health digest as a JSON array. Each entry has room_id, new_messages, latest_message_id, latest_excerpt, tags, decision_count, synthesis_count. Rooms flagged by check_room_health (stale, needs-synthesis) are included. Call at the start of every session to orient yourself — shows what changed and what needs attention. Machine-readable — parse room_id and latest_message_id directly for delta reads.",
 		InputSchema: schema(nil, map[string]map[string]any{
