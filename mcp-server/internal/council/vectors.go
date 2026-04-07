@@ -90,7 +90,7 @@ func (s *Server) SearchMessagesSemantic(query string, roomID, project, author, m
 	if err != nil {
 		return nil, fmt.Errorf("vector search: %w", err)
 	}
-	defer vecRows.Close()
+	defer func() { _ = vecRows.Close() }()
 
 	var candidateIDs []string
 	distances := make(map[string]float64)
