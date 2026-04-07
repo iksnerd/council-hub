@@ -14,6 +14,7 @@ defmodule CouncilHubUiWeb.CouncilComponents do
   attr :participants, :integer, default: 0
   attr :source_node, :string, default: nil
   attr :latest_id, :string, default: nil
+  attr :compiled, :boolean, default: false
 
   def room_card(assigns) do
     ~H"""
@@ -41,13 +42,27 @@ defmodule CouncilHubUiWeb.CouncilComponents do
         </span>
         <div class="flex items-center gap-1.5 shrink-0">
           <span :if={@count > 0} class="text-[10px] text-zinc-500 font-mono">{@count}</span>
-          <span class={[
-            "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium",
-            status_badge_class(@room.status)
-          ]}>
+          <span
+            :if={@compiled}
+            class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium bg-purple-500/15 text-purple-400 border border-purple-500/20"
+            title="Room has compiled synthesis"
+          >
+            <span class="hero-book-open w-3 h-3"></span>
+          </span>
+          <button
+            phx-click="toggle_status"
+            phx-value-room-id={@room.id}
+            phx-value-status={@room.status}
+            title={"Status: #{@room.status} — click to cycle"}
+            type="button"
+            class={[
+              "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium cursor-pointer transition-opacity hover:opacity-80 active:scale-95",
+              status_badge_class(@room.status)
+            ]}
+          >
             <span class={"w-1.5 h-1.5 rounded-full #{status_dot_class(@room.status)}"}></span>
             {@room.status}
-          </span>
+          </button>
         </div>
       </div>
       <p

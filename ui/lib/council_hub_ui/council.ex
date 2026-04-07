@@ -95,6 +95,17 @@ defmodule CouncilHubUi.Council do
     |> Map.new()
   end
 
+  @doc "Returns a MapSet of room IDs that have at least one synthesis message."
+  def all_room_synthesis_flags do
+    Repo.all(
+      from m in Message,
+        where: m.message_type == "synthesis",
+        distinct: true,
+        select: m.room_id
+    )
+    |> MapSet.new()
+  end
+
   @doc "Returns %{room_id => latest_message_id} for all rooms in a single query."
   def all_room_latest_message_ids do
     Repo.all(

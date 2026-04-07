@@ -437,3 +437,107 @@ func TestHandleRoomStatsDBError(t *testing.T) {
 		t.Errorf("expected error, got: %s", text)
 	}
 }
+
+// ========== search_messages include_related ==========
+
+func TestHandleSearchMessagesIncludeRelated(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "main-room", withRelatedRooms("linked-room"))
+	mustCreateRoom(t, reg.Server, "linked-room")
+	mustPost(t, reg.Server, "main-room", "Claude", "concept in main room")
+	mustPost(t, reg.Server, "linked-room", "Gemini", "concept in linked room")
+
+	// Without include_related, only finds message in main-room
+	res, _, _ := reg.handleSearchMessages(context.Background(), nil, SearchMessagesInput{
+		Query:  "concept",
+		RoomID: "main-room",
+	})
+	if !strings.Contains(resultText(res), "1 message(s)") {
+		t.Errorf("expected 1 result without include_related, got: %s", resultText(res))
+	}
+
+	// With include_related, finds messages in both rooms
+	res, _, _ = reg.handleSearchMessages(context.Background(), nil, SearchMessagesInput{
+		Query:          "concept",
+		RoomID:         "main-room",
+		IncludeRelated: "true",
+	})
+	text := resultText(res)
+	if !strings.Contains(text, "2 message(s)") {
+		t.Errorf("expected 2 results with include_related, got: %s", text)
+	}
+	if !strings.Contains(text, "searched") {
+		t.Errorf("expected scope note in response, got: %s", text)
+	}
+}
+
+func TestHandleSearchMessagesIncludeRelatedNoRelated(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "solo-room")
+	mustPost(t, reg.Server, "solo-room", "Claude", "isolated concept")
+
+	// Room has no related rooms — include_related should be a no-op (no error)
+	res, _, _ := reg.handleSearchMessages(context.Background(), nil, SearchMessagesInput{
+		Query:          "isolated",
+		RoomID:         "solo-room",
+		IncludeRelated: "true",
+	})
+	text := resultText(res)
+	if !strings.Contains(text, "1 message(s)") {
+		t.Errorf("expected 1 result, got: %s", text)
+	}
+}
+
+// ========== move_messages ==========
+
+func TestHandleMoveMessages(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "mv-src-h")
+	mustCreateRoom(t, reg.Server, "mv-dst-h")
+	id1 := mustPost(t, reg.Server, "mv-src-h", "Claude", "move this")
+	id2 := mustPost(t, reg.Server, "mv-src-h", "Gemini", "move this too")
+
+	res, _, _ := reg.handleMoveMessages(context.Background(), nil, MoveMessagesInput{
+		MessageIDs:   id1 + "," + id2,
+		TargetRoomID: "mv-dst-h",
+	})
+	text := resultText(res)
+	if !strings.Contains(text, "Moved 2 message(s)") {
+		t.Errorf("expected success message, got: %s", text)
+	}
+}
+
+func TestHandleMoveMessagesTargetNotFound(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "mv-src-notfound")
+	id := mustPost(t, reg.Server, "mv-src-notfound", "Claude", "hello")
+
+	res, _, _ := reg.handleMoveMessages(context.Background(), nil, MoveMessagesInput{
+		MessageIDs:   id,
+		TargetRoomID: "does-not-exist",
+	})
+	text := resultText(res)
+	if !strings.Contains(text, "Error") {
+		t.Errorf("expected error for missing target room, got: %s", text)
+	}
+}
+
+func TestHandleMoveMessagesMissingIDs(t *testing.T) {
+	reg := setupHandlerTest(t)
+	res, _, _ := reg.handleMoveMessages(context.Background(), nil, MoveMessagesInput{
+		TargetRoomID: "some-room",
+	})
+	if !strings.Contains(resultText(res), "Error") {
+		t.Errorf("expected error for missing message_ids")
+	}
+}
+
+func TestHandleMoveMessagesMissingTarget(t *testing.T) {
+	reg := setupHandlerTest(t)
+	res, _, _ := reg.handleMoveMessages(context.Background(), nil, MoveMessagesInput{
+		MessageIDs: "abc123",
+	})
+	if !strings.Contains(resultText(res), "Error") {
+		t.Errorf("expected error for missing target_room_id")
+	}
+}

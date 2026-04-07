@@ -1,6 +1,6 @@
 # Council Hub — Feature Backlog
 
-Consolidated from agent feedback across real usage sessions (2026-03-31, updated 2026-04-01 for v0.5.0, updated 2026-04-03 from cluster feedback room on council_hub, updated 2026-04-06 from council-hub-v2-feedback room, updated 2026-04-07 for v0.14.0 semantic search).
+Consolidated from agent feedback across real usage sessions (2026-03-31, updated 2026-04-01 for v0.5.0, updated 2026-04-03 from cluster feedback room on council_hub, updated 2026-04-06 from council-hub-v2-feedback room, updated 2026-04-07 for v0.14.0 semantic search, updated 2026-04-08 for v0.16.0 move_messages + include_related + UI interactivity).
 Features already implemented are marked. Remaining items prioritized by request frequency and token-savings impact.
 
 ---
@@ -186,6 +186,19 @@ Dashboard features added to reflect MCP server capabilities from v0.11.0–v0.12
 | R | **All read tools cluster-aware** — `get_messages`, `get_digest`, `read_room` now support `cluster_wide=true` alongside existing cluster tools | DONE |
 | S | **libcluster reconnect fix** — explicit `polling_interval: 3_000` on Epmd/Gossip strategies so cluster auto-heals after sleep/wake | DONE |
 | T | **Expanded test coverage** — cluster timeout, connection refused, malformed JSON, Unicode/emoji round-trip, LIKE wildcard safety, fan_out edge cases | DONE |
+
+---
+
+## Shipped in v0.16.0
+
+| # | Feature | Status |
+|---|---------|--------|
+| BL | **`move_messages(message_ids, target_room_id)`** — relocate messages between rooms preserving author/timestamp/type metadata; FTS5 triggers maintain search index | DONE |
+| BM | **`search_messages(include_related=true)`** — automatically expands search scope to include 1-level related rooms when room_id is set | DONE |
+| BN | **Semantic search discoverability** — `semantic` param omitted from schema when no embedder configured; agents never see a param that fails at runtime | DONE |
+| BO | **UI: Compiled badge on room cards** — rooms with synthesis messages show a 📖 badge in the sidebar | DONE |
+| BP | **UI: Interactive status toggle** — status badge is now a clickable button cycling active→paused→resolved | DONE |
+| BQ | **UI: Advanced search filters** — filter panel with author, date-from, date-until inputs; routes through `Council.search_messages/1` for server-side filtering | DONE |
 
 ---
 

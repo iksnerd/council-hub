@@ -29,6 +29,7 @@ defmodule CouncilHubUiWeb.CouncilLive do
        room_counts: safe_room_counts(db_connected),
        participant_counts: safe_participant_counts(db_connected),
        latest_ids: safe_latest_ids(db_connected),
+       synthesis_flags: safe_synthesis_flags(db_connected),
        active_room: nil,
        last_msg_id: "",
        collapsed_summaries: MapSet.new(),
@@ -41,6 +42,10 @@ defmodule CouncilHubUiWeb.CouncilLive do
        type_filter: "all",
        message_search: "",
        searching: false,
+       show_search_filters: false,
+       search_author: "",
+       search_since: "",
+       search_until: "",
        nodes: [Node.self() | Node.list()],
        cluster_wide: false,
        cluster_warnings: []
@@ -71,7 +76,11 @@ defmodule CouncilHubUiWeb.CouncilLive do
            has_messages: messages != [],
            type_filter: "all",
            message_search: "",
-           searching: false
+           searching: false,
+           show_search_filters: false,
+           search_author: "",
+           search_since: "",
+           search_until: ""
          )
          |> stream(:messages, messages, reset: true)}
     end
@@ -140,6 +149,7 @@ defmodule CouncilHubUiWeb.CouncilLive do
           room_counts: new_counts,
           participant_counts: new_participants,
           latest_ids: new_latest_ids,
+          synthesis_flags: safe_synthesis_flags(db_connected),
           db_connected: db_connected,
           last_room_update: latest
         )
@@ -276,6 +286,71 @@ defmodule CouncilHubUiWeb.CouncilLive do
     {:noreply, socket}
   end
 
+  def handle_event("toggle_search_filters", _params, socket) do
+    {:noreply, assign(socket, show_search_filters: !socket.assigns.show_search_filters)}
+  end
+
+  def handle_event("apply_search_filters", params, socket) do
+    author = Map.get(params, "author", "")
+    since = Map.get(params, "since", "")
+    until_val = Map.get(params, "until", "")
+
+    socket = assign(socket, search_author: author, search_since: since, search_until: until_val)
+
+    case socket.assigns.active_room do
+      nil ->
+        {:noreply, socket}
+
+      room ->
+        has_advanced = author != "" or since != "" or until_val != ""
+
+        {results, searching} =
+          if has_advanced or socket.assigns.message_search != "" do
+            msgs =
+              Council.search_messages(%{
+                "room_id" => room.id,
+                "query" => socket.assigns.message_search,
+                "author" => if(author == "", do: nil, else: author),
+                "since" => if(since == "", do: nil, else: since),
+                "until" => if(until_val == "", do: nil, else: until_val),
+                "limit" => 200
+              })
+
+            {msgs, true}
+          else
+            msgs = Council.list_messages_for_room(room.id, socket.assigns.type_filter)
+            {msgs, false}
+          end
+
+        last_id = last_message_id(results)
+
+        {:noreply,
+         socket
+         |> assign(
+           last_msg_id: last_id,
+           searching: searching,
+           has_messages: results != []
+         )
+         |> stream(:messages, results, reset: true)}
+    end
+  end
+
+  def handle_event("toggle_status", %{"room-id" => room_id, "status" => current_status}, socket) do
+    next_status =
+      case current_status do
+        "active" -> "paused"
+        "paused" -> "resolved"
+        _ -> "active"
+      end
+
+    case CouncilHubUi.McpClient.signal_status(room_id, next_status) do
+      :ok -> :ok
+      {:error, reason} -> Logger.warning("signal_status failed: #{inspect(reason)}")
+    end
+
+    {:noreply, socket}
+  end
+
   # -- Helpers --
 
   defp schedule_poll(msg, interval), do: Process.send_after(self(), msg, interval)
@@ -388,5 +463,15 @@ defmodule CouncilHubUiWeb.CouncilLive do
     e in [DBConnection.ConnectionError, Exqlite.Error] ->
       Logger.warning("Failed to load latest message ids: #{inspect(e)}")
       %{}
+  end
+
+  defp safe_synthesis_flags(false), do: MapSet.new()
+
+  defp safe_synthesis_flags(true) do
+    Council.all_room_synthesis_flags()
+  rescue
+    e in [DBConnection.ConnectionError, Exqlite.Error] ->
+      Logger.warning("Failed to load synthesis flags: #{inspect(e)}")
+      MapSet.new()
   end
 end
