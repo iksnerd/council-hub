@@ -9,7 +9,8 @@ import Config
 
 config :council_hub_ui,
   ecto_repos: [CouncilHubUi.Repo],
-  generators: [timestamp_type: :utc_datetime]
+  generators: [timestamp_type: :utc_datetime],
+  mcp_server_url: System.get_env("COUNCIL_MCP_URL", "http://127.0.0.1:3001/mcp")
 
 # Configure the endpoint
 config :council_hub_ui, CouncilHubUiWeb.Endpoint,

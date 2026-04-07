@@ -60,6 +60,30 @@ const Hooks = {
     },
     destroyed() { clearInterval(this.timer) }
   },
+  EmojiPicker: {
+    mounted() {
+      const trigger = this.el.querySelector(".emoji-picker-trigger")
+      const panel = this.el.querySelector(".emoji-picker-panel")
+      if (!trigger || !panel) return
+
+      trigger.addEventListener("click", (e) => {
+        e.stopPropagation()
+        panel.classList.toggle("hidden")
+        panel.classList.toggle("flex")
+      })
+
+      this._closeHandler = (e) => {
+        if (!this.el.contains(e.target)) {
+          panel.classList.add("hidden")
+          panel.classList.remove("flex")
+        }
+      }
+      document.addEventListener("click", this._closeHandler)
+    },
+    destroyed() {
+      if (this._closeHandler) document.removeEventListener("click", this._closeHandler)
+    }
+  },
   ScrollBottom: {
     mounted() {
       this.scrollToBottom()

@@ -4,6 +4,16 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.13.2] - 2026-04-07
+
+### Added
+- UI: emoji reactions rendered inline below messages with author tooltip; click existing reaction to toggle; "+" hover button opens preset emoji picker (8 emojis) that POSTs to Go MCP server via JSON-RPC
+- UI: "Synthesis" filter button and purple/gold badge for synthesis message type
+- UI: stale/needs-synthesis room health flags — colored left border and badge pills in sidebar
+- UI: related room chips in room header are now navigable links (phx-click patch)
+- UI: latest message ID cursor shown (truncated) in each room card for delta-read debugging
+- UI: `reactions` field added to Ecto Message schema; Ecto migration for test DB
+
 ## [0.13.1] - 2026-04-07
 
 ### Added

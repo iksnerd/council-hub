@@ -30,6 +30,72 @@ defmodule CouncilHubUiWeb.CouncilComponentsTest do
       assert html =~ "5"
     end
 
+    test "shows stale health badge when tagged stale" do
+      assigns = %{
+        room: %{id: "stale-room", status: "active", description: "", tags: "stale",
+                updated_at: ~N[2026-03-29 14:00:00]},
+        active: false,
+        count: 0
+      }
+
+      html = render_component(&CouncilComponents.room_card/1, assigns)
+      assert html =~ "stale"
+      assert html =~ "red"
+    end
+
+    test "shows needs-synthesis health badge" do
+      assigns = %{
+        room: %{id: "synth-room", status: "active", description: "", tags: "needs-synthesis",
+                updated_at: ~N[2026-03-29 14:00:00]},
+        active: false,
+        count: 0
+      }
+
+      html = render_component(&CouncilComponents.room_card/1, assigns)
+      assert html =~ "needs synthesis"
+      assert html =~ "yellow"
+    end
+
+    test "no health badges for healthy room" do
+      assigns = %{
+        room: %{id: "healthy-room", status: "active", description: "", tags: "auth,api",
+                updated_at: ~N[2026-03-29 14:00:00]},
+        active: false,
+        count: 0
+      }
+
+      html = render_component(&CouncilComponents.room_card/1, assigns)
+      refute html =~ "needs synthesis"
+      refute html =~ ~r/bg-red-500.*stale/
+    end
+
+    test "shows truncated latest_id as cursor" do
+      assigns = %{
+        room: %{id: "cursor-room", status: "active", description: "", tags: "",
+                updated_at: ~N[2026-03-29 14:00:00]},
+        active: false,
+        count: 0,
+        latest_id: "019d0000-0000-7000-8000-abcdef123456"
+      }
+
+      html = render_component(&CouncilComponents.room_card/1, assigns)
+      assert html =~ "019d0000"
+      assert html =~ "cursor:"
+    end
+
+    test "no cursor shown when latest_id is nil" do
+      assigns = %{
+        room: %{id: "no-cursor-room", status: "active", description: "", tags: "",
+                updated_at: ~N[2026-03-29 14:00:00]},
+        active: false,
+        count: 0,
+        latest_id: nil
+      }
+
+      html = render_component(&CouncilComponents.room_card/1, assigns)
+      refute html =~ "cursor:"
+    end
+
     test "renders active styling" do
       assigns = %{
         room: %{
@@ -127,6 +193,28 @@ defmodule CouncilHubUiWeb.CouncilComponentsTest do
       assert html =~ "room-a"
       assert html =~ "room-b"
       assert html =~ "10 msgs"
+    end
+
+    test "renders related rooms as navigable links" do
+      assigns = %{
+        room: %{
+          id: "linked-room",
+          status: "active",
+          description: "",
+          project: "",
+          tech_stack: "",
+          tags: "",
+          system_prompt: "",
+          related_rooms: "room-a,room-b",
+          created_at: ~N[2026-03-29 14:00:00]
+        },
+        count: 0,
+        show_system_prompt: false
+      }
+
+      html = render_component(&CouncilComponents.room_header/1, assigns)
+      assert html =~ ~r/href="\/rooms\/room-a"/
+      assert html =~ ~r/href="\/rooms\/room-b"/
     end
 
     test "shows system prompt when toggled" do
@@ -237,6 +325,79 @@ defmodule CouncilHubUiWeb.CouncilComponentsTest do
 
       html = render_component(&CouncilComponents.message_bubble/1, assigns)
       assert html =~ "critique"
+    end
+
+    test "renders synthesis type with purple and amber classes" do
+      assigns = %{
+        msg: %{
+          id: "uuid-synth",
+          author: "Claude",
+          content: "Synthesized insight",
+          message_type: "synthesis",
+          reply_to: "",
+          timestamp: ~N[2026-03-29 14:00:00]
+        }
+      }
+
+      html = render_component(&CouncilComponents.message_bubble/1, assigns)
+      assert html =~ "synthesis"
+      assert html =~ "purple"
+      assert html =~ "amber"
+    end
+
+    test "renders emoji reaction badges" do
+      assigns = %{
+        msg: %{
+          id: "uuid-react",
+          author: "Claude",
+          content: "Nice work",
+          message_type: "message",
+          reply_to: "",
+          reactions: ~s({"👍": ["gemini", "gpt"]}),
+          timestamp: ~N[2026-03-29 14:00:00]
+        }
+      }
+
+      html = render_component(&CouncilComponents.message_bubble/1, assigns)
+      assert html =~ "👍"
+      assert html =~ "gemini, gpt"
+    end
+
+    test "renders emoji picker trigger button" do
+      assigns = %{
+        msg: %{
+          id: "uuid-picker",
+          author: "Claude",
+          content: "React to this",
+          message_type: "message",
+          reply_to: "",
+          reactions: "{}",
+          timestamp: ~N[2026-03-29 14:00:00]
+        }
+      }
+
+      html = render_component(&CouncilComponents.message_bubble/1, assigns)
+      assert html =~ "EmojiPicker"
+      assert html =~ "emoji-picker-uuid-picker"
+    end
+
+    test "reaction badge phx-click sends react event" do
+      assigns = %{
+        msg: %{
+          id: "uuid-react2",
+          author: "Gemini",
+          content: "Click the reaction",
+          message_type: "message",
+          reply_to: "",
+          reactions: ~s({"🎉": ["claude"]}),
+          timestamp: ~N[2026-03-29 14:00:00]
+        }
+      }
+
+      html = render_component(&CouncilComponents.message_bubble/1, assigns)
+      assert html =~ ~s(phx-click="react")
+      assert html =~ "uuid-react2"
+      assert html =~ "🎉"
     end
 
     test "renders copy button with message data" do

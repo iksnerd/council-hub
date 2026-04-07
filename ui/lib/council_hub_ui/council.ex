@@ -95,6 +95,16 @@ defmodule CouncilHubUi.Council do
     |> Map.new()
   end
 
+  @doc "Returns %{room_id => latest_message_id} for all rooms in a single query."
+  def all_room_latest_message_ids do
+    Repo.all(
+      from m in Message,
+        group_by: m.room_id,
+        select: {m.room_id, max(m.id)}
+    )
+    |> Map.new()
+  end
+
   @doc "Returns the latest updated_at across all rooms, for change detection."
   def latest_room_update do
     Repo.one(from r in Room, select: max(r.updated_at))

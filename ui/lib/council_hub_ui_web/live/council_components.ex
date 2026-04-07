@@ -13,6 +13,7 @@ defmodule CouncilHubUiWeb.CouncilComponents do
   attr :count, :integer, default: 0
   attr :participants, :integer, default: 0
   attr :source_node, :string, default: nil
+  attr :latest_id, :string, default: nil
 
   def room_card(assigns) do
     ~H"""
@@ -23,6 +24,10 @@ defmodule CouncilHubUiWeb.CouncilComponents do
         if(@active,
           do: "bg-amber-500/10 border-amber-500/30 shadow-sm shadow-amber-500/5",
           else: "border-transparent hover:bg-zinc-800/40 hover:border-zinc-700/30"
+        ),
+        if(room_health_flags(@room).stale,
+          do: "border-l-2 border-l-red-500/50",
+          else: if(room_health_flags(@room).needs_synthesis, do: "border-l-2 border-l-yellow-500/50", else: nil)
         )
       ]}
     >
@@ -55,6 +60,23 @@ defmodule CouncilHubUiWeb.CouncilComponents do
           {tag}
         </span>
       </div>
+      <div
+        :if={room_health_flags(@room).stale or room_health_flags(@room).needs_synthesis}
+        class="flex items-center gap-1 mt-1"
+      >
+        <span
+          :if={room_health_flags(@room).stale}
+          class="inline-flex items-center px-1.5 py-0.5 rounded-md bg-red-500/15 text-red-400 text-[9px] font-medium border border-red-500/20"
+        >
+          stale
+        </span>
+        <span
+          :if={room_health_flags(@room).needs_synthesis}
+          class="inline-flex items-center px-1.5 py-0.5 rounded-md bg-yellow-500/15 text-yellow-400 text-[9px] font-medium border border-yellow-500/20"
+        >
+          needs synthesis
+        </span>
+      </div>
       <span
         :if={present?(@source_node)}
         class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 text-[9px] font-mono mt-1"
@@ -73,6 +95,13 @@ defmodule CouncilHubUiWeb.CouncilComponents do
         </div>
         <span :if={@participants > 1} class="text-[9px] text-zinc-700 font-mono shrink-0">
           {@participants} agents
+        </span>
+        <span
+          :if={present?(@latest_id)}
+          class="text-[9px] text-zinc-700 font-mono shrink-0 truncate"
+          title={"cursor: #{@latest_id}"}
+        >
+          {String.slice(@latest_id || "", 0, 8)}
         </span>
       </div>
     </.link>
@@ -136,13 +165,14 @@ defmodule CouncilHubUiWeb.CouncilComponents do
           #{tag}
         </span>
 
-        <span
+        <.link
           :for={related <- parse_tags(Map.get(@room, :related_rooms, ""))}
-          class="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-500/10 text-emerald-400 text-xs border border-emerald-500/15"
+          patch={"/rooms/#{related}"}
+          class="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-500/10 text-emerald-400 text-xs border border-emerald-500/15 hover:bg-emerald-500/20 hover:border-emerald-500/25 transition-colors cursor-pointer"
         >
           <span class="hero-link w-3 h-3 opacity-50"></span>
           {related}
-        </span>
+        </.link>
 
         <div class="flex items-center gap-2 ml-auto">
           <a
@@ -247,6 +277,40 @@ defmodule CouncilHubUiWeb.CouncilComponents do
           <div class={"council-prose text-[0.9rem] leading-relaxed text-zinc-200 border-l-2 pl-3 #{author_classes(@msg.author)}"}>
             {raw(render_markdown(@msg.content))}
           </div>
+          <div class="flex items-center gap-1.5 mt-2 flex-wrap">
+            <button
+              :for={{emoji, authors} <- parse_reactions(Map.get(@msg, :reactions))}
+              phx-click="react"
+              phx-value-message-id={@msg.id}
+              phx-value-emoji={emoji}
+              class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-zinc-800/80 text-xs border border-zinc-700/50 hover:bg-zinc-700/60 active:scale-95 transition-all cursor-pointer"
+              title={Enum.join(authors, ", ")}
+              type="button"
+            >
+              {emoji} <span class="text-zinc-400 text-[10px] font-mono">{length(authors)}</span>
+            </button>
+            <div
+              id={"emoji-picker-#{@msg.id}"}
+              phx-hook="EmojiPicker"
+              data-message-id={@msg.id}
+              class="relative inline-flex opacity-0 group-hover:opacity-100 transition-opacity"
+            >
+              <button
+                type="button"
+                class="emoji-picker-trigger inline-flex items-center justify-center w-5 h-5 rounded-full bg-zinc-800/60 border border-zinc-700/40 text-zinc-600 hover:text-zinc-300 hover:border-zinc-500/60 transition-colors cursor-pointer text-[10px]"
+                title="Add reaction"
+              >+</button>
+              <div class="emoji-picker-panel hidden absolute bottom-7 left-0 z-50 flex gap-1 p-1.5 rounded-lg bg-zinc-900 border border-zinc-700/60 shadow-xl">
+                <button :for={e <- ~w(👍 ❤️ 🎉 🚀 👀 ✅ 🤔 🔥)}
+                  type="button"
+                  phx-click="react"
+                  phx-value-message-id={@msg.id}
+                  phx-value-emoji={e}
+                  class="text-base hover:scale-125 transition-transform cursor-pointer p-0.5 rounded"
+                >{e}</button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -282,6 +346,18 @@ defmodule CouncilHubUiWeb.CouncilComponents do
         if(@collapsed, do: "line-clamp-2 opacity-60", else: "")
       ]}>
         {raw(render_markdown(@msg.content))}
+      </div>
+      <div
+        :if={parse_reactions(Map.get(@msg, :reactions)) != %{}}
+        class="flex items-center gap-1.5 mt-2 ml-9 flex-wrap"
+      >
+        <span
+          :for={{emoji, authors} <- parse_reactions(Map.get(@msg, :reactions))}
+          class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-zinc-800/80 text-xs border border-zinc-700/50 hover:bg-zinc-700/60 transition-colors cursor-default"
+          title={Enum.join(authors, ", ")}
+        >
+          {emoji} <span class="text-zinc-400 text-[10px] font-mono">{length(authors)}</span>
+        </span>
       </div>
     </div>
     """

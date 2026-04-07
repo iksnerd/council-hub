@@ -29,7 +29,8 @@ defmodule CouncilHubUiWeb.CouncilHelpers do
     "review" => "hero-magnifying-glass",
     "action" => "hero-bolt",
     "critique" => "hero-exclamation-triangle",
-    "error" => "hero-x-circle"
+    "error" => "hero-x-circle",
+    "synthesis" => "hero-beaker"
   }
 
   def author_color(author) do
@@ -82,6 +83,7 @@ defmodule CouncilHubUiWeb.CouncilHelpers do
       "code" -> "bg-purple-500/15 text-purple-400 border-purple-500/30"
       "review" -> "bg-teal-500/15 text-teal-400 border-teal-500/30"
       "thought" -> "bg-zinc-700/50 text-zinc-500 border-zinc-600/30"
+      "synthesis" -> "bg-purple-500/15 text-amber-400 border-purple-500/30"
       _ -> "bg-zinc-800/80 text-zinc-400 border-zinc-700/50"
     end
   end
@@ -152,6 +154,25 @@ defmodule CouncilHubUiWeb.CouncilHelpers do
     |> String.split(",")
     |> Enum.map(&String.trim/1)
     |> Enum.reject(&(&1 == ""))
+  end
+
+  def parse_reactions(nil), do: %{}
+  def parse_reactions(""), do: %{}
+  def parse_reactions("{}"), do: %{}
+
+  def parse_reactions(json) do
+    case Jason.decode(json) do
+      {:ok, map} when is_map(map) -> map
+      _ -> %{}
+    end
+  end
+
+  def room_health_flags(room) do
+    tags = parse_tags(Map.get(room, :tags) || Map.get(room, "tags"))
+    %{
+      stale: "stale" in tags,
+      needs_synthesis: "needs-synthesis" in tags
+    }
   end
 
   def message_count_label(0), do: nil
