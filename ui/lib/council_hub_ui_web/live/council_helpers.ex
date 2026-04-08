@@ -2,23 +2,23 @@ defmodule CouncilHubUiWeb.CouncilHelpers do
   @moduledoc false
 
   @known_authors %{
-    "claude" => {"#C084FC", "bg-purple-900/30 border-purple-500/50 text-purple-300"},
-    "gemini" => {"#60A5FA", "bg-blue-900/30 border-blue-500/50 text-blue-300"},
-    "gpt" => {"#34D399", "bg-emerald-900/30 border-emerald-500/50 text-emerald-300"},
-    "system" => {"#F59E0B", "bg-amber-900/30 border-amber-500/50 text-amber-300"},
-    "admin" => {"#F472B6", "bg-pink-900/30 border-pink-500/50 text-pink-300"},
-    "amp" => {"#22D3EE", "bg-cyan-900/30 border-cyan-500/50 text-cyan-300"}
+    "claude" => {"#a78bfa", "border-violet-500/20"},
+    "gemini" => {"#60a5fa", "border-blue-500/20"},
+    "gpt" => {"#34d399", "border-emerald-500/20"},
+    "system" => {"#fbbf24", "border-amber-500/20"},
+    "admin" => {"#f472b6", "border-pink-500/20"},
+    "amp" => {"#22d3ee", "border-cyan-500/20"}
   }
 
   @fallback_colors [
-    {"#FB923C", "bg-orange-900/30 border-orange-500/50 text-orange-300"},
-    {"#2DD4BF", "bg-teal-900/30 border-teal-500/50 text-teal-300"},
-    {"#A78BFA", "bg-violet-900/30 border-violet-500/50 text-violet-300"},
-    {"#FBBF24", "bg-yellow-900/30 border-yellow-500/50 text-yellow-300"},
-    {"#F472B6", "bg-pink-900/30 border-pink-500/50 text-pink-300"},
-    {"#818CF8", "bg-indigo-900/30 border-indigo-500/50 text-indigo-300"},
-    {"#22D3EE", "bg-cyan-900/30 border-cyan-500/50 text-cyan-300"},
-    {"#4ADE80", "bg-green-900/30 border-green-500/50 text-green-300"}
+    {"#fb923c", "border-orange-500/20"},
+    {"#2dd4bf", "border-teal-500/20"},
+    {"#a78bfa", "border-violet-500/20"},
+    {"#fbbf24", "border-amber-500/20"},
+    {"#f472b6", "border-pink-500/20"},
+    {"#818cf8", "border-indigo-500/20"},
+    {"#22d3ee", "border-cyan-500/20"},
+    {"#4ade80", "border-green-500/20"}
   ]
 
   @type_icons %{
@@ -56,6 +56,11 @@ defmodule CouncilHubUiWeb.CouncilHelpers do
     classes
   end
 
+  def author_prose_class(author) do
+    {_hex, border_class} = author_color(author)
+    border_class
+  end
+
   def author_initials(nil), do: "?"
 
   def author_initials(author) do
@@ -77,14 +82,14 @@ defmodule CouncilHubUiWeb.CouncilHelpers do
 
   def type_color(type) do
     case type do
-      "decision" -> "bg-green-500/15 text-green-400 border-green-500/30"
-      "action" -> "bg-blue-500/15 text-blue-400 border-blue-500/30"
-      "critique" -> "bg-amber-500/15 text-amber-400 border-amber-500/30"
-      "code" -> "bg-purple-500/15 text-purple-400 border-purple-500/30"
-      "review" -> "bg-teal-500/15 text-teal-400 border-teal-500/30"
-      "thought" -> "bg-zinc-700/50 text-zinc-500 border-zinc-600/30"
-      "synthesis" -> "bg-purple-500/15 text-amber-400 border-purple-500/30"
-      _ -> "bg-zinc-800/80 text-zinc-400 border-zinc-700/50"
+      "decision" -> "bg-emerald-500/10 text-emerald-400/80"
+      "action" -> "bg-sky-500/10 text-sky-400/80"
+      "critique" -> "bg-amber-500/10 text-amber-400/80"
+      "code" -> "bg-violet-500/10 text-violet-400/80"
+      "review" -> "bg-teal-500/10 text-teal-400/80"
+      "thought" -> "bg-slate-700/30 text-slate-500"
+      "synthesis" -> "bg-purple-500/10 text-purple-300/80"
+      _ -> "bg-slate-800/40 text-slate-500"
     end
   end
 
@@ -99,19 +104,19 @@ defmodule CouncilHubUiWeb.CouncilHelpers do
 
   def status_badge_class(status) do
     case status do
-      "active" -> "bg-green-500/20 text-green-400 border border-green-500/30"
-      "paused" -> "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30"
-      "resolved" -> "bg-neutral-500/20 text-neutral-400 border border-neutral-500/30"
-      _ -> "bg-neutral-500/20 text-neutral-400 border border-neutral-500/30"
+      "active" -> "bg-emerald-500/10 text-emerald-400/80 border border-emerald-500/15"
+      "paused" -> "bg-amber-500/10 text-amber-400/80 border border-amber-500/15"
+      "resolved" -> "bg-slate-500/10 text-slate-400/80 border border-slate-500/15"
+      _ -> "bg-slate-500/10 text-slate-400/80 border border-slate-500/15"
     end
   end
 
   def status_dot_class(status) do
     case status do
-      "active" -> "bg-green-400 animate-pulse"
-      "paused" -> "bg-yellow-400"
-      "resolved" -> "bg-neutral-400"
-      _ -> "bg-neutral-400"
+      "active" -> "bg-emerald-400 animate-pulse"
+      "paused" -> "bg-amber-400"
+      "resolved" -> "bg-slate-500"
+      _ -> "bg-slate-500"
     end
   end
 

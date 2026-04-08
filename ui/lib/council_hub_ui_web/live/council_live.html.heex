@@ -1,54 +1,55 @@
-<div class="flex h-screen bg-zinc-950 text-zinc-100 overflow-hidden">
+<div class="flex h-screen bg-[#070b14] text-slate-300 overflow-hidden">
   <%!-- SIDEBAR --%>
-  <aside class="w-80 bg-zinc-900/80 border-r border-zinc-800/80 flex flex-col shrink-0">
+  <aside class="w-72 bg-[#0a0f1a] border-r border-slate-800/50 flex flex-col shrink-0">
     <%!-- Logo / Title --%>
-    <div class="px-5 py-4 border-b border-zinc-800/80">
-      <div class="flex items-center gap-3">
-        <div class="w-9 h-9 rounded-lg bg-gradient-to-br from-amber-500/30 to-amber-600/10 flex items-center justify-center border border-amber-500/20">
-          <span class="text-amber-400 font-bold text-sm">CH</span>
+    <div class="px-3 py-2.5 border-b border-slate-800/50">
+      <div class="flex items-center gap-2.5">
+        <div class="w-7 h-7 rounded bg-sky-500/10 flex items-center justify-center border border-sky-500/20">
+          <span class="text-sky-400 font-semibold text-[10px] tracking-wider">CH</span>
         </div>
         <div>
-          <h1 class="text-sm font-bold text-zinc-100 tracking-wider uppercase">Council Hub</h1>
-          <p class="text-[10px] text-zinc-500 font-mono tracking-wide">
-            LLM Collaboration Monitor · v{Application.spec(:council_hub_ui, :vsn)}
+          <h1 class="text-[11px] font-semibold text-slate-200 tracking-widest uppercase">
+            Council Hub
+          </h1>
+          <p class="text-[9px] text-slate-600 font-mono tracking-wide">
+            v{Application.spec(:council_hub_ui, :vsn)}
           </p>
         </div>
       </div>
       <%= if !@db_connected do %>
         <div
           role="status"
-          class="mt-3 text-[10px] text-red-400 bg-red-500/10 rounded-md px-3 py-1.5 border border-red-500/20 flex items-center gap-2"
+          class="mt-2 text-[9px] text-red-400 bg-red-500/5 rounded px-2 py-1 border border-red-500/10 flex items-center gap-1.5"
         >
-          <span class="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse"></span>
-          DB disconnected — waiting for council.db
+          <span class="w-1 h-1 rounded-full bg-red-400 animate-pulse"></span> DB disconnected
         </div>
       <% end %>
     </div>
 
     <%!-- Cluster Nodes --%>
-    <div class="px-3 pt-4 pb-2 border-b border-zinc-800/40">
-      <div class="flex items-center gap-2 px-3 mb-2">
-        <div class="w-1 h-1 rounded-full bg-amber-400/60 animate-pulse"></div>
-        <span class="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">
-          Cluster Nodes
+    <div class="px-3 py-2 border-b border-slate-800/30">
+      <div class="flex items-center gap-1.5 mb-1.5">
+        <span class="w-1 h-1 rounded-full bg-sky-400/50 animate-pulse"></span>
+        <span class="text-[9px] font-medium text-slate-500 uppercase tracking-[0.15em]">
+          Nodes
         </span>
-        <span class="text-[10px] text-zinc-600 font-mono ml-auto">{length(@nodes)}</span>
+        <span class="text-[9px] text-slate-600 font-mono ml-auto">{length(@nodes)}</span>
       </div>
-      <div class="flex flex-wrap gap-1 px-2">
+      <div class="flex flex-wrap gap-1">
         <%= for node <- @nodes do %>
           <div
             class={[
-              "px-2 py-0.5 rounded text-[9px] font-mono border flex items-center gap-1.5 truncate max-w-full",
+              "px-1.5 py-px rounded text-[8px] font-mono border flex items-center gap-1 truncate",
               if(node == Node.self(),
-                do: "bg-amber-500/10 text-amber-400 border-amber-500/20",
-                else: "bg-blue-500/10 text-blue-400 border-blue-500/20"
+                do: "bg-sky-500/8 text-sky-400 border-sky-500/15",
+                else: "bg-slate-500/5 text-slate-500 border-slate-500/10"
               )
             ]}
             title={to_string(node)}
           >
             <span class={[
               "w-1 h-1 rounded-full",
-              if(node == Node.self(), do: "bg-amber-400", else: "bg-blue-400")
+              if(node == Node.self(), do: "bg-sky-400", else: "bg-slate-500")
             ]}>
             </span>
             {short_node(to_string(node))}
@@ -59,10 +60,10 @@
 
     <%!-- Cluster Warnings --%>
     <%= if @cluster_warnings != [] do %>
-      <div class="px-3 pt-2 pb-1">
+      <div class="px-3 py-1.5">
         <%= for warning <- @cluster_warnings do %>
-          <div class="flex items-start gap-2 px-2 py-1.5 rounded-md text-[10px] text-amber-400 bg-amber-500/10 border border-amber-500/20 mb-1">
-            <span class="hero-exclamation-triangle w-3 h-3 shrink-0 mt-px"></span>
+          <div class="flex items-start gap-1.5 px-2 py-1 rounded text-[9px] text-amber-400/80 bg-amber-500/5 border border-amber-500/10 mb-0.5">
+            <span class="hero-exclamation-triangle w-2.5 h-2.5 shrink-0 mt-px"></span>
             <span class="break-all">{warning}</span>
           </div>
         <% end %>
@@ -72,19 +73,19 @@
     <.mentions_panel mentions={@mentions} />
     <.archive_list archives={@archives} />
 
-    <%!-- Sidebar Search --%>
-    <div class="px-3 pt-2 flex items-center gap-2">
+    <%!-- Search + Cluster Toggle --%>
+    <div class="px-3 py-1.5 flex items-center gap-1.5">
       <form :if={@rooms != []} phx-change="filter_rooms" class="relative flex-1">
-        <span class="hero-magnifying-glass w-3.5 h-3.5 text-zinc-600 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none">
+        <span class="hero-magnifying-glass w-3 h-3 text-slate-600 absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none">
         </span>
         <input
           type="text"
           name="query"
           value={@room_filter}
-          placeholder="Filter rooms..."
+          placeholder="Filter..."
           autocomplete="off"
           phx-debounce="150"
-          class="w-full bg-zinc-800/50 border border-zinc-700/50 rounded-lg text-xs text-zinc-300 placeholder-gray-600 pl-8 pr-3 py-1.5 focus:outline-none focus:border-amber-500/30 focus:ring-1 focus:ring-amber-500/20"
+          class="w-full bg-slate-800/30 border border-slate-700/30 rounded text-[11px] text-slate-300 placeholder-slate-600 pl-7 pr-2 py-1 focus:outline-none focus:border-sky-500/30 focus:ring-1 focus:ring-sky-500/10"
         />
       </form>
       <button
@@ -95,27 +96,25 @@
             else: "Click to show all nodes"
         }
         class={[
-          "shrink-0 px-2 py-1.5 rounded-lg border text-[10px] font-mono transition-colors",
+          "shrink-0 px-1.5 py-1 rounded border text-[9px] font-mono transition-colors",
           if(@cluster_wide,
-            do: "bg-blue-500/15 border-blue-500/30 text-blue-400",
-            else: "bg-zinc-800/50 border-zinc-700/50 text-zinc-500 hover:text-zinc-300"
+            do: "bg-sky-500/10 border-sky-500/20 text-sky-400",
+            else: "bg-slate-800/30 border-slate-700/30 text-slate-500 hover:text-slate-300"
           )
         ]}
       >
-        {if @cluster_wide, do: "● all", else: "○ local"}
+        {if @cluster_wide, do: "ALL", else: "LOCAL"}
       </button>
     </div>
 
     <%!-- Room List --%>
-    <nav class="flex-1 overflow-y-auto px-3 pt-2 pb-3 scrollbar-thin">
+    <nav class="flex-1 overflow-y-auto px-2 pt-1 pb-2 scrollbar-thin">
       <%= if @rooms == [] do %>
-        <div class="text-center text-zinc-500 text-xs py-12 px-4">
+        <div class="text-center text-slate-600 text-[10px] py-8 px-4">
           <%= if !@db_connected do %>
-            <span class="hero-signal-slash w-8 h-8 text-zinc-600 mb-2"></span>
             Waiting for database...
           <% else %>
-            <span class="hero-building-library w-8 h-8 text-zinc-600 mb-2"></span>
-            No rooms yet.<br />Start the council via MCP.
+            No rooms. Start the council via MCP.
           <% end %>
         </div>
       <% else %>
@@ -126,19 +125,18 @@
             open={
               has_active || @room_filter != "" || length(group_rooms_by_project(filtered)) == 1
             }
-            class="mb-3 group/details"
+            class="mb-1 group/details"
           >
-            <summary class="flex items-center gap-2 px-3 pt-2 pb-1.5 cursor-pointer list-none select-none hover:text-zinc-300 transition-colors">
-              <span class="text-zinc-600 group-open/details:rotate-90 transition-transform duration-150 text-[10px]">
+            <summary class="flex items-center gap-1.5 px-2 py-1 cursor-pointer list-none select-none hover:text-slate-200 transition-colors">
+              <span class="text-slate-600 group-open/details:rotate-90 transition-transform duration-150 text-[8px]">
                 ▶
               </span>
-              <div class="w-1 h-1 rounded-full bg-blue-400/60"></div>
-              <span class="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest flex-1">
+              <span class="text-[9px] font-medium text-slate-500 uppercase tracking-[0.12em] flex-1">
                 {project}
               </span>
-              <span class="text-[10px] text-zinc-600 font-mono">{length(rooms)}</span>
+              <span class="text-[9px] text-slate-600 font-mono">{length(rooms)}</span>
             </summary>
-            <div class="space-y-1">
+            <div class="space-y-px ml-1">
               <%= for room <- rooms do %>
                 <.room_card
                   room={room}
@@ -156,7 +154,7 @@
         <% end %>
         <div
           :if={filtered == [] && @room_filter != ""}
-          class="text-center text-zinc-500 text-xs py-8"
+          class="text-center text-slate-600 text-[10px] py-6"
         >
           No rooms matching "{@room_filter}"
         </div>
@@ -164,11 +162,11 @@
     </nav>
 
     <%!-- Footer --%>
-    <div class="px-4 py-2.5 border-t border-zinc-800/80 text-[10px] text-zinc-600 font-mono flex items-center justify-between">
-      <span>{length(@rooms)} rooms{if @cluster_wide, do: " (all nodes)", else: ""}</span>
+    <div class="px-3 py-1.5 border-t border-slate-800/30 text-[9px] text-slate-600 font-mono flex items-center justify-between">
+      <span>{length(@rooms)} rooms</span>
       <span>v{Application.spec(:council_hub_ui, :vsn)}</span>
       <span class="flex items-center gap-1">
-        <span class="w-1.5 h-1.5 rounded-full bg-green-500/60 animate-pulse"></span> live
+        <span class="w-1 h-1 rounded-full bg-emerald-500/60 animate-pulse"></span> live
       </span>
     </div>
   </aside>
@@ -186,53 +184,50 @@
       />
 
       <%!-- Message Search + Type Filter --%>
-      <div class="px-6 py-2 border-b border-zinc-800/60">
-        <div class="flex items-center gap-3 flex-wrap">
-          <form phx-change="search_messages" class="relative flex-1 min-w-36">
+      <div class="px-4 py-1.5 border-b border-slate-800/30">
+        <div class="flex items-center gap-2 flex-wrap">
+          <form phx-change="search_messages" class="relative flex-1 min-w-32">
             <span class={[
-              "w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none hero-magnifying-glass",
-              if(@searching, do: "text-amber-400", else: "text-zinc-600")
+              "w-3 h-3 absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none hero-magnifying-glass",
+              if(@searching, do: "text-sky-400", else: "text-slate-600")
             ]}>
             </span>
             <input
               type="text"
               name="query"
               value={@message_search}
-              placeholder="Search messages..."
+              placeholder="Search..."
               autocomplete="off"
               phx-debounce="300"
-              class="w-full bg-zinc-800/50 border border-zinc-700/50 rounded-lg text-xs text-zinc-300 placeholder-gray-600 pl-8 pr-3 py-1.5 focus:outline-none focus:border-amber-500/30 focus:ring-1 focus:ring-amber-500/20"
+              class="w-full bg-slate-800/30 border border-slate-700/30 rounded text-[11px] text-slate-300 placeholder-slate-600 pl-7 pr-2 py-1 focus:outline-none focus:border-sky-500/30 focus:ring-1 focus:ring-sky-500/10"
             />
           </form>
           <button
             phx-click="toggle_search_filters"
-            title={
-              if @show_search_filters, do: "Hide filters", else: "Show author & date filters"
-            }
+            title={if @show_search_filters, do: "Hide filters", else: "Show filters"}
             type="button"
             class={[
-              "shrink-0 inline-flex items-center gap-1 px-2 py-1.5 rounded-lg border text-[10px] font-mono transition-colors",
+              "shrink-0 inline-flex items-center px-1.5 py-1 rounded border text-[9px] font-mono transition-colors",
               if(
                 @show_search_filters or @search_author != "" or @search_since != "" or
                   @search_until != "",
-                do: "bg-amber-500/15 border-amber-500/30 text-amber-400",
-                else: "bg-zinc-800/50 border-zinc-700/50 text-zinc-500 hover:text-zinc-300"
+                do: "bg-sky-500/10 border-sky-500/20 text-sky-400",
+                else: "bg-slate-800/30 border-slate-700/30 text-slate-500 hover:text-slate-300"
               )
             ]}
           >
-            <span class="hero-adjustments-horizontal w-3.5 h-3.5"></span>
+            <span class="hero-adjustments-horizontal w-3 h-3"></span>
           </button>
-          <div class="flex items-center gap-1 flex-wrap">
+          <div class="flex items-center gap-0.5 flex-wrap">
             <%= for {label, value} <- [{"All", "all"}, {"Decisions", "decision"}, {"Actions", "action"}, {"Code", "code"}, {"Reviews", "review"}, {"Thoughts", "thought"}, {"Synthesis", "synthesis"}, {"Critique", "critique"}] do %>
               <button
                 phx-click="filter_type"
                 phx-value-type={value}
                 class={[
-                  "inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium border transition-colors cursor-pointer",
+                  "inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium transition-colors cursor-pointer",
                   if(@type_filter == value && !@searching,
-                    do: "bg-amber-500/20 text-amber-400 border-amber-500/30",
-                    else:
-                      "bg-zinc-800/60 text-zinc-500 border-zinc-700/40 hover:text-zinc-300 hover:border-zinc-600/60"
+                    do: "bg-sky-500/15 text-sky-400",
+                    else: "text-slate-500 hover:text-slate-300 hover:bg-slate-800/30"
                   )
                 ]}
               >
@@ -242,10 +237,10 @@
           </div>
         </div>
         <%!-- Advanced filter panel --%>
-        <div :if={@show_search_filters} class="mt-2 pt-2 border-t border-zinc-800/40">
+        <div :if={@show_search_filters} class="mt-1.5 pt-1.5 border-t border-slate-800/20">
           <form phx-change="apply_search_filters" class="flex items-center gap-2 flex-wrap">
-            <div class="relative flex-1 min-w-28">
-              <span class="hero-user w-3 h-3 absolute left-2 top-1/2 -translate-y-1/2 text-zinc-600 pointer-events-none">
+            <div class="relative flex-1 min-w-24">
+              <span class="hero-user w-2.5 h-2.5 absolute left-2 top-1/2 -translate-y-1/2 text-slate-600 pointer-events-none">
               </span>
               <input
                 type="text"
@@ -254,17 +249,17 @@
                 placeholder="Author..."
                 autocomplete="off"
                 phx-debounce="300"
-                class="w-full bg-zinc-800/50 border border-zinc-700/50 rounded text-[11px] text-zinc-300 placeholder-zinc-600 pl-6 pr-2 py-1 focus:outline-none focus:border-amber-500/30"
+                class="w-full bg-slate-800/30 border border-slate-700/30 rounded text-[10px] text-slate-300 placeholder-slate-600 pl-5 pr-2 py-0.5 focus:outline-none focus:border-sky-500/30"
               />
             </div>
-            <div class="flex items-center gap-1.5 text-[10px] text-zinc-500 font-mono">
+            <div class="flex items-center gap-1 text-[9px] text-slate-500 font-mono">
               <span>from</span>
               <input
                 type="date"
                 name="since"
                 value={@search_since}
                 phx-debounce="300"
-                class="bg-zinc-800/50 border border-zinc-700/50 rounded text-[11px] text-zinc-300 px-2 py-1 focus:outline-none focus:border-amber-500/30"
+                class="bg-slate-800/30 border border-slate-700/30 rounded text-[10px] text-slate-300 px-1.5 py-0.5 focus:outline-none focus:border-sky-500/30"
               />
               <span>to</span>
               <input
@@ -272,13 +267,13 @@
                 name="until"
                 value={@search_until}
                 phx-debounce="300"
-                class="bg-zinc-800/50 border border-zinc-700/50 rounded text-[11px] text-zinc-300 px-2 py-1 focus:outline-none focus:border-amber-500/30"
+                class="bg-slate-800/30 border border-slate-700/30 rounded text-[10px] text-slate-300 px-1.5 py-0.5 focus:outline-none focus:border-sky-500/30"
               />
             </div>
             <% active_filters =
               Enum.count([@search_author, @search_since, @search_until], &(&1 != "")) %>
-            <span :if={active_filters > 0} class="text-[9px] text-amber-400 font-mono">
-              {active_filters} filter{if active_filters > 1, do: "s", else: ""} active
+            <span :if={active_filters > 0} class="text-[8px] text-sky-400 font-mono">
+              {active_filters} active
             </span>
           </form>
         </div>
@@ -291,7 +286,7 @@
         phx-update="stream"
         aria-live="polite"
         aria-label="Message feed"
-        class="flex-1 overflow-y-auto px-6 py-4 space-y-4 scrollbar-thin"
+        class="flex-1 overflow-y-auto px-4 py-2 space-y-1 scrollbar-thin"
       >
         <div :for={{dom_id, msg} <- @streams.messages} id={dom_id}>
           <span id={"msg-#{msg.id}"}></span>
@@ -306,29 +301,26 @@
         </div>
       </div>
 
-      <%!-- Empty state for room with no messages --%>
+      <%!-- Empty state --%>
       <div :if={!@has_messages} class="flex-1 flex items-center justify-center -mt-16">
         <div class="text-center">
-          <span class="hero-chat-bubble-left-right w-10 h-10 text-zinc-700 mb-3 mx-auto block">
-          </span>
-          <p class="text-sm text-zinc-500">No messages yet</p>
-          <p class="text-xs text-zinc-600 mt-1">Agents will post here via MCP tools</p>
+          <p class="text-[11px] text-slate-500">No messages yet</p>
+          <p class="text-[9px] text-slate-600 mt-1">Agents will post here via MCP tools</p>
         </div>
       </div>
     <% else %>
       <%!-- No Room Selected --%>
       <div class="flex-1 flex items-center justify-center">
-        <div class="text-center max-w-md">
-          <span class="hero-building-library w-16 h-16 text-zinc-700 mb-6 mx-auto block opacity-40">
-          </span>
-          <h2 class="text-2xl font-bold text-zinc-500 mb-3">Council Hub</h2>
-          <p class="text-zinc-500 text-sm leading-relaxed">
+        <div class="text-center max-w-sm">
+          <div class="w-10 h-10 rounded bg-slate-800/30 flex items-center justify-center mx-auto mb-4 border border-slate-700/20">
+            <span class="hero-building-library w-5 h-5 text-slate-600"></span>
+          </div>
+          <h2 class="text-sm font-medium text-slate-400 mb-2">Council Hub</h2>
+          <p class="text-slate-500 text-[11px] leading-relaxed">
             Select a room from the sidebar to observe the council.
-            Rooms are created by LLM agents via MCP tools.
           </p>
-          <div class="mt-6 flex items-center justify-center gap-2 text-[10px] text-zinc-700 font-mono">
-            <span class="w-1.5 h-1.5 rounded-full bg-green-500/40 animate-pulse"></span>
-            polling every 1s
+          <div class="mt-4 flex items-center justify-center gap-1.5 text-[9px] text-slate-600 font-mono">
+            <span class="w-1 h-1 rounded-full bg-emerald-500/40 animate-pulse"></span> polling
           </div>
         </div>
       </div>

@@ -26,7 +26,6 @@ defmodule CouncilHubUiWeb.CouncilComponentsTest do
       html = render_component(&CouncilComponents.room_card/1, assigns)
       assert html =~ "test-room"
       assert html =~ "active"
-      assert html =~ "tag1"
       assert html =~ "5"
     end
 
@@ -62,8 +61,7 @@ defmodule CouncilHubUiWeb.CouncilComponentsTest do
       }
 
       html = render_component(&CouncilComponents.room_card/1, assigns)
-      assert html =~ "needs synthesis"
-      assert html =~ "yellow"
+      assert html =~ "border-l-amber-500"
     end
 
     test "no health badges for healthy room" do
@@ -80,11 +78,11 @@ defmodule CouncilHubUiWeb.CouncilComponentsTest do
       }
 
       html = render_component(&CouncilComponents.room_card/1, assigns)
-      refute html =~ "needs synthesis"
+      refute html =~ "border-l-amber-500"
       refute html =~ ~r/bg-red-500.*stale/
     end
 
-    test "shows truncated latest_id as cursor" do
+    test "no cursor shown (latest_id removed from card)" do
       assigns = %{
         room: %{
           id: "cursor-room",
@@ -99,8 +97,7 @@ defmodule CouncilHubUiWeb.CouncilComponentsTest do
       }
 
       html = render_component(&CouncilComponents.room_card/1, assigns)
-      assert html =~ "019d0000"
-      assert html =~ "cursor:"
+      refute html =~ "cursor:"
     end
 
     test "no cursor shown when latest_id is nil" do
@@ -135,7 +132,7 @@ defmodule CouncilHubUiWeb.CouncilComponentsTest do
       }
 
       html = render_component(&CouncilComponents.room_card/1, assigns)
-      assert html =~ "amber"
+      assert html =~ "sky"
     end
 
     test "renders paused status" do
@@ -206,7 +203,7 @@ defmodule CouncilHubUiWeb.CouncilComponentsTest do
       }
 
       html = render_component(&CouncilComponents.room_card/1, assigns)
-      assert html =~ "3d · 2a"
+      assert html =~ "3d 2a"
     end
 
     test "omits type breakdown when no decisions or actions" do
@@ -224,7 +221,7 @@ defmodule CouncilHubUiWeb.CouncilComponentsTest do
       }
 
       html = render_component(&CouncilComponents.room_card/1, assigns)
-      refute html =~ "0d · 0a"
+      refute html =~ "0d 0a"
     end
   end
 
@@ -248,8 +245,8 @@ defmodule CouncilHubUiWeb.CouncilComponentsTest do
 
       html = render_component(&CouncilComponents.room_header/1, assigns)
       assert html =~ "header-room"
-      assert html =~ "my-proj"
-      assert html =~ "Elixir, Go"
+      assert html =~ "MY-PROJ"
+      assert html =~ "ELIXIR, GO"
       assert html =~ "tag1"
       assert html =~ "room-a"
       assert html =~ "room-b"
@@ -406,7 +403,7 @@ defmodule CouncilHubUiWeb.CouncilComponentsTest do
       assert html =~ "critique"
     end
 
-    test "renders synthesis type with purple and amber classes" do
+    test "renders synthesis type with purple classes" do
       assigns = %{
         msg: %{
           id: "uuid-synth",
@@ -421,7 +418,6 @@ defmodule CouncilHubUiWeb.CouncilComponentsTest do
       html = render_component(&CouncilComponents.message_bubble/1, assigns)
       assert html =~ "synthesis"
       assert html =~ "purple"
-      assert html =~ "amber"
     end
 
     test "renders emoji reaction badges" do
@@ -543,7 +539,7 @@ defmodule CouncilHubUiWeb.CouncilComponentsTest do
       }
 
       html = render_component(&CouncilComponents.summary_block/1, assigns)
-      assert html =~ "expand"
+      assert html =~ ~s(aria-expanded="false")
     end
   end
 
