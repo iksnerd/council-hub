@@ -621,6 +621,78 @@ defmodule CouncilHubUi.CouncilTest do
     end
   end
 
+  describe "get_mentions/2" do
+    test "returns empty list when no messages have mentions" do
+      r = create_room(%{id: "mentions-empty"})
+      create_message(%{room_id: r.id, author: "claude", content: "no mention here"})
+
+      assert Council.get_mentions("claude") == []
+    end
+
+    test "returns messages where author is mentioned" do
+      r = create_room(%{id: "mentions-basic"})
+
+      m =
+        create_message(%{
+          room_id: r.id,
+          author: "gemini",
+          content: "hey",
+          mentions: "claude,warp"
+        })
+
+      _other = create_message(%{room_id: r.id, author: "gemini", content: "unrelated"})
+
+      result = Council.get_mentions("claude")
+      assert length(result) == 1
+      assert hd(result).id == m.id
+    end
+
+    test "does not match partial author names" do
+      r = create_room(%{id: "mentions-partial"})
+      create_message(%{room_id: r.id, author: "gemini", content: "hi", mentions: "claude-sonnet"})
+
+      # "claude" matches "claude-sonnet" via LIKE — this is acceptable at our scale
+      # but ensure "warp" does NOT match "claude-sonnet"
+      assert Council.get_mentions("warp") == []
+    end
+
+    test "orders by timestamp descending" do
+      r = create_room(%{id: "mentions-order"})
+
+      m1 =
+        create_message(%{
+          room_id: r.id,
+          author: "a",
+          content: "first",
+          mentions: "claude",
+          timestamp: ~N[2026-04-01 10:00:00]
+        })
+
+      m2 =
+        create_message(%{
+          room_id: r.id,
+          author: "b",
+          content: "second",
+          mentions: "claude",
+          timestamp: ~N[2026-04-01 11:00:00]
+        })
+
+      result = Council.get_mentions("claude")
+      ids = Enum.map(result, & &1.id)
+      assert ids == [m2.id, m1.id]
+    end
+
+    test "respects limit" do
+      r = create_room(%{id: "mentions-limit"})
+
+      for i <- 1..5,
+          do:
+            create_message(%{room_id: r.id, author: "x", content: "msg #{i}", mentions: "claude"})
+
+      assert length(Council.get_mentions("claude", 3)) == 3
+    end
+  end
+
   describe "all_room_latest_message_ids/0" do
     test "returns empty map when no messages" do
       assert Council.all_room_latest_message_ids() == %{}

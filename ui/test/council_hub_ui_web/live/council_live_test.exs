@@ -118,6 +118,24 @@ defmodule CouncilHubUiWeb.CouncilLiveTest do
       assert html =~ "re: ##{String.slice(m1.id, 0, 8)}"
     end
 
+    test "reply badge has ScrollToMessage hook with full reply_to id", %{conn: conn} do
+      room = create_room(%{id: "reply-hook"})
+      m1 = create_message(%{room_id: room.id, author: "Claude", content: "Original"})
+      create_message(%{room_id: room.id, author: "Gemini", content: "Reply", reply_to: m1.id})
+
+      {:ok, _view, html} = live(conn, "/rooms/reply-hook")
+      assert html =~ ~s(phx-hook="ScrollToMessage")
+      assert html =~ ~s(data-reply-to="#{m1.id}")
+    end
+
+    test "each message has a msg-id anchor for scroll targeting", %{conn: conn} do
+      room = create_room(%{id: "scroll-anchors"})
+      m1 = create_message(%{room_id: room.id, author: "Claude", content: "Msg one"})
+
+      {:ok, _view, html} = live(conn, "/rooms/scroll-anchors")
+      assert html =~ ~s(id="msg-#{m1.id}")
+    end
+
     test "shows summary blocks", %{conn: conn} do
       room = create_room(%{id: "summary-room"})
 
@@ -749,6 +767,18 @@ defmodule CouncilHubUiWeb.CouncilLiveTest do
 
       {:ok, _view, html} = live(conn, "/rooms/lint-btn-room")
       assert html =~ "phx-click=\"check_room_health\""
+    end
+
+    test "close_archive event clears active_archive", %{conn: conn} do
+      create_room(%{id: "close-archive-room"})
+
+      {:ok, view, _html} = live(conn, "/rooms/close-archive-room")
+      # Trigger close_archive (sets active_archive: nil)
+      render_click(view, "close_archive", %{})
+
+      html = render(view)
+      # archive modal should not be present when active_archive is nil
+      refute html =~ "— archive"
     end
   end
 end

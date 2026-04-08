@@ -13,6 +13,7 @@ defmodule CouncilHubUi.Council.Message do
     field :reply_to, :string, default: ""
     field :pinned, :boolean, default: false
     field :reactions, :string, default: "{}"
+    field :mentions, :string, default: ""
     field :timestamp, :naive_datetime
   end
 end
