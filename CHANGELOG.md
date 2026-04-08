@@ -4,6 +4,20 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.17.0] - 2026-04-08
+
+### Fixed
+- **Remove `knowledge_lint` deprecated alias** — the alias registered alongside `check_room_health` since v0.11.0 is now gone. Agents calling it by accident received a wasted round trip; now they get an immediate unknown-tool error. Use `check_room_health`.
+- **Auto-strip health tags on resolve** — `needs-synthesis` and `stale` tags are now removed automatically when a room is set to `resolved` via `signal_status` or `bulk_status_update`. Previously these tags persisted indefinitely on resolved rooms, polluting `list_rooms(tag="needs-synthesis")` and the Knowledge Linter digest.
+- **Tag normalization on write** — tags stored as JSON array strings (e.g. `["mtls","gateway"]`) are now normalized to CSV (`mtls,gateway`) on `create_room` and `update_room`. Existing dirty data is normalized on read.
+
+### Added
+- **Template discoverability in `create_room`** — the `template` param description now enumerates all 5 templates (brainstorm, bug, decision-log, review, sprint) with their purpose and default tags. Agents no longer need to guess or trial-and-error.
+- **UI: Type breakdown in room cards** — sidebar room cards now show `Nd · Na` (e.g. `3d · 2a`) when a room has decisions or actions, giving at-a-glance signal of deliberation activity without opening the transcript.
+
+### Changed
+- `search_messages` description clarified: when `cluster_wide=true`, semantic search runs locally only (sqlite-vec is node-local); remote nodes fall back to keyword search with a warning.
+
 ## [0.16.0] - 2026-04-08
 
 ### Added

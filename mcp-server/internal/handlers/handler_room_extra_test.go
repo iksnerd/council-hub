@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // ========== bulk_status_update ==========
@@ -231,6 +233,80 @@ func TestHandleGetOrCreateRoomLastNOverLimit(t *testing.T) {
 	// All 10 messages should be present (clamped to 50, but only 10 exist)
 	if !strings.Contains(text, "Msg 0") || !strings.Contains(text, "Msg 9") {
 		t.Error("expected all messages within clamped limit")
+	}
+}
+
+// ========== health tag stripping via bulk_status_update ==========
+
+func TestHandleBulkStatusUpdate_ClearsHealthTagsOnResolve(t *testing.T) {
+	reg := setupHandlerTest(t)
+	reg.Server.CreateRoom("htag-1", "Test", "", "", "needs-synthesis,sprint", "", "") //nolint:errcheck
+	reg.Server.CreateRoom("htag-2", "Test", "", "", "stale,backlog", "", "")          //nolint:errcheck
+
+	res, _, _ := reg.handleBulkStatusUpdate(context.Background(), nil, BulkStatusInput{
+		RoomIDs: "htag-1,htag-2", Status: "resolved",
+	})
+	if !strings.Contains(resultText(res), "Updated 2") {
+		t.Errorf("expected 2 updated, got: %s", resultText(res))
+	}
+
+	r1, _ := reg.Server.GetRoom("htag-1")
+	if strings.Contains(r1.Tags, "needs-synthesis") {
+		t.Errorf("expected 'needs-synthesis' stripped on resolve, got tags: %s", r1.Tags)
+	}
+	if !strings.Contains(r1.Tags, "sprint") {
+		t.Errorf("expected 'sprint' tag preserved, got tags: %s", r1.Tags)
+	}
+
+	r2, _ := reg.Server.GetRoom("htag-2")
+	if strings.Contains(r2.Tags, "stale") {
+		t.Errorf("expected 'stale' stripped on resolve, got tags: %s", r2.Tags)
+	}
+	if !strings.Contains(r2.Tags, "backlog") {
+		t.Errorf("expected 'backlog' tag preserved, got tags: %s", r2.Tags)
+	}
+}
+
+// ========== tag normalization via UpdateRoom handler ==========
+
+func TestHandleUpdateRoom_NormalizesTags(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "norm-update-room")
+
+	res, _, _ := reg.handleUpdateRoom(context.Background(), nil, UpdateRoomInput{
+		RoomID: "norm-update-room",
+		Tags:   `["auth","mtls","tls"]`,
+	})
+	if strings.Contains(resultText(res), "Error") {
+		t.Fatalf("unexpected error: %s", resultText(res))
+	}
+
+	room, _ := reg.Server.GetRoom("norm-update-room")
+	for _, unwanted := range []string{"[", "]", `"`} {
+		if strings.Contains(room.Tags, unwanted) {
+			t.Errorf("tag normalization failed — found %q in tags: %s", unwanted, room.Tags)
+		}
+	}
+	for _, want := range []string{"auth", "mtls", "tls"} {
+		if !strings.Contains(room.Tags, want) {
+			t.Errorf("expected tag %q in tags: %s", want, room.Tags)
+		}
+	}
+}
+
+// ========== knowledge_lint alias removed ==========
+
+func TestKnowledgeLintAliasRemoved(t *testing.T) {
+	// knowledge_lint alias was removed in v0.17.0 — check_room_health is the canonical name.
+	// Verify that calling it returns an unknown-tool error, not a result.
+	cs, _ := setupIntegrationTest(t)
+
+	_, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: "knowledge_lint"})
+	if err == nil {
+		t.Error("expected error when calling removed 'knowledge_lint' alias, got nil")
+	}
+	if !strings.Contains(err.Error(), "unknown tool") {
+		t.Errorf("expected 'unknown tool' error, got: %v", err)
 	}
 }
 

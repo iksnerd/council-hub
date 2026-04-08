@@ -145,6 +145,7 @@
                   source_node={Map.get(room, :source_node)}
                   latest_id={Map.get(@latest_ids, room.id)}
                   compiled={MapSet.member?(@synthesis_flags, room.id)}
+                  type_counts={Map.get(@type_counts, room.id, %{})}
                 />
               <% end %>
             </div>

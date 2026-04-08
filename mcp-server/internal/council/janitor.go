@@ -52,6 +52,21 @@ func hasTag(tags, tag string) bool {
 	return false
 }
 
+// removeTag removes a tag from a comma-separated tag string, if present.
+func removeTag(tags, tag string) string {
+	if !hasTag(tags, tag) {
+		return tags
+	}
+	var kept []string
+	for _, t := range strings.Split(tags, ",") {
+		t = strings.TrimSpace(t)
+		if t != "" && t != tag {
+			kept = append(kept, t)
+		}
+	}
+	return strings.Join(kept, ",")
+}
+
 // appendTag adds a tag to a comma-separated tag string if not already present.
 func appendTag(tags, tag string) string {
 	if hasTag(tags, tag) {

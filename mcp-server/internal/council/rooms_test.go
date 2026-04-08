@@ -1002,3 +1002,86 @@ func TestGetConceptMap(t *testing.T) {
 		t.Errorf("expected 5 nodes for deep search on shallow graph, got %d", len(nodes))
 	}
 }
+
+func TestUpdateStatus_ClearsHealthTagsOnResolve(t *testing.T) {
+	s := setupTestServer(t)
+	s.CreateRoom("health-room", "Test", "", "", "needs-synthesis,important", "", "")
+
+	if err := s.UpdateStatus("health-room", "resolved"); err != nil {
+		t.Fatalf("UpdateStatus failed: %v", err)
+	}
+
+	room, _ := s.GetRoom("health-room")
+	if room.Status != "resolved" {
+		t.Errorf("expected status 'resolved', got '%s'", room.Status)
+	}
+	if hasTag(room.Tags, "needs-synthesis") {
+		t.Errorf("expected 'needs-synthesis' to be stripped on resolve, got tags: %s", room.Tags)
+	}
+	if !hasTag(room.Tags, "important") {
+		t.Errorf("expected 'important' tag to be preserved, got tags: %s", room.Tags)
+	}
+}
+
+func TestUpdateStatus_ClearsStaleTagOnResolve(t *testing.T) {
+	s := setupTestServer(t)
+	s.CreateRoom("stale-room", "Test", "", "", "stale,backlog", "", "")
+
+	if err := s.UpdateStatus("stale-room", "resolved"); err != nil {
+		t.Fatalf("UpdateStatus failed: %v", err)
+	}
+
+	room, _ := s.GetRoom("stale-room")
+	if hasTag(room.Tags, "stale") {
+		t.Errorf("expected 'stale' to be stripped on resolve, got tags: %s", room.Tags)
+	}
+	if !hasTag(room.Tags, "backlog") {
+		t.Errorf("expected 'backlog' tag to be preserved, got tags: %s", room.Tags)
+	}
+}
+
+func TestUpdateStatus_NoTagStripOnActiveOrPaused(t *testing.T) {
+	s := setupTestServer(t)
+	s.CreateRoom("active-room", "Test", "", "", "needs-synthesis,stale", "", "")
+
+	// Pausing should not strip health tags
+	if err := s.UpdateStatus("active-room", "paused"); err != nil {
+		t.Fatalf("UpdateStatus failed: %v", err)
+	}
+	room, _ := s.GetRoom("active-room")
+	if !hasTag(room.Tags, "needs-synthesis") || !hasTag(room.Tags, "stale") {
+		t.Errorf("expected health tags preserved on pause, got tags: %s", room.Tags)
+	}
+}
+
+func TestNormalizeTags(t *testing.T) {
+	cases := []struct {
+		input string
+		want  string
+	}{
+		{`["mtls","gateway"]`, "mtls,gateway"},
+		{`["single"]`, "single"},
+		{`mtls,gateway`, "mtls,gateway"},
+		{` mtls , gateway `, "mtls,gateway"},
+		{`[]`, ""},
+		{``, ""},
+		{`["a", "b", "c"]`, "a,b,c"},
+	}
+	for _, c := range cases {
+		got := normalizeTags(c.input)
+		if got != c.want {
+			t.Errorf("normalizeTags(%q) = %q, want %q", c.input, got, c.want)
+		}
+	}
+}
+
+func TestCreateRoom_NormalizesTags(t *testing.T) {
+	s := setupTestServer(t)
+	if err := s.CreateRoom("norm-room", "test", "", "", `["auth","mtls"]`, "", ""); err != nil {
+		t.Fatalf("CreateRoom failed: %v", err)
+	}
+	room, _ := s.GetRoom("norm-room")
+	if room.Tags != "auth,mtls" {
+		t.Errorf("expected tags 'auth,mtls', got %q", room.Tags)
+	}
+}

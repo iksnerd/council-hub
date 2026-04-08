@@ -97,26 +97,31 @@ These were requested but already exist:
 
 ---
 
-## v0.17.0 Candidates — From council-hub-v2-feedback Audit (2026-04-08)
+## Shipped in v0.17.0
 
-Feedback from Oz (Warp) tool audit + Gemini/Claude session reports.
+| # | Item | Status |
+|---|------|--------|
+| V1 | **Remove `knowledge_lint` deprecated alias** | DONE |
+| V2 | **Auto-strip health tags on resolve** — `needs-synthesis` and `stale` stripped server-side on `signal_status(resolved)` and `bulk_status_update` | DONE |
+| V3 | **Tag normalization on write** — JSON array strings normalized to CSV in `create_room` + `update_room` | DONE |
+| V4 | **Template discoverability** — `create_room` `template` param now enumerates all 5 templates with purpose and default tags | DONE |
+| V5 | **Semantic + `cluster_wide` description** — `search_messages` description clarified: semantic is node-local, remote nodes fall back to keyword | DONE |
+| U14 | **UI: Type breakdown in room cards** — sidebar cards show `Nd · Na` count for decisions + actions | DONE |
 
-### Bugs / Correctness
+---
 
-| # | Item | Source | Effort | Priority |
-|---|------|--------|--------|----------|
-| V1 | **Remove `knowledge_lint` deprecated alias** — alias still shows in tool list, agents call it by accident wasting a round trip. Should be fully removed, not just aliased. | Oz (Warp) | Low | P0 |
-| V2 | **Auto-strip health tags on resolve** — `needs-synthesis` and `stale` tags persist after a room is resolved via `signal_status` or `bulk_status_update`. `check_room_health` skips resolved rooms so the tags are never cleaned up, polluting `list_rooms(tag="needs-synthesis")`. Strip these tags server-side whenever status is set to `resolved`. | Oz (Warp) | Low | P0 |
-| V3 | **Tag normalization on write** — tags stored as JSON array strings (e.g. `["mtls","gateway"]`) instead of CSV. Normalize on write: strip brackets/quotes, split on comma, rejoin as `tag1,tag2`. | Oz (Warp) | Low | P1 |
+## v0.18.0 Candidates
+
+From Gemini proposals in `council-hub-tool-suggestions` (2026-04-07).
 
 ### Features
 
 | # | Item | Source | Effort | Priority |
 |---|------|--------|--------|----------|
-| V4 | **Template discoverability** — `create_room` has a `template` param but agents can't see what templates exist or what they pre-fill. Options: (a) add `list_templates` tool, or (b) enumerate templates + their default system_prompt in the `create_room` description. | Oz (Warp) | Low | P1 |
-| V5 | **Semantic + `cluster_wide` combo** — test and document whether `search_messages(semantic=true, cluster_wide=true)` fans out correctly. Currently `cluster_wide` falls back to local-only with a warning (sqlite-vec is local). Clarify in tool description and/or improve cross-node vector search if feasible. | Oz (Warp) | Medium | P2 |
-| V6 | **Default system prompts per template** — each template (`bug`, `review`, `sprint`, `brainstorm`, `decision-log`) should ship with a richer default `system_prompt` describing purpose, expected message types, and related_rooms guidance. Explicit `create_room` args still override. | Claude Sonnet (v2 feedback) | Low | P2 |
-| V7 | **`list_templates` tool or template preview in `create_room`** — agents can't discover what `template=bug` pre-fills without trial and error. Show available templates and their defaults. | Multiple agents | Low | P2 |
+| W1 | **`mentions` in `post_to_room` + `get_mentions` tool** — add `mentions` (CSV of agent names) field to `post_to_room` and DB schema; new `get_mentions` tool for agents to check on startup | Gemini CLI | Medium | P1 |
+| W2 | **Interactive actions: quick archive + linter trigger + tag management** — UI buttons to archive a room, manually run `check_room_health`, and edit tags from the dashboard (via internal Go RPC bridge) | hub-ui-enhancements backlog | Medium | P2 |
+| W3 | **Optimistic concurrency for `update_message`** — add optional `expected_content` param; fail with re-read prompt if content changed (prevents Lost Update on living documents) | Gemini CLI | Medium | P2 |
+| W4 | **`query_skills_registry` MCP tool** — allow agents to search `agents-library` for missing skills; depends on agents-library OSS readiness | Gemini CLI | Medium | P3 |
 
 ---
 
