@@ -33,9 +33,9 @@ Docker Hub image: `iksnerd/council-hub` ([hub.docker.com/r/iksnerd/council-hub](
 3. **Commit & push**: `git commit -m "vX.Y.Z: <summary>" && git push`
 4. **Wait for CI** to pass on main
 5. **Tag & push tag**: `git tag vX.Y.Z && git push origin vX.Y.Z`
-6. CI (`docker-publish.yml`) automatically builds multi-arch and pushes to Docker Hub
+6. **Build & push to Docker Hub**: `make docker-build && make docker-push VERSION=vX.Y.Z`
 
-**Important:** Never move tags. If a fix is needed after tagging, bump to vX.Y.Z+1. Never push Docker images manually — let CI handle it for reproducible multi-arch builds.
+**Important:** Never move tags. If a fix is needed after tagging, bump to vX.Y.Z+1.
 
 ### Channel Plugin (Claude Code notifications)
 ```bash
@@ -119,7 +119,7 @@ The `Dockerfile` is a 3-stage build: Go builder → Elixir builder → debian:tr
 
 ### CI/CD
 
-`.github/workflows/docker-publish.yml` — Builds and pushes to Docker Hub on version tags (`v*`) and manual dispatch. Uses `docker/build-push-action` with GHA build cache. Requires `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` repo secrets.
+`.github/workflows/ci.yml` — Runs Go and Elixir tests + lint on push to main and PRs. Docker Hub publishing is done manually via `make docker-build && make docker-push VERSION=vX.Y.Z`.
 
 ### Data Flow
 
