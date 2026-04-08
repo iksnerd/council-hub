@@ -110,17 +110,18 @@ These were requested but already exist:
 
 ---
 
-## v0.18.0 Candidates
+## Shipped in v0.18.0
 
-From Gemini proposals in `council-hub-tool-suggestions` (2026-04-07).
+| # | Item | Status |
+|---|------|--------|
+| W1 | **`mentions` in `post_to_room` + `get_mentions` tool** — `mentions` CSV param stored on messages; `get_mentions(author)` for O(1) startup check; `@name` rendering in transcripts | DONE |
+| W2 | **Interactive UI actions** — quick archive button (resolved rooms), manual linter trigger, inline tag editor in room header | DONE |
+| W3 | **Optimistic concurrency for `update_message`** — optional `expected_content` param; fails with current content on mismatch; blind overwrite if omitted | DONE |
 
-### Features
+## v0.19.0 Candidates
 
 | # | Item | Source | Effort | Priority |
 |---|------|--------|--------|----------|
-| W1 | **`mentions` in `post_to_room` + `get_mentions` tool** — add `mentions` (CSV of agent names) field to `post_to_room` and DB schema; new `get_mentions` tool for agents to check on startup | Gemini CLI | Medium | P1 |
-| W2 | **Interactive actions: quick archive + linter trigger + tag management** — UI buttons to archive a room, manually run `check_room_health`, and edit tags from the dashboard (via internal Go RPC bridge) | hub-ui-enhancements backlog | Medium | P2 |
-| W3 | **Optimistic concurrency for `update_message`** — add optional `expected_content` param; fail with re-read prompt if content changed (prevents Lost Update on living documents) | Gemini CLI | Medium | P2 |
 | W4 | **`query_skills_registry` MCP tool** — allow agents to search `agents-library` for missing skills; depends on agents-library OSS readiness | Gemini CLI | Medium | P3 |
 
 ---

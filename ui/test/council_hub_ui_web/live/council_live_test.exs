@@ -704,4 +704,51 @@ defmodule CouncilHubUiWeb.CouncilLiveTest do
       refute html =~ "From Gemini"
     end
   end
+
+  describe "interactive room actions" do
+    test "edit_tags event shows tag input form", %{conn: conn} do
+      create_room(%{id: "edit-tags-room", tags: "go,elixir"})
+
+      {:ok, view, _html} = live(conn, "/rooms/edit-tags-room")
+      view |> element("button[phx-click='edit_tags']") |> render_click()
+
+      html = render(view)
+      assert html =~ ~s(name="tags")
+      assert html =~ "save"
+      assert html =~ "cancel"
+    end
+
+    test "cancel_edit_tags hides tag input", %{conn: conn} do
+      create_room(%{id: "cancel-tags-room", tags: "go"})
+
+      {:ok, view, _html} = live(conn, "/rooms/cancel-tags-room")
+      view |> element("button[phx-click='edit_tags']") |> render_click()
+      view |> element("button[phx-click='cancel_edit_tags']") |> render_click()
+
+      html = render(view)
+      refute html =~ ~s(name="tags")
+    end
+
+    test "quick archive button appears for resolved rooms", %{conn: conn} do
+      create_room(%{id: "resolved-room", status: "resolved"})
+
+      {:ok, _view, html} = live(conn, "/rooms/resolved-room")
+      assert html =~ "archive"
+      assert html =~ "phx-click=\"archive_room\""
+    end
+
+    test "quick archive button absent for active rooms", %{conn: conn} do
+      create_room(%{id: "active-room-noarchive", status: "active"})
+
+      {:ok, _view, html} = live(conn, "/rooms/active-room-noarchive")
+      refute html =~ "phx-click=\"archive_room\""
+    end
+
+    test "lint button is present in room header", %{conn: conn} do
+      create_room(%{id: "lint-btn-room"})
+
+      {:ok, _view, html} = live(conn, "/rooms/lint-btn-room")
+      assert html =~ "phx-click=\"check_room_health\""
+    end
+  end
 end

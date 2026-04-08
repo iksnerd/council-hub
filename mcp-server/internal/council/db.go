@@ -38,16 +38,17 @@ type Message struct {
 	ReplyTo     string // UUID of parent message, or ""
 	Pinned      bool
 	Reactions   string // JSON: {"emoji": ["author1", "author2"], ...}
+	Mentions    string // CSV of mentioned agent names, e.g. "claude,gemini-cli"
 	Timestamp   time.Time
 }
 
 // messageColumns is the canonical column list for SELECT queries on messages.
-const messageColumns = `id, room_id, author, content, message_type, is_summary, reply_to, pinned, reactions, timestamp`
+const messageColumns = `id, room_id, author, content, message_type, is_summary, reply_to, pinned, reactions, mentions, timestamp`
 
 // scanMessage scans a single row into a Message struct. Use with messageColumns.
 func scanMessage(scanner interface{ Scan(...any) error }) (Message, error) {
 	var m Message
-	err := scanner.Scan(&m.ID, &m.RoomID, &m.Author, &m.Content, &m.MessageType, &m.IsSummary, &m.ReplyTo, &m.Pinned, &m.Reactions, &m.Timestamp)
+	err := scanner.Scan(&m.ID, &m.RoomID, &m.Author, &m.Content, &m.MessageType, &m.IsSummary, &m.ReplyTo, &m.Pinned, &m.Reactions, &m.Mentions, &m.Timestamp)
 	return m, err
 }
 
@@ -91,7 +92,7 @@ func NewServer(dbPath string, logger *slog.Logger) (*Server, error) {
 
 	mcpServer := mcp.NewServer(&mcp.Implementation{
 		Name:    "council-hub",
-		Version: "0.17.0",
+		Version: "0.18.0",
 	}, &mcp.ServerOptions{
 		Logger:       logger,
 		Capabilities: &mcp.ServerCapabilities{},
@@ -171,6 +172,7 @@ func initSchema(db *sql.DB) error {
 		`ALTER TABLE messages ADD COLUMN reply_to TEXT DEFAULT ''`,
 		`ALTER TABLE messages ADD COLUMN pinned BOOLEAN DEFAULT 0`,
 		`ALTER TABLE messages ADD COLUMN reactions TEXT DEFAULT '{}'`,
+		`ALTER TABLE messages ADD COLUMN mentions TEXT DEFAULT ''`,
 	}
 	for _, m := range migrations {
 		_, _ = db.Exec(m) // Ignore "duplicate column" errors for already-migrated DBs

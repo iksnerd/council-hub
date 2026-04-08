@@ -408,3 +408,66 @@ func TestHandleDeleteMessagesDryRunExcerptTruncation(t *testing.T) {
 		t.Error("full content should not appear in dry run output")
 	}
 }
+
+// ========== update_message optimistic concurrency ==========
+
+func TestHandleUpdateMessageExpectedContentMatch(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "occ-match")
+	id := mustPost(t, reg.Server, "occ-match", "Claude", "original content")
+
+	// Update succeeds when expected_content matches current content
+	res, _, err := reg.handleUpdateMessage(context.Background(), nil, UpdateMessageInput{
+		MessageID:       id,
+		Content:         "updated content",
+		ExpectedContent: "original content",
+	})
+	if err != nil {
+		t.Fatalf("handleUpdateMessage error: %v", err)
+	}
+	if !strings.Contains(resultText(res), "updated") {
+		t.Errorf("expected success, got: %s", resultText(res))
+	}
+}
+
+func TestHandleUpdateMessageExpectedContentMismatch(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "occ-mismatch")
+	id := mustPost(t, reg.Server, "occ-mismatch", "Claude", "original content")
+
+	// Update fails when expected_content doesn't match
+	res, _, err := reg.handleUpdateMessage(context.Background(), nil, UpdateMessageInput{
+		MessageID:       id,
+		Content:         "new content",
+		ExpectedContent: "stale content from last read",
+	})
+	if err != nil {
+		t.Fatalf("handleUpdateMessage returned unexpected error: %v", err)
+	}
+	text := resultText(res)
+	if !strings.Contains(text, "content changed") {
+		t.Errorf("expected concurrency error message, got: %s", text)
+	}
+	// Response should include current content so agent can merge
+	if !strings.Contains(text, "original content") {
+		t.Errorf("expected current content in error response, got: %s", text)
+	}
+}
+
+func TestHandleUpdateMessageNoExpectedContent(t *testing.T) {
+	// Omitting expected_content = blind overwrite (existing behaviour unchanged)
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "occ-blind")
+	id := mustPost(t, reg.Server, "occ-blind", "Claude", "original")
+
+	res, _, err := reg.handleUpdateMessage(context.Background(), nil, UpdateMessageInput{
+		MessageID: id,
+		Content:   "blind overwrite",
+	})
+	if err != nil {
+		t.Fatalf("handleUpdateMessage error: %v", err)
+	}
+	if !strings.Contains(resultText(res), "updated") {
+		t.Errorf("expected success, got: %s", resultText(res))
+	}
+}
