@@ -69,6 +69,9 @@
       </div>
     <% end %>
 
+    <.mentions_panel mentions={@mentions} />
+    <.archive_list archives={@archives} />
+
     <%!-- Sidebar Search --%>
     <div class="px-3 pt-2 flex items-center gap-2">
       <form :if={@rooms != []} phx-change="filter_rooms" class="relative flex-1">
@@ -291,6 +294,7 @@
         class="flex-1 overflow-y-auto px-6 py-4 space-y-4 scrollbar-thin"
       >
         <div :for={{dom_id, msg} <- @streams.messages} id={dom_id}>
+          <span id={"msg-#{msg.id}"}></span>
           <%= if msg.is_summary do %>
             <.summary_block
               msg={msg}
@@ -331,3 +335,5 @@
     <% end %>
   </main>
 </div>
+
+<.archive_modal active_archive={@active_archive} />

@@ -525,4 +525,22 @@ defmodule CouncilHubUi.Council do
          }}
     end
   end
+
+  def get_mentions(author, limit \\ 20) do
+    pattern = "%#{author}%"
+
+    Repo.all(
+      from m in Message,
+        where: like(m.mentions, ^pattern) and m.mentions != "",
+        order_by: [desc: m.timestamp],
+        limit: ^limit,
+        select: %{
+          id: m.id,
+          room_id: m.room_id,
+          author: m.author,
+          content: m.content,
+          timestamp: m.timestamp
+        }
+    )
+  end
 end

@@ -37,6 +37,16 @@ defmodule CouncilHubUi.McpClient do
     call_tool("update_room", %{room_id: room_id, tags: tags})
   end
 
+  @doc "List all archived rooms. Returns {:ok, json_text} or {:error, reason}."
+  def list_archives do
+    call_tool_data("list_archives", %{})
+  end
+
+  @doc "Read the archived transcript for a room. Returns {:ok, markdown_text} or {:error, reason}."
+  def read_archive(room_id) do
+    call_tool_data("read_archive", %{room_id: room_id})
+  end
+
   # --- Private ---
 
   defp call_tool(name, arguments) do
@@ -74,6 +84,55 @@ defmodule CouncilHubUi.McpClient do
   end
 
   defp handle_response({:error, reason}) do
+    Logger.warning("McpClient request failed: #{inspect(reason)}")
+    {:error, reason}
+  end
+
+  defp call_tool_data(name, arguments) do
+    body =
+      Jason.encode!(%{
+        jsonrpc: "2.0",
+        id: System.unique_integer([:positive]),
+        method: "tools/call",
+        params: %{name: name, arguments: arguments}
+      })
+
+    url = String.to_charlist(mcp_url())
+
+    headers = [
+      {~c"Content-Type", ~c"application/json"},
+      {~c"Accept", ~c"application/json, text/event-stream"}
+    ]
+
+    :httpc.request(:post, {url, headers, ~c"application/json", body}, [{:timeout, 8000}], [])
+    |> handle_data_response(name)
+  rescue
+    e ->
+      Logger.warning("McpClient error calling #{name}: #{inspect(e)}")
+      {:error, :request_failed}
+  end
+
+  defp handle_data_response({:ok, {{_http, status, _}, _headers, body}}, _name)
+       when status in 200..299 do
+    case Jason.decode(to_string(body)) do
+      {:ok, %{"result" => %{"content" => [%{"text" => text} | _]}}} ->
+        {:ok, text}
+
+      {:ok, other} ->
+        Logger.warning("McpClient unexpected response shape: #{inspect(other)}")
+        {:error, :unexpected_response}
+
+      {:error, _} ->
+        {:error, :json_decode_failed}
+    end
+  end
+
+  defp handle_data_response({:ok, {{_http, status, _}, _, body}}, name) do
+    Logger.warning("McpClient #{name} unexpected status #{status}: #{inspect(body)}")
+    {:error, {:http_error, status}}
+  end
+
+  defp handle_data_response({:error, reason}, _name) do
     Logger.warning("McpClient request failed: #{inspect(reason)}")
     {:error, reason}
   end

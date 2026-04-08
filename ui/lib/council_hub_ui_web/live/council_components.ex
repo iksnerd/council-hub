@@ -333,13 +333,17 @@ defmodule CouncilHubUiWeb.CouncilComponents do
             >
               <span class="hero-bookmark-solid w-3 h-3"></span> PINNED
             </span>
-            <span
+            <button
               :if={Map.get(@msg, :reply_to, "") != ""}
-              class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-cyan-500/10 text-cyan-400 border border-cyan-500/20"
+              id={"reply-btn-#{@msg.id}"}
+              phx-hook="ScrollToMessage"
+              data-reply-to={Map.get(@msg, :reply_to, "")}
+              type="button"
+              class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 cursor-pointer hover:bg-cyan-500/20 transition-colors"
             >
               <span class="hero-arrow-uturn-left w-3 h-3"></span>
               re: #{String.slice(Map.get(@msg, :reply_to, ""), 0, 8)}
-            </span>
+            </button>
             <span class="text-[10px] text-zinc-600 font-mono tabular-nums">
               {format_timestamp(@msg.timestamp)}
             </span>
@@ -451,6 +455,91 @@ defmodule CouncilHubUiWeb.CouncilComponents do
         >
           {emoji} <span class="text-zinc-400 text-[10px] font-mono">{length(authors)}</span>
         </span>
+      </div>
+    </div>
+    """
+  end
+
+  attr :mentions, :list, required: true
+
+  def mentions_panel(assigns) do
+    ~H"""
+    <div :if={@mentions != []} class="px-3 pt-3 pb-2 border-t border-zinc-800/40">
+      <div class="flex items-center gap-2 px-3 mb-2">
+        <span class="hero-at-symbol w-3 h-3 text-cyan-400"></span>
+        <span class="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Mentions</span>
+      </div>
+      <div class="space-y-0.5 max-h-40 overflow-y-auto">
+        <div :for={m <- @mentions}>
+          <.link
+            patch={"/rooms/#{m.room_id}"}
+            class="block px-3 py-1.5 rounded hover:bg-zinc-800 transition-colors"
+          >
+            <div class="flex items-center gap-1.5 text-[11px]">
+              <span class="text-cyan-400 font-medium truncate">{m.author}</span>
+              <span class="text-zinc-600">in</span>
+              <span class="text-zinc-300 font-mono truncate">{m.room_id}</span>
+            </div>
+            <div class="text-[10px] text-zinc-500 truncate mt-0.5">
+              {String.slice(m.content, 0, 60)}
+            </div>
+          </.link>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  attr :archives, :list, required: true
+
+  def archive_list(assigns) do
+    ~H"""
+    <div :if={@archives != []} class="px-3 pt-3 pb-2 border-t border-zinc-800/40">
+      <div class="flex items-center gap-2 px-3 mb-2">
+        <span class="hero-archive-box w-3 h-3 text-zinc-400"></span>
+        <span class="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+          Archives ({length(@archives)})
+        </span>
+      </div>
+      <div class="space-y-0.5 max-h-48 overflow-y-auto">
+        <button
+          :for={a <- @archives}
+          phx-click="view_archive"
+          phx-value-room-id={a["room_id"]}
+          class="w-full text-left px-3 py-1.5 rounded hover:bg-zinc-800 transition-colors flex items-center justify-between"
+        >
+          <span class="text-[11px] font-mono text-zinc-300 truncate">{a["room_id"]}</span>
+          <span class="text-[10px] text-zinc-600 ml-2 shrink-0">
+            {if a["archived_at"], do: String.slice(a["archived_at"], 0, 10), else: ""}
+          </span>
+        </button>
+      </div>
+    </div>
+    """
+  end
+
+  attr :active_archive, :map, required: true
+
+  def archive_modal(assigns) do
+    ~H"""
+    <div
+      :if={@active_archive != nil}
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
+    >
+      <div class="bg-zinc-900 border border-zinc-700 rounded-lg w-3/4 max-h-[80vh] overflow-hidden flex flex-col shadow-2xl">
+        <div class="flex items-center justify-between px-4 py-3 border-b border-zinc-800 shrink-0">
+          <span class="font-mono text-sm text-zinc-300">{@active_archive.room_id} — archive</span>
+          <button
+            phx-click="close_archive"
+            class="text-zinc-500 hover:text-zinc-300 transition-colors"
+            aria-label="Close archive"
+          >
+            <span class="hero-x-mark w-4 h-4"></span>
+          </button>
+        </div>
+        <div class="overflow-y-auto px-6 py-4 prose prose-invert prose-sm max-w-none">
+          {Phoenix.HTML.raw(CouncilHubUiWeb.CouncilHelpers.render_markdown(@active_archive.content))}
+        </div>
       </div>
     </div>
     """
