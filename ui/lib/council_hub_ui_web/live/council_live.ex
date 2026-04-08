@@ -10,6 +10,8 @@ defmodule CouncilHubUiWeb.CouncilLive do
   @poll_interval 3_000
   @rooms_poll_interval 5_000
   @cluster_poll_interval 3_000
+  @mentions_poll_interval 10_000
+  @archives_poll_interval 30_000
 
   @impl true
   def mount(_params, _session, socket) do
@@ -17,6 +19,8 @@ defmodule CouncilHubUiWeb.CouncilLive do
       schedule_poll(:poll_messages, @poll_interval)
       schedule_poll(:poll_rooms, @rooms_poll_interval)
       schedule_poll(:poll_cluster, @cluster_poll_interval)
+      schedule_poll(:poll_mentions, @mentions_poll_interval)
+      schedule_poll(:poll_archives, @archives_poll_interval)
     end
 
     {rooms, db_connected} = load_rooms()
@@ -51,7 +55,11 @@ defmodule CouncilHubUiWeb.CouncilLive do
        cluster_wide: false,
        cluster_warnings: [],
        editing_tags: false,
-       tag_input: ""
+       tag_input: "",
+       mentions: [],
+       mention_author: System.get_env("COUNCIL_AUTHOR", "claude-code"),
+       archives: [],
+       active_archive: nil
      )
      |> stream(:messages, [])}
   end
@@ -127,6 +135,24 @@ defmodule CouncilHubUiWeb.CouncilLive do
   def handle_info(:poll_cluster, socket) do
     schedule_poll(:poll_cluster, @cluster_poll_interval)
     {:noreply, assign(socket, nodes: [Node.self() | Node.list()])}
+  end
+
+  def handle_info(:poll_mentions, socket) do
+    schedule_poll(:poll_mentions, @mentions_poll_interval)
+    mentions = Council.get_mentions(socket.assigns.mention_author, 10)
+    {:noreply, assign(socket, mentions: mentions)}
+  end
+
+  def handle_info(:poll_archives, socket) do
+    schedule_poll(:poll_archives, @archives_poll_interval)
+
+    archives =
+      case CouncilHubUi.McpClient.list_archives() do
+        {:ok, text} -> Jason.decode!(text)
+        _ -> socket.assigns.archives
+      end
+
+    {:noreply, assign(socket, archives: archives)}
   end
 
   defp poll_rooms_full(socket, latest) do
@@ -392,6 +418,20 @@ defmodule CouncilHubUiWeb.CouncilLive do
 
   def handle_event("cancel_edit_tags", _params, socket) do
     {:noreply, assign(socket, editing_tags: false, tag_input: "")}
+  end
+
+  def handle_event("view_archive", %{"room-id" => room_id}, socket) do
+    content =
+      case CouncilHubUi.McpClient.read_archive(room_id) do
+        {:ok, text} -> text
+        _ -> "Failed to load archive — is the MCP server running in HTTP mode?"
+      end
+
+    {:noreply, assign(socket, active_archive: %{room_id: room_id, content: content})}
+  end
+
+  def handle_event("close_archive", _params, socket) do
+    {:noreply, assign(socket, active_archive: nil)}
   end
 
   def handle_event("save_tags", %{"tags" => tags}, socket) do

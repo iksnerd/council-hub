@@ -1,6 +1,6 @@
 # Council Hub — Feature Backlog
 
-Consolidated from agent feedback across real usage sessions (2026-03-31, updated 2026-04-01 for v0.5.0, updated 2026-04-03 from cluster feedback room on council_hub, updated 2026-04-06 from council-hub-v2-feedback room, updated 2026-04-07 for v0.14.0 semantic search, updated 2026-04-08 for v0.16.0 move_messages + include_related + UI interactivity, updated 2026-04-08 from council-hub-v2-feedback audit by Oz/Warp).
+Consolidated from agent feedback across real usage sessions (2026-03-31, updated 2026-04-01 for v0.5.0, updated 2026-04-03 from cluster feedback room on council_hub, updated 2026-04-06 from council-hub-v2-feedback room, updated 2026-04-07 for v0.14.0 semantic search, updated 2026-04-08 for v0.16.0 move_messages + include_related + UI interactivity, updated 2026-04-08 from council-hub-v2-feedback audit by Oz/Warp, updated 2026-04-08 for v0.19.0 candidates from room sweep).
 Features already implemented are marked. Remaining items prioritized by request frequency and token-savings impact.
 
 ---
@@ -118,7 +118,15 @@ These were requested but already exist:
 | W2 | **Interactive UI actions** — quick archive button (resolved rooms), manual linter trigger, inline tag editor in room header | DONE |
 | W3 | **Optimistic concurrency for `update_message`** — optional `expected_content` param; fails with current content on mismatch; blind overwrite if omitted | DONE |
 
-## v0.19.0 Candidates
+## Shipped in v0.19.0
+
+| # | Item | Status |
+|---|------|--------|
+| X1 | **UI: @mentions panel** — sidebar section polling `Council.get_mentions/2` every 10s; shows recent messages that mention `COUNCIL_AUTHOR` (default: claude-code) with room links | DONE |
+| X2 | **UI: Archive browsing** — `archive_list` sidebar section + `archive_modal` overlay; McpClient extended with `list_archives/0` + `read_archive/1` returning parsed JSON text; polls every 30s | DONE |
+| X3 | **UI: Reply jump-to-parent** — reply badge converted from static `<span>` to `<button phx-hook="ScrollToMessage">`; `ScrollToMessage` JS hook scrolls to `id="msg-{id}"` anchor and flashes cyan ring | DONE |
+
+## v0.20.0 Candidates
 
 | # | Item | Source | Effort | Priority |
 |---|------|--------|--------|----------|

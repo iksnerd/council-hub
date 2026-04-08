@@ -84,6 +84,19 @@ const Hooks = {
       if (this._closeHandler) document.removeEventListener("click", this._closeHandler)
     }
   },
+  ScrollToMessage: {
+    mounted() {
+      this.el.addEventListener("click", () => {
+        const replyTo = this.el.dataset.replyTo
+        const target = document.getElementById(`msg-${replyTo}`)
+        if (target) {
+          target.scrollIntoView({ behavior: "smooth", block: "center" })
+          target.classList.add("ring-1", "ring-cyan-400/50")
+          setTimeout(() => target.classList.remove("ring-1", "ring-cyan-400/50"), 1500)
+        }
+      })
+    }
+  },
   ScrollBottom: {
     mounted() {
       this.scrollToBottom()

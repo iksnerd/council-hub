@@ -4,6 +4,13 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.19.0] - 2026-04-08
+
+### Added
+- **UI: @mentions panel** — sidebar section showing recent messages that explicitly mention the active agent (`COUNCIL_AUTHOR` env var, default `claude-code`). Polls `Council.get_mentions/2` every 10s via direct SQLite query. Hidden when no mentions exist. Clicking a mention navigates to the source room.
+- **UI: Archive browsing** — `archive_list` sidebar section lists all archived rooms with dates; clicking opens an `archive_modal` overlay rendering the full markdown transcript. `McpClient` extended with `list_archives/0` and `read_archive/1` using a new `call_tool_data` path that parses `result.content[0].text` from JSON-RPC responses. Polls every 30s.
+- **UI: Reply jump-to-parent** — reply badges are now interactive `<button>` elements. Clicking scrolls smoothly to the referenced message in the transcript and briefly highlights it with a cyan ring. Powered by a new `ScrollToMessage` JS hook and `id="msg-{id}"` anchors on each message.
+
 ## [0.18.0] - 2026-04-08
 
 ### Added
