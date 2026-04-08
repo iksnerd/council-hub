@@ -1087,3 +1087,145 @@ func TestMoveMessagesPreservesMetadata(t *testing.T) {
 		t.Errorf("expected room mv-meta-dst, got %s", m.RoomID)
 	}
 }
+
+// ========== GetMentions ==========
+
+func TestGetMentions(t *testing.T) {
+	s := setupTestServer(t)
+	s.CreateRoom("mention-room", "Mention tests", "", "", "", "", "")
+
+	// Post with mentions — one message mentioning claude, one mentioning both
+	_, err := s.PostMessageWithMentions("mention-room", "gemini-cli", "Hey @claude, please review this", "thought", "", "claude")
+	if err != nil {
+		t.Fatalf("PostMessageWithMentions failed: %v", err)
+	}
+	_, err = s.PostMessageWithMentions("mention-room", "amp", "Pinging @claude and @gemini-cli", "action", "", "claude,gemini-cli")
+	if err != nil {
+		t.Fatalf("PostMessageWithMentions failed: %v", err)
+	}
+	// Post without mentions — should not appear
+	s.PostMessage("mention-room", "gemini-cli", "No mentions here", "message", "")
+
+	msgs, err := s.GetMentions("claude", 20)
+	if err != nil {
+		t.Fatalf("GetMentions failed: %v", err)
+	}
+	if len(msgs) != 2 {
+		t.Errorf("expected 2 mentions of claude, got %d", len(msgs))
+	}
+}
+
+func TestGetMentionsNotFound(t *testing.T) {
+	s := setupTestServer(t)
+	s.CreateRoom("mention-empty", "Empty mention room", "", "", "", "", "")
+	s.PostMessage("mention-empty", "gemini-cli", "No mentions here", "message", "")
+
+	msgs, err := s.GetMentions("claude", 20)
+	if err != nil {
+		t.Fatalf("GetMentions failed: %v", err)
+	}
+	if len(msgs) != 0 {
+		t.Errorf("expected 0 mentions, got %d", len(msgs))
+	}
+}
+
+func TestGetMentionsBoundary(t *testing.T) {
+	// Ensure "claude" does not match "claude-sonnet" stored in mentions
+	s := setupTestServer(t)
+	s.CreateRoom("boundary-room", "Boundary test", "", "", "", "", "")
+
+	s.PostMessageWithMentions("boundary-room", "system", "For claude-sonnet only", "message", "", "claude-sonnet")
+	s.PostMessageWithMentions("boundary-room", "system", "For claude only", "message", "", "claude")
+
+	msgs, err := s.GetMentions("claude", 20)
+	if err != nil {
+		t.Fatalf("GetMentions failed: %v", err)
+	}
+	if len(msgs) != 1 {
+		t.Errorf("expected exactly 1 mention of 'claude' (not 'claude-sonnet'), got %d", len(msgs))
+	}
+}
+
+func TestGetMentionsLimit(t *testing.T) {
+	s := setupTestServer(t)
+	s.CreateRoom("mention-limit", "Limit test", "", "", "", "", "")
+
+	for i := 0; i < 5; i++ {
+		s.PostMessageWithMentions("mention-limit", "bot", "ping", "message", "", "claude")
+	}
+
+	msgs, err := s.GetMentions("claude", 3)
+	if err != nil {
+		t.Fatalf("GetMentions failed: %v", err)
+	}
+	if len(msgs) != 3 {
+		t.Errorf("expected 3 (limit), got %d", len(msgs))
+	}
+}
+
+// ========== UpdateMessageWithExpected (optimistic concurrency) ==========
+
+func TestUpdateMessageWithExpectedMatch(t *testing.T) {
+	s := setupTestServer(t)
+	s.CreateRoom("occ-room", "OCC test", "", "", "", "", "")
+	id, _ := s.PostMessage("occ-room", "Claude", "original", "message", "")
+
+	m, err := s.UpdateMessageWithExpected(id, "updated", "", "original")
+	if err != nil {
+		t.Fatalf("UpdateMessageWithExpected failed: %v", err)
+	}
+	if m.Content != "updated" {
+		t.Errorf("expected content 'updated', got '%s'", m.Content)
+	}
+}
+
+func TestUpdateMessageWithExpectedMismatch(t *testing.T) {
+	s := setupTestServer(t)
+	s.CreateRoom("occ-mismatch", "OCC mismatch", "", "", "", "", "")
+	id, _ := s.PostMessage("occ-mismatch", "Claude", "original", "message", "")
+
+	_, err := s.UpdateMessageWithExpected(id, "updated", "", "stale")
+	if err == nil {
+		t.Fatal("expected error for content mismatch, got nil")
+	}
+	changed, ok := err.(*ErrContentChanged)
+	if !ok {
+		t.Fatalf("expected *ErrContentChanged, got %T: %v", err, err)
+	}
+	if changed.CurrentContent != "original" {
+		t.Errorf("expected current content 'original', got '%s'", changed.CurrentContent)
+	}
+}
+
+func TestUpdateMessageWithExpectedEmpty(t *testing.T) {
+	// Empty expected_content = blind overwrite (same as UpdateMessage)
+	s := setupTestServer(t)
+	s.CreateRoom("occ-empty", "OCC empty", "", "", "", "", "")
+	id, _ := s.PostMessage("occ-empty", "Claude", "original", "message", "")
+
+	m, err := s.UpdateMessageWithExpected(id, "blind update", "", "")
+	if err != nil {
+		t.Fatalf("UpdateMessageWithExpected with empty expected failed: %v", err)
+	}
+	if m.Content != "blind update" {
+		t.Errorf("expected 'blind update', got '%s'", m.Content)
+	}
+}
+
+func TestPostMessageWithMentionsStoredAndRetrievable(t *testing.T) {
+	s := setupTestServer(t)
+	s.CreateRoom("pmwm-room", "Test", "", "", "", "", "")
+
+	id, err := s.PostMessageWithMentions("pmwm-room", "agent-a", "content", "thought", "", "agent-b,agent-c")
+	if err != nil {
+		t.Fatalf("PostMessageWithMentions: %v", err)
+	}
+
+	msgs, err := s.GetMessagesByIDs([]string{id})
+	if err != nil || len(msgs) == 0 {
+		t.Fatalf("GetMessagesByIDs failed: %v", err)
+	}
+	if msgs[0].Mentions != "agent-b,agent-c" {
+		t.Errorf("expected mentions 'agent-b,agent-c', got '%s'", msgs[0].Mentions)
+	}
+}

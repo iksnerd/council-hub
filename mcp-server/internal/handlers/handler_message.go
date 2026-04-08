@@ -17,6 +17,13 @@ type PostToRoomInput struct {
 	Message     string `json:"message"`
 	MessageType string `json:"message_type"`
 	ReplyTo     string `json:"reply_to"`
+	Mentions    string `json:"mentions"`
+}
+
+// GetMentionsInput represents the parameters for querying messages that mention an agent.
+type GetMentionsInput struct {
+	Author string `json:"author"`
+	Limit  string `json:"limit"`
 }
 
 // SearchMessagesInput represents the parameters for searching messages.
@@ -45,9 +52,10 @@ type MoveMessagesInput struct {
 
 // UpdateMessageInput represents the parameters for editing a message in-place.
 type UpdateMessageInput struct {
-	MessageID   string `json:"message_id"`
-	Content     string `json:"content"`
-	MessageType string `json:"message_type"`
+	MessageID       string `json:"message_id"`
+	Content         string `json:"content"`
+	MessageType     string `json:"message_type"`
+	ExpectedContent string `json:"expected_content"`
 }
 
 // DeleteMessagesInput represents the parameters for deleting messages.
@@ -103,7 +111,7 @@ func (r *Registry) handlePostToRoom(ctx context.Context, req *mcp.CallToolReques
 		return msg(fmt.Sprintf("Error: Room '%s' not found. Create it first with create_room.", args.RoomID))
 	}
 
-	msgID, err := r.Server.PostMessage(args.RoomID, args.Author, args.Message, args.MessageType, args.ReplyTo)
+	msgID, err := r.Server.PostMessageWithMentions(args.RoomID, args.Author, args.Message, args.MessageType, args.ReplyTo, args.Mentions)
 	if err != nil {
 		r.Server.Logger.Error("Failed to post message", "room_id", args.RoomID, "error", err)
 		return nil, ToolOutput{}, err
@@ -432,10 +440,13 @@ func (r *Registry) handleUpdateMessage(ctx context.Context, req *mcp.CallToolReq
 		return msg(fmt.Sprintf("Error: invalid message_type '%s'. Valid types: message, thought, decision, code, review, action, critique, synthesis.", args.MessageType))
 	}
 
-	m, err := r.Server.UpdateMessage(args.MessageID, args.Content, args.MessageType)
+	m, err := r.Server.UpdateMessageWithExpected(args.MessageID, args.Content, args.MessageType, args.ExpectedContent)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return msg(fmt.Sprintf("Error: message #%.8s not found.", args.MessageID))
+		}
+		if changed, ok := err.(*council.ErrContentChanged); ok {
+			return msg(fmt.Sprintf("Error: content changed since last read — re-read before updating.\n\nCurrent content:\n%s", changed.CurrentContent))
 		}
 		r.Server.Logger.Error("Failed to update message", "id", args.MessageID, "error", err)
 		return nil, ToolOutput{}, err
@@ -548,5 +559,52 @@ func (r *Registry) handleMoveMessages(ctx context.Context, req *mcp.CallToolRequ
 		fmt.Fprintf(&b, " %d ID(s) not found and were skipped.", notMoved)
 	}
 	r.Server.Logger.Info("Messages moved", "count", moved, "target", args.TargetRoomID)
+	return msg(b.String())
+}
+
+func (r *Registry) handleGetMentions(ctx context.Context, req *mcp.CallToolRequest, args GetMentionsInput) (*mcp.CallToolResult, ToolOutput, error) {
+	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: text}},
+		}, ToolOutput{Message: text}, nil
+	}
+
+	if args.Author == "" {
+		return msg("Error: author is required.")
+	}
+
+	limit := 20
+	if args.Limit != "" {
+		if _, err := fmt.Sscanf(args.Limit, "%d", &limit); err != nil {
+			limit = 20
+		}
+	}
+
+	messages, err := r.Server.GetMentions(args.Author, limit)
+	if err != nil {
+		r.Server.Logger.Error("Failed to get mentions", "author", args.Author, "error", err)
+		return nil, ToolOutput{}, err
+	}
+
+	if len(messages) == 0 {
+		return msg(fmt.Sprintf("No messages mention @%s.", args.Author))
+	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "Found %d message(s) mentioning @%s:\n\n", len(messages), args.Author)
+	for _, m := range messages {
+		ts := m.Timestamp.Format("2006-01-02 15:04:05")
+		excerpt := m.Content
+		if len(excerpt) > 200 {
+			excerpt = excerpt[:200]
+			if i := strings.LastIndex(excerpt, " "); i > 150 {
+				excerpt = excerpt[:i]
+			}
+			excerpt += "..."
+		}
+		excerpt = strings.ReplaceAll(excerpt, "\n", " ")
+		fmt.Fprintf(&b, "- **#%s** [%s] %s in **%s** (%s): %s\n", m.ID, ts, m.Author, m.RoomID, m.MessageType, excerpt)
+	}
+
 	return msg(b.String())
 }

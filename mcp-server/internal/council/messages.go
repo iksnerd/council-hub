@@ -9,7 +9,19 @@ import (
 	"github.com/google/uuid"
 )
 
+// PostMessage posts a message to a room. Existing callers use this signature.
 func (s *Server) PostMessage(roomID, author, content, messageType string, replyTo string) (string, error) {
+	return s.postMessageCore(roomID, author, content, messageType, replyTo, "")
+}
+
+// PostMessageWithMentions posts a message that explicitly mentions other agents.
+// mentions is a CSV of agent names (e.g. "claude,gemini-cli"). Agents can query
+// get_mentions on startup to find messages addressed to them.
+func (s *Server) PostMessageWithMentions(roomID, author, content, messageType, replyTo, mentions string) (string, error) {
+	return s.postMessageCore(roomID, author, content, messageType, replyTo, mentions)
+}
+
+func (s *Server) postMessageCore(roomID, author, content, messageType, replyTo, mentions string) (string, error) {
 	s.Mu.Lock()
 	defer s.Mu.Unlock()
 
@@ -19,8 +31,8 @@ func (s *Server) PostMessage(roomID, author, content, messageType string, replyT
 
 	id := uuid.Must(uuid.NewV7()).String()
 	_, err := s.DB.Exec(
-		`INSERT INTO messages (id, room_id, author, content, message_type, reply_to) VALUES (?, ?, ?, ?, ?, ?)`,
-		id, roomID, author, content, messageType, replyTo,
+		`INSERT INTO messages (id, room_id, author, content, message_type, reply_to, mentions) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		id, roomID, author, content, messageType, replyTo, mentions,
 	)
 	if err != nil {
 		return "", err
@@ -52,9 +64,68 @@ func (s *Server) PostMessage(roomID, author, content, messageType string, replyT
 	return id, nil
 }
 
+// GetMentions returns recent messages that explicitly mention the given author.
+// It uses CSV-safe boundary matching: wraps stored CSV in commas to avoid
+// substring collisions (e.g. "claude" vs "claude-code").
+func (s *Server) GetMentions(author string, limit int) ([]Message, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+	rows, err := s.DB.Query(
+		`SELECT `+messageColumns+` FROM messages
+		WHERE ','||mentions||',' LIKE '%,'||?||',%'
+		ORDER BY timestamp DESC LIMIT ?`,
+		author, limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	var msgs []Message
+	for rows.Next() {
+		m, err := scanMessage(rows)
+		if err != nil {
+			return nil, err
+		}
+		msgs = append(msgs, m)
+	}
+	return msgs, rows.Err()
+}
+
+// ErrContentChanged is returned by UpdateMessage when the message content has
+// changed since the caller last read it (optimistic concurrency failure).
+type ErrContentChanged struct {
+	CurrentContent string
+}
+
+func (e *ErrContentChanged) Error() string {
+	return "content changed since last read — re-read before updating"
+}
+
 func (s *Server) UpdateMessage(messageID string, newContent, newMessageType string) (*Message, error) {
+	return s.UpdateMessageWithExpected(messageID, newContent, newMessageType, "")
+}
+
+// UpdateMessageWithExpected updates a message, optionally checking that the
+// current content matches expectedContent before writing (optimistic locking).
+// If expectedContent is "" the check is skipped (same as UpdateMessage).
+// If the content has changed, returns *ErrContentChanged with the current content.
+func (s *Server) UpdateMessageWithExpected(messageID, newContent, newMessageType, expectedContent string) (*Message, error) {
 	s.Mu.Lock()
 	defer s.Mu.Unlock()
+
+	// Optimistic concurrency check: read current content before writing.
+	if expectedContent != "" {
+		var current string
+		err := s.DB.QueryRow(`SELECT content FROM messages WHERE id = ?`, messageID).Scan(&current)
+		if err != nil {
+			return nil, err
+		}
+		if current != expectedContent {
+			return nil, &ErrContentChanged{CurrentContent: current}
+		}
+	}
 
 	if newMessageType != "" {
 		_, err := s.DB.Exec(
@@ -289,7 +360,7 @@ func (s *Server) GetLatestPerType(roomID string) ([]Message, error) {
 	// Return up to 2 most recent messages per type so agents see both the latest
 	// and its predecessor (useful when the latest superseded an earlier key message).
 	rows, err := s.DB.Query(`
-		SELECT id, room_id, author, content, message_type, is_summary, reply_to, pinned, reactions, timestamp
+		SELECT id, room_id, author, content, message_type, is_summary, reply_to, pinned, reactions, mentions, timestamp
 		FROM (
 			SELECT *, ROW_NUMBER() OVER (PARTITION BY message_type ORDER BY id DESC) as rn
 			FROM messages

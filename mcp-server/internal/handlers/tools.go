@@ -144,6 +144,7 @@ func (r *Registry) RegisterTools() {
 				"'code' for code snippets, 'synthesis' for distilled knowledge articles that compile a room's conclusions "+
 				"(the 'compiled output' — use after deliberation to capture what was learned). Default: 'message'."),
 			"reply_to": prop("string", "Message ID this is a reply to (e.g. 42). Renders as 're: #42' in transcripts"),
+			"mentions": prop("string", "Comma-separated agent names to explicitly notify (e.g. 'claude,gemini-cli'). Mentioned agents can call get_mentions on startup to find threads awaiting their input."),
 		}),
 	}, r.handlePostToRoom)
 
@@ -266,11 +267,12 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "update_message",
-		Description: "Edit a message's content in-place. Use for: (1) maintaining living documents like status tables or running summaries that evolve over time, (2) correcting factual errors. Convention: prefer posting a new message for new information; use update_message only when the original is a 'living' document or contains a mistake. Preserves author, timestamp, room, and other fields.",
+		Description: "Edit a message's content in-place. Use for: (1) maintaining living documents like status tables or running summaries that evolve over time, (2) correcting factual errors. Convention: prefer posting a new message for new information; use update_message only when the original is a 'living' document or contains a mistake. Preserves author, timestamp, room, and other fields. Use expected_content to prevent lost updates when multiple agents may edit the same message.",
 		InputSchema: schema([]string{"message_id", "content"}, map[string]map[string]any{
-			"message_id":   prop("string", "ID of the message to update"),
-			"content":      prop("string", "New message content (replaces existing)"),
-			"message_type": prop("string", "Optionally change message type: message, thought, decision, action, review, critique, code, synthesis"),
+			"message_id":       prop("string", "ID of the message to update"),
+			"content":          prop("string", "New message content (replaces existing)"),
+			"message_type":     prop("string", "Optionally change message type: message, thought, decision, action, review, critique, code, synthesis"),
+			"expected_content": prop("string", "If provided, the update fails with the current content if this doesn't match — prevents lost updates when multiple agents edit the same living document."),
 		}),
 	}, r.handleUpdateMessage)
 
@@ -310,6 +312,15 @@ func (r *Registry) RegisterTools() {
 			"target_room_id": prop("string", "Room ID to move the messages into"),
 		}),
 	}, r.handleMoveMessages)
+
+	mcp.AddTool(r.Server.MCP, &mcp.Tool{
+		Name:        "get_mentions",
+		Description: "Find messages that explicitly mention a specific agent. Call this at session start to check if any threads await your input before running get_digest. Returns recent messages where the agent was mentioned via the mentions param in post_to_room, ordered newest-first.",
+		InputSchema: schema([]string{"author"}, map[string]map[string]any{
+			"author": prop("string", "Agent name to search mentions for (e.g. 'claude', 'gemini-cli')"),
+			"limit":  prop("string", "Max results to return (default 20, max 100)"),
+		}),
+	}, r.handleGetMentions)
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "list_archives",

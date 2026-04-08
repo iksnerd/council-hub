@@ -140,6 +140,8 @@ defmodule CouncilHubUiWeb.CouncilComponents do
   attr :room, :map, required: true
   attr :count, :integer, default: 0
   attr :show_system_prompt, :boolean, default: false
+  attr :editing_tags, :boolean, default: false
+  attr :tag_input, :string, default: ""
 
   def room_header(assigns) do
     ~H"""
@@ -209,7 +211,58 @@ defmodule CouncilHubUiWeb.CouncilComponents do
           {related}
         </.link>
 
-        <div class="flex items-center gap-2 ml-auto">
+        <div class="flex items-center gap-2 ml-auto flex-wrap justify-end">
+          <%!-- Tag editor --%>
+          <div :if={@editing_tags} class="flex items-center gap-1">
+            <form phx-submit="save_tags" class="flex items-center gap-1">
+              <input
+                type="text"
+                name="tags"
+                value={@tag_input}
+                placeholder="tag1,tag2"
+                autofocus
+                class="px-2 py-1 rounded-md bg-zinc-800 border border-zinc-600 text-zinc-200 text-xs font-mono w-48 focus:outline-none focus:border-amber-500/50"
+              />
+              <button
+                type="submit"
+                class="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-500/15 text-emerald-400 text-xs border border-emerald-500/20 hover:bg-emerald-500/25 transition-colors cursor-pointer"
+              >
+                save
+              </button>
+              <button
+                type="button"
+                phx-click="cancel_edit_tags"
+                class="inline-flex items-center px-2 py-1 rounded-md bg-zinc-700/40 text-zinc-400 text-xs hover:bg-zinc-700/60 transition-colors cursor-pointer"
+              >
+                cancel
+              </button>
+            </form>
+          </div>
+          <button
+            :if={not @editing_tags}
+            phx-click="edit_tags"
+            title="Edit tags"
+            class="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-zinc-500/10 text-zinc-400 text-xs border border-zinc-500/15 hover:bg-zinc-500/20 transition-colors cursor-pointer"
+          >
+            <span class="hero-tag w-3.5 h-3.5"></span> tags
+          </button>
+          <button
+            phx-click="check_room_health"
+            phx-value-room-id={@room.id}
+            title="Run Knowledge Linter on this room"
+            class="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-zinc-500/10 text-zinc-400 text-xs border border-zinc-500/15 hover:bg-zinc-500/20 transition-colors cursor-pointer"
+          >
+            <span class="hero-magnifying-glass w-3.5 h-3.5"></span> lint
+          </button>
+          <button
+            :if={@room.status == "resolved"}
+            phx-click="archive_room"
+            phx-value-room-id={@room.id}
+            title="Archive this resolved room"
+            class="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-red-500/10 text-red-400 text-xs border border-red-500/15 hover:bg-red-500/20 transition-colors cursor-pointer"
+          >
+            <span class="hero-archive-box w-3.5 h-3.5"></span> archive
+          </button>
           <a
             href={"/rooms/#{@room.id}/export"}
             download={"#{@room.id}.md"}

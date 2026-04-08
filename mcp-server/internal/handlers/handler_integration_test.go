@@ -446,3 +446,59 @@ func TestIntegration_MoveMessages(t *testing.T) {
 		t.Errorf("unexpected: %s", text)
 	}
 }
+
+func TestIntegration_UpdateMessageOptimisticConcurrency(t *testing.T) {
+	cs, reg := setupIntegrationTest(t)
+	mustCreateRoom(t, reg.Server, "integ-occ")
+	id := mustPost(t, reg.Server, "integ-occ", "Claude", "original content")
+
+	// Matching expected_content should succeed
+	okResult := callTool(t, cs, "update_message", map[string]any{
+		"message_id":       id,
+		"content":          "updated content",
+		"expected_content": "original content",
+	})
+	if !strings.Contains(resultText(okResult), "updated") {
+		t.Errorf("expected success, got: %s", resultText(okResult))
+	}
+
+	// Mismatched expected_content should fail with a user-readable error
+	failResult := callTool(t, cs, "update_message", map[string]any{
+		"message_id":       id,
+		"content":          "would overwrite",
+		"expected_content": "stale — this no longer matches",
+	})
+	text := resultText(failResult)
+	if !strings.Contains(text, "content changed") {
+		t.Errorf("expected concurrency error, got: %s", text)
+	}
+}
+
+func TestIntegration_GetMentions(t *testing.T) {
+	cs, reg := setupIntegrationTest(t)
+	mustCreateRoom(t, reg.Server, "integ-mention-room")
+
+	// Post a message that mentions "claude" via the full MCP dispatch path
+	postResult := callTool(t, cs, "post_to_room", map[string]any{
+		"room_id":      "integ-mention-room",
+		"author":       "gemini-cli",
+		"message":      "Claude, I need your review on this decision.",
+		"message_type": "thought",
+		"mentions":     "claude",
+	})
+	if !strings.Contains(resultText(postResult), "posted") {
+		t.Fatalf("post_to_room failed: %s", resultText(postResult))
+	}
+
+	// get_mentions should find it
+	mentionResult := callTool(t, cs, "get_mentions", map[string]any{
+		"author": "claude",
+	})
+	text := resultText(mentionResult)
+	if !strings.Contains(text, "Found 1") {
+		t.Errorf("expected Found 1 mention, got: %s", text)
+	}
+	if !strings.Contains(text, "gemini-cli") {
+		t.Errorf("expected author gemini-cli in result, got: %s", text)
+	}
+}

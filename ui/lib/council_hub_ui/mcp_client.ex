@@ -12,51 +12,40 @@ defmodule CouncilHubUi.McpClient do
     Application.get_env(:council_hub_ui, :mcp_server_url, @default_url)
   end
 
-  @doc """
-  Sends a react_to_message tool call to the MCP server.
-  Returns :ok on success or {:error, reason} on failure.
-  """
+  @doc "Add or remove an emoji reaction on a message."
   def react_to_message(message_id, emoji, author) do
-    body =
-      Jason.encode!(%{
-        jsonrpc: "2.0",
-        id: System.unique_integer([:positive]),
-        method: "tools/call",
-        params: %{
-          name: "react_to_message",
-          arguments: %{message_id: message_id, emoji: emoji, author: author}
-        }
-      })
-
-    url = String.to_charlist(mcp_url())
-
-    headers = [
-      {~c"Content-Type", ~c"application/json"},
-      {~c"Accept", ~c"application/json, text/event-stream"}
-    ]
-
-    :httpc.request(:post, {url, headers, ~c"application/json", body}, [{:timeout, 5000}], [])
-    |> handle_response()
-  rescue
-    e ->
-      Logger.warning("McpClient error: #{inspect(e)}")
-      {:error, :request_failed}
+    call_tool("react_to_message", %{message_id: message_id, emoji: emoji, author: author})
   end
 
-  @doc """
-  Sends a signal_status tool call to the MCP server.
-  Returns :ok on success or {:error, reason} on failure.
-  """
+  @doc "Set the status of a room (active | paused | resolved)."
   def signal_status(room_id, status) do
+    call_tool("signal_status", %{room_id: room_id, status: status})
+  end
+
+  @doc "Archive a room — exports transcript to markdown file."
+  def archive_room(room_id) do
+    call_tool("archive_room", %{room_id: room_id})
+  end
+
+  @doc "Run the Knowledge Linter on a room and return its health report."
+  def check_room_health(room_id) do
+    call_tool("check_room_health", %{room_id: room_id})
+  end
+
+  @doc "Update tags on a room (CSV string, overwrites existing tags)."
+  def update_room_tags(room_id, tags) do
+    call_tool("update_room", %{room_id: room_id, tags: tags})
+  end
+
+  # --- Private ---
+
+  defp call_tool(name, arguments) do
     body =
       Jason.encode!(%{
         jsonrpc: "2.0",
         id: System.unique_integer([:positive]),
         method: "tools/call",
-        params: %{
-          name: "signal_status",
-          arguments: %{room_id: room_id, status: status}
-        }
+        params: %{name: name, arguments: arguments}
       })
 
     url = String.to_charlist(mcp_url())
@@ -66,11 +55,11 @@ defmodule CouncilHubUi.McpClient do
       {~c"Accept", ~c"application/json, text/event-stream"}
     ]
 
-    :httpc.request(:post, {url, headers, ~c"application/json", body}, [{:timeout, 5000}], [])
+    :httpc.request(:post, {url, headers, ~c"application/json", body}, [{:timeout, 8000}], [])
     |> handle_response()
   rescue
     e ->
-      Logger.warning("McpClient error: #{inspect(e)}")
+      Logger.warning("McpClient error calling #{name}: #{inspect(e)}")
       {:error, :request_failed}
   end
 

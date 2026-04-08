@@ -574,5 +574,93 @@ defmodule CouncilHubUiWeb.CouncilComponentsTest do
       html = render_component(&CouncilComponents.room_header/1, assigns)
       refute html =~ "header-updated-no-updated-at"
     end
+
+    test "room_header shows archive button for resolved rooms" do
+      assigns = %{
+        room: %{
+          id: "resolved-hdr",
+          status: "resolved",
+          description: "",
+          project: "",
+          tech_stack: "",
+          tags: "",
+          system_prompt: "",
+          related_rooms: "",
+          created_at: ~N[2026-03-29 14:00:00]
+        },
+        count: 0,
+        show_system_prompt: false
+      }
+
+      html = render_component(&CouncilComponents.room_header/1, assigns)
+      assert html =~ "phx-click=\"archive_room\""
+    end
+
+    test "room_header hides archive button for active rooms" do
+      assigns = %{
+        room: %{
+          id: "active-hdr",
+          status: "active",
+          description: "",
+          project: "",
+          tech_stack: "",
+          tags: "",
+          system_prompt: "",
+          related_rooms: "",
+          created_at: ~N[2026-03-29 14:00:00]
+        },
+        count: 0,
+        show_system_prompt: false
+      }
+
+      html = render_component(&CouncilComponents.room_header/1, assigns)
+      refute html =~ "phx-click=\"archive_room\""
+    end
+
+    test "room_header always shows lint button" do
+      assigns = %{
+        room: %{
+          id: "lint-hdr",
+          status: "active",
+          description: "",
+          project: "",
+          tech_stack: "",
+          tags: "",
+          system_prompt: "",
+          related_rooms: "",
+          created_at: ~N[2026-03-29 14:00:00]
+        },
+        count: 0,
+        show_system_prompt: false
+      }
+
+      html = render_component(&CouncilComponents.room_header/1, assigns)
+      assert html =~ "phx-click=\"check_room_health\""
+    end
+
+    test "room_header shows tag editor form when editing_tags is true" do
+      assigns = %{
+        room: %{
+          id: "tag-edit-hdr",
+          status: "active",
+          description: "",
+          project: "",
+          tech_stack: "",
+          tags: "go,elixir",
+          system_prompt: "",
+          related_rooms: "",
+          created_at: ~N[2026-03-29 14:00:00]
+        },
+        count: 0,
+        show_system_prompt: false,
+        editing_tags: true,
+        tag_input: "go,elixir"
+      }
+
+      html = render_component(&CouncilComponents.room_header/1, assigns)
+      assert html =~ ~s(name="tags")
+      assert html =~ "save"
+      assert html =~ "cancel"
+    end
   end
 end

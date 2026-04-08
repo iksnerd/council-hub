@@ -49,7 +49,9 @@ defmodule CouncilHubUiWeb.CouncilLive do
        search_until: "",
        nodes: [Node.self() | Node.list()],
        cluster_wide: false,
-       cluster_warnings: []
+       cluster_warnings: [],
+       editing_tags: false,
+       tag_input: ""
      )
      |> stream(:messages, [])}
   end
@@ -351,6 +353,54 @@ defmodule CouncilHubUiWeb.CouncilLive do
     end
 
     {:noreply, socket}
+  end
+
+  def handle_event("archive_room", %{"room-id" => room_id}, socket) do
+    case CouncilHubUi.McpClient.archive_room(room_id) do
+      :ok ->
+        {:noreply, put_flash(socket, :info, "Room '#{room_id}' archived.")}
+
+      {:error, reason} ->
+        Logger.warning("archive_room failed: #{inspect(reason)}")
+        {:noreply, put_flash(socket, :error, "Archive failed — is the MCP server running in HTTP mode?")}
+    end
+  end
+
+  def handle_event("check_room_health", %{"room-id" => room_id}, socket) do
+    case CouncilHubUi.McpClient.check_room_health(room_id) do
+      :ok ->
+        {:noreply, put_flash(socket, :info, "Health check triggered for '#{room_id}'.")}
+
+      {:error, reason} ->
+        Logger.warning("check_room_health failed: #{inspect(reason)}")
+        {:noreply, put_flash(socket, :error, "Linter check failed — is the MCP server running in HTTP mode?")}
+    end
+  end
+
+  def handle_event("edit_tags", _params, socket) do
+    tag_input = Map.get(socket.assigns.active_room || %{}, :tags, "")
+    {:noreply, assign(socket, editing_tags: true, tag_input: tag_input)}
+  end
+
+  def handle_event("cancel_edit_tags", _params, socket) do
+    {:noreply, assign(socket, editing_tags: false, tag_input: "")}
+  end
+
+  def handle_event("save_tags", %{"tags" => tags}, socket) do
+    room_id = socket.assigns.active_room.id
+    normalized = tags |> String.split(",") |> Enum.map(&String.trim/1) |> Enum.reject(&(&1 == "")) |> Enum.join(",")
+
+    case CouncilHubUi.McpClient.update_room_tags(room_id, normalized) do
+      :ok ->
+        {:noreply, assign(socket, editing_tags: false, tag_input: "")}
+
+      {:error, reason} ->
+        Logger.warning("update_room_tags failed: #{inspect(reason)}")
+        {:noreply,
+         socket
+         |> assign(editing_tags: false, tag_input: "")
+         |> put_flash(:error, "Tag update failed — is the MCP server running in HTTP mode?")}
+    end
   end
 
   # -- Helpers --

@@ -178,6 +178,8 @@
         room={@active_room}
         count={Map.get(@room_counts, @active_room.id, 0)}
         show_system_prompt={@show_system_prompt}
+        editing_tags={@editing_tags}
+        tag_input={@tag_input}
       />
 
       <%!-- Message Search + Type Filter --%>

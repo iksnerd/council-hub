@@ -193,3 +193,83 @@ func TestHandleSearchMessagesLikeWildcards(t *testing.T) {
 		t.Errorf("LIKE wildcards in query should be treated as literals, got: %s", text)
 	}
 }
+
+// ========== mentions + get_mentions ==========
+
+func TestHandlePostToRoomWithMentions(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-mention")
+
+	res, _, err := reg.handlePostToRoom(context.Background(), nil, PostToRoomInput{
+		RoomID: "h-mention", Author: "agent-a", Message: "Hey @agent-b, check this out",
+		Mentions: "agent-b",
+	})
+	if err != nil {
+		t.Fatalf("handlePostToRoom error: %v", err)
+	}
+	if !strings.Contains(resultText(res), "posted") {
+		t.Errorf("expected posted confirmation, got: %s", resultText(res))
+	}
+
+	// Verify mentions stored in DB
+	msgs, _ := reg.Server.GetRecentMessages("h-mention", 1)
+	if len(msgs) == 0 {
+		t.Fatal("no messages found")
+	}
+	if msgs[0].Mentions != "agent-b" {
+		t.Errorf("expected mentions 'agent-b', got '%s'", msgs[0].Mentions)
+	}
+}
+
+func TestHandleGetMentions(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-get-mentions")
+
+	// Post two messages that mention claude
+	reg.handlePostToRoom(context.Background(), nil, PostToRoomInput{
+		RoomID: "h-get-mentions", Author: "gemini", Message: "Claude, please review",
+		Mentions: "claude",
+	})
+	reg.handlePostToRoom(context.Background(), nil, PostToRoomInput{
+		RoomID: "h-get-mentions", Author: "amp", Message: "Also for claude and gemini",
+		Mentions: "claude,gemini",
+	})
+	// Post without mentioning claude
+	reg.handlePostToRoom(context.Background(), nil, PostToRoomInput{
+		RoomID: "h-get-mentions", Author: "system", Message: "No mentions",
+	})
+
+	res, _, err := reg.handleGetMentions(context.Background(), nil, GetMentionsInput{Author: "claude"})
+	if err != nil {
+		t.Fatalf("handleGetMentions error: %v", err)
+	}
+	text := resultText(res)
+	if !strings.Contains(text, "claude") {
+		t.Errorf("expected mention of claude in output, got: %s", text)
+	}
+	if !strings.Contains(text, "Found 2") {
+		t.Errorf("expected 2 mentions, got: %s", text)
+	}
+}
+
+func TestHandleGetMentionsMissingAuthor(t *testing.T) {
+	reg := setupHandlerTest(t)
+	res, _, _ := reg.handleGetMentions(context.Background(), nil, GetMentionsInput{})
+	if !strings.Contains(resultText(res), "Error") {
+		t.Errorf("expected error for missing author, got: %s", resultText(res))
+	}
+}
+
+func TestHandleGetMentionsNone(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-no-mentions")
+	mustPost(t, reg.Server, "h-no-mentions", "bot", "hello world")
+
+	res, _, err := reg.handleGetMentions(context.Background(), nil, GetMentionsInput{Author: "nobody"})
+	if err != nil {
+		t.Fatalf("handleGetMentions error: %v", err)
+	}
+	if !strings.Contains(resultText(res), "No messages mention") {
+		t.Errorf("expected 'No messages mention', got: %s", resultText(res))
+	}
+}
