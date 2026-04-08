@@ -61,8 +61,8 @@ defmodule CouncilHubUiWeb.CouncilLiveTest do
       })
 
       {:ok, _view, html} = live(conn, "/rooms/meta-room")
-      assert html =~ "my-project"
-      assert html =~ "Elixir, Go"
+      assert html =~ "MY-PROJECT"
+      assert html =~ "ELIXIR, GO"
     end
 
     test "shows related rooms in header", %{conn: conn} do
@@ -193,13 +193,15 @@ defmodule CouncilHubUiWeb.CouncilLiveTest do
 
       {:ok, view, _html} = live(conn, "/rooms/toggle-room")
 
-      # Click collapse toggle
-      html = view |> element("button[phx-click='toggle_summary']") |> render_click()
-      assert html =~ "expand"
+      # Click collapse toggle — summary id gets added to collapsed_summaries MapSet
+      view |> element("button[phx-click='toggle_summary']") |> render_click()
+      state = :sys.get_state(view.pid).socket.assigns
+      assert MapSet.size(state.collapsed_summaries) == 1
 
-      # Click again to expand
-      html = view |> element("button[phx-click='toggle_summary']") |> render_click()
-      assert html =~ "collapse"
+      # Click again to expand — removed from collapsed set
+      view |> element("button[phx-click='toggle_summary']") |> render_click()
+      state = :sys.get_state(view.pid).socket.assigns
+      assert MapSet.size(state.collapsed_summaries) == 0
     end
   end
 
@@ -510,21 +512,21 @@ defmodule CouncilHubUiWeb.CouncilLiveTest do
   describe "toggle_cluster_wide" do
     test "defaults to local mode", %{conn: conn} do
       {:ok, view, html} = live(conn, "/")
-      assert html =~ "○ local"
+      assert html =~ "LOCAL"
       assert :sys.get_state(view.pid).socket.assigns.cluster_wide == false
     end
 
     test "toggles to all-nodes mode and back", %{conn: conn} do
       create_room(%{id: "toggle-cw-room"})
       {:ok, view, html} = live(conn, "/")
-      assert html =~ "○ local"
+      assert html =~ "LOCAL"
 
       html = view |> element("button[phx-click='toggle_cluster_wide']") |> render_click()
-      assert html =~ "● all"
+      assert html =~ "ALL"
       assert :sys.get_state(view.pid).socket.assigns.cluster_wide == true
 
       html = view |> element("button[phx-click='toggle_cluster_wide']") |> render_click()
-      assert html =~ "○ local"
+      assert html =~ "LOCAL"
       assert :sys.get_state(view.pid).socket.assigns.cluster_wide == false
     end
 
@@ -565,7 +567,7 @@ defmodule CouncilHubUiWeb.CouncilLiveTest do
 
     test "renders cluster nodes in sidebar", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/")
-      assert html =~ "Cluster Nodes"
+      assert html =~ "Nodes"
       assert html =~ "#{Node.self()}"
     end
   end
@@ -627,9 +629,9 @@ defmodule CouncilHubUiWeb.CouncilLiveTest do
       })
 
       {:ok, _view, html} = live(conn, "/")
-      # The compiled badge (book-open icon) should appear for this room
+      # The compiled badge should appear for this room
       assert html =~ "synth-badge-room"
-      assert html =~ "hero-book-open"
+      assert html =~ "title=\"Has synthesis\""
     end
 
     test "compiled badge absent on room without synthesis messages", %{conn: conn} do
@@ -644,25 +646,15 @@ defmodule CouncilHubUiWeb.CouncilLiveTest do
 
       {:ok, _view, html} = live(conn, "/")
       assert html =~ "no-synth-room"
-      # hero-book-open only appears for synthesized rooms
-      refute html =~ "hero-book-open"
+      # synthesis badge only appears for synthesized rooms
+      refute html =~ "title=\"Has synthesis\""
     end
 
-    test "status badge is a clickable button with toggle_status handler", %{conn: conn} do
+    test "status is rendered as a dot (no toggle_status button)", %{conn: conn} do
       create_room(%{id: "toggle-status-room", status: "active"})
       {:ok, _view, html} = live(conn, "/")
-      assert html =~ "phx-click=\"toggle_status\""
-      assert html =~ "phx-value-room-id=\"toggle-status-room\""
-    end
-
-    test "toggle_status event does not crash when MCP server is unreachable", %{conn: conn} do
-      create_room(%{id: "toggle-crash-room", status: "active"})
-      {:ok, view, _html} = live(conn, "/")
-      # McpClient will fail to connect but must not crash the LiveView
-      view
-      |> render_hook("toggle_status", %{"room-id" => "toggle-crash-room", "status" => "active"})
-
-      assert render(view) =~ "toggle-crash-room"
+      refute html =~ "phx-click=\"toggle_status\""
+      assert html =~ "toggle-status-room"
     end
 
     test "synthesis_flags assign is populated on mount for rooms with synthesis", %{conn: conn} do
@@ -678,7 +670,7 @@ defmodule CouncilHubUiWeb.CouncilLiveTest do
       {:ok, view, _html} = live(conn, "/")
       # The MapSet is in assigns — test indirectly via compiled badge in rendered HTML
       assert render(view) =~ "synth-flags-room"
-      assert render(view) =~ "hero-book-open"
+      assert render(view) =~ "title=\"Has synthesis\""
     end
 
     test "filter toggle button is present in message search bar", %{conn: conn} do
