@@ -133,7 +133,7 @@ Issues found during v0.6.2/v0.6.3 development:
 |---|------|--------|
 | Q1 | **Schema/handler integration tests** — tests call handlers directly (bypassing `RegisterTools`), so missing schema params go undetected. Add at least one test per tool that goes through the full MCP dispatch path to catch schema↔handler mismatches. | DONE (v0.8.0) |
 | Q2 | **`cluster_wide` missing from `read_transcript` schema** — handler supported it but schema didn't expose it, causing JSON unmarshal errors. Fixed in v0.6.3. | DONE |
-| Q3 | **CI/CD secrets missing** — `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` not set in GitHub repo secrets; `docker-publish.yml` can't push. Add secrets under Settings → Secrets and variables → Actions, then re-push tag for multi-arch build. Tracked in room `cicd-setup`. | DONE (secrets added, v0.11.0+ builds succeed) |
+| Q3 | **CI/CD secrets** — `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` were missing; added for v0.11.0. Docker publish workflow removed in v0.17.0 — publishing is now manual via `make docker-push`. | DONE |
 
 ---
 
