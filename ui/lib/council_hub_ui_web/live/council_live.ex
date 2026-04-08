@@ -362,7 +362,9 @@ defmodule CouncilHubUiWeb.CouncilLive do
 
       {:error, reason} ->
         Logger.warning("archive_room failed: #{inspect(reason)}")
-        {:noreply, put_flash(socket, :error, "Archive failed — is the MCP server running in HTTP mode?")}
+
+        {:noreply,
+         put_flash(socket, :error, "Archive failed — is the MCP server running in HTTP mode?")}
     end
   end
 
@@ -373,7 +375,13 @@ defmodule CouncilHubUiWeb.CouncilLive do
 
       {:error, reason} ->
         Logger.warning("check_room_health failed: #{inspect(reason)}")
-        {:noreply, put_flash(socket, :error, "Linter check failed — is the MCP server running in HTTP mode?")}
+
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "Linter check failed — is the MCP server running in HTTP mode?"
+         )}
     end
   end
 
@@ -388,7 +396,13 @@ defmodule CouncilHubUiWeb.CouncilLive do
 
   def handle_event("save_tags", %{"tags" => tags}, socket) do
     room_id = socket.assigns.active_room.id
-    normalized = tags |> String.split(",") |> Enum.map(&String.trim/1) |> Enum.reject(&(&1 == "")) |> Enum.join(",")
+
+    normalized =
+      tags
+      |> String.split(",")
+      |> Enum.map(&String.trim/1)
+      |> Enum.reject(&(&1 == ""))
+      |> Enum.join(",")
 
     case CouncilHubUi.McpClient.update_room_tags(room_id, normalized) do
       :ok ->
@@ -396,6 +410,7 @@ defmodule CouncilHubUiWeb.CouncilLive do
 
       {:error, reason} ->
         Logger.warning("update_room_tags failed: #{inspect(reason)}")
+
         {:noreply,
          socket
          |> assign(editing_tags: false, tag_input: "")
