@@ -139,7 +139,14 @@ defmodule CouncilHubUiWeb.CouncilLive do
 
   def handle_info(:poll_mentions, socket) do
     schedule_poll(:poll_mentions, @mentions_poll_interval)
-    mentions = Council.get_mentions(socket.assigns.mention_author, 10)
+
+    mentions =
+      try do
+        Council.get_mentions(socket.assigns.mention_author, 10)
+      rescue
+        _ -> socket.assigns.mentions
+      end
+
     {:noreply, assign(socket, mentions: mentions)}
   end
 
@@ -147,8 +154,12 @@ defmodule CouncilHubUiWeb.CouncilLive do
     schedule_poll(:poll_archives, @archives_poll_interval)
 
     archives =
-      case CouncilHubUi.McpClient.list_archives() do
-        {:ok, text} -> Jason.decode!(text)
+      try do
+        case CouncilHubUi.McpClient.list_archives() do
+          {:ok, text} -> Jason.decode!(text)
+          _ -> socket.assigns.archives
+        end
+      rescue
         _ -> socket.assigns.archives
       end
 
