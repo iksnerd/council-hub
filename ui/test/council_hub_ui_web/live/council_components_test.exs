@@ -190,6 +190,42 @@ defmodule CouncilHubUiWeb.CouncilComponentsTest do
       html = render_component(&CouncilComponents.room_card/1, assigns)
       refute html =~ "bg-blue-500/10"
     end
+
+    test "renders type breakdown when decisions and actions present" do
+      assigns = %{
+        room: %{
+          id: "type-count-room",
+          status: "active",
+          description: "",
+          tags: "",
+          updated_at: ~N[2026-03-29 14:00:00]
+        },
+        active: false,
+        count: 5,
+        type_counts: %{"decision" => 3, "action" => 2}
+      }
+
+      html = render_component(&CouncilComponents.room_card/1, assigns)
+      assert html =~ "3d · 2a"
+    end
+
+    test "omits type breakdown when no decisions or actions" do
+      assigns = %{
+        room: %{
+          id: "no-types-room",
+          status: "active",
+          description: "",
+          tags: "",
+          updated_at: ~N[2026-03-29 14:00:00]
+        },
+        active: false,
+        count: 0,
+        type_counts: %{}
+      }
+
+      html = render_component(&CouncilComponents.room_card/1, assigns)
+      refute html =~ "0d · 0a"
+    end
   end
 
   describe "room_header" do

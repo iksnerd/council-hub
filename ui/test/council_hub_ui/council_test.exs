@@ -324,6 +324,29 @@ defmodule CouncilHubUi.CouncilTest do
     end
   end
 
+  describe "all_room_key_type_counts/0" do
+    test "returns decision and action counts per room" do
+      room = create_room(%{id: "ktc-room"})
+      create_message(%{room_id: room.id, message_type: "decision", author: "Claude"})
+      create_message(%{room_id: room.id, message_type: "decision", author: "Gemini"})
+      create_message(%{room_id: room.id, message_type: "action", author: "Claude"})
+      create_message(%{room_id: room.id, message_type: "thought", author: "Claude"})
+
+      counts = Council.all_room_key_type_counts()
+      assert counts[room.id]["decision"] == 2
+      assert counts[room.id]["action"] == 1
+      refute Map.has_key?(counts[room.id] || %{}, "thought")
+    end
+
+    test "returns empty map when no decisions or actions" do
+      room = create_room(%{id: "ktc-empty"})
+      create_message(%{room_id: room.id, message_type: "thought", author: "Claude"})
+
+      counts = Council.all_room_key_type_counts()
+      assert counts[room.id] == nil
+    end
+  end
+
   describe "search_messages/1" do
     test "searches by content query" do
       room = create_room(%{id: "sm-query"})

@@ -116,6 +116,19 @@ defmodule CouncilHubUi.Council do
     |> Map.new()
   end
 
+  @doc "Returns %{room_id => %{\"decision\" => n, \"action\" => n}} in a single batch query."
+  def all_room_key_type_counts do
+    Repo.all(
+      from m in Message,
+        where: m.message_type in ["decision", "action"],
+        group_by: [m.room_id, m.message_type],
+        select: {m.room_id, m.message_type, count(m.id)}
+    )
+    |> Enum.reduce(%{}, fn {room_id, type, count}, acc ->
+      Map.update(acc, room_id, %{type => count}, &Map.put(&1, type, count))
+    end)
+  end
+
   @doc "Returns the latest updated_at across all rooms, for change detection."
   def latest_room_update do
     Repo.one(from r in Room, select: max(r.updated_at))

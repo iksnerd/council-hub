@@ -30,6 +30,7 @@ defmodule CouncilHubUiWeb.CouncilLive do
        participant_counts: safe_participant_counts(db_connected),
        latest_ids: safe_latest_ids(db_connected),
        synthesis_flags: safe_synthesis_flags(db_connected),
+       type_counts: safe_type_counts(db_connected),
        active_room: nil,
        last_msg_id: "",
        collapsed_summaries: MapSet.new(),
@@ -150,6 +151,7 @@ defmodule CouncilHubUiWeb.CouncilLive do
           participant_counts: new_participants,
           latest_ids: new_latest_ids,
           synthesis_flags: safe_synthesis_flags(db_connected),
+          type_counts: safe_type_counts(db_connected),
           db_connected: db_connected,
           last_room_update: latest
         )
@@ -473,5 +475,15 @@ defmodule CouncilHubUiWeb.CouncilLive do
     e in [DBConnection.ConnectionError, Exqlite.Error] ->
       Logger.warning("Failed to load synthesis flags: #{inspect(e)}")
       MapSet.new()
+  end
+
+  defp safe_type_counts(false), do: %{}
+
+  defp safe_type_counts(true) do
+    Council.all_room_key_type_counts()
+  rescue
+    e in [DBConnection.ConnectionError, Exqlite.Error] ->
+      Logger.warning("Failed to load type counts: #{inspect(e)}")
+      %{}
   end
 end

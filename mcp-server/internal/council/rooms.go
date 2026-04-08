@@ -8,6 +8,26 @@ import (
 
 var nonSlugRe = regexp.MustCompile(`[^a-z0-9-]`)
 
+// normalizeTags converts tag strings from various formats to clean CSV.
+// Handles JSON array strings like ["a","b"] as well as whitespace-padded CSV.
+func normalizeTags(tags string) string {
+	if tags == "" {
+		return ""
+	}
+	tags = strings.TrimSpace(tags)
+	tags = strings.TrimPrefix(tags, "[")
+	tags = strings.TrimSuffix(tags, "]")
+	tags = strings.ReplaceAll(tags, `"`, "")
+	var parts []string
+	for _, t := range strings.Split(tags, ",") {
+		t = strings.TrimSpace(t)
+		if t != "" {
+			parts = append(parts, t)
+		}
+	}
+	return strings.Join(parts, ",")
+}
+
 // normalizeProject converts a project name to a URL-safe slug: lowercase,
 // spaces/underscores become hyphens, non-alphanumeric chars stripped,
 // consecutive hyphens collapsed, leading/trailing hyphens trimmed.
@@ -98,6 +118,7 @@ func (s *Server) CreateRoom(id, description, project, techStack, tags, systemPro
 	defer s.Mu.Unlock()
 
 	project = normalizeProject(project)
+	tags = normalizeTags(tags)
 
 	_, err := s.DB.Exec(
 		`INSERT OR IGNORE INTO rooms (id, description, project, tech_stack, tags, system_prompt, related_rooms) VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -207,6 +228,19 @@ func (s *Server) UpdateStatus(roomID, status string) error {
 	if rows == 0 {
 		return fmt.Errorf("room '%s' not found", roomID)
 	}
+
+	// Strip health tags when resolving — resolved rooms are skipped by check_room_health
+	// so these tags would otherwise persist forever and pollute tag filters.
+	if status == "resolved" {
+		var currentTags string
+		if err := s.DB.QueryRow(`SELECT COALESCE(tags, '') FROM rooms WHERE id = ?`, roomID).Scan(&currentTags); err == nil {
+			newTags := removeTag(removeTag(currentTags, "needs-synthesis"), "stale")
+			if newTags != currentTags {
+				_, _ = s.DB.Exec(`UPDATE rooms SET tags = ? WHERE id = ?`, newTags, roomID)
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -234,7 +268,7 @@ func (s *Server) UpdateRoom(roomID, description, project, techStack, tags, addTa
 
 	if tags != "" {
 		setClauses = append(setClauses, "tags = ?")
-		args = append(args, tags)
+		args = append(args, normalizeTags(tags))
 	} else if addTags != "" || removeTags != "" {
 		// Fetch current tags to modify them
 		var currentTags string

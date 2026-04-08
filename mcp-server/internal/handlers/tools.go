@@ -100,8 +100,14 @@ func (r *Registry) RegisterTools() {
 		Name:        "create_room",
 		Description: "Create a new council room (virtual workspace) for a topic or task. Does nothing if the room already exists. Related rooms are automatically linked in both directions. Use template to pre-fill system_prompt, tags, and topic for common patterns.",
 		InputSchema: schema([]string{"id"}, map[string]map[string]any{
-			"id":            prop("string", "Unique room identifier (e.g. auth-migration-v2)"),
-			"template":      prop("string", "Pre-fill system_prompt, tags, and topic for a common pattern. Available: brainstorm, bug, decision-log, review, sprint. Explicit fields override template defaults."),
+			"id": prop("string", "Unique room identifier (e.g. auth-migration-v2)"),
+			"template": prop("string", "Pre-fill system_prompt, tags, and topic for a common pattern. "+
+				"Available templates — brainstorm (open-ended idea exploration; tags: brainstorm,exploration), "+
+				"bug (single bug investigation lifecycle; tags: bug,investigation), "+
+				"decision-log (architectural decision record / ADR; tags: decision,architecture), "+
+				"review (code/design/proposal review workflow; tags: review), "+
+				"sprint (sprint coordination and retrospective; tags: sprint,planning). "+
+				"Explicit fields override template defaults."),
 			"topic":         prop("string", "What this room is about"),
 			"project":       prop("string", "Project grouping for filtering"),
 			"tech_stack":    prop("string", "Technologies involved"),
@@ -233,7 +239,7 @@ func (r *Registry) RegisterTools() {
 	}
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "search_messages",
-		Description: "Search messages across rooms by keyword, author, type, or time range. Prefer over read_transcript when: room has 20+ messages, you need cross-room results, or you're filtering by author/type/time window. Use read_transcript when you need a room's full sequential context. Returns snippets with message IDs; use get_messages to fetch full content. Use summary_only=true for compact results (id, author, timestamp, 120-char excerpt). Use full_content=true to bypass snippet truncation. Use include_related=true to automatically include related rooms in the search scope.",
+		Description: "Search messages across rooms by keyword, author, type, or time range. Prefer over read_transcript when: room has 20+ messages, you need cross-room results, or you're filtering by author/type/time window. Use read_transcript when you need a room's full sequential context. Returns snippets with message IDs; use get_messages to fetch full content. Use summary_only=true for compact results (id, author, timestamp, 120-char excerpt). Use full_content=true to bypass snippet truncation. Use include_related=true to automatically include related rooms in the search scope. Note: when cluster_wide=true, semantic search runs locally only (sqlite-vec is node-local) and remote nodes fall back to keyword search with a warning.",
 		InputSchema: schema(nil, searchProps),
 	}, r.handleSearchMessages)
 
@@ -354,12 +360,6 @@ func (r *Registry) RegisterTools() {
 		Description: "Check all active rooms for attention signals. Flags: 'needs-synthesis' (rooms with decisions but no synthesis article — write one!), 'stale' (active rooms with no activity for 7+ days — resolve or revive). Posts system warnings into flagged rooms. Call periodically or when reviewing project health. Also runs automatically every hour.",
 		InputSchema: schema(nil, map[string]map[string]any{}),
 	}, roomHealthHandler)
-	mcp.AddTool(r.Server.MCP, &mcp.Tool{
-		Name:        "knowledge_lint",
-		Description: "Deprecated: use check_room_health instead. Scans active rooms for 'needs-synthesis' and 'stale' flags.",
-		InputSchema: schema(nil, map[string]map[string]any{}),
-	}, roomHealthHandler)
-
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "read_transcript",
 		Description: "Read a room's transcript with full context (room header, system_prompt, pinned message, messages). The primary tool for reading rooms. Supports: last_n for recent messages, after_id for delta reads (includes pinned message for context), mode=summary for orientation (pinned + latest per type), mode=changelog for decisions+actions only, mode=work_items for exportable action/decision list. Use room_ids for batch multi-room reads. Use include_related=true to auto-append related room summaries.",

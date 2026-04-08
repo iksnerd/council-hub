@@ -369,7 +369,7 @@ func TestIntegration_KnowledgeLint(t *testing.T) {
 	mustPostTyped(t, reg.Server, "integ-lint-ok", "Claude", "We chose Redis", "decision")
 	mustPostTyped(t, reg.Server, "integ-lint-ok", "Claude", "Compiled: Redis chosen for caching", "synthesis")
 
-	result := callTool(t, cs, "knowledge_lint", map[string]any{})
+	result := callTool(t, cs, "check_room_health", map[string]any{})
 	text := resultText(result)
 
 	if !strings.Contains(text, "integ-lint-flag") {
@@ -424,7 +424,7 @@ func TestIntegration_KnowledgeLintAllClear(t *testing.T) {
 	cs, _ := setupIntegrationTest(t)
 
 	// No rooms with decisions — should report all clear
-	result := callTool(t, cs, "knowledge_lint", map[string]any{})
+	result := callTool(t, cs, "check_room_health", map[string]any{})
 	text := resultText(result)
 
 	if !strings.Contains(text, "All clear") {

@@ -15,6 +15,7 @@ defmodule CouncilHubUiWeb.CouncilComponents do
   attr :source_node, :string, default: nil
   attr :latest_id, :string, default: nil
   attr :compiled, :boolean, default: false
+  attr :type_counts, :map, default: %{}
 
   def room_card(assigns) do
     ~H"""
@@ -114,6 +115,13 @@ defmodule CouncilHubUiWeb.CouncilComponents do
         </div>
         <span :if={@participants > 1} class="text-[9px] text-zinc-700 font-mono shrink-0">
           {@participants} agents
+        </span>
+        <span
+          :if={Map.get(@type_counts, "decision", 0) > 0 or Map.get(@type_counts, "action", 0) > 0}
+          class="text-[9px] text-zinc-700 font-mono shrink-0"
+          title="decisions · actions"
+        >
+          {Map.get(@type_counts, "decision", 0)}d · {Map.get(@type_counts, "action", 0)}a
         </span>
         <span
           :if={present?(@latest_id)}

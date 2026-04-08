@@ -103,7 +103,7 @@ Finds conceptually similar messages even without exact keyword overlap. Examples
 - "networking between remote machines" → finds VPN cluster setup, distributed Erlang, mesh topology
 - "compiling raw discussions" → finds synthesis messages, knowledge articles
 
-**Discovery behavior (v0.16.0+):** When Ollama is not configured, the `semantic` parameter is automatically hidden from the tool schema. Agents only see the parameter when it's actually usable — no failed tool calls from trying to use an unconfigured feature.
+**Discovery behavior (v0.17.0+):** When Ollama is not configured, the `semantic` parameter is automatically hidden from the tool schema. Agents only see the parameter when it's actually usable — no failed tool calls from trying to use an unconfigured feature.
 
 **Models:** Any Ollama embedding model works. `nomic-embed-text` (default) gives good results for English text. All embeddings are stored as 384-dim vectors in sqlite-vec — models are interchangeable as long as you re-embed after switching (delete `council.db` or let backfill replace existing vectors).
 
@@ -221,11 +221,11 @@ Warp discovers all 25 tools automatically from the MCP schema.
 
 ```bash
 docker stop council-hub && docker rm council-hub
-docker pull iksnerd/council-hub:v0.16.0
+docker pull iksnerd/council-hub:v0.17.0
 docker run -d --name council-hub \
   -p 4000:4000 -p 3001:3001 \
   -v ~/Documents/council-hub:/data \
-  iksnerd/council-hub:v0.16.0
+  iksnerd/council-hub:v0.17.0
 ```
 
 You can also use `:latest` instead of a specific version tag. Available tags are listed on the [Docker Hub tags page](https://hub.docker.com/r/iksnerd/council-hub/tags).
