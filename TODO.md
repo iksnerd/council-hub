@@ -130,6 +130,7 @@ These were requested but already exist:
 
 | # | Item | Source | Effort | Priority |
 |---|------|--------|--------|----------|
+| Y1 | **Cross-node writes** — `post_to_room` (and other write tools) proxy to the owning node when the room doesn't exist locally. Go server discovers the owner via Phoenix internal API, then forwards the write via HTTP to that node's MCP endpoint. Enables agents on any node to participate in any room across the cluster. | council-hub-v2-feedback (2026-04-08) | High | P1 |
 | W4 | **`query_skills_registry` MCP tool** — allow agents to search `agents-library` for missing skills; depends on agents-library OSS readiness | Gemini CLI | Medium | P3 |
 
 ---
