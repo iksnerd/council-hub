@@ -129,6 +129,40 @@ defmodule CouncilHubUi.Council do
     end)
   end
 
+  @doc "Returns %{room_id => %{type => count}} for ALL message types in a single batch query."
+  def all_room_full_type_counts do
+    Repo.all(
+      from m in Message,
+        where: m.is_summary == false,
+        group_by: [m.room_id, m.message_type],
+        select: {m.room_id, m.message_type, count(m.id)}
+    )
+    |> Enum.reduce(%{}, fn {room_id, type, count}, acc ->
+      Map.update(acc, room_id, %{type => count}, &Map.put(&1, type, count))
+    end)
+  end
+
+  @doc "Returns %{room_id => {first_timestamp, last_timestamp}} for all rooms."
+  def all_room_time_ranges do
+    Repo.all(
+      from m in Message,
+        group_by: m.room_id,
+        select: {m.room_id, min(m.timestamp), max(m.timestamp)}
+    )
+    |> Map.new(fn {room_id, first, last} -> {room_id, {first, last}} end)
+  end
+
+  @doc "Returns [{author, count}] sorted by count desc for a single room."
+  def room_participants_with_counts(room_id) do
+    Repo.all(
+      from m in Message,
+        where: m.room_id == ^room_id and m.is_summary == false,
+        group_by: m.author,
+        select: {m.author, count(m.id)},
+        order_by: [desc: count(m.id)]
+    )
+  end
+
   @doc "Returns the latest updated_at across all rooms, for change detection."
   def latest_room_update do
     Repo.one(from r in Room, select: max(r.updated_at))

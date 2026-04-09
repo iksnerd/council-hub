@@ -203,7 +203,8 @@ defmodule CouncilHubUiWeb.CouncilComponentsTest do
       }
 
       html = render_component(&CouncilComponents.room_card/1, assigns)
-      assert html =~ "3d 2a"
+      assert html =~ "D:3"
+      assert html =~ "A:2"
     end
 
     test "omits type breakdown when no decisions or actions" do

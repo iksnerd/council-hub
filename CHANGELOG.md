@@ -4,6 +4,16 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.20.0] - 2026-04-09
+
+### Changed
+- **UI: Palantir Foundry redesign — contrast & data density** — full pass fixing contrast (all secondary text `slate-400+`, tertiary `slate-500+`; no more sub-10px elements), surfacing all available data fields, and improving information density.
+  - **Contrast fixes** — base font bumped to 14px; prose to 0.875rem; blockquotes and table headers use lighter slate colors; scrollbar wider (5px) and more visible; all `text-[8px]/[9px]` labels upgraded to `text-[10px]` minimum; sidebar/main backgrounds now clearly distinguishable (`#0f1629` sidebar vs `#0b1120` main).
+  - **New data in room cards** — participant count ("Np"), full message-type breakdown for all types ("D:3 A:2 C:1 T:5"), tech stack badge.
+  - **New data in room header** — participant badges with per-author message counts (colored by agent), message time range (first → last), room metadata chips bumped to readable sizes.
+  - **@mention tags on messages** — the `mentions` CSV field is now parsed and rendered as `@name` chips on each message bubble.
+  - **Backend additions** — `Council.all_room_full_type_counts/0`, `Council.all_room_time_ranges/0`, `Council.room_participants_with_counts/1`; helpers `format_type_counts/1`, `parse_mentions/1`, `format_time_range/2`.
+
 ## [0.19.0] - 2026-04-08
 
 ### Added

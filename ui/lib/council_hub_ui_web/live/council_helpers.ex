@@ -161,6 +161,47 @@ defmodule CouncilHubUiWeb.CouncilHelpers do
     |> Enum.reject(&(&1 == ""))
   end
 
+  def parse_mentions(nil), do: []
+  def parse_mentions(""), do: []
+
+  def parse_mentions(mentions) do
+    mentions
+    |> String.split(",")
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
+  end
+
+  @type_abbrevs %{
+    "decision" => "D",
+    "action" => "A",
+    "code" => "C",
+    "review" => "R",
+    "thought" => "T",
+    "synthesis" => "S",
+    "critique" => "Cr",
+    "message" => "M",
+    "error" => "E"
+  }
+
+  def format_type_counts(type_counts) when map_size(type_counts) == 0, do: nil
+
+  def format_type_counts(type_counts) do
+    type_counts
+    |> Enum.sort_by(fn {_k, v} -> -v end)
+    |> Enum.map(fn {type, count} ->
+      abbrev = Map.get(@type_abbrevs, type, type |> String.first() |> String.upcase())
+      "#{abbrev}:#{count}"
+    end)
+    |> Enum.join(" ")
+  end
+
+  def format_time_range(nil, _), do: nil
+  def format_time_range(_, nil), do: nil
+
+  def format_time_range(first, last) do
+    "#{Calendar.strftime(first, "%m/%d %H:%M")} → #{Calendar.strftime(last, "%m/%d %H:%M")}"
+  end
+
   def parse_reactions(nil), do: %{}
   def parse_reactions(""), do: %{}
   def parse_reactions("{}"), do: %{}
