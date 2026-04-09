@@ -35,7 +35,9 @@ defmodule CouncilHubUiWeb.CouncilLive do
        latest_ids: safe_latest_ids(db_connected),
        synthesis_flags: safe_synthesis_flags(db_connected),
        type_counts: safe_type_counts(db_connected),
+       time_ranges: safe_time_ranges(db_connected),
        active_room: nil,
+       active_room_participants: [],
        last_msg_id: "",
        collapsed_summaries: MapSet.new(),
        show_system_prompt: false,
@@ -76,11 +78,13 @@ defmodule CouncilHubUiWeb.CouncilLive do
       room ->
         messages = Council.list_messages_for_room(room_id)
         last_id = last_message_id(messages)
+        participants = safe_room_participants(room_id, socket.assigns.db_connected)
 
         {:noreply,
          socket
          |> assign(
            active_room: room,
+           active_room_participants: participants,
            last_msg_id: last_id,
            show_system_prompt: false,
            page_title: "Council Hub · #{room.id}",
@@ -191,6 +195,7 @@ defmodule CouncilHubUiWeb.CouncilLive do
           latest_ids: new_latest_ids,
           synthesis_flags: safe_synthesis_flags(db_connected),
           type_counts: safe_type_counts(db_connected),
+          time_ranges: safe_time_ranges(db_connected),
           db_connected: db_connected,
           last_room_update: latest
         )
@@ -596,10 +601,30 @@ defmodule CouncilHubUiWeb.CouncilLive do
   defp safe_type_counts(false), do: %{}
 
   defp safe_type_counts(true) do
-    Council.all_room_key_type_counts()
+    Council.all_room_full_type_counts()
   rescue
     e in [DBConnection.ConnectionError, Exqlite.Error] ->
       Logger.warning("Failed to load type counts: #{inspect(e)}")
       %{}
+  end
+
+  defp safe_time_ranges(false), do: %{}
+
+  defp safe_time_ranges(true) do
+    Council.all_room_time_ranges()
+  rescue
+    e in [DBConnection.ConnectionError, Exqlite.Error] ->
+      Logger.warning("Failed to load time ranges: #{inspect(e)}")
+      %{}
+  end
+
+  defp safe_room_participants(_room_id, false), do: []
+
+  defp safe_room_participants(room_id, true) do
+    Council.room_participants_with_counts(room_id)
+  rescue
+    e in [DBConnection.ConnectionError, Exqlite.Error] ->
+      Logger.warning("Failed to load room participants: #{inspect(e)}")
+      []
   end
 end
