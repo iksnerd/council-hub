@@ -413,7 +413,7 @@ func (r *Registry) handleReadRoom(ctx context.Context, req *mcp.CallToolRequest,
 	// Append recent messages if requested
 	if args.IncludeLastN != "" {
 		lastN := 0
-		fmt.Sscanf(args.IncludeLastN, "%d", &lastN)
+		_, _ = fmt.Sscanf(args.IncludeLastN, "%d", &lastN)
 		if lastN > 50 {
 			lastN = 50
 		}
