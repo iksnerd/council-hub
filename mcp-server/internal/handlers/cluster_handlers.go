@@ -404,7 +404,8 @@ func (r *Registry) handleRoomStatsCluster(args RoomStatsInput) (*mcp.CallToolRes
 	}
 
 	params := map[string]any{
-		"room_id": args.RoomID,
+		"room_id":  args.RoomID,
+		"room_ids": args.RoomIDs,
 	}
 
 	raw, warnings, err := r.clusterCall("room_stats", params)

@@ -59,6 +59,7 @@ type ReadRoomInput struct {
 	RoomID                  string `json:"room_id"`
 	ClusterWide             string `json:"cluster_wide"`
 	IncludeRelatedSummaries string `json:"include_related_summaries"`
+	IncludeLastN            string `json:"include_last_n"`
 }
 
 // DeleteRoomInput represents the parameters for deleting a room.
@@ -69,6 +70,7 @@ type DeleteRoomInput struct {
 // RoomStatsInput represents the parameters for getting room statistics.
 type RoomStatsInput struct {
 	RoomID      string `json:"room_id"`
+	RoomIDs     string `json:"room_ids"`
 	ClusterWide string `json:"cluster_wide"`
 }
 
@@ -408,6 +410,29 @@ func (r *Registry) handleReadRoom(ctx context.Context, req *mcp.CallToolRequest,
 	fmt.Fprintf(&b, "**Created:** %s\n", room.CreatedAt.Format("2006-01-02 15:04:05"))
 	fmt.Fprintf(&b, "**Updated:** %s\n", room.UpdatedAt.Format("2006-01-02 15:04:05"))
 
+	// Append recent messages if requested
+	if args.IncludeLastN != "" {
+		lastN := 0
+		fmt.Sscanf(args.IncludeLastN, "%d", &lastN)
+		if lastN > 50 {
+			lastN = 50
+		}
+		if lastN > 0 {
+			messages, _ := r.Server.GetRecentMessages(args.RoomID, lastN)
+			if len(messages) > 0 {
+				fmt.Fprintf(&b, "\n---\n**Recent messages (%d):**\n", len(messages))
+				for _, m := range messages {
+					ts := m.Timestamp.Format("2006-01-02 15:04:05")
+					if m.MessageType != "" && m.MessageType != "message" {
+						fmt.Fprintf(&b, "\n**[#%.8s %s] %s (%s):**\n%s\n", m.ID, ts, m.Author, m.MessageType, m.Content)
+					} else {
+						fmt.Fprintf(&b, "\n**[#%.8s %s] %s:**\n%s\n", m.ID, ts, m.Author, m.Content)
+					}
+				}
+			}
+		}
+	}
+
 	// Append related room summaries if requested
 	if args.IncludeRelatedSummaries == "true" && room.RelatedRooms != "" {
 		relatedIDs := strings.Split(room.RelatedRooms, ",")
@@ -575,38 +600,59 @@ func (r *Registry) handleRoomStats(ctx context.Context, req *mcp.CallToolRequest
 		}, ToolOutput{Message: text}, nil
 	}
 
-	if args.RoomID == "" {
-		return msg("Error: room_id is required.")
+	// Collect target room IDs from room_id and/or room_ids
+	seen := map[string]bool{}
+	var ids []string
+	if args.RoomIDs != "" {
+		for _, id := range strings.Split(args.RoomIDs, ",") {
+			id = strings.TrimSpace(id)
+			if id != "" && !seen[id] {
+				seen[id] = true
+				ids = append(ids, id)
+			}
+		}
 	}
-
-	stats, err := r.Server.GetRoomStats(args.RoomID)
-	if err != nil {
-		return msg(fmt.Sprintf("Error: %s", err.Error()))
+	if args.RoomID != "" && !seen[args.RoomID] {
+		ids = append(ids, args.RoomID)
+	}
+	if len(ids) == 0 {
+		return msg("Error: room_id or room_ids is required.")
 	}
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "**%s** [%s]\n", stats.RoomID, stats.Status)
-	fmt.Fprintf(&b, "**Messages:** %d\n", stats.MessageCount)
-	if stats.LatestMessageID != "" {
-		fmt.Fprintf(&b, "**Latest message ID:** %.8s\n", stats.LatestMessageID)
-	}
-
-	if len(stats.Participants) > 0 {
-		var parts []string
-		for author, count := range stats.Participants {
-			parts = append(parts, fmt.Sprintf("%s (%d)", author, count))
+	for i, roomID := range ids {
+		if i > 0 {
+			b.WriteString("\n---\n")
 		}
-		fmt.Fprintf(&b, "**Participants:** %s\n", strings.Join(parts, ", "))
-		fmt.Fprintf(&b, "**First message:** %s\n", stats.FirstMessage.Format("2006-01-02 15:04:05"))
-		fmt.Fprintf(&b, "**Last message:** %s\n", stats.LastMessage.Format("2006-01-02 15:04:05"))
-	}
-
-	if len(stats.TypeCounts) > 0 {
-		var types []string
-		for msgType, count := range stats.TypeCounts {
-			types = append(types, fmt.Sprintf("%s: %d", msgType, count))
+		stats, err := r.Server.GetRoomStats(roomID)
+		if err != nil {
+			fmt.Fprintf(&b, "Error: %s\n", err.Error())
+			continue
 		}
-		fmt.Fprintf(&b, "**Types:** %s\n", strings.Join(types, ", "))
+
+		fmt.Fprintf(&b, "**%s** [%s]\n", stats.RoomID, stats.Status)
+		fmt.Fprintf(&b, "**Messages:** %d\n", stats.MessageCount)
+		if stats.LatestMessageID != "" {
+			fmt.Fprintf(&b, "**Latest message ID:** %.8s\n", stats.LatestMessageID)
+		}
+
+		if len(stats.Participants) > 0 {
+			var parts []string
+			for author, count := range stats.Participants {
+				parts = append(parts, fmt.Sprintf("%s (%d)", author, count))
+			}
+			fmt.Fprintf(&b, "**Participants:** %s\n", strings.Join(parts, ", "))
+			fmt.Fprintf(&b, "**First message:** %s\n", stats.FirstMessage.Format("2006-01-02 15:04:05"))
+			fmt.Fprintf(&b, "**Last message:** %s\n", stats.LastMessage.Format("2006-01-02 15:04:05"))
+		}
+
+		if len(stats.TypeCounts) > 0 {
+			var types []string
+			for msgType, count := range stats.TypeCounts {
+				types = append(types, fmt.Sprintf("%s: %d", msgType, count))
+			}
+			fmt.Fprintf(&b, "**Types:** %s\n", strings.Join(types, ", "))
+		}
 	}
 
 	return msg(b.String())
@@ -766,6 +812,10 @@ func (r *Registry) handleGetConceptMap(ctx context.Context, req *mcp.CallToolReq
 			}
 			fmt.Fprintf(&b, "- **%s** [%s]%s%s — %s\n", n.Room.ID, n.Room.Status, tags, via, n.Room.Description)
 		}
+	}
+
+	if len(nodes) == 1 {
+		b.WriteString("\n⚠️ No related rooms configured for this room. Add links via update_room(related_rooms=...)")
 	}
 
 	return msg(b.String())

@@ -54,12 +54,13 @@ func scanMessage(scanner interface{ Scan(...any) error }) (Message, error) {
 
 // Server holds the database, mutex, MCP server, and logger.
 type Server struct {
-	DB       *sql.DB
-	DBPath   string
-	Mu       sync.RWMutex
-	MCP      *mcp.Server
-	Logger   *slog.Logger
-	Embedder Embedder // nil if no embedding provider configured
+	DB              *sql.DB
+	DBPath          string
+	Mu              sync.RWMutex
+	MCP             *mcp.Server
+	Logger          *slog.Logger
+	Embedder        Embedder  // nil if no embedding provider configured
+	LastJanitorScan time.Time // zero if background janitor hasn't run yet
 }
 
 // NewServer creates a new Server with an initialized SQLite database.
@@ -92,7 +93,7 @@ func NewServer(dbPath string, logger *slog.Logger) (*Server, error) {
 
 	mcpServer := mcp.NewServer(&mcp.Implementation{
 		Name:    "council-hub",
-		Version: "0.20.0",
+		Version: "0.21.0",
 	}, &mcp.ServerOptions{
 		Logger:       logger,
 		Capabilities: &mcp.ServerCapabilities{},

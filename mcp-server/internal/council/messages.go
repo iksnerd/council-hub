@@ -65,15 +65,15 @@ func (s *Server) postMessageCore(roomID, author, content, messageType, replyTo, 
 }
 
 // GetMentions returns recent messages that explicitly mention the given author.
-// It uses CSV-safe boundary matching: wraps stored CSV in commas to avoid
-// substring collisions (e.g. "claude" vs "claude-code").
+// Uses case-insensitive substring matching so partial names like "claude" match
+// "Claude Code (Opus)", "claude-code", etc.
 func (s *Server) GetMentions(author string, limit int) ([]Message, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 20
 	}
 	rows, err := s.DB.Query(
 		`SELECT `+messageColumns+` FROM messages
-		WHERE ','||mentions||',' LIKE '%,'||?||',%'
+		WHERE LOWER(mentions) LIKE '%'||LOWER(?)||'%'
 		ORDER BY timestamp DESC LIMIT ?`,
 		author, limit,
 	)
