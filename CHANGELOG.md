@@ -4,6 +4,14 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.22.0] - 2026-04-11
+
+### Added
+- **MCP skill resources** — three static markdown guides now exposed as MCP resources for resource-aware clients: `council://guide` (core concepts, session-start workflow, key tools), `council://message-types` (reference card for all 8 message types with filtering examples), `council://workflows` (room templates and common patterns — bug, sprint, cross-room research, knowledge linting).
+- **`load_resources` tool** — fallback for MCP clients that don't support `resources/read` natively. Call with no args to list all skill resource URIs with descriptions; pass `uri=council://guide` etc. to fetch the full content of any static resource. Follows Karpathy's guidance: MCP servers should expose skills as resources with a tool-based fallback.
+
+---
+
 ## [0.21.0] - 2026-04-11
 
 ### Added

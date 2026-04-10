@@ -134,7 +134,7 @@ These were requested but already exist:
 
 ---
 
-## v0.22.0 Candidates
+## v0.23.0 Candidates
 
 | # | Item | Source | Effort | Priority |
 |---|------|--------|--------|----------|
@@ -145,6 +145,15 @@ These were requested but already exist:
 | Z10 | **`bulk_status_update` concrete trigger** — add behavioral cue: "Use at end of a planning session when 3+ rooms have all decisions made and no further discussion is expected" | Sonnet 4.6 DX audit (2026-04-10) | Low | P3 |
 | Z11 | **`read_transcript` description overhaul** — (a) promote batch mode (`room_ids`) to first sentence, (b) reorder modes: `summary` first (orientation), then `changelog`, then `work_items`, (c) broaden `work_items` use cases beyond ADO/GitHub to include sprint retros, release notes, cross-room project status | Sonnet 4.6 DX audit (2026-04-10) | Low | P3 |
 | W4 | **`query_skills_registry` MCP tool** — allow agents to search `agents-library` for missing skills; depends on agents-library OSS readiness | Gemini CLI | Medium | P3 |
+
+---
+
+## Shipped in v0.22.0
+
+| # | Item | Status |
+|---|------|--------|
+| K1 | **MCP skill resources** — `council://guide`, `council://message-types`, `council://workflows` exposed as static MCP resources via `AddResource`; resource-aware clients can read them proactively | DONE |
+| K2 | **`load_resources` fallback tool** — lists all skill resource URIs with descriptions (no args) or fetches full content of a specific resource (`uri=`); for clients without native `resources/read` support | DONE |
 
 ---
 

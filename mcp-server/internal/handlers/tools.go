@@ -399,6 +399,17 @@ func (r *Registry) RegisterTools() {
 	}, r.handleGetConceptMap)
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
+		Name: "load_resources",
+		Description: "List available council-hub skill guides or fetch one by URI. " +
+			"Call with no args to see all resources (concepts, message types, workflows) with their URIs. " +
+			"Pass uri= to fetch the full content of a specific resource. " +
+			"Use this if your MCP client does not support native resources/read.",
+		InputSchema: schema(nil, map[string]map[string]any{
+			"uri": prop("string", "Resource URI to fetch (e.g. council://guide, council://message-types, council://workflows). Omit to list all available resources."),
+		}),
+	}, r.handleLoadResources)
+
+	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "get_digest",
 		Description: "Get a project activity and knowledge health digest as a JSON array. Each entry has room_id, new_messages, latest_message_id, latest_excerpt, tags, decision_count, synthesis_count. Rooms flagged by check_room_health (stale, needs-synthesis) are included. Call at the start of every session to orient yourself — shows what changed and what needs attention. Machine-readable — parse room_id and latest_message_id directly for delta reads.",
 		InputSchema: schema(nil, map[string]map[string]any{
