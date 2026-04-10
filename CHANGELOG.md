@@ -4,6 +4,19 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.21.0] - 2026-04-11
+
+### Added
+- **`read_room(include_last_n=N)`** — appends the last N messages (max 50) inline after room metadata. Collapses the always-paired `read_room + get_messages` into a single call.
+- **`room_stats(room_ids=...)`** — new `room_ids` CSV param for batch pre-screening; `room_id` made optional (one of the two must be provided). N rooms in one call instead of N calls.
+- **`get_concept_map` depth-0 warning** — when a room has no related_rooms configured, the result appends `⚠️ No related rooms configured. Add links via update_room(related_rooms=...)` to nudge agents.
+- **`check_room_health` last_scanned timestamp** — every response now appends `Last scanned: <timestamp UTC>`. `LastJanitorScan` is tracked on the Server struct and set after each background and manual sweep.
+- **`get_mentions` fuzzy author match** — switched from exact CSV-boundary matching to case-insensitive substring matching. "claude" now matches "Claude Code (Opus)", "claude-code", etc.
+- **Logo** — `council-hub.svg` added to repo root. UI sidebar replaces the "CH" text placeholder with the actual logo (sky-300 on dark navy).
+
+### Fixed
+- **`get_digest(project=X)` filter** — confirmed already fully implemented (was missing from docs/TODO only).
+
 ## [0.20.0] - 2026-04-09
 
 ### Changed

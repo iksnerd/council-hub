@@ -1130,7 +1130,8 @@ func TestGetMentionsNotFound(t *testing.T) {
 }
 
 func TestGetMentionsBoundary(t *testing.T) {
-	// Ensure "claude" does not match "claude-sonnet" stored in mentions
+	// "claude" fuzzy-matches "claude-sonnet" and "claude" — both should be returned.
+	// Fuzzy matching is intentional: "claude" matches "Claude Code (Opus)", "claude-code", etc.
 	s := setupTestServer(t)
 	s.CreateRoom("boundary-room", "Boundary test", "", "", "", "", "")
 
@@ -1141,8 +1142,8 @@ func TestGetMentionsBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetMentions failed: %v", err)
 	}
-	if len(msgs) != 1 {
-		t.Errorf("expected exactly 1 mention of 'claude' (not 'claude-sonnet'), got %d", len(msgs))
+	if len(msgs) != 2 {
+		t.Errorf("expected 2 fuzzy matches for 'claude' (claude + claude-sonnet), got %d", len(msgs))
 	}
 }
 

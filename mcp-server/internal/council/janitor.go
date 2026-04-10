@@ -39,6 +39,9 @@ func (s *Server) RunJanitor(ctx context.Context) {
 func (s *Server) JanitorSweep() LintResult {
 	ns := s.lintNeedsSynthesis()
 	st := s.lintStaleRooms()
+	s.Mu.Lock()
+	s.LastJanitorScan = time.Now()
+	s.Mu.Unlock()
 	return LintResult{NeedsSynthesis: ns, Stale: st}
 }
 
