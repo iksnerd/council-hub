@@ -286,7 +286,7 @@ func (r *Registry) handleLoadResources(ctx context.Context, req *mcp.CallToolReq
 		args.URI, strings.Join(validURIs, ", "),
 	)
 	return &mcp.CallToolResult{
-		Content:   []mcp.Content{&mcp.TextContent{Text: msg}},
-		IsError:   true,
+		Content: []mcp.Content{&mcp.TextContent{Text: msg}},
+		IsError: true,
 	}, ToolOutput{Message: msg}, nil
 }
