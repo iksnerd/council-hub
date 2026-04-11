@@ -1,0 +1,4 @@
+# Phoenix dev/test secret_key_base values are intentional local-only placeholders.
+# Production requires SECRET_KEY_BASE via environment variable (see ui/config/runtime.exs).
+78561066834e49598c99815e500fe4f274886e38:ui/config/test.exs:generic-api-key:17
+78561066834e49598c99815e500fe4f274886e38:ui/config/dev.exs:generic-api-key:26
