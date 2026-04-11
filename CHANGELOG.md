@@ -4,6 +4,20 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.24.0] - 2026-04-11
+
+### Changed
+- **Large-file refactor (S1–S15)** — 15 source and test files each over 500–1,300 lines split into focused, domain-sized units with no behaviour changes. Every file now targets ≤400 lines.
+  - Go handlers: `handler_room.go` → 4 files; `handler_message.go` → 4 files; `tools.go` → 2 files
+  - Go data layer: `council/rooms.go` → 5 files; `council/messages.go` → 4 files
+  - Elixir context: `council.ex` → 5 modules (`CouncilRooms`, `CouncilMessages`, `BulkStats`, `CouncilDigest`, `CouncilFormat`) with `Council` kept as a thin delegating facade for backward compatibility (cluster RPC fan-out)
+  - Elixir components: `council_components.ex` → 3 modules (`RoomComponents`, `MessageComponents`, `PanelComponents`) with facade preserved for tests
+  - Elixir LiveView: polling/loading helpers extracted to `council_live_polling.ex`
+  - Go test files split: `messages_test.go` → 5 files; `rooms_test.go` → 6 files; `cluster_handlers_test.go` → 5 files; `handler_room_mgmt_test.go` → 3 files
+  - Elixir test files split: `council_live_test.exs` → 4 files; `council_components_test.exs` → 3 files; `council_test.exs` → 3 files
+
+---
+
 ## [0.23.1] - 2026-04-11
 
 ### Fixed

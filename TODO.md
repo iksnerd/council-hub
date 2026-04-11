@@ -134,12 +134,20 @@ These were requested but already exist:
 
 ---
 
-## v0.24.0 Candidates
+## v0.25.0 Candidates
 
 | # | Item | Source | Effort | Priority |
 |---|------|--------|--------|----------|
 | Y1 | **Cross-node writes** — `post_to_room` (and other write tools) proxy to the owning node when the room doesn't exist locally. Go server discovers the owner via Phoenix internal API, then forwards the write via HTTP to that node's MCP endpoint. Enables agents on any node to participate in any room across the cluster. | council-hub-v2-feedback (2026-04-08) | High | P1 |
 | W4 | **`query_skills_registry` MCP tool** — allow agents to search `agents-library` for missing skills; depends on agents-library OSS readiness | Gemini CLI | Medium | P3 |
+
+---
+
+## Shipped in v0.24.0
+
+| # | Item | Status |
+|---|------|--------|
+| S1–S15 | **Large-file refactor** — all 15 source and test files split into focused domain-sized units. Go handlers (3 files), Go data layer (2 files), Elixir context + components + LiveView (3 files), Go tests (4 files), Elixir tests (3 files). Zero behaviour changes; all tests pass (298 Elixir + full Go suite). | DONE |
 
 ---
 
@@ -187,6 +195,59 @@ Issues found during v0.6.2/v0.6.3 development:
 | Q1 | **Schema/handler integration tests** — tests call handlers directly (bypassing `RegisterTools`), so missing schema params go undetected. Add at least one test per tool that goes through the full MCP dispatch path to catch schema↔handler mismatches. | DONE (v0.8.0) |
 | Q2 | **`cluster_wide` missing from `read_transcript` schema** — handler supported it but schema didn't expose it, causing JSON unmarshal errors. Fixed in v0.6.3. | DONE |
 | Q3 | **CI/CD secrets** — `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` were missing; added for v0.11.0. Docker publish workflow removed in v0.17.0 — publishing is now manual via `make docker-push`. | DONE |
+
+---
+
+## Code Structure
+
+Large files that should be split into focused, domain-sized units. Each proposed split preserves the existing package/module — only file boundaries change.
+
+### Go source — `mcp-server/internal/handlers/`
+
+| # | File | Lines | Proposed Split | Status |
+|---|------|-------|---------------|--------|
+| S1 | `handler_room.go` | 822 | `handler_room_crud.go` (Create, GetOrCreate, Read, Update, Delete) · `handler_room_query.go` (ListRooms, RoomStats) · `handler_room_lifecycle.go` (SignalStatus, BulkStatusUpdate) · `handler_room_graph.go` (GetConceptMap) | DONE |
+| S2 | `handler_message.go` | 644 | `handler_message_write.go` (PostToRoom, UpdateMessage, DeleteMessages, MoveMessages) · `handler_message_query.go` (SearchMessages, GetMessages, GetMentions) · `handler_message_annotate.go` (PinMessage, ReactToMessage) · `handler_message_sync.go` (MarkRead) | DONE |
+| S3 | `tools.go` | 453 | Extract `tools_helpers.go` (Registry, ToolOutput, schema/prop helpers, validation constants); split `RegisterTools` into per-domain registration files or co-locate with handler files | DONE |
+
+### Go source — `mcp-server/internal/council/`
+
+| # | File | Lines | Proposed Split | Status |
+|---|------|-------|---------------|--------|
+| S4 | `rooms.go` | 562 | `rooms_core.go` (CRUD + normalizers) · `rooms_links.go` (syncReverseLinks, removeRoomFromRelatedLinks) · `rooms_query.go` (ListRooms, FindSimilarRooms) · `rooms_lifecycle.go` (UpdateStatus) · `rooms_graph.go` (GetConceptMap, ConceptMapNode) | DONE |
+| S5 | `messages.go` | 577 | `messages_write.go` (PostMessage variants, postMessageCore, UpdateMessage, DeleteMessages, MoveMessages) · `messages_query.go` (Get*, GetPinned, SearchMessages) · `messages_annotate.go` (PinMessage, ReactToMessage) · `messages_sync.go` (MarkRead, GetCursor) | DONE |
+
+### Elixir source — `ui/lib/`
+
+| # | File | Lines | Proposed Split | Status |
+|---|------|-------|---------------|--------|
+| S6 | `council_hub_ui_web/live/council_live.ex` | 630 | Keep mount/handle_params in `council_live.ex`; extract `council_live_events.ex` (all handle_event) · `council_live_polling.ex` (all handle_info + poll_* helpers) | DONE |
+| S7 | `council_hub_ui/council.ex` | 580 | `council_rooms.ex` (room queries, list_rooms_filtered, room_stats) · `council_messages.ex` (message queries, search, mentions) · `council_bulk_stats.ex` (all_room_* batch queries) · `council_digest.ex` (get_project_digest) · `council_format.ex` (format_transcript, format_message, format_ts) | DONE |
+| S8 | `council_hub_ui_web/live/council_components.ex` | 565 | `council_components_rooms.ex` (room_card, room_header) · `council_components_messages.ex` (message_bubble, summary_block) · `council_components_panels.ex` (mentions_panel, archive_list, archive_modal) | DONE |
+
+### Go tests — `mcp-server/internal/council/`
+
+| # | File | Lines | Proposed Split | Status |
+|---|------|-------|---------------|--------|
+| S9 | `messages_test.go` | 1,295 | `messages_core_test.go` (Post, Delete, GetMessages) · `messages_pin_update_test.go` (Pin, Update, optimistic concurrency) · `messages_digest_test.go` (Digest, Excerpts, LatestPerType) · `messages_summary_test.go` (Unsummarized, UUID migration) · `messages_advanced_test.go` (Move, Mentions, MarkRead, Cursor) | DONE |
+| S10 | `rooms_test.go` | 1,087 | `rooms_core_test.go` (Create, Delete, updates) · `rooms_relationships_test.go` (bidirectional links, reverse-link cleanup) · `rooms_list_search_test.go` (List, Filter, multi-word search) · `rooms_stats_archive_test.go` (Stats, Archive, Lifecycle) · `rooms_tags_normalization_test.go` (Tags, project normalization) · `rooms_similarity_test.go` (FindSimilarRooms, GetConceptMap) | DONE |
+
+### Go tests — `mcp-server/internal/handlers/`
+
+| # | File | Lines | Proposed Split | Status |
+|---|------|-------|---------------|--------|
+| S11 | `cluster_handlers_test.go` | 1,016 | `cluster_transcript_test.go` · `cluster_search_test.go` · `cluster_list_test.go` · `cluster_stats_test.go` · `cluster_digest_test.go` | DONE |
+| S12 | `handler_room_mgmt_test.go` | 802 | `handler_create_room_test.go` (Create, templates, duplicates) · `handler_update_room_test.go` (Update, batch, tags) · `handler_read_delete_archive_test.go` (Read, Delete, Archive, ConceptMap) | DONE |
+
+*Keep as-is (single-purpose, natural cohesion):* `db_errors_test.go` (670 — error-path simulation) · `handler_integration_test.go` (560 — intentionally holistic MCP dispatch suite)
+
+### Elixir tests — `ui/test/`
+
+| # | File | Lines | Proposed Split | Status |
+|---|------|-------|---------------|--------|
+| S13 | `council_live_test.exs` | 776 | `council_live_mount_navigation_test.exs` · `council_live_messages_test.exs` · `council_live_polling_test.exs` · `council_live_ui_interactions_test.exs` | DONE |
+| S14 | `council_components_test.exs` | 764 | `council_components_room_test.exs` (room_card, room_header) · `council_components_message_test.exs` (message_bubble, summary_block) · `council_components_panels_test.exs` (mentions, archives) | DONE |
+| S15 | `council_test.exs` | 723 | `council_rooms_test.exs` · `council_messages_test.exs` · `council_stats_format_test.exs` | DONE |
 
 ---
 

@@ -1,8 +1,11 @@
 defmodule CouncilHubUiWeb.CouncilLive do
   use CouncilHubUiWeb, :live_view
 
-  alias CouncilHubUi.{Council, Cluster}
-  import CouncilHubUiWeb.CouncilComponents
+  alias CouncilHubUi.Council
+  alias CouncilHubUiWeb.CouncilLivePolling, as: Polling
+  import CouncilHubUiWeb.RoomComponents
+  import CouncilHubUiWeb.MessageComponents
+  import CouncilHubUiWeb.PanelComponents
   import CouncilHubUiWeb.CouncilHelpers, only: [short_node: 1]
 
   require Logger
@@ -16,26 +19,26 @@ defmodule CouncilHubUiWeb.CouncilLive do
   @impl true
   def mount(_params, _session, socket) do
     if connected?(socket) do
-      schedule_poll(:poll_messages, @poll_interval)
-      schedule_poll(:poll_rooms, @rooms_poll_interval)
-      schedule_poll(:poll_cluster, @cluster_poll_interval)
-      schedule_poll(:poll_mentions, @mentions_poll_interval)
-      schedule_poll(:poll_archives, @archives_poll_interval)
+      Polling.schedule_poll(:poll_messages, @poll_interval)
+      Polling.schedule_poll(:poll_rooms, @rooms_poll_interval)
+      Polling.schedule_poll(:poll_cluster, @cluster_poll_interval)
+      Polling.schedule_poll(:poll_mentions, @mentions_poll_interval)
+      Polling.schedule_poll(:poll_archives, @archives_poll_interval)
     end
 
-    {rooms, db_connected} = load_rooms()
+    {rooms, db_connected} = Polling.load_rooms()
 
     {:ok,
      socket
      |> assign(
        rooms: rooms,
-       rooms_by_project: group_rooms_by_project(rooms),
-       room_counts: safe_room_counts(db_connected),
-       participant_counts: safe_participant_counts(db_connected),
-       latest_ids: safe_latest_ids(db_connected),
-       synthesis_flags: safe_synthesis_flags(db_connected),
-       type_counts: safe_type_counts(db_connected),
-       time_ranges: safe_time_ranges(db_connected),
+       rooms_by_project: Polling.group_rooms_by_project(rooms),
+       room_counts: Polling.safe_room_counts(db_connected),
+       participant_counts: Polling.safe_participant_counts(db_connected),
+       latest_ids: Polling.safe_latest_ids(db_connected),
+       synthesis_flags: Polling.safe_synthesis_flags(db_connected),
+       type_counts: Polling.safe_type_counts(db_connected),
+       time_ranges: Polling.safe_time_ranges(db_connected),
        active_room: nil,
        active_room_participants: [],
        last_msg_id: "",
@@ -77,8 +80,8 @@ defmodule CouncilHubUiWeb.CouncilLive do
 
       room ->
         messages = Council.list_messages_for_room(room_id)
-        last_id = last_message_id(messages)
-        participants = safe_room_participants(room_id, socket.assigns.db_connected)
+        last_id = Polling.last_message_id(messages)
+        participants = Polling.safe_room_participants(room_id, socket.assigns.db_connected)
 
         {:noreply,
          socket
@@ -112,37 +115,36 @@ defmodule CouncilHubUiWeb.CouncilLive do
 
   @impl true
   def handle_info(:poll_messages, socket) do
-    schedule_poll(:poll_messages, @poll_interval)
+    Polling.schedule_poll(:poll_messages, @poll_interval)
 
     socket
-    |> poll_active_room_messages()
+    |> Polling.poll_active_room_messages()
     |> then(&{:noreply, &1})
   end
 
   def handle_info(:poll_rooms, socket) do
-    schedule_poll(:poll_rooms, @rooms_poll_interval)
+    Polling.schedule_poll(:poll_rooms, @rooms_poll_interval)
 
     if socket.assigns.cluster_wide do
-      poll_rooms_full(socket, socket.assigns.last_room_update)
+      Polling.poll_rooms_full(socket, socket.assigns.last_room_update)
     else
-      # Fast check: skip full reload if nothing changed
-      latest = safe_latest_update()
+      latest = Polling.safe_latest_update()
 
       if latest == socket.assigns.last_room_update do
         {:noreply, socket}
       else
-        poll_rooms_full(socket, latest)
+        Polling.poll_rooms_full(socket, latest)
       end
     end
   end
 
   def handle_info(:poll_cluster, socket) do
-    schedule_poll(:poll_cluster, @cluster_poll_interval)
+    Polling.schedule_poll(:poll_cluster, @cluster_poll_interval)
     {:noreply, assign(socket, nodes: [Node.self() | Node.list()])}
   end
 
   def handle_info(:poll_mentions, socket) do
-    schedule_poll(:poll_mentions, @mentions_poll_interval)
+    Polling.schedule_poll(:poll_mentions, @mentions_poll_interval)
 
     mentions =
       try do
@@ -155,7 +157,7 @@ defmodule CouncilHubUiWeb.CouncilLive do
   end
 
   def handle_info(:poll_archives, socket) do
-    schedule_poll(:poll_archives, @archives_poll_interval)
+    Polling.schedule_poll(:poll_archives, @archives_poll_interval)
 
     archives =
       try do
@@ -168,54 +170,6 @@ defmodule CouncilHubUiWeb.CouncilLive do
       end
 
     {:noreply, assign(socket, archives: archives)}
-  end
-
-  defp poll_rooms_full(socket, latest) do
-    if socket.assigns.cluster_wide do
-      {rooms, warnings} = load_cluster_rooms()
-
-      {:noreply,
-       assign(socket,
-         rooms: rooms,
-         rooms_by_project: group_rooms_by_project(rooms),
-         cluster_warnings: warnings
-       )}
-    else
-      {rooms, db_connected} = load_rooms()
-      new_counts = safe_room_counts(db_connected)
-      new_participants = safe_participant_counts(db_connected)
-      new_latest_ids = safe_latest_ids(db_connected)
-
-      socket =
-        assign(socket,
-          rooms: rooms,
-          rooms_by_project: group_rooms_by_project(rooms),
-          room_counts: new_counts,
-          participant_counts: new_participants,
-          latest_ids: new_latest_ids,
-          synthesis_flags: safe_synthesis_flags(db_connected),
-          type_counts: safe_type_counts(db_connected),
-          time_ranges: safe_time_ranges(db_connected),
-          db_connected: db_connected,
-          last_room_update: latest
-        )
-
-      # Update active room status if changed
-      socket =
-        case socket.assigns.active_room do
-          nil ->
-            socket
-
-          active ->
-            case Enum.find(rooms, &(&1.id == active.id)) do
-              nil -> socket
-              updated when updated.status != active.status -> assign(socket, active_room: updated)
-              _ -> socket
-            end
-        end
-
-      {:noreply, socket}
-    end
   end
 
   # -- Events --
@@ -242,10 +196,10 @@ defmodule CouncilHubUiWeb.CouncilLive do
 
     {rooms, db_connected, warnings} =
       if new_val do
-        {rooms, warns} = load_cluster_rooms()
+        {rooms, warns} = Polling.load_cluster_rooms()
         {rooms, socket.assigns.db_connected, warns}
       else
-        {rooms, connected} = load_rooms()
+        {rooms, connected} = Polling.load_rooms()
         {rooms, connected, []}
       end
 
@@ -253,7 +207,7 @@ defmodule CouncilHubUiWeb.CouncilLive do
      assign(socket,
        cluster_wide: new_val,
        rooms: rooms,
-       rooms_by_project: group_rooms_by_project(rooms),
+       rooms_by_project: Polling.group_rooms_by_project(rooms),
        db_connected: db_connected,
        cluster_warnings: warnings
      )}
@@ -270,7 +224,7 @@ defmodule CouncilHubUiWeb.CouncilLive do
 
       room ->
         messages = Council.list_messages_for_room(room.id, type)
-        last_id = last_message_id(messages)
+        last_id = Polling.last_message_id(messages)
 
         {:noreply,
          socket
@@ -292,7 +246,7 @@ defmodule CouncilHubUiWeb.CouncilLive do
 
       room ->
         messages = Council.list_messages_for_room(room.id, socket.assigns.type_filter)
-        last_id = last_message_id(messages)
+        last_id = Polling.last_message_id(messages)
 
         {:noreply,
          socket
@@ -368,7 +322,7 @@ defmodule CouncilHubUiWeb.CouncilLive do
             {msgs, false}
           end
 
-        last_id = last_message_id(results)
+        last_id = Polling.last_message_id(results)
 
         {:noreply,
          socket
@@ -474,157 +428,8 @@ defmodule CouncilHubUiWeb.CouncilLive do
     end
   end
 
-  # -- Helpers --
+  # -- Template helpers (public — called from council_live.html.heex) --
 
-  defp schedule_poll(msg, interval), do: Process.send_after(self(), msg, interval)
-
-  defp poll_active_room_messages(%{assigns: %{active_room: nil}} = socket), do: socket
-
-  defp poll_active_room_messages(
-         %{
-           assigns: %{
-             active_room: room,
-             last_msg_id: last_id,
-             type_filter: type_filter,
-             searching: searching
-           }
-         } =
-           socket
-       ) do
-    case Council.get_messages_since(room.id, last_id, type_filter) do
-      [] ->
-        socket
-
-      new_messages ->
-        new_last_id = last_message_id(new_messages)
-
-        if searching do
-          # Don't update the stream while searching — just track the new last_id
-          assign(socket, last_msg_id: new_last_id)
-        else
-          socket
-          |> stream(:messages, new_messages, at: -1)
-          |> assign(last_msg_id: new_last_id, has_messages: true)
-        end
-    end
-  end
-
-  defp safe_latest_update do
-    Council.latest_room_update()
-  rescue
-    _e in [DBConnection.ConnectionError, Exqlite.Error] -> nil
-  end
-
-  defp last_message_id([]), do: ""
-  defp last_message_id(messages), do: List.last(messages).id
-
-  defp load_rooms do
-    {Council.list_rooms(), true}
-  rescue
-    e in [DBConnection.ConnectionError, Exqlite.Error] ->
-      Logger.warning("Failed to load rooms: #{inspect(e)}")
-      {[], false}
-  end
-
-  defp load_cluster_rooms do
-    %{results: rooms, warnings: warnings} = Cluster.list_rooms(%{})
-    {rooms, warnings}
-  rescue
-    e ->
-      Logger.warning("Failed to load cluster rooms: #{inspect(e)}")
-      {[], ["cluster query failed"]}
-  end
-
-  def group_rooms_by_project(rooms) do
-    rooms
-    |> Enum.group_by(&room_project/1)
-    |> Enum.sort_by(fn {project, _} -> if project == "ungrouped", do: "zzz", else: project end)
-  end
-
-  defp room_project(%{project: project}) when project in [nil, ""], do: "ungrouped"
-  defp room_project(%{project: project}), do: project
-
-  def filter_rooms(rooms, ""), do: rooms
-
-  def filter_rooms(rooms, query) do
-    q = String.downcase(query)
-
-    Enum.filter(rooms, fn room ->
-      room.id
-      |> Kernel.<>(" ")
-      |> Kernel.<>(room.description || "")
-      |> String.downcase()
-      |> String.contains?(q)
-    end)
-  end
-
-  defp safe_room_counts(false), do: %{}
-
-  defp safe_room_counts(true) do
-    Council.all_room_message_counts()
-  rescue
-    e in [DBConnection.ConnectionError, Exqlite.Error] ->
-      Logger.warning("Failed to load room counts: #{inspect(e)}")
-      %{}
-  end
-
-  defp safe_participant_counts(false), do: %{}
-
-  defp safe_participant_counts(true) do
-    Council.all_room_participant_counts()
-  rescue
-    e in [DBConnection.ConnectionError, Exqlite.Error] ->
-      Logger.warning("Failed to load participant counts: #{inspect(e)}")
-      %{}
-  end
-
-  defp safe_latest_ids(false), do: %{}
-
-  defp safe_latest_ids(true) do
-    Council.all_room_latest_message_ids()
-  rescue
-    e in [DBConnection.ConnectionError, Exqlite.Error] ->
-      Logger.warning("Failed to load latest message ids: #{inspect(e)}")
-      %{}
-  end
-
-  defp safe_synthesis_flags(false), do: MapSet.new()
-
-  defp safe_synthesis_flags(true) do
-    Council.all_room_synthesis_flags()
-  rescue
-    e in [DBConnection.ConnectionError, Exqlite.Error] ->
-      Logger.warning("Failed to load synthesis flags: #{inspect(e)}")
-      MapSet.new()
-  end
-
-  defp safe_type_counts(false), do: %{}
-
-  defp safe_type_counts(true) do
-    Council.all_room_full_type_counts()
-  rescue
-    e in [DBConnection.ConnectionError, Exqlite.Error] ->
-      Logger.warning("Failed to load type counts: #{inspect(e)}")
-      %{}
-  end
-
-  defp safe_time_ranges(false), do: %{}
-
-  defp safe_time_ranges(true) do
-    Council.all_room_time_ranges()
-  rescue
-    e in [DBConnection.ConnectionError, Exqlite.Error] ->
-      Logger.warning("Failed to load time ranges: #{inspect(e)}")
-      %{}
-  end
-
-  defp safe_room_participants(_room_id, false), do: []
-
-  defp safe_room_participants(room_id, true) do
-    Council.room_participants_with_counts(room_id)
-  rescue
-    e in [DBConnection.ConnectionError, Exqlite.Error] ->
-      Logger.warning("Failed to load room participants: #{inspect(e)}")
-      []
-  end
+  def group_rooms_by_project(rooms), do: Polling.group_rooms_by_project(rooms)
+  def filter_rooms(rooms, query), do: Polling.filter_rooms(rooms, query)
 end
