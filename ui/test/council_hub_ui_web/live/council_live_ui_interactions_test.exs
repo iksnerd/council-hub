@@ -194,7 +194,9 @@ defmodule CouncilHubUiWeb.CouncilLiveUiInteractionsTest do
       assert render(view) =~ "toggle-status-event-room"
     end
 
-    test "archive_room sets a flash message (info on success, error when MCP unreachable)", %{conn: conn} do
+    test "archive_room sets a flash message (info on success, error when MCP unreachable)", %{
+      conn: conn
+    } do
       create_room(%{id: "archive-event-room", status: "resolved"})
       {:ok, view, _html} = live(conn, "/rooms/archive-event-room")
 
@@ -205,7 +207,8 @@ defmodule CouncilHubUiWeb.CouncilLiveUiInteractionsTest do
       assert map_size(flash) > 0
     end
 
-    test "check_room_health sets a flash message (info on success, error when MCP unreachable)", %{conn: conn} do
+    test "check_room_health sets a flash message (info on success, error when MCP unreachable)",
+         %{conn: conn} do
       create_room(%{id: "health-event-room"})
       {:ok, view, _html} = live(conn, "/rooms/health-event-room")
 
@@ -226,7 +229,9 @@ defmodule CouncilHubUiWeb.CouncilLiveUiInteractionsTest do
       assert :sys.get_state(view.pid).socket.assigns.editing_tags == false
     end
 
-    test "view_archive sets active_archive with error content when MCP server is unreachable", %{conn: conn} do
+    test "view_archive sets active_archive with error content when MCP server is unreachable", %{
+      conn: conn
+    } do
       create_room(%{id: "view-archive-event-room"})
       {:ok, view, _html} = live(conn, "/rooms/view-archive-event-room")
 
