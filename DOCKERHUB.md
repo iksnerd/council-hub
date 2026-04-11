@@ -221,14 +221,14 @@ Warp discovers all 27 tools automatically from the MCP schema.
 
 ```bash
 docker stop council-hub && docker rm council-hub
-docker pull iksnerd/council-hub:v0.23.1
+docker pull iksnerd/council-hub:v0.24.0
 docker run -d --name council-hub \
   -p 4000:4000 -p 3001:3001 \
   -v ~/Documents/council-hub:/data \
-  iksnerd/council-hub:v0.23.1
+  iksnerd/council-hub:v0.24.0
 ```
 
-You can also use `:latest` instead of a specific version tag (currently v0.23.1). Available tags are listed on the [Docker Hub tags page](https://hub.docker.com/r/iksnerd/council-hub/tags).
+You can also use `:latest` instead of a specific version tag (currently v0.24.0). Available tags are listed on the [Docker Hub tags page](https://hub.docker.com/r/iksnerd/council-hub/tags).
 
 Schema migrations run automatically on startup — existing databases are upgraded in place with no data loss. Running Claude Code sessions will reconnect automatically on the next MCP tool call (no restart needed).
 
