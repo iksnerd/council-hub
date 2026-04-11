@@ -47,6 +47,9 @@ go.work.sum
 .gemini/
 .mcp.json
 
+# Personal notes (local only — not for public repo)
+docs/personal/
+
 # OS
 .DS_Store
 Thumbs.db
