@@ -159,7 +159,7 @@ defmodule CouncilHubUiWeb.CouncilComponentsRoomTest do
         },
         active: false,
         count: 0,
-        source_node: "council_hub@council_hub"
+        source_node: "council_hub@my-node"
       }
 
       html = render_component(&CouncilComponents.room_card/1, assigns)
