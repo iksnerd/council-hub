@@ -8,6 +8,80 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
+// ========== load_resources tool handler ==========
+
+type loadResourcesArgs = struct {
+	URI string `json:"uri"`
+}
+
+func TestHandleLoadResourcesNoURI(t *testing.T) {
+	reg := setupHandlerTest(t)
+
+	res, _, err := reg.handleLoadResources(context.Background(), nil, loadResourcesArgs{})
+	if err != nil {
+		t.Fatalf("handleLoadResources error: %v", err)
+	}
+	text := resultText(res)
+	if !strings.Contains(text, "Available Resources") {
+		t.Errorf("expected resource listing, got: %s", text)
+	}
+	if !strings.Contains(text, "council://guide") {
+		t.Errorf("expected council://guide in listing, got: %s", text)
+	}
+	if !strings.Contains(text, "council://message-types") {
+		t.Errorf("expected council://message-types in listing, got: %s", text)
+	}
+	if !strings.Contains(text, "council://workflows") {
+		t.Errorf("expected council://workflows in listing, got: %s", text)
+	}
+	if !strings.Contains(text, "council://room/{room_id}/transcript") {
+		t.Errorf("expected dynamic transcript template in listing, got: %s", text)
+	}
+}
+
+func TestHandleLoadResourcesGuide(t *testing.T) {
+	reg := setupHandlerTest(t)
+
+	res, _, _ := reg.handleLoadResources(context.Background(), nil, loadResourcesArgs{URI: "council://guide"})
+	text := resultText(res)
+	if !strings.Contains(text, "Usage Guide") && !strings.Contains(text, "Council Hub") {
+		t.Errorf("expected usage guide content, got: %s", text)
+	}
+}
+
+func TestHandleLoadResourcesMessageTypes(t *testing.T) {
+	reg := setupHandlerTest(t)
+
+	res, _, _ := reg.handleLoadResources(context.Background(), nil, loadResourcesArgs{URI: "council://message-types"})
+	text := resultText(res)
+	if text == "" {
+		t.Error("expected non-empty message types content")
+	}
+}
+
+func TestHandleLoadResourcesWorkflows(t *testing.T) {
+	reg := setupHandlerTest(t)
+
+	res, _, _ := reg.handleLoadResources(context.Background(), nil, loadResourcesArgs{URI: "council://workflows"})
+	text := resultText(res)
+	if text == "" {
+		t.Error("expected non-empty workflows content")
+	}
+}
+
+func TestHandleLoadResourcesInvalidURI(t *testing.T) {
+	reg := setupHandlerTest(t)
+
+	res, _, _ := reg.handleLoadResources(context.Background(), nil, loadResourcesArgs{URI: "council://nonexistent"})
+	if !res.IsError {
+		t.Error("expected IsError=true for unknown URI")
+	}
+	text := resultText(res)
+	if !strings.Contains(text, "Unknown resource URI") {
+		t.Errorf("expected unknown resource error message, got: %s", text)
+	}
+}
+
 func TestHandleTranscriptResource(t *testing.T) {
 	reg := setupHandlerTest(t)
 	reg.RegisterResources()

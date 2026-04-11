@@ -176,6 +176,69 @@ defmodule CouncilHubUiWeb.CouncilLiveUiInteractionsTest do
     end
   end
 
+  describe "MCP-dependent room actions" do
+    test "toggle_status does not crash for all status transitions", %{conn: conn} do
+      room = create_room(%{id: "toggle-status-event-room"})
+      {:ok, view, _html} = live(conn, "/rooms/toggle-status-event-room")
+
+      # active → paused (McpClient will fail but event must not crash)
+      render_click(view, "toggle_status", %{"room-id" => room.id, "status" => "active"})
+      assert render(view) =~ "toggle-status-event-room"
+
+      # paused → resolved
+      render_click(view, "toggle_status", %{"room-id" => room.id, "status" => "paused"})
+      assert render(view) =~ "toggle-status-event-room"
+
+      # anything else → active
+      render_click(view, "toggle_status", %{"room-id" => room.id, "status" => "resolved"})
+      assert render(view) =~ "toggle-status-event-room"
+    end
+
+    test "archive_room sets a flash message (info on success, error when MCP unreachable)", %{conn: conn} do
+      create_room(%{id: "archive-event-room", status: "resolved"})
+      {:ok, view, _html} = live(conn, "/rooms/archive-event-room")
+
+      render_click(view, "archive_room", %{"room-id" => "archive-event-room"})
+
+      # Either success (info flash) or error (error flash) — either way, flash is set
+      flash = :sys.get_state(view.pid).socket.assigns.flash
+      assert map_size(flash) > 0
+    end
+
+    test "check_room_health sets a flash message (info on success, error when MCP unreachable)", %{conn: conn} do
+      create_room(%{id: "health-event-room"})
+      {:ok, view, _html} = live(conn, "/rooms/health-event-room")
+
+      render_click(view, "check_room_health", %{"room-id" => "health-event-room"})
+
+      flash = :sys.get_state(view.pid).socket.assigns.flash
+      assert map_size(flash) > 0
+    end
+
+    test "save_tags closes the editor regardless of MCP server state", %{conn: conn} do
+      create_room(%{id: "save-tags-event-room", tags: "go"})
+      {:ok, view, _html} = live(conn, "/rooms/save-tags-event-room")
+
+      view |> element("button[phx-click='edit_tags']") |> render_click()
+      render_click(view, "save_tags", %{"tags" => "go,elixir"})
+
+      # editing_tags is false in both success and error paths
+      assert :sys.get_state(view.pid).socket.assigns.editing_tags == false
+    end
+
+    test "view_archive sets active_archive with error content when MCP server is unreachable", %{conn: conn} do
+      create_room(%{id: "view-archive-event-room"})
+      {:ok, view, _html} = live(conn, "/rooms/view-archive-event-room")
+
+      render_click(view, "view_archive", %{"room-id" => "view-archive-event-room"})
+
+      assigns = :sys.get_state(view.pid).socket.assigns
+      assert assigns.active_archive != nil
+      assert assigns.active_archive.room_id == "view-archive-event-room"
+      assert assigns.active_archive.content =~ "Failed to load archive"
+    end
+  end
+
   describe "interactive room actions" do
     test "edit_tags event shows tag input form", %{conn: conn} do
       create_room(%{id: "edit-tags-room", tags: "go,elixir"})

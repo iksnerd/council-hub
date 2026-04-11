@@ -182,6 +182,59 @@ defmodule CouncilHubUiWeb.CouncilComponentsMessageTest do
       assert html =~ "decision"
     end
 
+    test "pinned message renders border and PIN badge" do
+      assigns = %{
+        msg: %{
+          id: "uuid-pinned",
+          author: "Claude",
+          content: "Important pinned message",
+          message_type: "synthesis",
+          reply_to: "",
+          pinned: true,
+          timestamp: ~N[2026-03-29 14:00:00]
+        }
+      }
+
+      html = render_component(&CouncilComponents.message_bubble/1, assigns)
+      assert html =~ "PIN"
+      assert html =~ "border-sky-500"
+    end
+
+    test "renders @mention tags when mentions present" do
+      assigns = %{
+        msg: %{
+          id: "uuid-mentions",
+          author: "Gemini",
+          content: "Hey team",
+          message_type: "message",
+          reply_to: "",
+          mentions: "claude,gpt",
+          timestamp: ~N[2026-03-29 14:00:00]
+        }
+      }
+
+      html = render_component(&CouncilComponents.message_bubble/1, assigns)
+      assert html =~ "@claude"
+      assert html =~ "@gpt"
+    end
+
+    test "no mention tags when mentions empty" do
+      assigns = %{
+        msg: %{
+          id: "uuid-no-mentions",
+          author: "Claude",
+          content: "Just a message",
+          message_type: "message",
+          reply_to: "",
+          mentions: "",
+          timestamp: ~N[2026-03-29 14:00:00]
+        }
+      }
+
+      html = render_component(&CouncilComponents.message_bubble/1, assigns)
+      refute html =~ "@"
+    end
+
     test "copy button data includes message id" do
       assigns = %{
         msg: %{
@@ -227,6 +280,36 @@ defmodule CouncilHubUiWeb.CouncilComponentsMessageTest do
 
       html = render_component(&CouncilComponents.summary_block/1, assigns)
       assert html =~ ~s(aria-expanded="false")
+    end
+
+    test "renders reactions on summary block" do
+      assigns = %{
+        msg: %{
+          id: "uuid-sum-react",
+          content: "Great summary",
+          reactions: ~s({"👍": ["claude", "gemini"]}),
+          timestamp: ~N[2026-03-29 14:00:00]
+        },
+        collapsed: false
+      }
+
+      html = render_component(&CouncilComponents.summary_block/1, assigns)
+      assert html =~ "👍"
+      assert html =~ "claude, gemini"
+    end
+
+    test "no reactions section when summary has no reactions" do
+      assigns = %{
+        msg: %{
+          id: "uuid-sum-noreact",
+          content: "Summary no reactions",
+          timestamp: ~N[2026-03-29 14:00:00]
+        },
+        collapsed: false
+      }
+
+      html = render_component(&CouncilComponents.summary_block/1, assigns)
+      refute html =~ "👍"
     end
   end
 end

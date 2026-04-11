@@ -143,6 +143,14 @@ These were requested but already exist:
 
 ---
 
+## Shipped in v0.24.1
+
+| # | Item | Status |
+|---|------|--------|
+| T1 | **Test coverage improvements** — Phoenix UI raised from 81.62% to 90.06% (meets configured 90% threshold). Go raised from ~81.8% to 87.2%. New test files for `ReactToMessage` council layer, `OllamaEmbedder`, `handleReactToMessage` handler. Extended `handleReadRoom`, `handleGetDigest`, `handleLoadResources`, `CouncilLive`, `ClusterController`, `CouncilHelpers`, `MessageComponents`. | DONE |
+
+---
+
 ## Shipped in v0.24.0
 
 | # | Item | Status |

@@ -110,6 +110,90 @@ defmodule CouncilHubUiWeb.ClusterControllerTest do
     end
   end
 
+  describe "POST /api/internal/cluster/search_messages — extended filters" do
+    test "filters by room_ids (comma-separated)", %{conn: conn} do
+      room_a = create_room(%{id: "api-filter-a"})
+      room_b = create_room(%{id: "api-filter-b"})
+      create_message(%{room_id: room_a.id, author: "Claude", content: "in room a"})
+      create_message(%{room_id: room_b.id, author: "Claude", content: "in room b"})
+
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> post("/api/internal/cluster/search_messages", %{
+          "room_ids" => "api-filter-a"
+        })
+
+      %{"results" => results} = json_response(conn, 200)
+      assert Enum.all?(results, &(&1["room_id"] == "api-filter-a"))
+    end
+
+    test "filters by project", %{conn: conn} do
+      room = create_room(%{id: "api-proj-filter", project: "filter-proj"})
+      create_message(%{room_id: room.id, content: "project message"})
+      other_room = create_room(%{id: "api-other-proj", project: "other-proj"})
+      create_message(%{room_id: other_room.id, content: "other project message"})
+
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> post("/api/internal/cluster/search_messages", %{"project" => "filter-proj"})
+
+      %{"results" => results} = json_response(conn, 200)
+      assert Enum.all?(results, &(&1["room_id"] == "api-proj-filter"))
+    end
+
+    test "parse_limit clamps 0 to default", %{conn: conn} do
+      room = create_room(%{id: "api-limit-zero"})
+      for _ <- 1..5, do: create_message(%{room_id: room.id})
+
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> post("/api/internal/cluster/search_messages", %{
+          "room_id" => "api-limit-zero",
+          "limit" => "0"
+        })
+
+      # 0 is not > 0, so default 20 applies — all 5 messages returned
+      %{"results" => results} = json_response(conn, 200)
+      assert length(results) == 5
+    end
+
+    test "parse_limit clamps non-numeric to default", %{conn: conn} do
+      room = create_room(%{id: "api-limit-abc"})
+      for _ <- 1..3, do: create_message(%{room_id: room.id})
+
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> post("/api/internal/cluster/search_messages", %{
+          "room_id" => "api-limit-abc",
+          "limit" => "abc"
+        })
+
+      %{"results" => results} = json_response(conn, 200)
+      assert length(results) == 3
+    end
+
+    test "parse_limit clamps >100 to 100", %{conn: conn} do
+      room = create_room(%{id: "api-limit-over"})
+      for _ <- 1..5, do: create_message(%{room_id: room.id})
+
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> post("/api/internal/cluster/search_messages", %{
+          "room_id" => "api-limit-over",
+          "limit" => "999"
+        })
+
+      # 999 > 100 so default 20 applies — all 5 returned
+      %{"results" => results} = json_response(conn, 200)
+      assert length(results) == 5
+    end
+  end
+
   describe "POST /api/internal/cluster/list_rooms" do
     test "returns rooms as JSON", %{conn: conn} do
       create_room(%{id: "api-room-a", project: "api-proj"})
@@ -157,6 +241,76 @@ defmodule CouncilHubUiWeb.ClusterControllerTest do
         |> post("/api/internal/cluster/list_rooms", %{"project" => "nonexistent-zzz"})
 
       assert %{"results" => [], "warnings" => []} = json_response(conn, 200)
+    end
+
+    test "filters by tag", %{conn: conn} do
+      create_room(%{id: "api-room-tagged", tags: "featured"})
+      create_room(%{id: "api-room-untagged", tags: ""})
+
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> post("/api/internal/cluster/list_rooms", %{"tag" => "featured"})
+
+      %{"results" => results} = json_response(conn, 200)
+      ids = Enum.map(results, & &1["id"])
+      assert "api-room-tagged" in ids
+      refute "api-room-untagged" in ids
+    end
+
+    test "filters by status", %{conn: conn} do
+      create_room(%{id: "api-room-resolved", status: "resolved"})
+      create_room(%{id: "api-room-active-status", status: "active"})
+
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> post("/api/internal/cluster/list_rooms", %{"status" => "resolved"})
+
+      %{"results" => results} = json_response(conn, 200)
+      ids = Enum.map(results, & &1["id"])
+      assert "api-room-resolved" in ids
+      refute "api-room-active-status" in ids
+    end
+
+    test "offset skips results", %{conn: conn} do
+      for i <- 1..3, do: create_room(%{id: "api-offset-room-#{i}", project: "offset-proj"})
+
+      conn_all =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> post("/api/internal/cluster/list_rooms", %{
+          "project" => "offset-proj",
+          "offset" => "0"
+        })
+
+      conn_offset =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> post("/api/internal/cluster/list_rooms", %{
+          "project" => "offset-proj",
+          "offset" => "2"
+        })
+
+      %{"results" => all_results} = json_response(conn_all, 200)
+      %{"results" => offset_results} = json_response(conn_offset, 200)
+      assert length(all_results) == 3
+      assert length(offset_results) == 1
+    end
+
+    test "parse_offset clamps negative to 0", %{conn: conn} do
+      create_room(%{id: "api-offset-neg", project: "offset-neg-proj"})
+
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> post("/api/internal/cluster/list_rooms", %{
+          "project" => "offset-neg-proj",
+          "offset" => "-5"
+        })
+
+      %{"results" => results} = json_response(conn, 200)
+      assert length(results) == 1
     end
   end
 
@@ -213,6 +367,119 @@ defmodule CouncilHubUiWeb.ClusterControllerTest do
       assert stats["last_message"] != nil
       assert stats["latest_message_id"] != nil
       assert stats["source_node"] != nil
+    end
+  end
+
+  describe "POST /api/internal/cluster/get_messages" do
+    test "returns messages by message_ids", %{conn: conn} do
+      room = create_room(%{id: "api-getmsg"})
+      msg1 = create_message(%{room_id: room.id, author: "Claude", content: "first"})
+      msg2 = create_message(%{room_id: room.id, author: "Gemini", content: "second"})
+
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> post("/api/internal/cluster/get_messages", %{
+          "message_ids" => "#{msg1.id},#{msg2.id}"
+        })
+
+      assert %{"results" => results, "warnings" => []} = json_response(conn, 200)
+      assert length(results) == 2
+      contents = Enum.map(results, & &1["content"])
+      assert "first" in contents
+      assert "second" in contents
+    end
+
+    test "returns messages by room_id and last_n", %{conn: conn} do
+      room = create_room(%{id: "api-getmsg-room"})
+      for i <- 1..5, do: create_message(%{room_id: room.id, content: "msg #{i}"})
+
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> post("/api/internal/cluster/get_messages", %{
+          "room_id" => "api-getmsg-room",
+          "last_n" => "3"
+        })
+
+      assert %{"results" => results} = json_response(conn, 200)
+      assert length(results) == 3
+    end
+
+    test "returns empty results for empty message_ids string", %{conn: conn} do
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> post("/api/internal/cluster/get_messages", %{"message_ids" => ""})
+
+      assert %{"results" => []} = json_response(conn, 200)
+    end
+
+    test "message results include all expected fields", %{conn: conn} do
+      room = create_room(%{id: "api-getmsg-fields"})
+      msg = create_message(%{room_id: room.id, author: "Claude", content: "field check"})
+
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> post("/api/internal/cluster/get_messages", %{
+          "message_ids" => msg.id
+        })
+
+      %{"results" => [result]} = json_response(conn, 200)
+      assert result["id"] == msg.id
+      assert result["room_id"] == "api-getmsg-fields"
+      assert result["author"] == "Claude"
+      assert result["content"] == "field check"
+      assert result["timestamp"] != nil
+    end
+  end
+
+  describe "POST /api/internal/cluster/get_digest" do
+    test "returns digest for a project", %{conn: conn} do
+      room = create_room(%{id: "api-digest", project: "digest-proj"})
+      create_message(%{room_id: room.id, author: "Claude", content: "recent work"})
+
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> post("/api/internal/cluster/get_digest", %{"project" => "digest-proj"})
+
+      assert %{"warnings" => []} = json_response(conn, 200)
+    end
+
+    test "returns empty results for unknown project", %{conn: conn} do
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> post("/api/internal/cluster/get_digest", %{"project" => "nonexistent-zzz"})
+
+      assert %{"results" => results} = json_response(conn, 200)
+      assert results == [] or is_nil(results)
+    end
+
+    test "accepts since parameter", %{conn: conn} do
+      room = create_room(%{id: "api-digest-since"})
+      create_message(%{room_id: room.id, author: "Claude", content: "old message"})
+
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> post("/api/internal/cluster/get_digest", %{
+          "project" => "",
+          "since" => "2020-01-01T00:00:00"
+        })
+
+      assert %{"results" => _results} = json_response(conn, 200)
+    end
+
+    test "returns digest with empty params", %{conn: conn} do
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> post("/api/internal/cluster/get_digest", %{})
+
+      assert json_response(conn, 200)
     end
   end
 

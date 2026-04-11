@@ -58,6 +58,141 @@ func TestHandleReadRoomDBError(t *testing.T) {
 
 // ========== delete_room ==========
 
+func TestHandleReadRoomIncludeLastN(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-lastn")
+	mustPost(t, reg.Server, "h-lastn", "Claude", "Message one")
+	mustPost(t, reg.Server, "h-lastn", "Gemini", "Message two")
+
+	res, _, _ := reg.handleReadRoom(context.Background(), nil, ReadRoomInput{
+		RoomID:       "h-lastn",
+		IncludeLastN: "2",
+	})
+	text := resultText(res)
+	if !strings.Contains(text, "Recent messages") {
+		t.Errorf("expected recent messages section, got: %s", text)
+	}
+	if !strings.Contains(text, "Message one") || !strings.Contains(text, "Message two") {
+		t.Errorf("expected message content, got: %s", text)
+	}
+}
+
+func TestHandleReadRoomIncludeLastNZero(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-lastn-zero")
+	mustPost(t, reg.Server, "h-lastn-zero", "Claude", "Hidden message")
+
+	res, _, _ := reg.handleReadRoom(context.Background(), nil, ReadRoomInput{
+		RoomID:       "h-lastn-zero",
+		IncludeLastN: "0",
+	})
+	text := resultText(res)
+	if strings.Contains(text, "Recent messages") {
+		t.Errorf("expected no messages section for n=0, got: %s", text)
+	}
+}
+
+func TestHandleReadRoomIncludeLastNClamp(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-lastn-clamp")
+	mustPost(t, reg.Server, "h-lastn-clamp", "Claude", "Clamped message")
+
+	// Request 999 — should be clamped to 50 max without error
+	res, _, _ := reg.handleReadRoom(context.Background(), nil, ReadRoomInput{
+		RoomID:       "h-lastn-clamp",
+		IncludeLastN: "999",
+	})
+	text := resultText(res)
+	if !strings.Contains(text, "Recent messages") {
+		t.Errorf("expected recent messages section for clamped n, got: %s", text)
+	}
+}
+
+func TestHandleReadRoomIncludeLastNInvalid(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-lastn-invalid")
+	mustPost(t, reg.Server, "h-lastn-invalid", "Claude", "Message")
+
+	// Non-numeric string — Sscanf sets n=0, should not include messages
+	res, _, _ := reg.handleReadRoom(context.Background(), nil, ReadRoomInput{
+		RoomID:       "h-lastn-invalid",
+		IncludeLastN: "abc",
+	})
+	text := resultText(res)
+	if strings.Contains(text, "Recent messages") {
+		t.Errorf("expected no messages section for invalid n, got: %s", text)
+	}
+}
+
+func TestHandleReadRoomIncludeLastNNoMessages(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-lastn-empty")
+
+	res, _, _ := reg.handleReadRoom(context.Background(), nil, ReadRoomInput{
+		RoomID:       "h-lastn-empty",
+		IncludeLastN: "5",
+	})
+	text := resultText(res)
+	// No messages in room — section should not appear
+	if strings.Contains(text, "Recent messages") {
+		t.Errorf("expected no messages section for empty room, got: %s", text)
+	}
+}
+
+func TestHandleReadRoomIncludeRelatedSummaries(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-main-room", withRelatedRooms("h-related-room"))
+	mustCreateRoom(t, reg.Server, "h-related-room", withDescription("Related room topic"), withSystemPrompt("Related prompt"))
+
+	res, _, _ := reg.handleReadRoom(context.Background(), nil, ReadRoomInput{
+		RoomID:                  "h-main-room",
+		IncludeRelatedSummaries: "true",
+	})
+	text := resultText(res)
+	if !strings.Contains(text, "h-related-room") {
+		t.Errorf("expected related room ID in output, got: %s", text)
+	}
+	if !strings.Contains(text, "Related room topic") {
+		t.Errorf("expected related room topic, got: %s", text)
+	}
+}
+
+func TestHandleReadRoomIncludeRelatedSummariesNotFound(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-main-missing-rel", withRelatedRooms("ghost-related"))
+
+	res, _, _ := reg.handleReadRoom(context.Background(), nil, ReadRoomInput{
+		RoomID:                  "h-main-missing-rel",
+		IncludeRelatedSummaries: "true",
+	})
+	text := resultText(res)
+	if !strings.Contains(text, "ghost-related") {
+		t.Errorf("expected ghost-related in output, got: %s", text)
+	}
+	if !strings.Contains(text, "not found") {
+		t.Errorf("expected not found message for missing related room, got: %s", text)
+	}
+}
+
+func TestHandleReadRoomIncludeRelatedSummariesWithPinned(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-main-pinned-rel", withRelatedRooms("h-pinned-related"))
+	mustCreateRoom(t, reg.Server, "h-pinned-related")
+	msgID := mustPost(t, reg.Server, "h-pinned-related", "Claude", "Pinned excerpt content")
+	if _, err := reg.Server.PinMessage("h-pinned-related", msgID); err != nil {
+		t.Fatalf("PinMessage error: %v", err)
+	}
+
+	res, _, _ := reg.handleReadRoom(context.Background(), nil, ReadRoomInput{
+		RoomID:                  "h-main-pinned-rel",
+		IncludeRelatedSummaries: "true",
+	})
+	text := resultText(res)
+	if !strings.Contains(text, "Pinned excerpt content") {
+		t.Errorf("expected pinned message excerpt, got: %s", text)
+	}
+}
+
 func TestHandleDeleteRoom(t *testing.T) {
 	reg := setupHandlerTest(t)
 	mustCreateRoom(t, reg.Server, "h-del")
