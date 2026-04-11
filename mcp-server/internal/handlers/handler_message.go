@@ -79,6 +79,13 @@ type PinMessageInput struct {
 	MessageID string `json:"message_id"`
 }
 
+// MarkReadInput represents the parameters for persisting an agent's read cursor.
+type MarkReadInput struct {
+	RoomID string `json:"room_id"`
+	Cursor string `json:"cursor"`
+	Agent  string `json:"agent"`
+}
+
 func (r *Registry) handlePostToRoom(ctx context.Context, req *mcp.CallToolRequest, args PostToRoomInput) (*mcp.CallToolResult, ToolOutput, error) {
 	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
 		return &mcp.CallToolResult{
@@ -103,7 +110,7 @@ func (r *Registry) handlePostToRoom(ctx context.Context, req *mcp.CallToolReques
 		args.MessageType = "message"
 	}
 	if !validMessageTypes[args.MessageType] {
-		return msg(fmt.Sprintf("Error: Invalid message_type '%s'. Must be one of: message, thought, decision, code, review, action, critique, synthesis.", args.MessageType))
+		return msg(fmt.Sprintf("Error: Invalid message_type '%s'. Must be one of: message, thought, draft, decision, code, review, action, critique, synthesis.", args.MessageType))
 	}
 
 	// Verify room exists
@@ -437,7 +444,7 @@ func (r *Registry) handleUpdateMessage(ctx context.Context, req *mcp.CallToolReq
 	}
 
 	if args.MessageType != "" && !validMessageTypes[args.MessageType] {
-		return msg(fmt.Sprintf("Error: invalid message_type '%s'. Valid types: message, thought, decision, code, review, action, critique, synthesis.", args.MessageType))
+		return msg(fmt.Sprintf("Error: invalid message_type '%s'. Valid types: message, thought, draft, decision, code, review, action, critique, synthesis.", args.MessageType))
 	}
 
 	m, err := r.Server.UpdateMessageWithExpected(args.MessageID, args.Content, args.MessageType, args.ExpectedContent)
@@ -560,6 +567,33 @@ func (r *Registry) handleMoveMessages(ctx context.Context, req *mcp.CallToolRequ
 	}
 	r.Server.Logger.Info("Messages moved", "count", moved, "target", args.TargetRoomID)
 	return msg(b.String())
+}
+
+func (r *Registry) handleMarkRead(ctx context.Context, req *mcp.CallToolRequest, args MarkReadInput) (*mcp.CallToolResult, ToolOutput, error) {
+	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: text}},
+		}, ToolOutput{Message: text}, nil
+	}
+
+	if args.RoomID == "" {
+		return msg("Error: room_id is required.")
+	}
+	if args.Cursor == "" {
+		return msg("Error: cursor (message ID) is required.")
+	}
+	agent := args.Agent
+	if agent == "" {
+		agent = "default"
+	}
+
+	if err := r.Server.MarkRead(agent, args.RoomID, args.Cursor); err != nil {
+		r.Server.Logger.Error("Failed to mark read", "agent", agent, "room_id", args.RoomID, "error", err)
+		return nil, ToolOutput{}, err
+	}
+
+	r.Server.Logger.Info("Cursor saved", "agent", agent, "room_id", args.RoomID, "cursor", args.Cursor)
+	return msg(fmt.Sprintf("Cursor saved for agent '%s' in room '%s': #%.8s. Use get_digest(unread_only=true, agent=%s) to see only new messages.", agent, args.RoomID, args.Cursor, agent))
 }
 
 func (r *Registry) handleGetMentions(ctx context.Context, req *mcp.CallToolRequest, args GetMentionsInput) (*mcp.CallToolResult, ToolOutput, error) {

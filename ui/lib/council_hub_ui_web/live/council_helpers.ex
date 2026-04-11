@@ -24,6 +24,7 @@ defmodule CouncilHubUiWeb.CouncilHelpers do
   @type_icons %{
     "message" => "hero-chat-bubble-left",
     "thought" => "hero-light-bulb",
+    "draft" => "hero-pencil-square",
     "decision" => "hero-check-badge",
     "code" => "hero-code-bracket",
     "review" => "hero-magnifying-glass",
@@ -88,6 +89,7 @@ defmodule CouncilHubUiWeb.CouncilHelpers do
       "code" -> "bg-violet-500/10 text-violet-400/80"
       "review" -> "bg-teal-500/10 text-teal-400/80"
       "thought" -> "bg-slate-700/30 text-slate-500"
+      "draft" -> "bg-blue-500/10 text-blue-300/80"
       "synthesis" -> "bg-purple-500/10 text-purple-300/80"
       _ -> "bg-slate-800/40 text-slate-500"
     end
@@ -177,6 +179,7 @@ defmodule CouncilHubUiWeb.CouncilHelpers do
     "code" => "C",
     "review" => "R",
     "thought" => "T",
+    "draft" => "Dr",
     "synthesis" => "S",
     "critique" => "Cr",
     "message" => "M",

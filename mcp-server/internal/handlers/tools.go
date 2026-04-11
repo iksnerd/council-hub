@@ -66,6 +66,7 @@ type ToolOutput struct {
 var validMessageTypes = map[string]bool{
 	"message":   true,
 	"thought":   true,
+	"draft":     true,
 	"decision":  true,
 	"code":      true,
 	"review":    true,
@@ -140,10 +141,17 @@ func (r *Registry) RegisterTools() {
 			"room_id": prop("string", "Target room ID"),
 			"author":  prop("string", "Name of the posting agent"),
 			"message": prop("string", "Message content (markdown supported)"),
-			"message_type": prop("string", "Type of message. Use: 'thought' for reasoning/exploration, 'decision' for choices made, "+
-				"'action' for work done/shipped, 'review' for feedback on others' work, 'critique' for pushback/concerns, "+
-				"'code' for code snippets, 'synthesis' for distilled knowledge articles that compile a room's conclusions "+
-				"(the 'compiled output' — use after deliberation to capture what was learned). Default: 'message'."),
+			"message_type": prop("string", "Type of message — pick the one that matches your intent:\n"+
+				"  message   — default catch-all when no specific type fits\n"+
+				"  thought   — internal reasoning, exploratory, not ready for peer feedback\n"+
+				"  draft     — analysis or proposal ready for review/critique from peers\n"+
+				"  critique  — pushback, concerns, or risks about a prior message or approach\n"+
+				"  decision  — a choice has been made; include rationale; this is the permanent record\n"+
+				"  action    — work shipped or in-flight; links a decision to a concrete outcome\n"+
+				"  review    — structured feedback on someone else's work (code, design, proposal)\n"+
+				"  code      — code snippets, diffs, or technical artifacts\n"+
+				"  synthesis — compiled knowledge article distilling the room's conclusions; write after deliberation, then pin it\n"+
+				"Lifecycle: thought → draft → critique → decision → action → synthesis. Default: 'message'."),
 			"reply_to": prop("string", "Message ID this is a reply to (e.g. 42). Renders as 're: #42' in transcripts"),
 			"mentions": prop("string", "Comma-separated agent names to explicitly notify (e.g. 'claude,gemini-cli'). Mentioned agents can call get_mentions on startup to find threads awaiting their input."),
 		}),
@@ -159,8 +167,10 @@ func (r *Registry) RegisterTools() {
 	}, r.handleSignalStatus)
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
-		Name:        "bulk_status_update",
-		Description: "Update the status of multiple rooms in one call. Optionally post a closing message to each room. Useful for closing out a sprint or batch-resolving rooms.",
+		Name: "bulk_status_update",
+		Description: "Update the status of multiple rooms in one call. Optionally post a closing message to each room. " +
+			"Use this at the end of a planning session when 3+ rooms have all decisions made and no further discussion is expected — " +
+			"e.g. after a sprint review, after shipping a feature, or when closing out a bug investigation cluster.",
 		InputSchema: schema([]string{"room_ids", "status"}, map[string]map[string]any{
 			"room_ids": prop("string", "Comma-separated room IDs (e.g. bug-123,bug-456,feature-x)"),
 			"status":   prop("string", "One of: active, paused, resolved"),
@@ -223,7 +233,7 @@ func (r *Registry) RegisterTools() {
 	searchProps := map[string]map[string]any{
 		"query":           prop("string", "Text to search for in message content"),
 		"author":          prop("string", "Filter by author name"),
-		"message_type":    prop("string", "Filter by type: message, thought, decision, action, review, critique, code, synthesis. Use 'synthesis' to find compiled knowledge articles."),
+		"message_type":    prop("string", "Filter by type: message, thought, draft, decision, action, review, critique, code, synthesis. Use 'synthesis' to find compiled knowledge articles."),
 		"room_id":         prop("string", "Scope search to a specific room"),
 		"room_ids":        prop("string", "Comma-separated room IDs to search across a subset (e.g. bug-123,bug-456). Use instead of room_id for multi-room scoping."),
 		"include_related": prop("string", "Set to 'true' to automatically include the room's related_rooms in the search scope (requires room_id). Expands search to 1-level neighbours without specifying room_ids manually."),
@@ -274,7 +284,7 @@ func (r *Registry) RegisterTools() {
 		InputSchema: schema([]string{"message_id", "content"}, map[string]map[string]any{
 			"message_id":       prop("string", "ID of the message to update"),
 			"content":          prop("string", "New message content (replaces existing)"),
-			"message_type":     prop("string", "Optionally change message type: message, thought, decision, action, review, critique, code, synthesis"),
+			"message_type":     prop("string", "Optionally change message type: message, thought, draft, decision, action, review, critique, code, synthesis"),
 			"expected_content": prop("string", "If provided, the update fails with the current content if this doesn't match — prevents lost updates when multiple agents edit the same living document."),
 		}),
 	}, r.handleUpdateMessage)
@@ -324,6 +334,17 @@ func (r *Registry) RegisterTools() {
 			"limit":  prop("string", "Max results to return (default 20, max 100)"),
 		}),
 	}, r.handleGetMentions)
+
+	mcp.AddTool(r.Server.MCP, &mcp.Tool{
+		Name: "mark_read",
+		Description: "Persist a read cursor for this agent in a room. After reading a room's messages, call mark_read with the latest message ID — then use get_digest(unread_only=true) on your next session to see only what changed since you last looked. " +
+			"Cursors are stored per agent per room, so multiple agents can track their own positions independently.",
+		InputSchema: schema([]string{"room_id", "cursor"}, map[string]map[string]any{
+			"room_id": prop("string", "Room to mark as read"),
+			"cursor":  prop("string", "ID of the last message you have read (from latest_message_id in any tool response)"),
+			"agent":   prop("string", "Your agent name — used to namespace cursors across agents. Defaults to 'default' if omitted."),
+		}),
+	}, r.handleMarkRead)
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "list_archives",
@@ -376,14 +397,19 @@ func (r *Registry) RegisterTools() {
 		InputSchema: schema(nil, map[string]map[string]any{}),
 	}, roomHealthHandler)
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
-		Name:        "read_transcript",
-		Description: "Read a room's transcript with full context (room header, system_prompt, pinned message, messages). The primary tool for reading rooms. Supports: last_n for recent messages, after_id for delta reads (includes pinned message for context), mode=summary for orientation (pinned + latest per type), mode=changelog for decisions+actions only, mode=work_items for exportable action/decision list. Use room_ids for batch multi-room reads. Use include_related=true to auto-append related room summaries.",
+		Name: "read_transcript",
+		Description: "Read one or more room transcripts. Pass room_ids (comma-separated) to batch-read multiple rooms in one call — each is rendered with the same mode/last_n settings. " +
+			"For a single room use room_id. Modes: " +
+			"summary (pinned message + latest per type — best for orientation before diving in), " +
+			"changelog (only decision + action messages in chronological order — good for standup or release notes), " +
+			"work_items (action + decision messages as exportable items — use for sprint retros, release notes, ADO/GitHub Issues, or cross-room project status). " +
+			"Other options: last_n for the most recent N messages, after_id for delta reads (always includes pinned for context), include_related=true to append related room summaries.",
 		InputSchema: schema(nil, map[string]map[string]any{
 			"room_id":         prop("string", "Target room ID (use this OR room_ids, not both)"),
 			"room_ids":        prop("string", "Comma-separated room IDs for batch reads (e.g. room-a,room-b,room-c). Each room rendered with the same mode/last_n settings."),
 			"last_n":          prop("string", "Return only the last N messages (default: all). Keeps room header and system prompt."),
 			"after_id":        prop("string", "Return only messages with ID greater than this value. For delta reads after context compaction."),
-			"mode":            enumProp("string", "Set to 'summary' for system_prompt + latest per type, 'changelog' for only decision + action messages chronologically, or 'work_items' to export actions and decisions as structured work items (useful for ADO/GitHub Issues).", []string{"summary", "changelog", "work_items"}),
+			"mode":            enumProp("string", "summary — pinned + latest per type (best for orientation); changelog — decisions + actions chronologically; work_items — structured export for sprint retros, release notes, ADO/GitHub Issues, or cross-room project status.", []string{"summary", "changelog", "work_items"}),
 			"include_related": prop("string", "Set to 'true' to append a summary of each related room after the main transcript. Resolves related_rooms automatically."),
 			"cluster_wide":    prop("string", "Set to 'true' to fetch the transcript from the remote cluster node that owns it."),
 		}),
@@ -410,11 +436,16 @@ func (r *Registry) RegisterTools() {
 	}, r.handleLoadResources)
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
-		Name:        "get_digest",
-		Description: "Get a project activity and knowledge health digest as a JSON array. Each entry has room_id, new_messages, latest_message_id, latest_excerpt, tags, decision_count, synthesis_count. Rooms flagged by check_room_health (stale, needs-synthesis) are included. Call at the start of every session to orient yourself — shows what changed and what needs attention. Machine-readable — parse room_id and latest_message_id directly for delta reads.",
+		Name: "get_digest",
+		Description: "Get a project activity and knowledge health digest as a JSON array. Each entry has room_id, new_messages, latest_message_id, latest_excerpt, tags, decision_count, synthesis_count. " +
+			"Rooms flagged by check_room_health (stale, needs-synthesis) are included. Call at the start of every session to orient yourself — shows what changed and what needs attention. " +
+			"Machine-readable — parse room_id and latest_message_id directly for delta reads. " +
+			"Set unread_only=true (with agent=<your-name>) to show only rooms with messages newer than your stored cursor — ideal for returning sessions after using mark_read.",
 		InputSchema: schema(nil, map[string]map[string]any{
 			"project":      prop("string", "Filter to rooms in this project (optional — omit for all projects)"),
-			"since":        prop("string", "ISO timestamp (e.g. 2026-03-31T12:00:00). Defaults to 24 hours ago if omitted."),
+			"since":        prop("string", "ISO timestamp (e.g. 2026-03-31T12:00:00). Defaults to 24 hours ago if omitted. Ignored when unread_only=true."),
+			"unread_only":  prop("string", "Set to 'true' to return only rooms with messages newer than your stored cursor. Requires agent param (or uses 'default'). Use after mark_read to see only what changed since your last session."),
+			"agent":        prop("string", "Your agent name, used to look up stored read cursors. Only relevant when unread_only=true. Defaults to 'default'."),
 			"cluster_wide": prop("string", "Set to 'true' to fetch the digest from all cluster nodes. Default: local only."),
 		}),
 	}, r.handleGetDigest)

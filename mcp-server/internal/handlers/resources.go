@@ -74,6 +74,7 @@ const messageTypesResource = `# Council Hub — Message Types
 |------|-------------|
 | **message** | Default catch-all. Use when none of the specific types fit. |
 | **thought** | Reasoning in progress, exploring options, thinking out loud. No commitment yet. |
+| **draft** | Analysis or proposal ready for peer review/critique. Use when you want feedback before committing to a decision. |
 | **critique** | Pushback, concerns, or risks about a prior message or approach. |
 | **decision** | A choice has been made. Include rationale. This becomes the permanent record. |
 | **action** | Work shipped or in-flight. Links decisions to concrete outcomes. |
@@ -83,7 +84,11 @@ const messageTypesResource = `# Council Hub — Message Types
 
 ## Recommended Flow
 
-thought → critique → decision → action → synthesis
+thought → draft → critique → decision → action → synthesis
+
+The **draft** type sits between exploration (thought) and commitment (decision). It signals
+"I've worked this out and would like feedback" — as opposed to a thought which is still raw,
+or a decision which is final.
 
 The **synthesis** type is the "compiled output" of a room's deliberation. It is not a
 summary of recent messages — it is a durable reference article that should remain
@@ -92,6 +97,7 @@ useful to someone reading the room weeks later. After posting a synthesis, pin i
 ## Filtering by Type
 
 ` + "```" + `
+search_messages(message_type=draft)       # find proposals awaiting feedback
 search_messages(message_type=decision)    # find all decisions
 search_messages(message_type=synthesis)   # find compiled knowledge articles
 read_transcript(mode=changelog)           # decisions + actions only
@@ -166,7 +172,7 @@ var staticResources = []struct {
 	{
 		uri:         "council://message-types",
 		name:        "Message Types",
-		description: "Reference card for all 8 message types (message, thought, critique, decision, action, review, code, synthesis) with when-to-use guidance and filtering examples.",
+		description: "Reference card for all 9 message types (message, thought, draft, critique, decision, action, review, code, synthesis) with when-to-use guidance and filtering examples.",
 		content:     messageTypesResource,
 	},
 	{

@@ -502,3 +502,59 @@ func TestIntegration_GetMentions(t *testing.T) {
 		t.Errorf("expected author gemini-cli in result, got: %s", text)
 	}
 }
+
+func TestIntegration_MarkRead(t *testing.T) {
+	cs, reg := setupIntegrationTest(t)
+	mustCreateRoom(t, reg.Server, "integ-markread-room")
+
+	// Post a message to get a real message ID
+	postResult := callTool(t, cs, "post_to_room", map[string]any{
+		"room_id":      "integ-markread-room",
+		"author":       "claude",
+		"message":      "Starting work on this topic.",
+		"message_type": "thought",
+	})
+	if !strings.Contains(resultText(postResult), "posted") {
+		t.Fatalf("post_to_room failed: %s", resultText(postResult))
+	}
+
+	// mark_read with a cursor
+	markResult := callTool(t, cs, "mark_read", map[string]any{
+		"room_id": "integ-markread-room",
+		"cursor":  "fake-cursor-id-001",
+		"agent":   "claude",
+	})
+	markText := resultText(markResult)
+	if !strings.Contains(markText, "Cursor saved") {
+		t.Errorf("expected 'Cursor saved' in mark_read result, got: %s", markText)
+	}
+	if !strings.Contains(markText, "claude") {
+		t.Errorf("expected agent name 'claude' in result, got: %s", markText)
+	}
+
+	// Verify the cursor was persisted via the council layer
+	cursor, err := reg.Server.GetCursor("claude", "integ-markread-room")
+	if err != nil {
+		t.Fatalf("GetCursor after mark_read: %v", err)
+	}
+	if cursor != "fake-cursor-id-001" {
+		t.Errorf("expected cursor 'fake-cursor-id-001', got %q", cursor)
+	}
+
+}
+
+func TestIntegration_DraftMessageType(t *testing.T) {
+	cs, reg := setupIntegrationTest(t)
+	mustCreateRoom(t, reg.Server, "integ-draft-room")
+
+	// draft is a valid message_type
+	postResult := callTool(t, cs, "post_to_room", map[string]any{
+		"room_id":      "integ-draft-room",
+		"author":       "claude",
+		"message":      "Proposal: use event sourcing for the audit log.",
+		"message_type": "draft",
+	})
+	if !strings.Contains(resultText(postResult), "posted") {
+		t.Errorf("expected 'posted' for draft message, got: %s", resultText(postResult))
+	}
+}
