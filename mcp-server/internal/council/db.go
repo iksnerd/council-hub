@@ -93,7 +93,7 @@ func NewServer(dbPath string, logger *slog.Logger) (*Server, error) {
 
 	mcpServer := mcp.NewServer(&mcp.Implementation{
 		Name:    "council-hub",
-		Version: "0.22.0",
+		Version: "0.23.0",
 	}, &mcp.ServerOptions{
 		Logger:       logger,
 		Capabilities: &mcp.ServerCapabilities{},
@@ -134,6 +134,14 @@ func initSchema(db *sql.DB) error {
 		reactions TEXT DEFAULT '{}',
 		timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
 		FOREIGN KEY(room_id) REFERENCES rooms(id)
+	);
+
+	CREATE TABLE IF NOT EXISTS agent_cursors (
+		agent TEXT NOT NULL,
+		room_id TEXT NOT NULL,
+		cursor_message_id TEXT NOT NULL,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		PRIMARY KEY (agent, room_id)
 	);
 
 	CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(

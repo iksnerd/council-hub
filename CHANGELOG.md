@@ -4,6 +4,20 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.23.0] - 2026-04-11
+
+### Added
+- **`mark_read` tool** — persists a read cursor per agent per room. Call with `room_id`, `cursor` (latest message ID), and `agent` after reading a room. Cursors are stored in a new `agent_cursors` table; multiple agents track their own positions independently.
+- **`get_digest(unread_only=true, agent=...)`** — returns only rooms with messages newer than the agent's stored cursor. Turns returning sessions into "check what's new" instead of re-reading everything. Falls back to 30-day window so recently-created rooms without a cursor are always included.
+- **`draft` message type** — new type for analysis or proposals ready for peer review/critique, slotting between `thought` (exploratory, not ready) and `decision` (committed). Updated lifecycle: `thought → draft → critique → decision → action → synthesis`. Added to UI with a blue badge, pencil icon, and "Drafts" filter button.
+
+### Changed
+- **`post_to_room` message_type guidance** — enum descriptions now include inline "use X when…" annotations for all 9 types, so agents reading the schema see the right signal immediately without consulting a guide.
+- **`bulk_status_update` description** — added concrete trigger: "use at the end of a planning session when 3+ rooms have all decisions made and no further discussion is expected".
+- **`read_transcript` description** — batch mode (`room_ids`) promoted to the first sentence; modes reordered (`summary` first as the orientation mode); `work_items` use cases broadened to sprint retros, release notes, and cross-room project status in addition to ADO/GitHub Issues.
+
+---
+
 ## [0.22.0] - 2026-04-11
 
 ### Added

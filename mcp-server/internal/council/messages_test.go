@@ -1230,3 +1230,66 @@ func TestPostMessageWithMentionsStoredAndRetrievable(t *testing.T) {
 		t.Errorf("expected mentions 'agent-b,agent-c', got '%s'", msgs[0].Mentions)
 	}
 }
+
+func TestMarkReadAndGetCursor(t *testing.T) {
+	s := setupTestServer(t)
+
+	// GetCursor returns empty string when no cursor exists
+	cursor, err := s.GetCursor("claude", "some-room")
+	if err != nil {
+		t.Fatalf("GetCursor on missing cursor: %v", err)
+	}
+	if cursor != "" {
+		t.Errorf("expected empty cursor, got %q", cursor)
+	}
+
+	// MarkRead stores a cursor
+	if err := s.MarkRead("claude", "room-a", "msg-001"); err != nil {
+		t.Fatalf("MarkRead failed: %v", err)
+	}
+	cursor, err = s.GetCursor("claude", "room-a")
+	if err != nil {
+		t.Fatalf("GetCursor after MarkRead: %v", err)
+	}
+	if cursor != "msg-001" {
+		t.Errorf("expected cursor 'msg-001', got %q", cursor)
+	}
+
+	// MarkRead overwrites with a newer cursor
+	if err := s.MarkRead("claude", "room-a", "msg-002"); err != nil {
+		t.Fatalf("MarkRead overwrite failed: %v", err)
+	}
+	cursor, err = s.GetCursor("claude", "room-a")
+	if err != nil {
+		t.Fatalf("GetCursor after overwrite: %v", err)
+	}
+	if cursor != "msg-002" {
+		t.Errorf("expected cursor 'msg-002', got %q", cursor)
+	}
+
+	// Different agents have independent cursors for the same room
+	if err := s.MarkRead("gemini", "room-a", "msg-050"); err != nil {
+		t.Fatalf("MarkRead (gemini) failed: %v", err)
+	}
+	claudeCursor, _ := s.GetCursor("claude", "room-a")
+	geminiCursor, _ := s.GetCursor("gemini", "room-a")
+	if claudeCursor != "msg-002" {
+		t.Errorf("claude cursor changed after gemini mark_read: got %q", claudeCursor)
+	}
+	if geminiCursor != "msg-050" {
+		t.Errorf("expected gemini cursor 'msg-050', got %q", geminiCursor)
+	}
+
+	// Same agent, different rooms are independent
+	if err := s.MarkRead("claude", "room-b", "msg-099"); err != nil {
+		t.Fatalf("MarkRead (room-b) failed: %v", err)
+	}
+	cursorA, _ := s.GetCursor("claude", "room-a")
+	cursorB, _ := s.GetCursor("claude", "room-b")
+	if cursorA != "msg-002" {
+		t.Errorf("room-a cursor changed after room-b mark_read: got %q", cursorA)
+	}
+	if cursorB != "msg-099" {
+		t.Errorf("expected room-b cursor 'msg-099', got %q", cursorB)
+	}
+}

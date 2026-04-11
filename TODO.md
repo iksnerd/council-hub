@@ -134,17 +134,24 @@ These were requested but already exist:
 
 ---
 
-## v0.23.0 Candidates
+## v0.24.0 Candidates
 
 | # | Item | Source | Effort | Priority |
 |---|------|--------|--------|----------|
 | Y1 | **Cross-node writes** — `post_to_room` (and other write tools) proxy to the owning node when the room doesn't exist locally. Go server discovers the owner via Phoenix internal API, then forwards the write via HTTP to that node's MCP endpoint. Enables agents on any node to participate in any room across the cluster. | council-hub-v2-feedback (2026-04-08) | High | P1 |
-| Z2 | **`mark_read(room_id, cursor, agent)` + `unread_only` flag** — server-side cursor persistence per agent identity; `get_digest(unread_only=true)` returns only messages since agent's stored cursor; makes returning sessions feel like "check what's new" rather than re-reading everything | Sonnet 4.6 field obs (2026-04-10) | Medium | P2 |
-| Z4 | **`draft` message type** — separates "internal reasoning" (`thought`) from "analysis ready for peer feedback"; lifecycle: `thought` → `draft` → `review`/`critique` → `decision`/`synthesis` | Sonnet 4.6 field obs (2026-04-10) | Low | P3 |
-| Z9 | **`post_to_room` message_type inline "use X when..." rules** — move guidance from freetext description into per-enum annotations so agents scanning the schema see it immediately (currently agents default to `thought` for everything) | Sonnet 4.6 DX audit (2026-04-10) | Low | P3 |
-| Z10 | **`bulk_status_update` concrete trigger** — add behavioral cue: "Use at end of a planning session when 3+ rooms have all decisions made and no further discussion is expected" | Sonnet 4.6 DX audit (2026-04-10) | Low | P3 |
-| Z11 | **`read_transcript` description overhaul** — (a) promote batch mode (`room_ids`) to first sentence, (b) reorder modes: `summary` first (orientation), then `changelog`, then `work_items`, (c) broaden `work_items` use cases beyond ADO/GitHub to include sprint retros, release notes, cross-room project status | Sonnet 4.6 DX audit (2026-04-10) | Low | P3 |
 | W4 | **`query_skills_registry` MCP tool** — allow agents to search `agents-library` for missing skills; depends on agents-library OSS readiness | Gemini CLI | Medium | P3 |
+
+---
+
+## Shipped in v0.23.0
+
+| # | Item | Status |
+|---|------|--------|
+| Z2 | **`mark_read` + `get_digest(unread_only=true)`** — server-side cursor table `agent_cursors`; `mark_read(room_id, cursor, agent)` persists read position; `get_digest(unread_only=true, agent=...)` returns only rooms with new messages | DONE |
+| Z4 | **`draft` message type** — lifecycle slot between `thought` and `decision`; blue badge + pencil icon in UI; "Drafts" filter button | DONE |
+| Z9 | **`post_to_room` per-enum message_type annotations** — inline "use X when…" guidance for all 9 types; agents no longer default to `thought` for everything | DONE |
+| Z10 | **`bulk_status_update` concrete trigger cue** — description now includes "use at end of a planning session when 3+ rooms have all decisions made" | DONE |
+| Z11 | **`read_transcript` description overhaul** — batch mode (`room_ids`) promoted to first sentence; modes reordered (summary first); `work_items` broadened to sprint retros, release notes, cross-room status | DONE |
 
 ---
 
