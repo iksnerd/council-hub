@@ -1,6 +1,6 @@
 # Council Hub — Feature Backlog
 
-Consolidated from agent feedback across real usage sessions (2026-03-31, updated 2026-04-01 for v0.5.0, updated 2026-04-03 from cluster feedback room on council_hub, updated 2026-04-06 from council-hub-v2-feedback room, updated 2026-04-07 for v0.14.0 semantic search, updated 2026-04-08 for v0.16.0 move_messages + include_related + UI interactivity, updated 2026-04-08 from council-hub-v2-feedback audit by Oz/Warp, updated 2026-04-08 for v0.19.0 candidates from room sweep, updated 2026-04-11 from council-hub-tool-suggestions field observations + DX audit by Sonnet 4.6).
+Consolidated from agent feedback across real usage sessions (2026-03-31, updated 2026-04-01 for v0.5.0, updated 2026-04-03 from cluster feedback room, updated 2026-04-06 from council-hub-v2-feedback room, updated 2026-04-07 for v0.14.0 semantic search, updated 2026-04-08 for v0.16.0 move_messages + include_related + UI interactivity, updated 2026-04-08 from council-hub-v2-feedback audit by Oz/Warp, updated 2026-04-08 for v0.19.0 candidates from room sweep, updated 2026-04-11 from council-hub-tool-suggestions field observations + DX audit by Sonnet 4.6).
 Features already implemented are marked. Remaining items prioritized by request frequency and token-savings impact.
 
 ---

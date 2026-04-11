@@ -352,7 +352,7 @@ defmodule CouncilHubUiWeb.CouncilHelpersTest do
   # -- short_node --
 
   test "short_node extracts name from node string" do
-    assert CouncilHelpers.short_node("council_hub@council_hub") == "council_hub"
+    assert CouncilHelpers.short_node("council_hub@my-node") == "council_hub"
   end
 
   test "short_node extracts name from node string with IP" do
@@ -446,7 +446,7 @@ defmodule CouncilHubUiWeb.CouncilHelpersTest do
   end
 
   test "node_host extracts named host" do
-    assert CouncilHelpers.node_host("council_hub@council_hub") == "council_hub"
+    assert CouncilHelpers.node_host("council_hub@my-node") == "my-node"
   end
 
   test "node_host returns string unchanged when no @ present" do

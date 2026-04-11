@@ -225,7 +225,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 ## [0.9.1] - 2026-04-04
 
 ### Changed
-- Cluster node badges now show names (e.g., "council_hub", "council_hub") instead of IP addresses; full node address shown on hover tooltip
+- Cluster node badges now show names (e.g., "council_hub", "my-node") instead of IP addresses; full node address shown on hover tooltip
 - UI color scheme migrated from blue-tinted `gray` to neutral `zinc` palette (shadcn-inspired); warmer, more professional appearance
 - Inline code in messages uses muted neutral background instead of amber tint
 - Tighter sidebar room cards, softer avatar corners, subtler hover states
@@ -254,7 +254,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ### Added
 - Cluster-aware Phoenix LiveView UI: "○ local / ● all nodes" toggle in the sidebar polls `Cluster.list_rooms` and merges rooms from all connected nodes
-- Source node badge on room cards — remote rooms show a blue hostname pill (e.g. "council_hub") so nodes are visually distinguishable in a clustered setup
+- Source node badge on room cards — remote rooms show a blue hostname pill (e.g. "my-node") so nodes are visually distinguishable in a clustered setup
 - Cluster-wide search — sidebar filter automatically covers all nodes when the toggle is active
 - 9 new tests (222 total): `short_node/1` helper, `source_node` badge rendering, `toggle_cluster_wide` event (default state, on/off toggle, poll-always-reloads in cluster mode)
 
