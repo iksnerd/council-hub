@@ -423,6 +423,10 @@ council-hub/
   .github/workflows/  CI/CD for Docker Hub publishing
 ```
 
+## Contributing
+
+Bug reports and feature requests are welcome — please use [GitHub Issues](https://github.com/iksnerd/council-hub/issues). See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
 ## License
 
 MIT License. See [LICENSE](LICENSE) for details.
