@@ -109,12 +109,12 @@ func (s *Server) GetDigest(project, since string) ([]DigestEntry, error) {
 	query := `
 		SELECT m.room_id,
 		       SUM(CASE WHEN m.timestamp > ? THEN 1 ELSE 0 END) as new_msgs,
-		       (SELECT author FROM messages WHERE room_id = m.room_id ORDER BY id DESC LIMIT 1) as latest_author,
-		       (SELECT content FROM messages WHERE room_id = m.room_id ORDER BY id DESC LIMIT 1) as latest_content,
+		       COALESCE((SELECT author FROM messages WHERE room_id = m.room_id ORDER BY id DESC LIMIT 1), '') as latest_author,
+		       COALESCE((SELECT content FROM messages WHERE room_id = m.room_id ORDER BY id DESC LIMIT 1), '') as latest_content,
 		       COALESCE(r.tags, '') as tags,
 		       (SELECT COUNT(*) FROM messages WHERE room_id = m.room_id AND message_type = 'decision') as decision_count,
 		       (SELECT COUNT(*) FROM messages WHERE room_id = m.room_id AND message_type = 'synthesis') as synthesis_count,
-		       (SELECT MAX(id) FROM messages WHERE room_id = m.room_id) as latest_message_id
+		       COALESCE((SELECT MAX(id) FROM messages WHERE room_id = m.room_id), '') as latest_message_id
 		FROM messages m
 		JOIN rooms r ON m.room_id = r.id
 		WHERE (m.timestamp > ? OR r.tags LIKE '%stale%' OR r.tags LIKE '%needs-synthesis%')`

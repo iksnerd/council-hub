@@ -4,6 +4,13 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.23.1] - 2026-04-11
+
+### Fixed
+- **`get_digest(unread_only=true)` NULL scan** — `latest_author`, `latest_content`, and `latest_message_id` subqueries wrapped in `COALESCE` to handle rooms where these fields are NULL, preventing a scan error on returning sessions.
+
+---
+
 ## [0.23.0] - 2026-04-11
 
 ### Added
