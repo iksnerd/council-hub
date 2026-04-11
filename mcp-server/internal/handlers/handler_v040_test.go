@@ -296,6 +296,70 @@ func TestGetDigestFutureTimestamp(t *testing.T) {
 	}
 }
 
+// ========== get_digest unread_only ==========
+
+func TestGetDigestUnreadOnlyNoCursor(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "unread-room-a", withProject("unread-proj"))
+	mustPost(t, reg.Server, "unread-room-a", "Claude", "New message")
+
+	res, _, err := reg.handleGetDigest(context.Background(), nil, DigestInput{
+		UnreadOnly: "true",
+		Agent:      "test-agent",
+	})
+	if err != nil {
+		t.Fatalf("handleGetDigest unread_only error: %v", err)
+	}
+	text := resultText(res)
+	if !strings.Contains(text, "unread-room-a") {
+		t.Errorf("expected room in unread results (no cursor = unread), got: %s", text)
+	}
+}
+
+func TestGetDigestUnreadOnlyDefaultAgent(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "unread-room-b")
+	mustPost(t, reg.Server, "unread-room-b", "Gemini", "Message")
+
+	// Empty Agent param — should default to "default" agent name
+	res, _, _ := reg.handleGetDigest(context.Background(), nil, DigestInput{
+		UnreadOnly: "true",
+	})
+	text := resultText(res)
+	if !strings.Contains(text, "unread-room-b") {
+		t.Errorf("expected room in unread results with default agent, got: %s", text)
+	}
+}
+
+func TestGetDigestUnreadOnlyNoRooms(t *testing.T) {
+	reg := setupHandlerTest(t)
+	// No rooms with messages → GetDigest returns [] → "No unread rooms"
+
+	res, _, _ := reg.handleGetDigest(context.Background(), nil, DigestInput{
+		UnreadOnly: "true",
+		Agent:      "nobody",
+	})
+	text := resultText(res)
+	if !strings.Contains(text, "No unread rooms") {
+		t.Errorf("expected 'No unread rooms' message, got: %s", text)
+	}
+}
+
+func TestGetDigestUnreadOnlyRoomWithoutMessages(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "unread-no-msg")
+	// Room exists but no messages → latest_message_id is "" → not included
+
+	res, _, _ := reg.handleGetDigest(context.Background(), nil, DigestInput{
+		UnreadOnly: "true",
+		Agent:      "test-agent",
+	})
+	text := resultText(res)
+	if !strings.Contains(text, "No unread rooms") {
+		t.Errorf("expected 'No unread rooms' for room without messages, got: %s", text)
+	}
+}
+
 // ========== additional edge cases ==========
 
 func TestReadTranscriptBatchWithAfterID(t *testing.T) {

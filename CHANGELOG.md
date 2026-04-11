@@ -4,6 +4,16 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.24.1] - 2026-04-11
+
+### Changed
+- **Test coverage improvements** — Phoenix UI coverage raised from 81.62% to 90.06% (meets the configured 90% threshold). Go MCP server coverage raised from ~81.8% to 87.2%.
+  - Phoenix: added targeted tests for `ClusterController` (75.56%→92.22%), `CouncilLive` (63.85%→90%), `MessageComponents` (88.46%→100%), `CouncilHelpers` (~97%→~99%)
+  - Go: added `messages_annotate_test.go` (council-layer `ReactToMessage` 0%→93.1%), `embedder_test.go` (full `OllamaEmbedder` coverage), `handler_message_annotate_test.go`, extended `handleReadRoom` and `handleGetDigest` branch coverage
+  - No production code changes
+
+---
+
 ## [0.24.0] - 2026-04-11
 
 ### Changed

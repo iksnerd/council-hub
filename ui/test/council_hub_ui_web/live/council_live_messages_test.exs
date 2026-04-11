@@ -241,6 +241,65 @@ defmodule CouncilHubUiWeb.CouncilLiveMessagesTest do
     end
   end
 
+  describe "filter_type with no active room" do
+    test "just assigns type_filter without loading messages", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/")
+
+      render_click(view, "filter_type", %{"type" => "decision"})
+
+      assert :sys.get_state(view.pid).socket.assigns.type_filter == "decision"
+    end
+  end
+
+  describe "search_messages with no active room" do
+    test "empty query clears search state without loading messages", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/")
+
+      render_click(view, "search_messages", %{"query" => ""})
+
+      assigns = :sys.get_state(view.pid).socket.assigns
+      assert assigns.message_search == ""
+      assert assigns.searching == false
+    end
+
+    test "non-empty query sets message_search without searching", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/")
+
+      render_click(view, "search_messages", %{"query" => "auth"})
+
+      assert :sys.get_state(view.pid).socket.assigns.message_search == "auth"
+    end
+  end
+
+  describe "apply_search_filters with no active room" do
+    test "is a noop and assigns filter params", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/")
+
+      render_click(view, "apply_search_filters", %{
+        "author" => "Claude",
+        "since" => "",
+        "until" => ""
+      })
+
+      assigns = :sys.get_state(view.pid).socket.assigns
+      assert assigns.search_author == "Claude"
+      assert assigns.active_room == nil
+    end
+  end
+
+  describe "react event" do
+    test "react success path does not crash (McpClient unreachable in test)", %{conn: conn} do
+      room = create_room(%{id: "react-success-room"})
+      create_message(%{room_id: room.id, author: "Claude", content: "React to this"})
+
+      {:ok, view, _html} = live(conn, "/rooms/react-success-room")
+
+      view |> render_hook("react", %{"message-id" => "some-msg-id", "emoji" => "👍"})
+
+      assert render(view) =~ "react-success-room"
+    end
+  end
+
   describe "latest_ids assign" do
     test "latest_ids is populated on mount when messages exist", %{conn: conn} do
       room = create_room(%{id: "lid-room"})

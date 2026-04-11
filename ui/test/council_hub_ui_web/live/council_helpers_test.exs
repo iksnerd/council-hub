@@ -258,6 +258,10 @@ defmodule CouncilHubUiWeb.CouncilHelpersTest do
     assert String.contains?(result, "purple")
   end
 
+  test "type_color draft is blue" do
+    assert String.contains?(CouncilHelpers.type_color("draft"), "blue")
+  end
+
   test "type_color unknown falls back to slate" do
     result = CouncilHelpers.type_color("unknown")
     assert String.contains?(result, "slate")
@@ -361,5 +365,95 @@ defmodule CouncilHubUiWeb.CouncilHelpersTest do
 
   test "short_node returns nil for nil" do
     assert CouncilHelpers.short_node(nil) == nil
+  end
+
+  # -- author_prose_class --
+
+  test "author_prose_class returns border class" do
+    classes = CouncilHelpers.author_prose_class("Claude")
+    assert String.contains?(classes, "border-")
+    assert String.contains?(classes, "violet")
+  end
+
+  # -- parse_mentions --
+
+  test "parse_mentions nil returns empty list" do
+    assert CouncilHelpers.parse_mentions(nil) == []
+  end
+
+  test "parse_mentions empty string returns empty list" do
+    assert CouncilHelpers.parse_mentions("") == []
+  end
+
+  test "parse_mentions splits comma-separated mentions" do
+    assert CouncilHelpers.parse_mentions("claude,gemini") == ["claude", "gemini"]
+  end
+
+  test "parse_mentions trims whitespace" do
+    assert CouncilHelpers.parse_mentions(" claude , gemini ") == ["claude", "gemini"]
+  end
+
+  test "parse_mentions filters empty segments" do
+    assert CouncilHelpers.parse_mentions("claude,,gemini") == ["claude", "gemini"]
+  end
+
+  # -- format_type_counts --
+
+  test "format_type_counts empty map returns nil" do
+    assert CouncilHelpers.format_type_counts(%{}) == nil
+  end
+
+  test "format_type_counts formats counts in descending order" do
+    result = CouncilHelpers.format_type_counts(%{"decision" => 3, "thought" => 1})
+    assert String.contains?(result, "D:3")
+    assert String.contains?(result, "T:1")
+    # decision has more count, should come first
+    assert String.starts_with?(result, "D:")
+  end
+
+  test "format_type_counts unknown type uses first letter" do
+    result = CouncilHelpers.format_type_counts(%{"custom_type" => 2})
+    assert String.contains?(result, ":2")
+  end
+
+  # -- format_time_range --
+
+  test "format_time_range nil first returns nil" do
+    assert CouncilHelpers.format_time_range(nil, ~N[2026-03-29 14:00:00]) == nil
+  end
+
+  test "format_time_range nil last returns nil" do
+    assert CouncilHelpers.format_time_range(~N[2026-03-29 12:00:00], nil) == nil
+  end
+
+  test "format_time_range both nil returns nil" do
+    assert CouncilHelpers.format_time_range(nil, nil) == nil
+  end
+
+  test "format_time_range formats range" do
+    first = ~N[2026-03-29 12:00:00]
+    last = ~N[2026-03-29 14:30:00]
+    result = CouncilHelpers.format_time_range(first, last)
+    assert String.contains?(result, "→")
+    assert String.contains?(result, "12:00")
+    assert String.contains?(result, "14:30")
+  end
+
+  # -- node_host --
+
+  test "node_host extracts host from node string" do
+    assert CouncilHelpers.node_host("council_hub@10.0.0.5") == "10.0.0.5"
+  end
+
+  test "node_host extracts named host" do
+    assert CouncilHelpers.node_host("council_hub@council_hub") == "council_hub"
+  end
+
+  test "node_host returns string unchanged when no @ present" do
+    assert CouncilHelpers.node_host("noatsign") == "noatsign"
+  end
+
+  test "node_host returns nil for nil" do
+    assert CouncilHelpers.node_host(nil) == nil
   end
 end
