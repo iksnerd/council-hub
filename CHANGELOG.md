@@ -4,6 +4,14 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.25.0] - 2026-04-12
+
+### Added
+- **Built-in ONNX MiniLM embedder** — `search_messages(semantic=true)` now works without Ollama. The all-MiniLM-L6-v2 ONNX model runs in-process via ONNX Runtime, producing the same 384-dim vectors. Docker images bundle both the model (~90MB) and ONNX Runtime; no configuration needed. Set `COUNCIL_OLLAMA_URL` to prefer Ollama, or `COUNCIL_ONNX_MODEL_DIR` to override the model path. On systems without ONNX Runtime, semantic search gracefully degrades to disabled with a log warning.
+- **`make download-model`** — downloads the MiniLM ONNX model for local development with built-in semantic search.
+
+---
+
 ## [0.24.1] - 2026-04-11
 
 ### Changed
