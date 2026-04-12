@@ -56,15 +56,34 @@ RUN mix release
 # --- Stage 3: Runtime ---
 FROM debian:trixie-slim
 
+ARG TARGETARCH
+ARG ORT_VERSION=1.22.0
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libstdc++6 openssl ca-certificates wget bash \
     && rm -rf /var/lib/apt/lists/*
+
+# Install ONNX Runtime from Microsoft GitHub releases
+RUN ORT_ARCH=$([ "$TARGETARCH" = "arm64" ] && echo "aarch64" || echo "x64") && \
+    wget -q -O /tmp/ort.tgz \
+      "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-linux-${ORT_ARCH}-${ORT_VERSION}.tgz" && \
+    tar -xzf /tmp/ort.tgz -C /tmp && \
+    cp /tmp/onnxruntime-linux-${ORT_ARCH}-${ORT_VERSION}/lib/libonnxruntime.so.${ORT_VERSION} /usr/lib/ && \
+    ln -s /usr/lib/libonnxruntime.so.${ORT_VERSION} /usr/lib/libonnxruntime.so && \
+    rm -rf /tmp/ort.tgz /tmp/onnxruntime-*
 
 WORKDIR /app
 
 RUN groupadd -g 1000 council && \
     useradd -u 1000 -g council -m council && \
     mkdir -p /data && chown council:council /data
+
+# Download ONNX MiniLM model for built-in semantic search
+RUN mkdir -p /app/models/all-MiniLM-L6-v2 && \
+    wget -q -O /app/models/all-MiniLM-L6-v2/model.onnx \
+      "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/onnx/model.onnx" && \
+    wget -q -O /app/models/all-MiniLM-L6-v2/tokenizer.json \
+      "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/tokenizer.json"
 
 # Copy Go binary
 COPY --from=go-builder /go-app/council-hub /usr/local/bin/council-hub
@@ -80,6 +99,8 @@ USER council
 
 # Shared config
 ENV HOME=/app
+ENV COUNCIL_ONNX_MODEL_DIR=/app/models/all-MiniLM-L6-v2
+ENV ONNXRUNTIME_LIB_PATH=/usr/lib/libonnxruntime.so
 ENV COUNCIL_DB=/data/council.db
 ENV COUNCIL_TRANSPORT=http
 ENV COUNCIL_HTTP_ADDR=:3001
