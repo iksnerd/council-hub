@@ -89,19 +89,19 @@ func (e *ONNXEmbedder) Embed(ctx context.Context, text string) ([]float32, error
 	if err != nil {
 		return nil, fmt.Errorf("input_ids tensor: %w", err)
 	}
-	defer inputIDsTensor.Destroy()
+	defer func() { _ = inputIDsTensor.Destroy() }()
 
 	attMaskTensor, err := ort.NewTensor(shape, attentionMask)
 	if err != nil {
 		return nil, fmt.Errorf("attention_mask tensor: %w", err)
 	}
-	defer attMaskTensor.Destroy()
+	defer func() { _ = attMaskTensor.Destroy() }()
 
 	typeTensor, err := ort.NewTensor(shape, tokenTypeIDs)
 	if err != nil {
 		return nil, fmt.Errorf("token_type_ids tensor: %w", err)
 	}
-	defer typeTensor.Destroy()
+	defer func() { _ = typeTensor.Destroy() }()
 
 	// Output tensor: last_hidden_state has shape [1, seq_len, 384]
 	outShape := ort.NewShape(1, int64(seqLen), int64(EmbedDim))
@@ -109,7 +109,7 @@ func (e *ONNXEmbedder) Embed(ctx context.Context, text string) ([]float32, error
 	if err != nil {
 		return nil, fmt.Errorf("output tensor: %w", err)
 	}
-	defer outTensor.Destroy()
+	defer func() { _ = outTensor.Destroy() }()
 
 	// Run inference
 	err = e.session.Run(
@@ -147,7 +147,7 @@ func meanPool(hidden []float32, mask []int64, seqLen, dim int) []float32 {
 // Close releases ONNX Runtime resources.
 func (e *ONNXEmbedder) Close() error {
 	if e.session != nil {
-		e.session.Destroy()
+		_ = e.session.Destroy()
 	}
 	return ort.DestroyEnvironment()
 }
