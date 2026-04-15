@@ -15,9 +15,8 @@ type Embedder interface {
 	Embed(ctx context.Context, text string) ([]float32, error)
 }
 
-// EmbedDim is the standardized embedding dimension. Both MiniLM (native 384)
-// and nomic-embed-text (Matryoshka truncation) produce this dimension.
-const EmbedDim = 384
+// EmbedDim is the standardized embedding dimension (embeddinggemma:300m native output).
+const EmbedDim = 768
 
 // OllamaEmbedder generates embeddings via an Ollama HTTP API.
 type OllamaEmbedder struct {
@@ -29,7 +28,7 @@ type OllamaEmbedder struct {
 // NewOllamaEmbedder creates an embedder that calls the Ollama /api/embed endpoint.
 func NewOllamaEmbedder(baseURL, model string) *OllamaEmbedder {
 	if model == "" {
-		model = "nomic-embed-text"
+		model = "embeddinggemma:300m"
 	}
 	return &OllamaEmbedder{
 		BaseURL: baseURL,

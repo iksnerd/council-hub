@@ -1,4 +1,4 @@
-.PHONY: help build test fmt vet lint clean run all download-model
+.PHONY: help build test fmt vet lint clean run all
 
 BINARY = council-hub
 BUILD_DIR = build
@@ -30,14 +30,5 @@ clean: ## Remove build artifacts
 
 run: build ## Build and run locally
 	./$(BUILD_DIR)/$(BINARY)
-
-download-model: ## Download ONNX MiniLM model for local semantic search
-	@mkdir -p models/all-MiniLM-L6-v2
-	@echo "Downloading all-MiniLM-L6-v2 model (~90MB)..."
-	@wget -q --show-progress -O models/all-MiniLM-L6-v2/model.onnx \
-		"https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/onnx/model.onnx"
-	@wget -q --show-progress -O models/all-MiniLM-L6-v2/tokenizer.json \
-		"https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/tokenizer.json"
-	@echo "Model downloaded to models/all-MiniLM-L6-v2/"
 
 all: fmt vet lint test build ## Format, vet, lint, test, and build

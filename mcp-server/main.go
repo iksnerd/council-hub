@@ -37,24 +37,13 @@ func main() {
 	}
 	defer func() { _ = cs.DB.Close() }()
 
-	// Initialize embedder: prefer Ollama if configured, else try built-in ONNX
+	// Initialize embedder via Ollama
 	if ollamaURL := os.Getenv("COUNCIL_OLLAMA_URL"); ollamaURL != "" {
 		model := os.Getenv("COUNCIL_EMBED_MODEL")
 		cs.Embedder = council.NewOllamaEmbedder(ollamaURL, model)
 		logger.Info("Semantic search enabled", "provider", "ollama", "url", ollamaURL, "model", model)
 	} else {
-		modelDir := os.Getenv("COUNCIL_ONNX_MODEL_DIR")
-		if modelDir == "" {
-			modelDir = "/app/models/all-MiniLM-L6-v2"
-		}
-		onnxEmbedder, err := council.NewONNXEmbedder(modelDir)
-		if err != nil {
-			logger.Warn("Built-in ONNX embedder unavailable, semantic search disabled", "error", err)
-		} else {
-			cs.Embedder = onnxEmbedder
-			logger.Info("Semantic search enabled", "provider", "onnx", "model", "all-MiniLM-L6-v2", "dir", modelDir)
-			defer func() { _ = onnxEmbedder.Close() }()
-		}
+		logger.Info("Semantic search disabled (set COUNCIL_OLLAMA_URL to enable)")
 	}
 
 	phoenixURL := os.Getenv("COUNCIL_PHOENIX_URL")

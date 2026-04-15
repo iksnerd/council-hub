@@ -4,6 +4,16 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.26.0] - 2026-04-15
+
+### Changed
+- **Replaced ONNX MiniLM with Ollama embeddinggemma** — Semantic search now uses Ollama exclusively (`embeddinggemma:300m`, 768-dim vectors). Removed the built-in ONNX Runtime and bundled MiniLM model, significantly reducing Docker image size. Set `COUNCIL_OLLAMA_URL` to enable semantic search. Existing 384-dim vector tables are automatically migrated (dropped and re-backfilled at 768 dims) on startup.
+
+### Removed
+- Built-in ONNX MiniLM embedder, ONNX Runtime dependency, `make download-model` target, `COUNCIL_ONNX_MODEL_DIR` and `ONNXRUNTIME_LIB_PATH` env vars.
+
+---
+
 ## [0.25.0] - 2026-04-12
 
 ### Added

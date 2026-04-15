@@ -11,8 +11,8 @@ import (
 
 func TestNewOllamaEmbedderDefaultModel(t *testing.T) {
 	e := NewOllamaEmbedder("http://localhost:11434", "")
-	if e.Model != "nomic-embed-text" {
-		t.Errorf("expected default model 'nomic-embed-text', got: %s", e.Model)
+	if e.Model != "embeddinggemma:300m" {
+		t.Errorf("expected default model 'embeddinggemma:300m', got: %s", e.Model)
 	}
 }
 

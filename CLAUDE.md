@@ -142,6 +142,6 @@ All state mutations go through the Go server's mutex-protected handlers. Phoenix
 - `RELEASE_COOKIE` — Shared secret for distributed Erlang clustering
 - `RELEASE_NODE` — Unique node name with reachable IP (e.g. `council_hub@10.0.0.5`)
 - `COUNCIL_SEEDS` — Comma-separated node names to connect to for clustering
-- `COUNCIL_ONNX_MODEL_DIR` — Path to ONNX MiniLM model directory (default: `/app/models/all-MiniLM-L6-v2` in Docker). For local dev: `make download-model` then set to `models/all-MiniLM-L6-v2`
-- `ONNXRUNTIME_LIB_PATH` — Path to ONNX Runtime shared library (auto-detected in Docker; macOS: `/opt/homebrew/lib/libonnxruntime.dylib`)
+- `COUNCIL_OLLAMA_URL` — Ollama API endpoint for semantic search (e.g. `http://localhost:11434`)
+- `COUNCIL_EMBED_MODEL` — Ollama embedding model name (default: `embeddinggemma:300m`)
 - Data volume mounts to `/data` in Docker
