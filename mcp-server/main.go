@@ -40,7 +40,7 @@ func main() {
 	// Initialize embedder via Ollama
 	if ollamaURL := os.Getenv("COUNCIL_OLLAMA_URL"); ollamaURL != "" {
 		model := os.Getenv("COUNCIL_EMBED_MODEL")
-		cs.Embedder = council.NewOllamaEmbedder(ollamaURL, model)
+		cs.Embedder = council.NewOllamaEmbedder(ollamaURL, model, logger)
 		logger.Info("Semantic search enabled", "provider", "ollama", "url", ollamaURL, "model", model)
 	} else {
 		logger.Info("Semantic search disabled (set COUNCIL_OLLAMA_URL to enable)")

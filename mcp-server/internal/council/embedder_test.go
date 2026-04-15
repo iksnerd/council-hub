@@ -10,14 +10,14 @@ import (
 )
 
 func TestNewOllamaEmbedderDefaultModel(t *testing.T) {
-	e := NewOllamaEmbedder("http://localhost:11434", "")
+	e := NewOllamaEmbedder("http://localhost:11434", "", testLogger())
 	if e.Model != "embeddinggemma:300m" {
 		t.Errorf("expected default model 'embeddinggemma:300m', got: %s", e.Model)
 	}
 }
 
 func TestNewOllamaEmbedderCustomModel(t *testing.T) {
-	e := NewOllamaEmbedder("http://localhost:11434", "mxbai-embed-large")
+	e := NewOllamaEmbedder("http://localhost:11434", "mxbai-embed-large", testLogger())
 	if e.Model != "mxbai-embed-large" {
 		t.Errorf("expected custom model, got: %s", e.Model)
 	}
@@ -50,7 +50,7 @@ func TestOllamaEmbedderSuccess(t *testing.T) {
 	srv := ollamaServer(t, vec, http.StatusOK, "")
 	defer srv.Close()
 
-	e := NewOllamaEmbedder(srv.URL, "test-model")
+	e := NewOllamaEmbedder(srv.URL, "test-model", testLogger())
 	result, err := e.Embed(context.Background(), "hello world")
 	if err != nil {
 		t.Fatalf("Embed error: %v", err)
@@ -67,7 +67,7 @@ func TestOllamaEmbedderNon200Status(t *testing.T) {
 	srv := ollamaServer(t, nil, http.StatusInternalServerError, "model not found")
 	defer srv.Close()
 
-	e := NewOllamaEmbedder(srv.URL, "test-model")
+	e := NewOllamaEmbedder(srv.URL, "test-model", testLogger())
 	_, err := e.Embed(context.Background(), "hello")
 	if err == nil {
 		t.Fatal("expected error for non-200 status")
@@ -84,7 +84,7 @@ func TestOllamaEmbedderMalformedJSON(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	e := NewOllamaEmbedder(srv.URL, "test-model")
+	e := NewOllamaEmbedder(srv.URL, "test-model", testLogger())
 	_, err := e.Embed(context.Background(), "hello")
 	if err == nil {
 		t.Fatal("expected error for malformed JSON response")
@@ -99,7 +99,7 @@ func TestOllamaEmbedderEmptyEmbeddings(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	e := NewOllamaEmbedder(srv.URL, "test-model")
+	e := NewOllamaEmbedder(srv.URL, "test-model", testLogger())
 	_, err := e.Embed(context.Background(), "hello")
 	if err == nil {
 		t.Fatal("expected error for empty embeddings")
@@ -115,7 +115,7 @@ func TestOllamaEmbedderSmallerThanDim(t *testing.T) {
 	srv := ollamaServer(t, smallVec, http.StatusOK, "")
 	defer srv.Close()
 
-	e := NewOllamaEmbedder(srv.URL, "test-model")
+	e := NewOllamaEmbedder(srv.URL, "test-model", testLogger())
 	result, err := e.Embed(context.Background(), "hello")
 	if err != nil {
 		t.Fatalf("Embed error: %v", err)
@@ -131,7 +131,7 @@ func TestOllamaEmbedderLargerThanDim(t *testing.T) {
 	srv := ollamaServer(t, largeVec, http.StatusOK, "")
 	defer srv.Close()
 
-	e := NewOllamaEmbedder(srv.URL, "test-model")
+	e := NewOllamaEmbedder(srv.URL, "test-model", testLogger())
 	result, err := e.Embed(context.Background(), "hello")
 	if err != nil {
 		t.Fatalf("Embed error: %v", err)
@@ -143,7 +143,7 @@ func TestOllamaEmbedderLargerThanDim(t *testing.T) {
 
 func TestOllamaEmbedderNetworkError(t *testing.T) {
 	// Use an address with no server
-	e := NewOllamaEmbedder("http://127.0.0.1:19999", "test-model")
+	e := NewOllamaEmbedder("http://127.0.0.1:19999", "test-model", testLogger())
 	_, err := e.Embed(context.Background(), "hello")
 	if err == nil {
 		t.Fatal("expected error for unreachable server")
@@ -160,7 +160,7 @@ func TestOllamaEmbedderContextCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // cancel immediately
 
-	e := NewOllamaEmbedder(srv.URL, "test-model")
+	e := NewOllamaEmbedder(srv.URL, "test-model", testLogger())
 	_, err := e.Embed(ctx, "hello")
 	if err == nil {
 		t.Fatal("expected error for cancelled context")
