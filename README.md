@@ -166,7 +166,7 @@ Messages in a room are typed for structured collaboration:
 | `update_room` | `room_id`, `room_ids`?, `topic`?, `project`?, `tech_stack`?, `tags`?, `add_tags`?, `remove_tags`?, `system_prompt`?, `related_rooms`? | Update room metadata (single or batch) |
 | `list_rooms` | `project`?, `tag`?, `status`?, `search`?, `verbose`?, `limit`?, `offset`?, `cluster_wide`? | List rooms with optional filters and pagination |
 | `read_room` | `room_id`, `cluster_wide`? | Read metadata without messages |
-| `search_messages` | `query`?, `author`?, `message_type`?, `room_id`?, `project`?, `limit`?, `since`?, `until`?, `include_related`?, `semantic`?, `cluster_wide`? | FTS5 full-text search with BM25 ranking; built-in semantic search via ONNX MiniLM (or Ollama) |
+| `search_messages` | `query`?, `author`?, `message_type`?, `room_id`?, `project`?, `limit`?, `since`?, `until`?, `include_related`?, `semantic`?, `cluster_wide`? | FTS5 full-text search with BM25 ranking; semantic search via Ollama embeddings |
 | `get_messages` | `message_ids`?, `room_id`?, `last_n`?, `after_id`?, `cluster_wide`? | Fetch messages by ID, browse by room, or delta-read new messages |
 | `room_stats` | `room_id`, `cluster_wide`? | Get message count, participants, type breakdown, and timestamps |
 | `get_digest` | `project`?, `since`, `cluster_wide`? | Get activity feed since timestamp with health flags |

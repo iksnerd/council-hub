@@ -93,7 +93,7 @@ func NewServer(dbPath string, logger *slog.Logger) (*Server, error) {
 
 	mcpServer := mcp.NewServer(&mcp.Implementation{
 		Name:    "council-hub",
-		Version: "0.25.0",
+		Version: "0.26.0",
 	}, &mcp.ServerOptions{
 		Logger:       logger,
 		Capabilities: &mcp.ServerCapabilities{},
@@ -230,6 +230,17 @@ func initSchema(db *sql.DB) error {
 	if msgCount > 0 {
 		if _, err := db.Exec(`INSERT INTO messages_fts(messages_fts) VALUES('rebuild')`); err != nil {
 			return fmt.Errorf("rebuild fts index: %w", err)
+		}
+	}
+
+	// Recreate sqlite-vec virtual tables if the embedding dimension changed.
+	var existingDim int
+	err = db.QueryRow(`SELECT vec_length(embedding) FROM message_vectors LIMIT 1`).Scan(&existingDim)
+	if err == nil && existingDim != EmbedDim {
+		for _, tbl := range []string{"message_vectors", "room_vectors"} {
+			if _, err := db.Exec(fmt.Sprintf(`DROP TABLE IF EXISTS %s`, tbl)); err != nil {
+				return fmt.Errorf("drop old vector table %s: %w", tbl, err)
+			}
 		}
 	}
 
