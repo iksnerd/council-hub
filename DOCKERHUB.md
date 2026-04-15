@@ -73,9 +73,13 @@ Results are tagged with the source node name (e.g. `[alice@192.168.0.4]`). Unrea
 
 ### Semantic Search
 
-Semantic search uses Ollama for embeddings. Set `COUNCIL_OLLAMA_URL` to enable it:
+Semantic search uses [Ollama](https://ollama.com) for embeddings. Install Ollama on the host, pull the model, then point Council Hub at it:
 
 ```bash
+# 1. Install Ollama (https://ollama.com/download) then pull the model:
+ollama pull embeddinggemma:300m
+
+# 2. Run Council Hub with Ollama enabled:
 docker run -d --name council-hub \
   -p 4000:4000 -p 3001:3001 \
   -v ~/Documents/council-hub:/data \
@@ -84,7 +88,9 @@ docker run -d --name council-hub \
   iksnerd/council-hub:v0.26.1
 ```
 
-The default model is `embeddinggemma:300m` (768-dim vectors). Override with `COUNCIL_EMBED_MODEL`.
+> **Note:** `host.docker.internal` resolves to the host machine from inside Docker Desktop (macOS/Windows). On Linux use `--add-host=host.docker.internal:host-gateway` or pass the host's IP directly.
+
+The default model is `embeddinggemma:300m` (768-dim vectors). Override with `COUNCIL_EMBED_MODEL`. Ollama evicts idle models from memory after ~5 minutes — Council Hub handles this gracefully (2-minute timeout, automatic retry of missed embeddings every 10 minutes).
 
 **What happens on startup:**
 - All existing messages and rooms without vectors are backfilled in the background (non-blocking).
