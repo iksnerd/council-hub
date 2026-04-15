@@ -32,8 +32,7 @@ func TestHandlePinMessage(t *testing.T) {
 	}
 	if pinned == nil {
 		t.Fatal("expected pinned message, got nil")
-	}
-	if pinned.ID != id {
+	} else if pinned.ID != id {
 		t.Errorf("expected pinned message ID %s, got %s", id, pinned.ID)
 	}
 }
