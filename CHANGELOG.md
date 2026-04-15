@@ -4,6 +4,14 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.26.1] - 2026-04-16
+
+### Fixed
+- **Ollama cold-start resilience** — HTTP timeout increased from 30s to 2 minutes to handle model loading from disk. Slow requests (>5s) are logged. Timeout errors return a clear "model is loading — retry in a moment" message instead of a raw error.
+- **Periodic embedding backfill** — Missing embeddings (e.g. from Ollama being unavailable) are retried every 10 minutes instead of only at startup. Silent when nothing is pending.
+
+---
+
 ## [0.26.0] - 2026-04-15
 
 ### Changed
