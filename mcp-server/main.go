@@ -65,8 +65,8 @@ func main() {
 	// Start the Knowledge Linter
 	go cs.RunJanitor(ctx)
 
-	// Backfill embeddings for existing messages/rooms (background)
-	go cs.BackfillEmbeddings(ctx)
+	// Backfill embeddings on startup + every 10 min (retries if Ollama was down)
+	go cs.RunEmbedBackfill(ctx)
 
 	transport := os.Getenv("COUNCIL_TRANSPORT")
 	if transport == "" {

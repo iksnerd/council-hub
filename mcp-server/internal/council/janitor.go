@@ -39,11 +39,6 @@ func (s *Server) RunJanitor(ctx context.Context) {
 func (s *Server) JanitorSweep() LintResult {
 	ns := s.lintNeedsSynthesis()
 	st := s.lintStaleRooms()
-
-	// Backfill any messages/rooms missing embeddings (e.g. Ollama was
-	// unavailable when they were created).
-	s.BackfillEmbeddings(context.Background())
-
 	s.Mu.Lock()
 	s.LastJanitorScan = time.Now()
 	s.Mu.Unlock()

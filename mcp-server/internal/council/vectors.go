@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	sqlite_vec "github.com/asg017/sqlite-vec-go-bindings/cgo"
 )
@@ -222,14 +223,36 @@ func (s *Server) EmbedAsync(table, id, text string) {
 	}()
 }
 
-// BackfillEmbeddings embeds any messages and rooms that don't have vectors yet.
-// Runs in the background on startup.
-func (s *Server) BackfillEmbeddings(ctx context.Context) {
+// RunEmbedBackfill periodically backfills missing embeddings. Runs every 10
+// minutes so that messages posted while Ollama was unavailable (or while the
+// model was evicted from memory) are retried quickly.
+func (s *Server) RunEmbedBackfill(ctx context.Context) {
 	if s.Embedder == nil {
 		return
 	}
 
-	s.Logger.Info("Starting embedding backfill")
+	// Initial backfill on startup.
+	s.BackfillEmbeddings(ctx)
+
+	ticker := time.NewTicker(10 * time.Minute)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			s.BackfillEmbeddings(ctx)
+		}
+	}
+}
+
+// BackfillEmbeddings embeds any messages and rooms that don't have vectors yet.
+// No-op when all vectors are present.
+func (s *Server) BackfillEmbeddings(ctx context.Context) {
+	if s.Embedder == nil {
+		return
+	}
 
 	// Backfill messages
 	msgCount := 0
@@ -251,6 +274,10 @@ func (s *Server) BackfillEmbeddings(ctx context.Context) {
 		pending = append(pending, struct{ id, content string }{id, content})
 	}
 	_ = rows.Close()
+
+	if len(pending) > 0 {
+		s.Logger.Info("Embedding backfill starting", "pending_messages", len(pending))
+	}
 
 	for _, p := range pending {
 		if ctx.Err() != nil {
@@ -311,5 +338,7 @@ func (s *Server) BackfillEmbeddings(ctx context.Context) {
 		roomCount++
 	}
 
-	s.Logger.Info("Embedding backfill complete", "messages", msgCount, "rooms", roomCount)
+	if msgCount > 0 || roomCount > 0 {
+		s.Logger.Info("Embedding backfill complete", "messages", msgCount, "rooms", roomCount)
+	}
 }
