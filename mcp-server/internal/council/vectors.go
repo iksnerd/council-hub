@@ -69,6 +69,9 @@ func (s *Server) SearchMessagesSemantic(query string, roomID, project, author, m
 
 	queryVec, err := s.Embedder.Embed(context.Background(), query)
 	if err != nil {
+		if strings.Contains(err.Error(), "still be loading") {
+			return nil, fmt.Errorf("semantic search temporarily unavailable: embedding model is loading into memory — try again in a few seconds")
+		}
 		return nil, fmt.Errorf("embed query: %w", err)
 	}
 
