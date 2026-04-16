@@ -278,12 +278,15 @@ docker compose up -d
 | Detail | Value |
 |--------|-------|
 | Base image | `debian:trixie-slim` |
-| Image size | ~291 MB |
+| Architecture | `linux/arm64` (Apple Silicon native) |
+| Image size | ~292 MB |
 | Compressed | ~73 MB |
 | Build | Multi-stage (Go 1.25 + Elixir 1.19/OTP 28 + slim runtime) |
 | User | `council` (UID 1000, non-root) |
 | Healthcheck | `wget` to `:4000` every 30s, 10s timeout, 3 retries |
 | Entrypoint | `entrypoint.sh` — manages both Go and Elixir processes |
+
+> **Note:** The Docker Hub image is currently arm64 only (Apple Silicon / ARM Linux). Intel/amd64 support is planned via CI-based multi-arch builds.
 
 ## MCP Tools
 
