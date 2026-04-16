@@ -242,8 +242,30 @@ func (s *Server) RunEmbedBackfill(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			s.logEmbeddingStatus()
 			s.BackfillEmbeddings(ctx)
 		}
+	}
+}
+
+// logEmbeddingStatus logs total vs indexed counts for messages and rooms.
+func (s *Server) logEmbeddingStatus() {
+	var msgTotal, msgIndexed, roomTotal, roomIndexed int
+	_ = s.DB.QueryRow(`SELECT COUNT(*) FROM messages`).Scan(&msgTotal)
+	_ = s.DB.QueryRow(`SELECT COUNT(*) FROM message_vectors`).Scan(&msgIndexed)
+	_ = s.DB.QueryRow(`SELECT COUNT(*) FROM rooms`).Scan(&roomTotal)
+	_ = s.DB.QueryRow(`SELECT COUNT(*) FROM room_vectors`).Scan(&roomIndexed)
+
+	missing := (msgTotal - msgIndexed) + (roomTotal - roomIndexed)
+	if missing > 0 {
+		s.Logger.Warn("Embedding coverage gap",
+			"messages", fmt.Sprintf("%d/%d", msgIndexed, msgTotal),
+			"rooms", fmt.Sprintf("%d/%d", roomIndexed, roomTotal),
+			"missing", missing)
+	} else {
+		s.Logger.Info("Embedding status",
+			"messages", fmt.Sprintf("%d/%d", msgIndexed, msgTotal),
+			"rooms", fmt.Sprintf("%d/%d", roomIndexed, roomTotal))
 	}
 }
 
