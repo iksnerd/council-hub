@@ -36,10 +36,11 @@ docker-stop: ## Stop council-hub container
 docker-logs: ## Tail container logs
 	docker logs -f council-hub
 
-docker-push: ## Push existing local image to Docker Hub (single arch; prefer docker-build for multi-arch)
-	docker tag $(IMAGE):latest $(IMAGE):$(VERSION)
-	docker push $(IMAGE):latest
-	@if [ "$(VERSION)" != "latest" ]; then docker push $(IMAGE):$(VERSION); fi
+docker-push: ## Build and push arm64 image to Docker Hub with correct manifest
+	docker buildx build --platform linux/arm64 \
+		-t $(IMAGE):latest -t $(IMAGE):$(VERSION) \
+		--push .
+	@echo "Pushed: $(IMAGE):latest + $(IMAGE):$(VERSION) (arm64)"
 
 test-all: ## Run Go + Elixir tests
 	cd mcp-server && make test
