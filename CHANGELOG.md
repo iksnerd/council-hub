@@ -4,6 +4,19 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.26.2] - 2026-04-16
+
+### Changed
+- **Updated dependencies** — `go-sqlite3` 1.14.24 → 1.14.42 (bug fixes), MCP `go-sdk` 1.4.1 → 1.5.0 (middleware, elicit, sampling with tools).
+- **Docker Hub images are now arm64 (Apple Silicon)** — documented in image details. Intel/amd64 multi-arch builds planned for CI.
+
+### Fixed
+- **Startup log shows resolved model name** — displays `embeddinggemma:300m` instead of empty string when `COUNCIL_EMBED_MODEL` env var is not set.
+- **staticcheck SA5011 lint fix** — nil pointer check in pin message test.
+- **Ollama setup docs** — added `ollama pull` instructions, `host.docker.internal` Linux note, and cold-start resilience description to DOCKERHUB.md.
+
+---
+
 ## [0.26.1] - 2026-04-16
 
 ### Fixed
