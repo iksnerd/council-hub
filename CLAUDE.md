@@ -87,7 +87,7 @@ Single test: `cd ui && mix test test/path_to_test.exs:LINE`
 
 Code is organized into `internal/council` (data layer) and `internal/handlers` (MCP tool handlers):
 
-- `main.go` — Entry point. Selects transport based on `COUNCIL_TRANSPORT` env var (`stdio` default, `http` for persistent service). In http mode, serves MCP over SSE at `:3001/mcp`. Initializes HTTP client for cluster queries via `COUNCIL_PHOENIX_URL`.
+- `main.go` — Entry point. Selects transport based on `COUNCIL_TRANSPORT` env var (`stdio` default, `http` for persistent service). In http mode, serves MCP over SSE at `:3001/mcp`. Initializes Ollama embedder when `COUNCIL_OLLAMA_URL` is set. Starts janitor (6h lint cycle) and embed backfill (10-min retry loop) as background goroutines.
 - `internal/council/db.go` — `Server` struct holds `*sql.DB` + `sync.RWMutex`. Schema: `rooms` and `messages` tables with indexes on `messages(room_id)`, `messages(room_id, id)`, `messages(room_id, timestamp)`, `messages(room_id, is_summary)`, `rooms(project)`, `rooms(status)`. FTS5 virtual table `messages_fts` with triggers for insert/update/delete sync and auto-rebuild on startup. WAL mode with 5s busy timeout. UUID v7 migration for message IDs.
 - `internal/council/rooms.go` — Room CRUD: `CreateRoom`, `GetRoom`, `UpdateRoom`, `DeleteRoom`, `ListRooms`, `UpdateStatus`, bidirectional `syncReverseLinks`.
 - `internal/council/messages.go` — Message CRUD: `PostMessage`, `SearchMessages` (FTS5 full-text search with BM25 ranking, multi-word AND queries, since/until date filters), `GetRecentMessages`, `GetMessagesAfterID`, `GetLatestPerType`, `PinMessage`, `DeleteMessages`.
@@ -100,7 +100,9 @@ Code is organized into `internal/council` (data layer) and `internal/handlers` (
 - `internal/handlers/handler_room.go` — Room tool handlers. `list_rooms` and `room_stats` branch on `cluster_wide=true`. Compact listing includes pinned message excerpts (📌). Multi-word search splits on whitespace (AND logic across id/description/tags).
 - `internal/handlers/handler_transcript.go` — `read_transcript` with modes (summary, changelog), `archive_room`.
 - `internal/handlers/resources.go` — Serves `council://room/{id}/transcript` as prompt-optimized markdown.
-- `internal/council/janitor.go` — Background summarization goroutine (currently disabled, pending refinement).
+- `internal/council/embedder.go` — `Embedder` interface + `OllamaEmbedder` (HTTP client for Ollama `/api/embed`, 2-min timeout, slow-request logging). Default model: `embeddinggemma:300m` (768-dim).
+- `internal/council/vectors.go` — Vector storage (`StoreVector`, `deleteVectorsLocked`), `SearchMessagesSemantic` (two-phase: vector candidate search → metadata filtering), `EmbedAsync` (non-blocking background embed), `RunEmbedBackfill` (10-min retry loop + coverage logging), `BackfillEmbeddings`.
+- `internal/council/janitor.go` — Knowledge Linter: runs every 6h, flags rooms needing synthesis (`needs-synthesis` tag) and stale rooms (`stale` tag).
 
 ### Web UI (Elixir/Phoenix)
 
