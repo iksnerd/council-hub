@@ -13,7 +13,7 @@ COOKIE    ?= council
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-18s %s\n", $$1, $$2}'
 
-docker-build: ## Build unified Docker image
+docker-build: ## Build unified Docker image (native arch)
 	docker build -t $(IMAGE):latest .
 	@echo "Built: $(IMAGE):latest"
 
@@ -36,7 +36,7 @@ docker-stop: ## Stop council-hub container
 docker-logs: ## Tail container logs
 	docker logs -f council-hub
 
-docker-push: ## Push image to Docker Hub
+docker-push: ## Push existing local image to Docker Hub (single arch; prefer docker-build for multi-arch)
 	docker tag $(IMAGE):latest $(IMAGE):$(VERSION)
 	docker push $(IMAGE):latest
 	@if [ "$(VERSION)" != "latest" ]; then docker push $(IMAGE):$(VERSION); fi
