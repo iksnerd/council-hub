@@ -39,8 +39,13 @@ func (s *Server) RunJanitor(ctx context.Context) {
 func (s *Server) JanitorSweep() LintResult {
 	ns := s.lintNeedsSynthesis()
 	st := s.lintStaleRooms()
+	if err := healIndexes(s.DB, s.Logger); err != nil {
+		s.Logger.Error("Janitor: integrity check failed", "error", err)
+	}
+	now := time.Now()
 	s.Mu.Lock()
-	s.LastJanitorScan = time.Now()
+	s.LastJanitorScan = now
+	s.LastIntegrityCheck = now
 	s.Mu.Unlock()
 	return LintResult{NeedsSynthesis: ns, Stale: st}
 }

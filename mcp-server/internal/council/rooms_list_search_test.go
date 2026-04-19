@@ -102,6 +102,42 @@ func TestListRoomsMultiWordSearch(t *testing.T) {
 	}
 }
 
+// Replicates the field report that triggered the OR fallback: an agent
+// searched for "council hub feedback suggestions" looking for a room that
+// contained three of the four words. Strict AND returned nothing because
+// "feedback" appears nowhere. The fallback should still surface the room.
+func TestListRoomsSearchORFallback(t *testing.T) {
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "council-hub-tool-suggestions",
+		withDescription("Improving Council Hub Tooling for Agents"),
+		withTags("mcp,tools,suggestions,dx"))
+	mustCreateRoom(t, s, "other-room", withDescription("Unrelated topic"))
+
+	// Strict AND would reject this (no room contains "feedback"), but the
+	// fallback pass should match on "council"/"hub"/"suggestions".
+	rooms, err := s.ListRooms("", "", "", "council hub feedback suggestions", 100, 0)
+	if err != nil {
+		t.Fatalf("ListRooms OR fallback failed: %v", err)
+	}
+	if len(rooms) != 1 || rooms[0].ID != "council-hub-tool-suggestions" {
+		t.Errorf("expected OR fallback to return council-hub-tool-suggestions, got %+v", rooms)
+	}
+
+	// Single-word searches keep their original semantics — no fallback kicks
+	// in, and a non-matching word returns nothing.
+	rooms, _ = s.ListRooms("", "", "", "nothinghere", 100, 0)
+	if len(rooms) != 0 {
+		t.Errorf("expected 0 rooms for single non-matching word, got %d", len(rooms))
+	}
+
+	// AND still wins when it can — exact multi-word match must not get
+	// diluted by the fallback running unnecessarily.
+	rooms, _ = s.ListRooms("", "", "", "council hub", 100, 0)
+	if len(rooms) != 1 {
+		t.Errorf("expected AND to handle 'council hub' directly, got %d", len(rooms))
+	}
+}
+
 func TestListRoomsSearch(t *testing.T) {
 	s := setupTestServer(t)
 	mustCreateRoom(t, s, "jwt-auth", withDescription("JWT authentication refactor"), withTags("security"))

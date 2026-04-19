@@ -296,6 +296,18 @@ func TestJanitorSweepRunsBothLinters(t *testing.T) {
 	}
 }
 
+func TestJanitorSweepRunsIntegrityCheck(t *testing.T) {
+	cs := setupTestServer(t)
+
+	before := cs.LastIntegrityCheck
+	cs.JanitorSweep()
+	after := cs.LastIntegrityCheck
+
+	if !after.After(before) {
+		t.Errorf("expected LastIntegrityCheck to advance after JanitorSweep (before=%v, after=%v)", before, after)
+	}
+}
+
 // ========== buildEpitaph ==========
 
 func TestBuildEpitaph(t *testing.T) {

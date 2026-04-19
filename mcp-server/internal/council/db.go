@@ -59,8 +59,9 @@ type Server struct {
 	Mu              sync.RWMutex
 	MCP             *mcp.Server
 	Logger          *slog.Logger
-	Embedder        Embedder  // nil if no embedding provider configured
-	LastJanitorScan time.Time // zero if background janitor hasn't run yet
+	Embedder           Embedder  // nil if no embedding provider configured
+	LastJanitorScan    time.Time // zero if background janitor hasn't run yet
+	LastIntegrityCheck time.Time // zero if integrity check hasn't run yet
 }
 
 // NewServer creates a new Server with an initialized SQLite database.
@@ -98,17 +99,18 @@ func NewServer(dbPath string, logger *slog.Logger) (*Server, error) {
 
 	mcpServer := mcp.NewServer(&mcp.Implementation{
 		Name:    "council-hub",
-		Version: "0.26.3",
+		Version: "0.26.4",
 	}, &mcp.ServerOptions{
 		Logger:       logger,
 		Capabilities: &mcp.ServerCapabilities{},
 	})
 
 	return &Server{
-		DB:     db,
-		DBPath: dbPath,
-		MCP:    mcpServer,
-		Logger: logger,
+		DB:                 db,
+		DBPath:             dbPath,
+		MCP:                mcpServer,
+		Logger:             logger,
+		LastIntegrityCheck: time.Now(),
 	}, nil
 }
 
