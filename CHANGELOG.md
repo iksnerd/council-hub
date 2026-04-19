@@ -4,6 +4,14 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.26.4] - 2026-04-19
+
+### Added
+- **Periodic DB integrity check in janitor** — the 6h janitor cycle now runs `PRAGMA integrity_check` alongside the Knowledge Linter, catching slow-burn index corruption between restarts instead of only at boot. Same heal-and-log path as v0.26.3. `Server.LastIntegrityCheck` timestamp tracks the latest sweep (foundation for a future `/health` endpoint).
+- **`list_rooms` search OR fallback** — when strict multi-word AND returns zero rooms and 2+ words were given, a second pass matches any single word. Agents over-specifying a search (e.g. `"council hub feedback suggestions"` when no room contains `feedback`) now still surface the intended room instead of an empty result. Tool description updated to document the behavior.
+
+---
+
 ## [0.26.3] - 2026-04-19
 
 ### Added

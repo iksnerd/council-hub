@@ -98,7 +98,7 @@ func (r *Registry) RegisterTools() {
 			"project":      prop("string", "Filter by project name"),
 			"tag":          prop("string", "Filter by tag"),
 			"status":       prop("string", "Filter by status (active, paused, resolved)"),
-			"search":       prop("string", "Keyword search across room ID, topic/description, and tags"),
+			"search":       prop("string", "Keyword search across room ID, topic/description, and tags. Multi-word queries use AND (all words must match); if nothing matches, falls back to OR so over-specified queries still find the room."),
 			"limit":        prop("string", "Max rooms to return (default 50, max 100)"),
 			"offset":       prop("string", "Offset for pagination (default 0)"),
 			"verbose":      prop("string", "Set to 'true' for full metadata per room (system_prompt, tech_stack, tags, related_rooms)"),

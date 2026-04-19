@@ -2,8 +2,28 @@ package council
 
 import "strings"
 
-// ListRooms returns rooms matching optional filters.
+// ListRooms returns rooms matching optional filters. Multi-word search uses
+// strict AND by default; if that returns zero rows and 2+ words were given,
+// it retries once with OR semantics so over-specified queries (e.g.
+// "council hub feedback suggestions" where "feedback" appears nowhere) still
+// surface the room the agent was looking for.
 func (s *Server) ListRooms(project, tag, status, search string, limit, offset int) ([]Room, error) {
+	words := strings.Fields(search)
+
+	rooms, err := s.listRoomsMatch(project, tag, status, words, limit, offset, "AND")
+	if err != nil {
+		return nil, err
+	}
+	if len(rooms) == 0 && len(words) >= 2 {
+		return s.listRoomsMatch(project, tag, status, words, limit, offset, "OR")
+	}
+	return rooms, nil
+}
+
+// listRoomsMatch runs the underlying list_rooms query. searchJoin is "AND" or
+// "OR" and controls how multiple search words are combined across the
+// id/description/tags LIKE clauses.
+func (s *Server) listRoomsMatch(project, tag, status string, words []string, limit, offset int, searchJoin string) ([]Room, error) {
 	query := `SELECT id, description, status, project, tech_stack, tags, system_prompt, related_rooms, created_at, updated_at FROM rooms WHERE 1=1`
 	var args []any
 
@@ -19,19 +39,25 @@ func (s *Server) ListRooms(project, tag, status, search string, limit, offset in
 		query += ` AND status = ?`
 		args = append(args, status)
 	}
-	if search != "" {
-		for _, word := range strings.Fields(search) {
-			query += ` AND (id LIKE '%' || ? || '%' OR description LIKE '%' || ? || '%' OR tags LIKE '%' || ? || '%')`
+	if len(words) > 0 {
+		clauses := make([]string, 0, len(words))
+		for _, word := range words {
+			clauses = append(clauses, `(id LIKE '%' || ? || '%' OR description LIKE '%' || ? || '%' OR tags LIKE '%' || ? || '%')`)
 			args = append(args, word, word, word)
 		}
+		sep := " AND "
+		if searchJoin == "OR" {
+			sep = " OR "
+		}
+		query += ` AND (` + strings.Join(clauses, sep) + `)`
 	}
 
 	query += ` ORDER BY updated_at DESC LIMIT ? OFFSET ?`
 
 	if limit <= 0 {
-		limit = 50 // default to 50
+		limit = 50
 	} else if limit > 100 {
-		limit = 100 // cap at 100
+		limit = 100
 	}
 	if offset < 0 {
 		offset = 0
