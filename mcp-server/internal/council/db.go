@@ -91,9 +91,14 @@ func NewServer(dbPath string, logger *slog.Logger) (*Server, error) {
 		return nil, fmt.Errorf("failed to migrate message IDs to UUID: %w", err)
 	}
 
+	if err := healIndexes(db, logger); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("failed to self-heal database: %w", err)
+	}
+
 	mcpServer := mcp.NewServer(&mcp.Implementation{
 		Name:    "council-hub",
-		Version: "0.26.2",
+		Version: "0.26.3",
 	}, &mcp.ServerOptions{
 		Logger:       logger,
 		Capabilities: &mcp.ServerCapabilities{},
@@ -262,6 +267,80 @@ func initSchema(db *sql.DB) error {
 	}
 
 	return nil
+}
+
+// healIndexes runs PRAGMA integrity_check at startup. If only B-tree index
+// corruption is detected (typically caused by external file-indexers like
+// macOS Spotlight touching the DB on a bad mount path), it runs REINDEX to
+// rebuild the indexes in place. Deeper corruption aborts startup so it can
+// be investigated manually instead of silently masked.
+func healIndexes(db *sql.DB, logger *slog.Logger) error {
+	issues, err := integrityCheck(db)
+	if err != nil {
+		return fmt.Errorf("integrity_check: %w", err)
+	}
+	if len(issues) == 0 {
+		return nil
+	}
+
+	if !isIndexOnlyCorruption(issues) {
+		return fmt.Errorf("database corruption beyond indexes, manual intervention required: %s", strings.Join(issues, "; "))
+	}
+
+	logger.Warn("index corruption detected on startup; running REINDEX",
+		"issue_count", len(issues), "first_issue", issues[0])
+	if _, err := db.Exec(`REINDEX`); err != nil {
+		return fmt.Errorf("REINDEX failed: %w", err)
+	}
+
+	post, err := integrityCheck(db)
+	if err != nil {
+		return fmt.Errorf("post-reindex integrity_check: %w", err)
+	}
+	if len(post) > 0 {
+		return fmt.Errorf("REINDEX did not resolve all issues: %s", strings.Join(post, "; "))
+	}
+
+	logger.Info("index self-heal completed", "fixed_issues", len(issues))
+	return nil
+}
+
+// integrityCheck returns the list of non-"ok" lines from PRAGMA integrity_check.
+// A healthy database returns an empty slice.
+func integrityCheck(db *sql.DB) ([]string, error) {
+	rows, err := db.Query(`PRAGMA integrity_check`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var issues []string
+	for rows.Next() {
+		var s string
+		if err := rows.Scan(&s); err != nil {
+			return nil, err
+		}
+		if s != "ok" {
+			issues = append(issues, s)
+		}
+	}
+	return issues, rows.Err()
+}
+
+// isIndexOnlyCorruption returns true iff every issue line mentions "index",
+// which SQLite's integrity checker uses for index-level complaints like
+// "wrong # of entries in index X" or "row N missing from index X".
+// Even if this classifier is too lenient, the post-REINDEX integrity check
+// in healIndexes catches any residual damage and returns a hard error.
+func isIndexOnlyCorruption(issues []string) bool {
+	if len(issues) == 0 {
+		return false
+	}
+	for _, s := range issues {
+		if !strings.Contains(s, "index") {
+			return false
+		}
+	}
+	return true
 }
 
 // migrateMessagesToUUIDs detects an old integer-ID messages schema and converts it to UUID v7.

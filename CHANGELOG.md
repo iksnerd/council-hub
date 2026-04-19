@@ -4,6 +4,13 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.26.3] - 2026-04-19
+
+### Added
+- **Boot-time DB self-heal** — `NewServer` now runs `PRAGMA integrity_check` on every startup. Index-only corruption (wrong entry counts, missing rows, non-unique entries) triggers an automatic `REINDEX` and startup continues. Deeper corruption aborts startup with an actionable error rather than silently masking data issues. Protects against external file-indexers (macOS Spotlight, iCloud Drive, Time Machine) that can desync SQLite indexes on privacy-protected mount paths.
+
+---
+
 ## [0.26.2] - 2026-04-16
 
 ### Changed
