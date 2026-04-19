@@ -54,11 +54,11 @@ func scanMessage(scanner interface{ Scan(...any) error }) (Message, error) {
 
 // Server holds the database, mutex, MCP server, and logger.
 type Server struct {
-	DB              *sql.DB
-	DBPath          string
-	Mu              sync.RWMutex
-	MCP             *mcp.Server
-	Logger          *slog.Logger
+	DB                 *sql.DB
+	DBPath             string
+	Mu                 sync.RWMutex
+	MCP                *mcp.Server
+	Logger             *slog.Logger
 	Embedder           Embedder  // nil if no embedding provider configured
 	LastJanitorScan    time.Time // zero if background janitor hasn't run yet
 	LastIntegrityCheck time.Time // zero if integrity check hasn't run yet
