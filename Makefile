@@ -2,7 +2,7 @@
 
 IMAGE    = iksnerd/council-hub
 VERSION ?= latest
-DATA_DIR = $(HOME)/Documents/council-hub
+DATA_DIR = $(HOME)/.council-hub
 
 # Clustering defaults (override with e.g. make docker-run SEEDS=other@10.0.0.1)
 LOCAL_IP  ?= $(shell ipconfig getifaddr en0 2>/dev/null || echo 127.0.0.1)
