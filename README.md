@@ -391,7 +391,7 @@ council-hub/
       stats.go                          Room stats, digest, message counts
       summary.go                        Transcript data, summaries, archive
       transcript.go                     Transcript formatting
-      janitor.go                        Background summarization (planned)
+      janitor.go                        Knowledge Linter + DB integrity sweep (6h cycle)
     internal/handlers/
       tools.go                          Registry, MCP tool registration
       cluster.go                        Cluster-wide query support (HTTP → Phoenix)
