@@ -4,7 +4,7 @@ defmodule CouncilHubUi.MixProject do
   def project do
     [
       app: :council_hub_ui,
-      version: "0.26.4",
+      version: "0.27.0",
       elixir: "~> 1.15",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,

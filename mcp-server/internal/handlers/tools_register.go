@@ -82,36 +82,52 @@ func (r *Registry) RegisterTools() {
 		Name: "bulk_status_update",
 		Description: "Update the status of multiple rooms in one call. Optionally post a closing message to each room. " +
 			"Use this at the end of a planning session when 3+ rooms have all decisions made and no further discussion is expected — " +
-			"e.g. after a sprint review, after shipping a feature, or when closing out a bug investigation cluster.",
+			"e.g. after a sprint review, after shipping a feature, or when closing out a bug investigation cluster. " +
+			"Set auto_archive_days=N to also archive (and remove) any room transitioned to 'resolved' whose last activity is N+ days old, collapsing two admin steps into one.",
 		InputSchema: schema([]string{"room_ids", "status"}, map[string]map[string]any{
-			"room_ids": prop("string", "Comma-separated room IDs (e.g. bug-123,bug-456,feature-x)"),
-			"status":   prop("string", "One of: active, paused, resolved"),
-			"message":  prop("string", "Optional closing message to post to each room before updating status"),
-			"author":   prop("string", "Author name for the closing message (required if message is provided)"),
+			"room_ids":          prop("string", "Comma-separated room IDs (e.g. bug-123,bug-456,feature-x)"),
+			"status":            prop("string", "One of: active, paused, resolved"),
+			"message":           prop("string", "Optional closing message to post to each room before updating status"),
+			"author":            prop("string", "Author name for the closing message (required if message is provided)"),
+			"auto_archive_days": prop("string", "When set with status='resolved', any room whose last activity is N+ days old is also archived and deleted. Use 0 or omit to skip auto-archive."),
 		}),
 	}, r.handleBulkStatusUpdate)
+
+	mcp.AddTool(r.Server.MCP, &mcp.Tool{
+		Name: "rename_project",
+		Description: "Rewrite the `project` field on every room currently assigned to `from`, replacing it with `to`. " +
+			"Both names are slugified the same way as create_room/update_room writes, so callers don't need to pre-normalize. " +
+			"Use after a repository or product gets renamed — avoids hand-fixing 15+ rooms per rename.",
+		InputSchema: schema([]string{"from", "to"}, map[string]map[string]any{
+			"from": prop("string", "Existing project name (will be slugified before matching)"),
+			"to":   prop("string", "New project name (will be slugified before writing)"),
+		}),
+	}, r.handleRenameProject)
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "list_rooms",
 		Description: "List council rooms, optionally filtered by project, tag, status, or keyword search. Returns compact one-line-per-room format by default (saves ~60-80% tokens vs verbose). Set verbose=true for full metadata. Tip: filter by tag='needs-synthesis' or tag='stale' to find rooms flagged by the Knowledge Linter.",
 		InputSchema: schema(nil, map[string]map[string]any{
-			"project":      prop("string", "Filter by project name"),
-			"tag":          prop("string", "Filter by tag"),
-			"status":       prop("string", "Filter by status (active, paused, resolved)"),
-			"search":       prop("string", "Keyword search across room ID, topic/description, and tags. Multi-word queries use AND (all words must match); if nothing matches, falls back to OR so over-specified queries still find the room."),
-			"limit":        prop("string", "Max rooms to return (default 50, max 100)"),
-			"offset":       prop("string", "Offset for pagination (default 0)"),
-			"verbose":      prop("string", "Set to 'true' for full metadata per room (system_prompt, tech_stack, tags, related_rooms)"),
-			"cluster_wide": prop("string", "Set to 'true' to search across all cluster nodes. Default: local only."),
+			"project":        prop("string", "Filter by project name"),
+			"project_not_in": prop("string", "Comma-separated project names to EXCLUDE. Useful for triaging deprecated-project graveyards (e.g. project_not_in='active-proj-a,active-proj-b' surfaces every room whose project is anything else)."),
+			"tag":            prop("string", "Filter by tag"),
+			"status":         prop("string", "Filter by status (active, paused, resolved)"),
+			"search":         prop("string", "Keyword search across room ID, topic/description, and tags. Multi-word queries use AND (all words must match); if nothing matches, falls back to OR so over-specified queries still find the room."),
+			"related_to":     prop("string", "Filter to rooms whose related_rooms list contains this room ID. Returns the flat neighborhood around a specific room — pairs with compact listing for a data-dense alternative to get_concept_map."),
+			"limit":          prop("string", "Max rooms to return (default 50, max 100)"),
+			"offset":         prop("string", "Offset for pagination (default 0)"),
+			"verbose":        prop("string", "Set to 'true' for full metadata per room (system_prompt, tech_stack, tags, related_rooms)"),
+			"cluster_wide":   prop("string", "Set to 'true' to search across all cluster nodes. Default: local only."),
 		}),
 	}, r.handleListRooms)
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "update_room",
-		Description: "Update a room's metadata. Only provided fields are changed; omitted fields are left unchanged. Returns the full updated room state. Related rooms are bidirectionally linked. Use room_ids (comma-separated) to patch multiple rooms in one call. Use add_tags/remove_tags for surgical tag mutations without overwriting all existing tags.",
+		Description: "Update a room's metadata. Only provided fields are changed; omitted fields are left unchanged. Returns the full updated room state. Related rooms are bidirectionally linked. Use room_ids (comma-separated) to patch multiple rooms in one call. Use where_project to apply the same patch (especially add_tags/remove_tags) to every room in a project in one call. Use add_tags/remove_tags for surgical tag mutations without overwriting all existing tags.",
 		InputSchema: schema([]string{}, map[string]map[string]any{
 			"room_id":       prop("string", "Target room ID (single room)"),
 			"room_ids":      prop("string", "Comma-separated room IDs for batch updates — use instead of or alongside room_id"),
+			"where_project": prop("string", "Apply this patch to every room currently in the given project. Combine with add_tags/remove_tags to bulk-tag a project in one call. Combines with room_id/room_ids if both supplied."),
 			"topic":         prop("string", "New topic/description"),
 			"project":       prop("string", "New project grouping"),
 			"tech_stack":    prop("string", "New tech stack"),

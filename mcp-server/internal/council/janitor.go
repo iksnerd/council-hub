@@ -3,6 +3,7 @@ package council
 import (
 	"context"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -39,8 +40,12 @@ func (s *Server) RunJanitor(ctx context.Context) {
 func (s *Server) JanitorSweep() LintResult {
 	ns := s.lintNeedsSynthesis()
 	st := s.lintStaleRooms()
-	if err := healIndexes(s.DB, s.Logger); err != nil {
+	healed, err := healIndexes(s.DB, s.Logger)
+	if err != nil {
 		s.Logger.Error("Janitor: integrity check failed", "error", err)
+	}
+	if healed {
+		atomic.AddUint64(&s.HealCount, 1)
 	}
 	now := time.Now()
 	s.Mu.Lock()

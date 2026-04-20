@@ -36,6 +36,7 @@ type GetOrCreateRoomInput struct {
 type UpdateRoomInput struct {
 	RoomID       string `json:"room_id"`
 	RoomIDs      string `json:"room_ids"`
+	WhereProject string `json:"where_project"`
 	Topic        string `json:"topic"`
 	Project      string `json:"project"`
 	TechStack    string `json:"tech_stack"`
@@ -257,11 +258,26 @@ func (r *Registry) handleUpdateRoom(ctx context.Context, req *mcp.CallToolReques
 		}
 	}
 	if args.RoomID != "" && !seen[args.RoomID] {
+		seen[args.RoomID] = true
 		ids = append(ids, args.RoomID)
 	}
 
+	// where_project expands the target set to every room currently in that project
+	if args.WhereProject != "" {
+		matched, listErr := r.Server.ListRooms(args.WhereProject, "", "", "", 100, 0)
+		if listErr != nil {
+			return msg(fmt.Sprintf("Error: failed to expand where_project: %s", listErr.Error()))
+		}
+		for _, rm := range matched {
+			if !seen[rm.ID] {
+				seen[rm.ID] = true
+				ids = append(ids, rm.ID)
+			}
+		}
+	}
+
 	if len(ids) == 0 {
-		return msg("Error: room_id or room_ids is required.")
+		return msg("Error: room_id, room_ids, or where_project is required.")
 	}
 
 	if args.Topic == "" && args.Project == "" && args.TechStack == "" && args.Tags == "" && args.AddTags == "" && args.RemoveTags == "" && args.SystemPrompt == "" && args.RelatedRooms == "" {

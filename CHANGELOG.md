@@ -4,6 +4,19 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.27.0] - 2026-04-21
+
+### Added
+- **`rename_project(from, to)` MCP tool** (Y7) — rewrites the `project` field on every room currently assigned to `from`, replacing it with `to`. Both names are slugified the same way as `create_room`/`update_room` writes, so callers don't need to pre-normalize. Avoids hand-fixing 15+ rooms when a repo gets renamed.
+- **`list_rooms(project_not_in=…)` filter** (Y8) — comma-separated list of project names to EXCLUDE. Pairs with `rename_project` for graveyard triage: `list_rooms(project_not_in="active-a,active-b")` surfaces every room outside the still-active project set.
+- **`list_rooms(related_to=<room_id>)` filter** (Y12) — flat neighborhood view returning rooms whose `related_rooms` list contains the given room ID. A data-dense alternative to `get_concept_map` for pairing with the compact listing.
+- **`update_room(where_project=…)` bulk tagging** (Y13) — applies the same patch (especially `add_tags`/`remove_tags`) to every room currently in the given project in one call. Combines with `room_id`/`room_ids` if both supplied.
+- **`bulk_status_update(auto_archive_days=N)`** (Y9) — when set with `status="resolved"`, any room whose last activity is N+ days old is also archived and deleted. Collapses two admin steps into one.
+- **MCP request-logging middleware** (Y2) — every MCP tool call is logged with method name, tool name, and duration. Errors at WARN, successful calls at DEBUG (so `COUNCIL_DEBUG=1` surfaces request traffic without spamming production logs). Built on `AddReceivingMiddleware` from MCP SDK 1.5.0.
+- **`/health` HTTP endpoint** (Y5) — JSON snapshot of database integrity state on the Go server's HTTP transport (port 3001). Returns `version`, `last_integrity_check`, `heal_count_since_boot`, and `now`. Foundation laid in v0.26.4 (`Server.LastIntegrityCheck`, `Server.HealCount`); enables monitoring to alarm on integrity-check staleness without log scraping.
+
+---
+
 ## [0.26.4] - 2026-04-19
 
 ### Added

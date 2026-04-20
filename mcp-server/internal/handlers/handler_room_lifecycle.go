@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -16,10 +17,17 @@ type SignalStatusInput struct {
 
 // BulkStatusInput represents the parameters for updating multiple rooms' status at once.
 type BulkStatusInput struct {
-	RoomIDs string `json:"room_ids"`
-	Status  string `json:"status"`
-	Message string `json:"message"`
-	Author  string `json:"author"`
+	RoomIDs         string `json:"room_ids"`
+	Status          string `json:"status"`
+	Message         string `json:"message"`
+	Author          string `json:"author"`
+	AutoArchiveDays string `json:"auto_archive_days"`
+}
+
+// RenameProjectInput represents the parameters for rewriting a project name across rooms.
+type RenameProjectInput struct {
+	From string `json:"from"`
+	To   string `json:"to"`
 }
 
 func (r *Registry) handleSignalStatus(ctx context.Context, req *mcp.CallToolRequest, args SignalStatusInput) (*mcp.CallToolResult, ToolOutput, error) {
@@ -73,8 +81,15 @@ func (r *Registry) handleBulkStatusUpdate(ctx context.Context, req *mcp.CallTool
 		return msg("Error: author is required when message is provided.")
 	}
 
+	autoArchiveDays := 0
+	if args.AutoArchiveDays != "" {
+		if _, err := fmt.Sscanf(args.AutoArchiveDays, "%d", &autoArchiveDays); err != nil || autoArchiveDays < 0 {
+			return msg("Error: auto_archive_days must be a non-negative integer.")
+		}
+	}
+
 	parts := strings.Split(args.RoomIDs, ",")
-	var updated, notFound []string
+	var updated, notFound, archived []string
 	for _, p := range parts {
 		roomID := strings.TrimSpace(p)
 		if roomID == "" {
@@ -86,8 +101,24 @@ func (r *Registry) handleBulkStatusUpdate(ctx context.Context, req *mcp.CallTool
 		}
 		if err := r.Server.UpdateStatus(roomID, args.Status); err != nil {
 			notFound = append(notFound, roomID)
-		} else {
-			updated = append(updated, roomID)
+			continue
+		}
+		updated = append(updated, roomID)
+
+		// Auto-archive: only on resolved transitions, only if last activity is old enough
+		if autoArchiveDays > 0 && args.Status == "resolved" {
+			stats, err := r.Server.GetRoomStats(roomID)
+			if err != nil {
+				continue
+			}
+			cutoff := time.Now().Add(-time.Duration(autoArchiveDays) * 24 * time.Hour)
+			if stats.MessageCount == 0 || stats.LastMessage.Before(cutoff) {
+				if _, err := r.Server.ArchiveRoom(roomID); err == nil {
+					if delErr := r.Server.DeleteRoom(roomID); delErr == nil {
+						archived = append(archived, roomID)
+					}
+				}
+			}
 		}
 	}
 
@@ -103,6 +134,12 @@ func (r *Registry) handleBulkStatusUpdate(ctx context.Context, req *mcp.CallTool
 			}
 		}
 	}
+	if len(archived) > 0 {
+		if b.Len() > 0 {
+			b.WriteString("\n")
+		}
+		fmt.Fprintf(&b, "Auto-archived %d room(s) inactive for \u2265%d day(s): %s\n", len(archived), autoArchiveDays, strings.Join(archived, ", "))
+	}
 	if len(notFound) > 0 {
 		if b.Len() > 0 {
 			b.WriteString("\n")
@@ -113,6 +150,26 @@ func (r *Registry) handleBulkStatusUpdate(ctx context.Context, req *mcp.CallTool
 		return msg("No valid room IDs provided.")
 	}
 
-	r.Server.Logger.Info("Bulk status update", "status", args.Status, "updated", len(updated), "not_found", len(notFound))
+	r.Server.Logger.Info("Bulk status update", "status", args.Status, "updated", len(updated), "archived", len(archived), "not_found", len(notFound))
 	return msg(b.String())
+}
+
+func (r *Registry) handleRenameProject(ctx context.Context, req *mcp.CallToolRequest, args RenameProjectInput) (*mcp.CallToolResult, ToolOutput, error) {
+	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: text}},
+		}, ToolOutput{Message: text}, nil
+	}
+
+	if args.From == "" || args.To == "" {
+		return msg("Error: both 'from' and 'to' are required.")
+	}
+
+	count, err := r.Server.RenameProject(args.From, args.To)
+	if err != nil {
+		return msg(fmt.Sprintf("Error: %s", err.Error()))
+	}
+
+	r.Server.Logger.Info("Project renamed", "from", args.From, "to", args.To, "rooms_updated", count)
+	return msg(fmt.Sprintf("Renamed project '%s' \u2192 '%s' across %d room(s).", args.From, args.To, count))
 }

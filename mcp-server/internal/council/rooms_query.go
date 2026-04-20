@@ -2,20 +2,45 @@ package council
 
 import "strings"
 
-// ListRooms returns rooms matching optional filters. Multi-word search uses
-// strict AND by default; if that returns zero rows and 2+ words were given,
-// it retries once with OR semantics so over-specified queries (e.g.
-// "council hub feedback suggestions" where "feedback" appears nowhere) still
-// surface the room the agent was looking for.
-func (s *Server) ListRooms(project, tag, status, search string, limit, offset int) ([]Room, error) {
-	words := strings.Fields(search)
+// ListRoomsOptions captures every filter ListRoomsFiltered can apply.
+// Zero-valued fields are ignored.
+type ListRoomsOptions struct {
+	Project       string
+	ProjectNotIn  []string // exclude rooms whose normalized project matches any of these
+	Tag           string
+	Status        string
+	Search        string
+	RelatedTo     string // filter to rooms whose related_rooms contains this room ID
+	Limit, Offset int
+}
 
-	rooms, err := s.listRoomsMatch(project, tag, status, words, limit, offset, "AND")
+// ListRooms is the legacy entry point preserved for callers that only need
+// the historical filter set.
+func (s *Server) ListRooms(project, tag, status, search string, limit, offset int) ([]Room, error) {
+	return s.ListRoomsFiltered(ListRoomsOptions{
+		Project: project,
+		Tag:     tag,
+		Status:  status,
+		Search:  search,
+		Limit:   limit,
+		Offset:  offset,
+	})
+}
+
+// ListRoomsFiltered returns rooms matching the supplied filters. Multi-word
+// search uses strict AND by default; if that returns zero rows and 2+ words
+// were given, it retries once with OR semantics so over-specified queries
+// (e.g. "council hub feedback suggestions" where "feedback" appears nowhere)
+// still surface the room the agent was looking for.
+func (s *Server) ListRoomsFiltered(opts ListRoomsOptions) ([]Room, error) {
+	words := strings.Fields(opts.Search)
+
+	rooms, err := s.listRoomsMatch(opts, words, "AND")
 	if err != nil {
 		return nil, err
 	}
 	if len(rooms) == 0 && len(words) >= 2 {
-		return s.listRoomsMatch(project, tag, status, words, limit, offset, "OR")
+		return s.listRoomsMatch(opts, words, "OR")
 	}
 	return rooms, nil
 }
@@ -23,21 +48,39 @@ func (s *Server) ListRooms(project, tag, status, search string, limit, offset in
 // listRoomsMatch runs the underlying list_rooms query. searchJoin is "AND" or
 // "OR" and controls how multiple search words are combined across the
 // id/description/tags LIKE clauses.
-func (s *Server) listRoomsMatch(project, tag, status string, words []string, limit, offset int, searchJoin string) ([]Room, error) {
+func (s *Server) listRoomsMatch(opts ListRoomsOptions, words []string, searchJoin string) ([]Room, error) {
 	query := `SELECT id, description, status, project, tech_stack, tags, system_prompt, related_rooms, created_at, updated_at FROM rooms WHERE 1=1`
 	var args []any
 
-	if project != "" {
+	if opts.Project != "" {
 		query += ` AND project = ?`
-		args = append(args, normalizeProject(project))
+		args = append(args, normalizeProject(opts.Project))
 	}
-	if tag != "" {
+	if len(opts.ProjectNotIn) > 0 {
+		placeholders := make([]string, 0, len(opts.ProjectNotIn))
+		for _, p := range opts.ProjectNotIn {
+			p = strings.TrimSpace(p)
+			if p == "" {
+				continue
+			}
+			placeholders = append(placeholders, "?")
+			args = append(args, normalizeProject(p))
+		}
+		if len(placeholders) > 0 {
+			query += ` AND project NOT IN (` + strings.Join(placeholders, ",") + `)`
+		}
+	}
+	if opts.Tag != "" {
 		query += ` AND (',' || tags || ',') LIKE '%,' || ? || ',%'`
-		args = append(args, tag)
+		args = append(args, opts.Tag)
 	}
-	if status != "" {
+	if opts.Status != "" {
 		query += ` AND status = ?`
-		args = append(args, status)
+		args = append(args, opts.Status)
+	}
+	if opts.RelatedTo != "" {
+		query += ` AND (',' || related_rooms || ',') LIKE '%,' || ? || ',%'`
+		args = append(args, opts.RelatedTo)
 	}
 	if len(words) > 0 {
 		clauses := make([]string, 0, len(words))
@@ -54,6 +97,8 @@ func (s *Server) listRoomsMatch(project, tag, status string, words []string, lim
 
 	query += ` ORDER BY updated_at DESC LIMIT ? OFFSET ?`
 
+	limit := opts.Limit
+	offset := opts.Offset
 	if limit <= 0 {
 		limit = 50
 	} else if limit > 100 {
