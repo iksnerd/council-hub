@@ -20,13 +20,14 @@ Runs both the MCP server and the web UI:
 ```bash
 docker run -d --name council-hub \
   -p 4000:4000 -p 3001:3001 \
-  -v ~/Documents/council-hub:/data \
+  -v ~/.council-hub:/data \
   -e COUNCIL_TRANSPORT=http \
   iksnerd/council-hub:latest
 ```
 
 - **Web UI**: http://localhost:4000
 - **MCP endpoint**: http://localhost:3001/mcp
+- **Health endpoint**: http://localhost:3001/health (JSON: version, last_integrity_check, heal_count_since_boot)
 
 ### Clustering Mode (Distributed Erlang)
 
@@ -36,7 +37,7 @@ Connect multiple Council Hub instances (e.g., across your team) to share a unifi
 # Alice's machine (192.168.0.4)
 docker run -d --name council-hub \
   -p 4000:4000 -p 3001:3001 -p 4369:4369 -p 9000:9000 \
-  -v ~/Documents/council-hub:/data \
+  -v ~/.council-hub:/data \
   -e RELEASE_COOKIE="my_team_secret" \
   -e RELEASE_NODE="alice@192.168.0.4" \
   -e COUNCIL_SEEDS="bob@192.168.0.5" \
@@ -45,7 +46,7 @@ docker run -d --name council-hub \
 # Bob's machine (192.168.0.5)
 docker run -d --name council-hub \
   -p 4000:4000 -p 3001:3001 -p 4369:4369 -p 9000:9000 \
-  -v ~/Documents/council-hub:/data \
+  -v ~/.council-hub:/data \
   -e RELEASE_COOKIE="my_team_secret" \
   -e RELEASE_NODE="bob@192.168.0.5" \
   -e COUNCIL_SEEDS="alice@192.168.0.4" \
@@ -82,7 +83,7 @@ ollama pull embeddinggemma:300m
 # 2. Run Council Hub with Ollama enabled:
 docker run -d --name council-hub \
   -p 4000:4000 -p 3001:3001 \
-  -v ~/Documents/council-hub:/data \
+  -v ~/.council-hub:/data \
   -e COUNCIL_TRANSPORT=http \
   -e COUNCIL_OLLAMA_URL=http://host.docker.internal:11434 \
   iksnerd/council-hub:v0.27.0
@@ -114,7 +115,7 @@ Runs only the MCP server over stdin/stdout for direct integration with CLI agent
 
 ```bash
 docker run -i --rm \
-  -v ~/Documents/council-hub:/data \
+  -v ~/.council-hub:/data \
   -e COUNCIL_DB=/data/council.db \
   -e COUNCIL_TRANSPORT=stdio \
   iksnerd/council-hub:latest
@@ -157,7 +158,7 @@ If you can't run a persistent container, stdio mode spawns one per session:
       "command": "docker",
       "args": [
         "run", "-i", "--rm",
-        "-v", "~/Documents/council-hub:/data",
+        "-v", "~/.council-hub:/data",
         "-e", "COUNCIL_DB=/data/council.db",
         "-e", "COUNCIL_TRANSPORT=stdio",
         "iksnerd/council-hub:latest"
@@ -197,7 +198,7 @@ Add to `~/.gemini/settings.json`.
       "command": "docker",
       "args": [
         "run", "-i", "--rm",
-        "-v", "~/Documents/council-hub:/data",
+        "-v", "~/.council-hub:/data",
         "-e", "COUNCIL_DB=/data/council.db",
         "-e", "COUNCIL_TRANSPORT=stdio",
         "iksnerd/council-hub:latest"
@@ -299,9 +300,10 @@ docker compose up -d
 | `update_message` | Edit a message's content in place. Supports optimistic concurrency via optional `expected_content` — fails with current content on mismatch so the agent can merge before retrying. |
 | `pin_message` | Pin a message as the living TL;DR for a room. Only one pinned message per room — pinning a new message unpins the old one. |
 | `signal_status` | Update room status (active / paused / resolved) |
-| `bulk_status_update` | Update status on multiple rooms at once with an optional closing message. Returns per-room outcome (updated / not found). |
-| `update_room` | Update a room's metadata (topic, project, tags, related_rooms, etc.). Use `add_tags`/`remove_tags` for surgical tag mutations without overwriting existing tags. |
-| `list_rooms` | List rooms with optional project/tag/status/keyword filters. Supports `limit` (default 50, max 100) and `offset` for pagination. Multi-word search uses AND by default (all words must match); falls back to OR when strict AND returns zero so over-specified queries still surface the room. Pinned excerpts shown in compact view. Tip: filter by `tag=needs-synthesis` or `tag=stale` to find rooms flagged by the Knowledge Linter. Set `cluster_wide=true` to query all nodes. |
+| `bulk_status_update` | Update status on multiple rooms at once with an optional closing message. Set `auto_archive_days=N` with `status="resolved"` to also archive and delete any room whose last activity is N+ days old — collapses two admin steps into one. Returns per-room outcome (updated / not found). |
+| `update_room` | Update a room's metadata (topic, project, tags, related_rooms, etc.). Use `add_tags`/`remove_tags` for surgical tag mutations without overwriting existing tags. Set `where_project=<name>` to apply the same patch to every room in a project in one call (bulk tagging). |
+| `rename_project` | Rewrite the `project` field on every room currently assigned to `from`, replacing it with `to`. Both names are slugified the same way as `create_room`/`update_room`. Use after a repo or product gets renamed — avoids hand-fixing rooms one at a time. |
+| `list_rooms` | List rooms with optional project/tag/status/keyword filters. Supports `limit` (default 50, max 100) and `offset` for pagination. Multi-word search uses AND by default (all words must match); falls back to OR when strict AND returns zero so over-specified queries still surface the room. Use `project_not_in` (CSV) to exclude projects — useful for graveyard triage. Use `related_to=<room_id>` to return rooms that link back to a given room. Pinned excerpts shown in compact view. Tip: filter by `tag=needs-synthesis` or `tag=stale` to find rooms flagged by the Knowledge Linter. Set `cluster_wide=true` to query all nodes. |
 | `read_room` | Read a room's metadata without loading messages. Set `cluster_wide=true` to query all nodes. |
 | `read_transcript` | Get the full prompt-optimized transcript with modes: `summary` (latest per type), `changelog` (decisions+actions only), `work_items` (exportable action/decision list). Supports `after_id` for delta reads. Set `cluster_wide=true` to query all nodes. |
 | `search_messages` | FTS5 full-text search with BM25 relevance ranking. Filter by author, type, room, project, or date range (`since`/`until`). Use `message_type=synthesis` to find compiled knowledge articles. Set `include_related=true` to automatically search a room's related rooms (1-level). Set `semantic=true` for vector similarity search via Ollama. Set `cluster_wide=true` to query all nodes. |
