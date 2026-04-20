@@ -2,12 +2,14 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -15,6 +17,54 @@ import (
 	"council-hub/internal/handlers"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
+
+// healthHandler exposes a JSON snapshot of database integrity state. Returns
+// 200 even when self-heals have occurred — heals are recoverable; the absence
+// of a recent integrity check is what monitoring should alert on.
+func healthHandler(cs *council.Server) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		cs.Mu.RLock()
+		last := cs.LastIntegrityCheck
+		cs.Mu.RUnlock()
+		body := map[string]any{
+			"status":                "ok",
+			"version":               "0.27.0",
+			"last_integrity_check":  last.UTC().Format(time.RFC3339),
+			"heal_count_since_boot": atomic.LoadUint64(&cs.HealCount),
+			"now":                   time.Now().UTC().Format(time.RFC3339),
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(body)
+	}
+}
+
+// loggingMiddleware logs every incoming MCP request with method name, duration,
+// and (for tools/call) the tool name. Errors are logged at WARN; everything else
+// at DEBUG so that COUNCIL_DEBUG=1 surfaces request traffic without spamming
+// production logs.
+func loggingMiddleware(logger *slog.Logger) mcp.Middleware {
+	return func(next mcp.MethodHandler) mcp.MethodHandler {
+		return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
+			start := time.Now()
+			toolName := ""
+			if method == "tools/call" {
+				if p, ok := req.GetParams().(*mcp.CallToolParams); ok && p != nil {
+					toolName = p.Name
+				}
+			}
+			res, err := next(ctx, method, req)
+			dur := time.Since(start)
+			if err != nil {
+				logger.Warn("mcp request failed", "method", method, "tool", toolName, "duration_ms", dur.Milliseconds(), "error", err)
+			} else if toolName != "" {
+				logger.Debug("mcp tool call", "tool", toolName, "duration_ms", dur.Milliseconds())
+			} else {
+				logger.Debug("mcp request", "method", method, "duration_ms", dur.Milliseconds())
+			}
+			return res, err
+		}
+	}
+}
 
 func main() {
 	logLevel := slog.LevelInfo
@@ -59,6 +109,8 @@ func main() {
 	reg.RegisterTools()
 	reg.RegisterResources()
 
+	cs.MCP.AddReceivingMiddleware(loggingMiddleware(logger))
+
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
@@ -80,15 +132,20 @@ func main() {
 			addr = ":3001"
 		}
 
-		handler := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
+		mcpHandler := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
 			return cs.MCP
 		}, &mcp.StreamableHTTPOptions{
 			Logger: logger,
 		})
 
+		mux := http.NewServeMux()
+		mux.Handle("/mcp", mcpHandler)
+		mux.Handle("/mcp/", mcpHandler)
+		mux.HandleFunc("/health", healthHandler(cs))
+
 		httpServer := &http.Server{
 			Addr:         addr,
-			Handler:      handler,
+			Handler:      mux,
 			ReadTimeout:  30 * time.Second,
 			WriteTimeout: 60 * time.Second,
 			IdleTimeout:  120 * time.Second,

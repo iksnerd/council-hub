@@ -39,8 +39,12 @@ func TestHealIndexesHealthyDB(t *testing.T) {
 	mustCreateRoom(t, s, "room-1")
 	mustPost(t, s, "room-1", "claude", "hello")
 
-	if err := healIndexes(s.DB, testLogger()); err != nil {
+	healed, err := healIndexes(s.DB, testLogger())
+	if err != nil {
 		t.Fatalf("healIndexes on healthy DB failed: %v", err)
+	}
+	if healed {
+		t.Errorf("expected healed=false on healthy DB, got true")
 	}
 
 	issues, err := integrityCheck(s.DB)

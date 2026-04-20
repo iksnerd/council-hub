@@ -5,20 +5,23 @@ import (
 	"fmt"
 	"strings"
 
+	"council-hub/internal/council"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // ListRoomsInput represents the parameters for listing rooms.
 type ListRoomsInput struct {
-	Project     string `json:"project"`
-	Tag         string `json:"tag"`
-	Status      string `json:"status"`
-	Search      string `json:"search"`
-	Compact     string `json:"compact"` // deprecated: compact is now default; kept for backwards compat
-	Verbose     string `json:"verbose"`
-	ClusterWide string `json:"cluster_wide"`
-	Limit       string `json:"limit"`
-	Offset      string `json:"offset"`
+	Project      string `json:"project"`
+	ProjectNotIn string `json:"project_not_in"`
+	Tag          string `json:"tag"`
+	Status       string `json:"status"`
+	Search       string `json:"search"`
+	RelatedTo    string `json:"related_to"`
+	Compact      string `json:"compact"` // deprecated: compact is now default; kept for backwards compat
+	Verbose      string `json:"verbose"`
+	ClusterWide  string `json:"cluster_wide"`
+	Limit        string `json:"limit"`
+	Offset       string `json:"offset"`
 }
 
 // RoomStatsInput represents the parameters for getting room statistics.
@@ -53,7 +56,25 @@ func (r *Registry) handleListRooms(ctx context.Context, req *mcp.CallToolRequest
 		}
 	}
 
-	rooms, err := r.Server.ListRooms(args.Project, args.Tag, args.Status, args.Search, limit, offset)
+	var projectNotIn []string
+	if args.ProjectNotIn != "" {
+		for _, p := range strings.Split(args.ProjectNotIn, ",") {
+			if p = strings.TrimSpace(p); p != "" {
+				projectNotIn = append(projectNotIn, p)
+			}
+		}
+	}
+
+	rooms, err := r.Server.ListRoomsFiltered(council.ListRoomsOptions{
+		Project:      args.Project,
+		ProjectNotIn: projectNotIn,
+		Tag:          args.Tag,
+		Status:       args.Status,
+		Search:       args.Search,
+		RelatedTo:    args.RelatedTo,
+		Limit:        limit,
+		Offset:       offset,
+	})
 	if err != nil {
 		r.Server.Logger.Error("Failed to list rooms", "error", err)
 		return nil, ToolOutput{}, err

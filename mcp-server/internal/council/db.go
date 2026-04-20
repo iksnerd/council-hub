@@ -62,6 +62,7 @@ type Server struct {
 	Embedder           Embedder  // nil if no embedding provider configured
 	LastJanitorScan    time.Time // zero if background janitor hasn't run yet
 	LastIntegrityCheck time.Time // zero if integrity check hasn't run yet
+	HealCount          uint64    // total REINDEX self-heals since process start
 }
 
 // NewServer creates a new Server with an initialized SQLite database.
@@ -92,26 +93,31 @@ func NewServer(dbPath string, logger *slog.Logger) (*Server, error) {
 		return nil, fmt.Errorf("failed to migrate message IDs to UUID: %w", err)
 	}
 
-	if err := healIndexes(db, logger); err != nil {
+	healed, err := healIndexes(db, logger)
+	if err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("failed to self-heal database: %w", err)
 	}
 
 	mcpServer := mcp.NewServer(&mcp.Implementation{
 		Name:    "council-hub",
-		Version: "0.26.4",
+		Version: "0.27.0",
 	}, &mcp.ServerOptions{
 		Logger:       logger,
 		Capabilities: &mcp.ServerCapabilities{},
 	})
 
-	return &Server{
+	s := &Server{
 		DB:                 db,
 		DBPath:             dbPath,
 		MCP:                mcpServer,
 		Logger:             logger,
 		LastIntegrityCheck: time.Now(),
-	}, nil
+	}
+	if healed {
+		s.HealCount = 1
+	}
+	return s, nil
 }
 
 func initSchema(db *sql.DB) error {
@@ -275,36 +281,37 @@ func initSchema(db *sql.DB) error {
 // corruption is detected (typically caused by external file-indexers like
 // macOS Spotlight touching the DB on a bad mount path), it runs REINDEX to
 // rebuild the indexes in place. Deeper corruption aborts startup so it can
-// be investigated manually instead of silently masked.
-func healIndexes(db *sql.DB, logger *slog.Logger) error {
+// be investigated manually instead of silently masked. Returns true if a
+// REINDEX was executed.
+func healIndexes(db *sql.DB, logger *slog.Logger) (bool, error) {
 	issues, err := integrityCheck(db)
 	if err != nil {
-		return fmt.Errorf("integrity_check: %w", err)
+		return false, fmt.Errorf("integrity_check: %w", err)
 	}
 	if len(issues) == 0 {
-		return nil
+		return false, nil
 	}
 
 	if !isIndexOnlyCorruption(issues) {
-		return fmt.Errorf("database corruption beyond indexes, manual intervention required: %s", strings.Join(issues, "; "))
+		return false, fmt.Errorf("database corruption beyond indexes, manual intervention required: %s", strings.Join(issues, "; "))
 	}
 
 	logger.Warn("index corruption detected on startup; running REINDEX",
 		"issue_count", len(issues), "first_issue", issues[0])
 	if _, err := db.Exec(`REINDEX`); err != nil {
-		return fmt.Errorf("REINDEX failed: %w", err)
+		return false, fmt.Errorf("REINDEX failed: %w", err)
 	}
 
 	post, err := integrityCheck(db)
 	if err != nil {
-		return fmt.Errorf("post-reindex integrity_check: %w", err)
+		return true, fmt.Errorf("post-reindex integrity_check: %w", err)
 	}
 	if len(post) > 0 {
-		return fmt.Errorf("REINDEX did not resolve all issues: %s", strings.Join(post, "; "))
+		return true, fmt.Errorf("REINDEX did not resolve all issues: %s", strings.Join(post, "; "))
 	}
 
 	logger.Info("index self-heal completed", "fixed_issues", len(issues))
-	return nil
+	return true, nil
 }
 
 // integrityCheck returns the list of non-"ok" lines from PRAGMA integrity_check.
