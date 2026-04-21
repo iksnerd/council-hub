@@ -4,6 +4,25 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.28.0] - 2026-04-22
+
+### Added
+- **MCP server `Instructions`** — session-start sequence, key conventions, and tool-choice guidance injected into every agent session on connect. Covers `get_mentions → get_digest → load_resources` ordering, typed message lifecycle, synthesis/pin/resolve pattern, and `mark_read` cursor workflow.
+- **Claude Desktop support** — documented `mcp-remote` bridge config in README and DOCKERHUB.md so Claude Desktop (stdio-only) can connect to the HTTP container.
+- **Channel plugin: `watch_room`, `unwatch_room`, `unwatch_all`, `list_watched_rooms` tools** — sessions can now dynamically subscribe/unsubscribe from rooms at runtime without restarting. `unwatch_all` clears all subscriptions at once; unwatched rooms are excluded from the 30s auto-refresh cycle.
+
+### Fixed
+- Channel plugin `COUNCIL_DB` default path corrected from `~/Documents/council-hub/council.db` to `~/.council-hub/council.db`.
+- `check_room_health` description corrected from "every hour" to "every 6h".
+
+### Improved
+- `load_resources` description rewritten to lead with content value and list URIs directly, nudging agents to call it on first session.
+- `get_or_create_room` description now explicitly recommends it over `create_room` in almost all cases.
+- `signal_status` description now explains when to use `paused` vs `resolved` vs `active`.
+- `get_digest` description corrected to say "step 2, after get_mentions" (was inconsistent with `get_mentions` ordering).
+
+---
+
 ## [0.27.0] - 2026-04-21
 
 ### Added

@@ -33,7 +33,7 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "get_or_create_room",
-		 Description: "Get an existing room (with recent messages) or create it if it does not exist. Prefer this over create_room in almost all cases — it returns existing content, avoids duplicates, and saves 2-3 round trips.",
+		Description: "Get an existing room (with recent messages) or create it if it does not exist. Prefer this over create_room in almost all cases — it returns existing content, avoids duplicates, and saves 2-3 round trips.",
 		InputSchema: schema([]string{"id"}, map[string]map[string]any{
 			"id":            prop("string", "Room identifier \u2014 returns existing room if found, creates if not"),
 			"topic":         prop("string", "Topic (used only when creating)"),
