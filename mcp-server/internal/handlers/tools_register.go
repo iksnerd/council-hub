@@ -33,7 +33,7 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "get_or_create_room",
-		Description: "Get an existing room (with recent messages) or create it if it doesn't exist. Saves 2-3 round trips vs list_rooms \u2192 check \u2192 read_recent or create_room.",
+		 Description: "Get an existing room (with recent messages) or create it if it does not exist. Prefer this over create_room in almost all cases — it returns existing content, avoids duplicates, and saves 2-3 round trips.",
 		InputSchema: schema([]string{"id"}, map[string]map[string]any{
 			"id":            prop("string", "Room identifier \u2014 returns existing room if found, creates if not"),
 			"topic":         prop("string", "Topic (used only when creating)"),
@@ -71,7 +71,7 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "signal_status",
-		Description: "Update a room's status to coordinate work between agents (active, paused, or resolved).",
+		Description: "Update a room's status. Use 'paused' when blocked or waiting (not done, just on hold). Use 'resolved' when the goal is complete — typically after posting a synthesis and pinning it. Use 'active' to reopen a paused or mistakenly closed room.",
 		InputSchema: schema([]string{"room_id", "status"}, map[string]map[string]any{
 			"room_id": prop("string", "Target room ID"),
 			"status":  prop("string", "One of: active, paused, resolved"),
@@ -321,7 +321,7 @@ func (r *Registry) RegisterTools() {
 	}
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "check_room_health",
-		Description: "Check all active rooms for attention signals. Flags: 'needs-synthesis' (rooms with decisions but no synthesis article — write one!), 'stale' (active rooms with no activity for 7+ days — resolve or revive). Posts system warnings into flagged rooms. Call periodically or when reviewing project health. Also runs automatically every hour.",
+		Description: "Check all active rooms for attention signals. Flags: 'needs-synthesis' (rooms with decisions but no synthesis article — write one!), 'stale' (active rooms with no activity for 7+ days — resolve or revive). Posts system warnings into flagged rooms. Call periodically or when reviewing project health. Runs automatically every 6h in the background.",
 		InputSchema: schema(nil, map[string]map[string]any{}),
 	}, roomHealthHandler)
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
@@ -354,10 +354,12 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name: "load_resources",
-		Description: "List available council-hub skill guides or fetch one by URI. " +
-			"Call with no args to see all resources (concepts, message types, workflows) with their URIs. " +
-			"Pass uri= to fetch the full content of a specific resource. " +
-			"Use this if your MCP client does not support native resources/read.",
+		Description: "Fetch council-hub skill guides (usage patterns, message types, workflow templates). " +
+			"Call with no args on your first session to see what's available. " +
+			"Pass uri=council://guide for core concepts and the session-start workflow, " +
+			"uri=council://message-types for when to use thought/decision/synthesis/etc., " +
+			"uri=council://workflows for room templates and common patterns. " +
+			"Also a fallback for clients that don't support MCP resources/read natively.",
 		InputSchema: schema(nil, map[string]map[string]any{
 			"uri": prop("string", "Resource URI to fetch (e.g. council://guide, council://message-types, council://workflows). Omit to list all available resources."),
 		}),
@@ -366,7 +368,7 @@ func (r *Registry) RegisterTools() {
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name: "get_digest",
 		Description: "Get a project activity and knowledge health digest as a JSON array. Each entry has room_id, new_messages, latest_message_id, latest_excerpt, tags, decision_count, synthesis_count. " +
-			"Rooms flagged by check_room_health (stale, needs-synthesis) are included. Call at the start of every session to orient yourself — shows what changed and what needs attention. " +
+			"Rooms flagged by check_room_health (stale, needs-synthesis) are included. Call second at session start (after get_mentions) to see what changed and what needs attention. " +
 			"Machine-readable — parse room_id and latest_message_id directly for delta reads. " +
 			"Set unread_only=true (with agent=<your-name>) to show only rooms with messages newer than your stored cursor — ideal for returning sessions after using mark_read.",
 		InputSchema: schema(nil, map[string]map[string]any{
