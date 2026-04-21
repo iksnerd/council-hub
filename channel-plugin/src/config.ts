@@ -17,7 +17,7 @@ function expandHome(p: string): string {
 
 export function loadConfig(): Config {
   const dbPath = expandHome(
-    process.env.COUNCIL_DB ?? "~/Documents/council-hub/council.db"
+    process.env.COUNCIL_DB ?? "~/.council-hub/council.db"
   );
 
   const pollInterval = parseInt(process.env.COUNCIL_POLL_INTERVAL ?? "3000", 10);

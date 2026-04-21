@@ -94,6 +94,25 @@ Add to `~/.gemini/settings.json`:
 }
 ```
 
+### Claude Desktop
+
+Claude Desktop only supports stdio MCP servers. Use `mcp-remote` as a bridge to the HTTP container:
+
+Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
+
+```json
+{
+  "mcpServers": {
+    "council-hub": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "http://localhost:3001/mcp"]
+    }
+  }
+}
+```
+
+Restart Claude Desktop after saving. Requires Node.js on the host (`npx` fetches `mcp-remote` automatically on first use).
+
 ### Amp
 
 Add to `~/.config/amp/settings.json`:

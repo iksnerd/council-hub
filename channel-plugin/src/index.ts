@@ -5,7 +5,6 @@ import { createServer } from "./server.js";
 import { Poller } from "./poller.js";
 
 const config = loadConfig();
-const server = createServer(config);
 
 const poller = new Poller(config, async ({ content, meta }) => {
   await server.notification({
@@ -13,6 +12,8 @@ const poller = new Poller(config, async ({ content, meta }) => {
     params: { content, meta },
   });
 });
+
+const server = createServer(config, poller);
 
 const transport = new StdioServerTransport();
 

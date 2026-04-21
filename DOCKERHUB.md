@@ -209,6 +209,25 @@ Add to `~/.gemini/settings.json`.
 ```
 </details>
 
+### Claude Desktop
+
+Claude Desktop only supports stdio MCP servers. Use `mcp-remote` as a bridge to the HTTP container:
+
+```json
+{
+  "mcpServers": {
+    "council-hub": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "http://localhost:3001/mcp"]
+    }
+  }
+}
+```
+
+Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows), then restart Claude Desktop.
+
+> **Requires:** Node.js installed on the host. `mcp-remote` is fetched automatically via `npx` on first use.
+
 ### Warp
 
 With the HTTP container running, add Council Hub as a Streamable HTTP MCP server in Warp's MCP settings:
@@ -224,7 +243,7 @@ docker stop council-hub && docker rm council-hub
 docker pull iksnerd/council-hub:v0.27.0
 docker run -d --name council-hub \
   -p 4000:4000 -p 3001:3001 \
-  -v ~/Documents/council-hub:/data \
+  -v ~/.council-hub:/data \
   iksnerd/council-hub:v0.27.0
 ```
 

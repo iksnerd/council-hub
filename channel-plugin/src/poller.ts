@@ -23,6 +23,7 @@ export class Poller {
   private db: Database | null = null;
   private lastSeenId = new Map<string, string>();
   private watchedRooms = new Set<string>();
+  private manuallyUnwatched = new Set<string>();
   private pollTimer: Timer | null = null;
   private roomRefreshTimer: Timer | null = null;
 
@@ -83,6 +84,7 @@ export class Poller {
       for (const { id } of rows) {
         if (this.config.rooms !== "*" && !this.config.rooms.includes(id)) continue;
 
+        if (this.manuallyUnwatched.has(id)) continue;
         if (!this.watchedRooms.has(id)) {
           this.watchedRooms.add(id);
           // Seed with latest message ID so we don't replay history
@@ -153,6 +155,45 @@ export class Poller {
         break;
       }
     }
+  }
+
+  watchRoom(id: string): string {
+    this.manuallyUnwatched.delete(id);
+    if (this.watchedRooms.has(id)) return `Already watching ${id}`;
+    this.watchedRooms.add(id);
+    if (this.db) {
+      const latest = this.db
+        .query<{ id: string }, [string]>(
+          "SELECT id FROM messages WHERE room_id = ? ORDER BY id DESC LIMIT 1"
+        )
+        .get(id);
+      this.lastSeenId.set(id, latest?.id ?? "");
+    }
+    this.log(`Manually watching room: ${id}`);
+    return `Now watching ${id}`;
+  }
+
+  unwatchAll(): string {
+    const count = this.watchedRooms.size;
+    for (const id of this.watchedRooms) {
+      this.manuallyUnwatched.add(id);
+      this.lastSeenId.delete(id);
+    }
+    this.watchedRooms.clear();
+    return `Stopped watching ${count} room(s)`;
+  }
+
+  unwatchRoom(id: string): string {
+    if (!this.watchedRooms.has(id)) return `Not currently watching ${id}`;
+    this.watchedRooms.delete(id);
+    this.lastSeenId.delete(id);
+    this.manuallyUnwatched.add(id);
+    this.log(`Manually unwatched room: ${id}`);
+    return `Stopped watching ${id}`;
+  }
+
+  listWatched(): string[] {
+    return [...this.watchedRooms];
   }
 
   private log(msg: string): void {
