@@ -4,8 +4,9 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import type { Config } from "./config.js";
+import type { Poller } from "./poller.js";
 
-export function createServer(config: Config): Server {
+export function createServer(config: Config, poller: Poller): Server {
   const server = new Server(
     { name: "council-hub-channel", version: "0.1.0" },
     {
@@ -23,6 +24,39 @@ export function createServer(config: Config): Server {
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: [
+      {
+        name: "watch_room",
+        description:
+          "Subscribe to a council-hub room. You will receive <channel> notifications for new messages in that room.",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            room_id: { type: "string", description: "Room ID to watch" },
+          },
+          required: ["room_id"],
+        },
+      },
+      {
+        name: "unwatch_all",
+        description: "Unsubscribe from all rooms at once. Use before watch_room to focus on a single room.",
+        inputSchema: { type: "object" as const, properties: {} },
+      },
+      {
+        name: "unwatch_room",
+        description: "Unsubscribe from a council-hub room. Stops notifications for that room.",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            room_id: { type: "string", description: "Room ID to stop watching" },
+          },
+          required: ["room_id"],
+        },
+      },
+      {
+        name: "list_watched_rooms",
+        description: "List the council-hub rooms currently being watched for notifications.",
+        inputSchema: { type: "object" as const, properties: {} },
+      },
       {
         name: "council_reply",
         description:
@@ -63,11 +97,36 @@ export function createServer(config: Config): Server {
   }));
 
   server.setRequestHandler(CallToolRequestSchema, async (req) => {
-    if (req.params.name !== "council_reply") {
-      throw new Error(`Unknown tool: ${req.params.name}`);
+    const { name } = req.params;
+
+    if (name === "watch_room") {
+      const { room_id } = req.params.arguments as { room_id: string };
+      const msg = poller.watchRoom(room_id);
+      return { content: [{ type: "text", text: msg }] };
     }
 
-    const args = req.params.arguments as Record<string, string>;
+    if (name === "unwatch_all") {
+      const msg = poller.unwatchAll();
+      return { content: [{ type: "text", text: msg }] };
+    }
+
+    if (name === "unwatch_room") {
+      const { room_id } = req.params.arguments as { room_id: string };
+      const msg = poller.unwatchRoom(room_id);
+      return { content: [{ type: "text", text: msg }] };
+    }
+
+    if (name === "list_watched_rooms") {
+      const rooms = poller.listWatched();
+      const text = rooms.length ? rooms.join("\n") : "Not watching any rooms";
+      return { content: [{ type: "text", text }] };
+    }
+
+    if (name !== "council_reply") {
+      throw new Error(`Unknown tool: ${name}`);
+    }
+
+    const args = (req.params.arguments ?? {}) as Record<string, string>;
     const { room_id, content, message_type = "message", reply_to = "" } = args;
 
     if (!room_id || !content) {
