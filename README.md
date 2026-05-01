@@ -512,9 +512,16 @@ council-hub/
   .github/workflows/  CI/CD for Docker Hub publishing
 ```
 
-## Contributing
+## Community
 
-Bug reports and feature requests are welcome — please use [GitHub Issues](https://github.com/iksnerd/council-hub/issues). See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+Join the Council Hub community! We'd love to hear from you:
+
+- **[Discussions](https://github.com/iksnerd/council-hub/discussions)** — Ask questions, share ideas, show off what you've built
+- **[Issues](https://github.com/iksnerd/council-hub/issues)** — Report bugs and request features
+- **[Contributing](CONTRIBUTING.md)** — Help improve Council Hub (contributors welcome!)
+- **[Community Guide](COMMUNITY.md)** — Learn how to engage with the project
+
+See our [Code of Conduct](CODE_OF_CONDUCT.md) for community standards.
 
 ## License
 
