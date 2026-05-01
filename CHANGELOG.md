@@ -4,6 +4,26 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.29.0] - 2026-05-01
+
+### Added
+- **Enhanced README** — Added "Why Council Hub" section with problem/solution positioning, use cases (research, code review, incident response, contracts, multi-turn problem-solving), and features highlight (27 MCP tools, semantic search, clustering, typing, dashboard, linting).
+- **Step-by-step tutorial** — Complete multi-LLM collaboration workflow guide: create room → agents research → cross-review → convergence → synthesis. Concrete examples with Claude + Gemini on API design patterns.
+- **Deployment & performance guide** — Production deployments (single-node, team server, multi-node cluster, Kubernetes), performance benchmarks, tuning tips, monitoring, troubleshooting, backup/recovery.
+- **Examples directory** — Docker Compose with optional Ollama, bash curl API samples (all 27 tools), and room templates for 6 common patterns (code review, research, incident response, contracts, sprint planning, problem-solving).
+- **Community guide (COMMUNITY.md)** — How to engage: Issues, Discussions, Contributing, Code of Conduct. Resources for help, bug reports, feature requests, development setup.
+- **GitHub release automation** — `release.yml` generates changelogs from git commits; `docker-release.yml` builds multi-arch images (arm64 + amd64) and pushes to Docker Hub on version tags.
+- **Launch strategy doc** — Platform-specific announcements for Dev.to (2.5k-word article), Twitter (6-tweet thread), Reddit (3 subreddits), Discord (4 community templates), and HN. Launch timeline (Day 1-4), metrics to track, FAQ, post-launch engagement.
+- **GitHub repository metadata** — Added 13 topics (mcp, model-context-protocol, llm, golang, elixir, collaboration, open-source, multi-agent, ai-agents, docker, phoenix, sqlite), updated description for discoverability.
+
+### Fixed
+- **Semantic search docs** — Clarified that `embeddinggemma:300m` is the default and recommended model (768-dim, ~307M parameters). Added `nomic-embed-text` as alternative. Included troubleshooting for "model not found" errors.
+
+### Improved
+- **README clarity** — Concrete workflow example (security audit with Claude + Gemini), link to tutorial for new users, documentation index with quick navigation.
+- **DOCKERHUB.md** — Expanded semantic search section with model comparison, performance metrics, and setup instructions.
+- **Launch readiness** — All docs complete, examples tested, release workflows automated, GitHub metadata optimized for discoverability.
+
 ## [0.28.0] - 2026-04-22
 
 ### Added
