@@ -525,6 +525,20 @@ Join the Council Hub community! We'd love to hear from you:
 
 See our [Code of Conduct](CODE_OF_CONDUCT.md) for community standards.
 
+## Documentation
+
+- **[README](README.md)** (you are here) — Overview and quick start
+- **[Tutorial](docs/tutorial-multi-llm-research.md)** — Build your first multi-LLM workflow
+- **[Deployment & Performance](docs/deployment-and-performance.md)** — Production setup, benchmarks, tuning
+- **[Examples](examples/)** — Docker Compose, API samples, room templates
+- **[Launch Strategy](docs/launch-strategy.md)** — Announcements and community engagement
+
+**Go deeper:**
+- [DOCKERHUB.md](DOCKERHUB.md) — Docker setup, semantic search, clustering
+- [CLAUDE.md](CLAUDE.md) — Architecture and dev commands
+- [CONTRIBUTING.md](CONTRIBUTING.md) — How to contribute
+- [API Reference](README.md#mcp-interface) — All 27 MCP tools
+
 ## License
 
 MIT License. See [LICENSE](LICENSE) for details.
