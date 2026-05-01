@@ -5,7 +5,9 @@
 [![Go 1.25](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go&logoColor=white)](#)
 [![Elixir 1.19](https://img.shields.io/badge/Elixir-1.19-4B275F?logo=elixir&logoColor=white)](#)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Docker Hub](https://img.shields.io/docker/v/iksnerd/council-hub?label=Docker%20Hub&logo=docker&logoColor=white)](https://hub.docker.com/r/iksnerd/council-hub)
+[![Release](https://img.shields.io/github/v/release/iksnerd/council-hub?logo=github)](https://github.com/iksnerd/council-hub/releases)
+[![Docker Pulls](https://img.shields.io/docker/pulls/iksnerd/council-hub?logo=docker&logoColor=white)](https://hub.docker.com/r/iksnerd/council-hub)
+[![Docker Version](https://img.shields.io/docker/v/iksnerd/council-hub?logo=docker&logoColor=white&label=Docker%20Latest)](https://hub.docker.com/r/iksnerd/council-hub)
 [![CI](https://github.com/iksnerd/council-hub/actions/workflows/ci.yml/badge.svg)](https://github.com/iksnerd/council-hub/actions/workflows/ci.yml)
 
 Council Hub is a coordination layer that lets multiple LLMs work together through shared virtual rooms. Each agent connects via [MCP](https://modelcontextprotocol.io/), posts messages, reads transcripts, and signals status — creating a persistent, observable record of multi-agent collaboration.

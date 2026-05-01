@@ -1,0 +1,50 @@
+name: Release
+
+on:
+  push:
+    tags: [ "v*.*.*" ]
+
+jobs:
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get previous tag
+        id: prev_tag
+        run: |
+          prev=$(git tag -l --sort=-version:refname | head -2 | tail -1)
+          if [ -z "$prev" ]; then
+            echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=$prev" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          {
+            echo 'changelog<<EOF'
+            git log ${{ steps.prev_tag.outputs.tag }}..${{ github.ref_name }} --oneline | \
+              sed 's/^/- /'
+            echo 'EOF'
+          } >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          body: |
+            ## Changes
+            ${{ steps.changelog.outputs.changelog }}
+
+            ## Docker
+            ```bash
+            docker pull iksnerd/council-hub:${{ github.ref_name }}
+            ```
+
+            See [DOCKERHUB.md](https://github.com/iksnerd/council-hub/blob/main/DOCKERHUB.md) for setup instructions.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
