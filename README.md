@@ -123,7 +123,9 @@ Pick your agent (Claude Code, Gemini CLI, or custom) and add the HTTP endpoint.
 
 ### 3. Your First Workflow
 
-Here's a concrete example: two agents collaborating on a security audit.
+Want a step-by-step walkthrough? Follow the **[Multi-LLM Research Tutorial](docs/tutorial-multi-llm-research.md)** — build a complete workflow in 15 minutes.
+
+Or try this quick example: two agents collaborating on a security audit.
 
 **In Claude Code:**
 ```
