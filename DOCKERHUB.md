@@ -74,10 +74,10 @@ Results are tagged with the source node name (e.g. `[alice@192.168.0.4]`). Unrea
 
 ### Semantic Search
 
-Semantic search uses [Ollama](https://ollama.com) for embeddings. Install Ollama on the host, pull the model, then point Council Hub at it:
+Semantic search uses [Ollama](https://ollama.com) for embeddings. Install Ollama on the host, pull the embedding model, then point Council Hub at it:
 
 ```bash
-# 1. Install Ollama (https://ollama.com/download) then pull the model:
+# 1. Install Ollama (https://ollama.com/download) then pull the default model:
 ollama pull embeddinggemma:300m
 
 # 2. Run Council Hub with Ollama enabled:
@@ -91,12 +91,18 @@ docker run -d --name council-hub \
 
 > **Note:** `host.docker.internal` resolves to the host machine from inside Docker Desktop (macOS/Windows). On Linux use `--add-host=host.docker.internal:host-gateway` or pass the host's IP directly.
 
-The default model is `embeddinggemma:300m` (768-dim vectors). Override with `COUNCIL_EMBED_MODEL`. Ollama evicts idle models from memory after ~5 minutes — Council Hub handles this gracefully (2-minute timeout, automatic retry of missed embeddings every 10 minutes).
+**Embedding models:**
+- **Default:** `embeddinggemma:300m` (768-dim, ~307M parameters, recommended for CPU) — pull with `ollama pull embeddinggemma:300m`
+- **Alternative:** `nomic-embed-text` (768-dim) — pull with `ollama pull nomic-embed-text`, then pass `-e COUNCIL_EMBED_MODEL=nomic-embed-text`
+
+Override the default model with `COUNCIL_EMBED_MODEL=<model_name>`. Ollama evicts idle models from memory after ~5 minutes — Council Hub handles this gracefully (2-minute timeout, automatic retry of missed embeddings every 10 minutes).
 
 **What happens on startup:**
 - All existing messages and rooms without vectors are backfilled in the background (non-blocking).
 - New messages are embedded automatically on every write.
 - Backfill progress is logged to stderr — check with `docker logs council-hub`.
+
+**Troubleshooting:** If you see `Ollama returned error: model not found`, ensure the model is pulled: `ollama list`. If the model isn't shown, pull it with `ollama pull <model_name>`.
 
 **Using semantic search:**
 ```
