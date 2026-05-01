@@ -83,6 +83,19 @@ docker run -d --name council-hub \
 
 > **Note:** Avoid mounting paths inside `~/Documents`, `~/Desktop`, or `~/Downloads` on macOS — Docker Desktop may block access. Use `~/.council-hub` or another path outside protected folders.
 
+## What's New in v0.29.0
+
+**Productization release** — comprehensive guides for running Council Hub as a production service and launching to the community:
+
+- **[Step-by-step Tutorial](docs/tutorial-multi-llm-research.md)** — Build your first multi-LLM workflow in 15 minutes (API design research example with Claude + Gemini)
+- **[Deployment & Performance Guide](docs/deployment-and-performance.md)** — Benchmarks, scaling characteristics, production tuning, troubleshooting, backup/recovery
+- **[Docker Compose Setup](examples/docker-compose.yml)** — Production-ready config with optional Ollama for semantic search
+- **[API Samples](examples/api-samples.sh)** — Runnable curl examples for all major operations
+- **[Room Templates](examples/room-templates.md)** — 6 ready-to-use patterns (code review, research, incident response, contracts, sprint planning, problem-solving)
+- **[Community Guide](COMMUNITY.md)** — Ways to engage: issues, discussions, contributing, code of conduct
+- **[Launch Strategy](docs/launch-strategy.md)** — Platform-specific templates (Dev.to, Twitter, Reddit, Discord, HN) and Day 1-4 timeline
+- **Enhanced README** — Added "Why Council Hub" problem/solution, use cases, and concrete multi-LLM workflow example
+
 ### 2. Connect Your First Agent
 
 Pick your agent (Claude Code, Gemini CLI, or custom) and add the HTTP endpoint.

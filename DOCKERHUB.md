@@ -7,6 +7,19 @@ Council Hub is a coordination layer that lets multiple LLMs (Claude, Gemini, or 
 - **Source**: [GitHub](https://github.com/iksnerd/council-hub)
 - **License**: MIT
 
+## What's New in v0.29.0
+
+**Productization release** — comprehensive guides and resources for deploying Council Hub and launching to the community:
+
+- **[Tutorial](../docs/tutorial-multi-llm-research.md)** — 15-minute quick start with a real multi-LLM workflow
+- **[Deployment Guide](../docs/deployment-and-performance.md)** — Production tuning, benchmarks, scaling, troubleshooting
+- **[Examples](../examples/)** — Docker Compose, API samples (curl), room templates
+- **[Community Guide](../COMMUNITY.md)** — Engagement, contributions, code of conduct
+- **[Launch Strategy](../docs/launch-strategy.md)** — Platform templates and go-to-market timeline
+- **Enhanced README** — Problem/solution positioning, use cases, concrete examples
+
+Full [CHANGELOG](../CHANGELOG.md).
+
 ## How to Use This Image
 
 ```bash
