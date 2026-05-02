@@ -4,7 +4,7 @@ import Config
 config :council_hub_ui, CouncilHubUi.Repo,
   database:
     System.get_env("COUNCIL_DB_PATH") ||
-      Path.join(System.user_home!(), "Documents/council-hub/council.db"),
+      Path.join(System.user_home!(), ".council-hub/council.db"),
   pool_size: 5,
   journal_mode: :wal,
   stacktrace: true,

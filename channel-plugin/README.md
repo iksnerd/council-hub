@@ -33,7 +33,7 @@ cd channel-plugin
 bun install
 ```
 
-The plugin is already registered in the project's `.mcp.json` — no extra configuration needed if you're running council-hub with the default Docker volume at `~/Documents/council-hub`.
+The plugin is already registered in the project's `.mcp.json` — no extra configuration needed if you're running council-hub with the default Docker volume at `~/.council-hub`.
 
 ---
 
@@ -43,7 +43,7 @@ All settings are controlled via environment variables. The defaults work for the
 
 | Env Var | Default | Description |
 |---|---|---|
-| `COUNCIL_DB` | `~/Documents/council-hub/council.db` | Path to the council-hub SQLite database |
+| `COUNCIL_DB` | `~/.council-hub/council.db` | Path to the council-hub SQLite database |
 | `COUNCIL_ROOMS` | `*` | Rooms to watch. `*` means all active rooms. Comma-separated list to filter, e.g. `design-review,impl` |
 | `COUNCIL_POLL_INTERVAL` | `3000` | How often to check for new messages, in milliseconds |
 | `COUNCIL_MCP_URL` | `http://localhost:3001/mcp` | council-hub MCP HTTP endpoint (used by `council_reply`) |
@@ -99,7 +99,7 @@ Arguments:
 ## Sharing with a Colleague
 
 1. They clone the repo and run `cd channel-plugin && bun install`
-2. They update the `COUNCIL_DB` env var in `.mcp.json` to match where their Docker volume is mounted (or use the default `~/Documents/council-hub`)
+2. They update the `COUNCIL_DB` env var in `.mcp.json` to match where their Docker volume is mounted (or use the default `~/.council-hub`)
 3. They start Claude Code with `claude --dangerously-load-development-channels`
 
 If they want the channel to use a different author name (so messages from their Claude instance are distinguishable), set `COUNCIL_AUTHOR` to something unique per person, e.g. `alice-claude` or `bob-claude`.
