@@ -50,6 +50,9 @@ go.work.sum
 # Personal notes (local only — not for public repo)
 docs/personal/
 
+# Local Makefile overrides (personal node names, IPs, etc.)
+Makefile.local
+
 # OS
 .DS_Store
 Thumbs.db

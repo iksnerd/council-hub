@@ -5,10 +5,13 @@ VERSION ?= latest
 DATA_DIR = $(HOME)/.council-hub
 
 # Clustering defaults (override with e.g. make docker-run SEEDS=other@10.0.0.1)
+# Or create a Makefile.local with your own values — it is gitignored.
 LOCAL_IP  ?= $(shell ipconfig getifaddr en0 2>/dev/null || echo 127.0.0.1)
 NODE_NAME ?= council_hub@$(LOCAL_IP)
-SEEDS     ?= council_hub@192.168.0.5
+SEEDS     ?= example@10.0.0.1
 COOKIE    ?= council
+
+-include Makefile.local
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-18s %s\n", $$1, $$2}'
