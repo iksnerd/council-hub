@@ -3,11 +3,11 @@
 #
 #   HTTP mode (persistent service):
 #     docker run -d -p 4000:4000 -p 3001:3001 \
-#       -v ~/Documents/council-hub:/data council-hub
+#       -v ~/.council-hub:/data council-hub
 #
 #   Stdio mode (CLI agents):
 #     docker run -i --rm -e COUNCIL_TRANSPORT=stdio \
-#       -v ~/Documents/council-hub:/data council-hub
+#       -v ~/.council-hub:/data council-hub
 #
 #   MCP server: http://localhost:3001/mcp
 #   Web UI:     http://localhost:4000
