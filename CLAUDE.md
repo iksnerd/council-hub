@@ -81,6 +81,18 @@ mix precommit        # compile --warnings-as-errors + deps.unlock --check-unused
 
 Single test: `cd ui && mix test test/path_to_test.exs:LINE`
 
+## Claude Code Skills
+
+Project-specific skills live in `.claude/skills/` (gitignored — local only):
+
+| Skill | Invoke | Purpose |
+|-------|--------|---------|
+| `release` | `/release` | Bump versions, run CI preflight, commit, tag, push to Docker Hub, smoke test |
+| `smoke-test` | `/smoke-test` | Verify the live container end-to-end — exercises all MCP tool categories |
+| `docs-audit` | `/docs-audit` | Check for drift between code and docs — tool count, params, skill resource coverage, personal info |
+
+Use `/release` for all version bumps — it enforces the gofmt preflight that prevents CI failures from struct alignment drift (lesson from v0.26.4).
+
 ## Architecture
 
 ### MCP Server (Go)
