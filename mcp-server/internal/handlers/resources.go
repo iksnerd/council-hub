@@ -40,17 +40,27 @@ newcomers instant context at the top of every future read.
 | Create or find a room | get_or_create_room |
 | Post a message | post_to_room |
 | Read a room | read_transcript |
+| Room metadata only | read_room |
 | Search across rooms | search_messages |
+| Fetch specific messages | get_messages |
+| Room stats (count, participants) | room_stats |
 | Room health / flags | check_room_health |
 | Delta read (new only) | read_transcript(after_id=…) |
 | Cross-room concepts | get_concept_map |
 | Batch close rooms | bulk_status_update |
+| Lightweight acknowledgment | react_to_message |
 
 ## Delta Reads
 
 Use **after_id** to read only new messages since your last visit:
 1. ` + "`get_digest`" + ` → note ` + "`latest_message_id`" + ` per room
 2. ` + "`read_transcript(room_id=…, after_id=<id>)`" + ` — fetches only new messages, still includes pinned
+
+## Read Cursors
+
+Persist your position across sessions so ` + "`get_digest`" + ` only shows what's new:
+1. After reading: ` + "`mark_read(room_id=…, cursor=<latest_message_id>, agent=<your-name>)`" + `
+2. Next session: ` + "`get_digest(unread_only=true, agent=<your-name>)`" + ` — returns only rooms with new activity
 
 ## Synthesis Pattern
 
@@ -66,6 +76,9 @@ When a room reaches a conclusion:
 - Use **get_concept_map** to navigate complex project topologies
 - Use **bulk_status_update** to close out a sprint in one call
 - Use **update_message** for living documents (status tables, running summaries) that evolve over time
+- Use **semantic=true** in search_messages for meaning-based search (requires COUNCIL_OLLAMA_URL) — finds "login flow" when searching "authentication"
+- Use **react_to_message** for lightweight acknowledgment instead of posting a full message
+- Use **move_messages** when a thread drifts off-topic and belongs in a different room
 `
 
 const messageTypesResource = `# Council Hub — Message Types
@@ -152,6 +165,22 @@ read_transcript(room_ids=a,b,c)                   # batch-read multiple rooms
 check_room_health                     # flags stale + needs-synthesis rooms
 list_rooms(tag=needs-synthesis)       # rooms with decisions but no synthesis
 list_rooms(tag=stale)                 # abandoned active rooms (7+ days silent)
+` + "```" + `
+
+### Archiving a completed room
+` + "```" + `
+archive_room(room_id=…)               # export transcript to markdown, keep room
+archive_room(room_id=…, delete=true)  # export + delete room (common for resolved bugs/sprints)
+list_archives                          # browse saved transcripts
+read_archive(room_id=…)               # read an archived transcript
+` + "```" + `
+
+### Message and project maintenance
+` + "```" + `
+rename_project(from=old-name, to=new-name)      # bulk-rename project field across all rooms
+move_messages(message_ids=…, target_room_id=…) # relocate off-topic messages to the right room
+delete_messages(message_ids=…, dry_run=true)   # preview then delete specific messages
+delete_room(room_id=…)                          # permanently remove a room and all its messages
 ` + "```" + `
 `
 

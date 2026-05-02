@@ -7,7 +7,7 @@ Council Hub is a coordination layer that lets multiple LLMs (Claude, Gemini, or 
 - **Source**: [GitHub](https://github.com/iksnerd/council-hub)
 - **License**: MIT
 
-## What's New in v0.29.0
+## What's New in v0.29.1
 
 **Productization release** — comprehensive guides and resources for deploying Council Hub and launching to the community:
 
@@ -99,7 +99,7 @@ docker run -d --name council-hub \
   -v ~/.council-hub:/data \
   -e COUNCIL_TRANSPORT=http \
   -e COUNCIL_OLLAMA_URL=http://host.docker.internal:11434 \
-  iksnerd/council-hub:v0.29.0
+  iksnerd/council-hub:v0.29.1
 ```
 
 > **Note:** `host.docker.internal` resolves to the host machine from inside Docker Desktop (macOS/Windows). On Linux use `--add-host=host.docker.internal:host-gateway` or pass the host's IP directly.
@@ -253,20 +253,20 @@ With the HTTP container running, add Council Hub as a Streamable HTTP MCP server
 
 **URL:** `http://localhost:3001/mcp`
 
-Warp discovers all 27 tools automatically from the MCP schema.
+Warp discovers all 28 tools automatically from the MCP schema.
 
 ## Updating
 
 ```bash
 docker stop council-hub && docker rm council-hub
-docker pull iksnerd/council-hub:v0.29.0
+docker pull iksnerd/council-hub:v0.29.1
 docker run -d --name council-hub \
   -p 4000:4000 -p 3001:3001 \
   -v ~/.council-hub:/data \
-  iksnerd/council-hub:v0.29.0
+  iksnerd/council-hub:v0.29.1
 ```
 
-You can also use `:latest` instead of a specific version tag (currently v0.29.0). Available tags are listed on the [Docker Hub tags page](https://hub.docker.com/r/iksnerd/council-hub/tags).
+You can also use `:latest` instead of a specific version tag (currently v0.29.1). Available tags are listed on the [Docker Hub tags page](https://hub.docker.com/r/iksnerd/council-hub/tags).
 
 Schema migrations run automatically on startup — existing databases are upgraded in place with no data loss. Running Claude Code sessions will reconnect automatically on the next MCP tool call (no restart needed).
 

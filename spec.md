@@ -82,8 +82,10 @@ CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
 | `update_message` | `message_id`, `content` | Edits a message in-place (useful for living status tables). |
 
 ### B. Resources
+* **`council://guide`**: Core concepts, session-start workflow, and key tools reference.
+* **`council://message-types`**: Reference card for all 9 message types.
+* **`council://workflows`**: Room templates and common workflow patterns.
 * **`council://room/{room_id}/transcript`**: Returns the prompt-optimized transcript.
-* **`council://cluster/status`**: Returns the health and names of connected nodes.
 
 ---
 

@@ -4,6 +4,15 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.29.1] - 2026-05-02
+
+### Fixed
+- **CLAUDE.md** — Replaced stale handler file references (tools.go, handler_message.go, handler_room.go) with the actual split files; added all missing files (handler_digest.go, cluster_handlers.go, cluster_types.go, templates.go, etc.).
+- **README.md** — Fixed tool count (27 → 28), removed non-existent `error` message type, added missing `draft` type, corrected `check_room_health` params (takes none), made `get_digest.since` optional, fixed `move_messages` param name (`to_room_id` → `target_room_id`), removed non-existent `full` transcript mode, added missing `rename_project`/`mark_read`/`load_resources` tools, added missing params to `list_rooms`/`update_room`/`bulk_status_update`/`room_stats`, expanded Resources section with the three static skill guides.
+- **spec.md** — Removed non-existent `council://cluster/status` resource; replaced with the three real static resources (`council://guide`, `council://message-types`, `council://workflows`).
+- **DOCKERHUB.md** — Updated tool count (27 → 28).
+- **Skill resources** (`council://guide`, `council://workflows`) — Added 13 previously undocumented tools to the guides: `read_room`, `get_messages`, `room_stats`, `react_to_message`, `mark_read` (with Read Cursors workflow), semantic search tip, `archive_room`/`list_archives`/`read_archive` workflow, `rename_project`/`move_messages`/`delete_messages`/`delete_room` maintenance patterns.
+
 ## [0.29.0] - 2026-05-01
 
 ### Added

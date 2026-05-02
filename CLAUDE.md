@@ -94,12 +94,23 @@ Code is organized into `internal/council` (data layer) and `internal/handlers` (
 - `internal/council/stats.go` — `GetRoomStats`, `GetDigest`, `GetMessageCounts`, `GetPinnedExcerpts`, `GetRoomsNeedingSummary`.
 - `internal/council/summary.go` — `GetTranscript`, `GetUnsummarizedMessages`, `InsertSummary`, `ArchiveRoom`.
 - `internal/council/transcript.go` — Transcript formatting helpers.
-- `internal/handlers/tools.go` — `Registry` struct (holds Server + HTTPClient + PhoenixURL), MCP tool registration, schema/prop helpers.
-- `internal/handlers/cluster.go` — Cluster-wide query support: `clusterCall` (HTTP POST to Phoenix internal API), `handleSearchMessagesCluster`, `handleListRoomsCluster`, `handleRoomStatsCluster`. Formats results with `[node-name]` prefix and appends warnings for unreachable nodes.
-- `internal/handlers/handler_message.go` — Message tool handlers. `search_messages` branches on `cluster_wide=true`. Supports `since`/`until` date range filters and multi-word query tokenization (AND logic).
-- `internal/handlers/handler_room.go` — Room tool handlers. `list_rooms` and `room_stats` branch on `cluster_wide=true`. Compact listing includes pinned message excerpts (📌). Multi-word search splits on whitespace (AND logic across id/description/tags).
-- `internal/handlers/handler_transcript.go` — `read_transcript` with modes (summary, changelog), `archive_room`.
-- `internal/handlers/resources.go` — Serves `council://room/{id}/transcript` as prompt-optimized markdown.
+- `internal/handlers/tools_helpers.go` — `Registry` struct (holds Server + HTTPClient + PhoenixURL), schema/prop helpers, validation utilities, `ToolOutput` type, `validMessageTypes` map.
+- `internal/handlers/tools_register.go` — All 28 MCP tool registrations wired to their handlers.
+- `internal/handlers/templates.go` — Room template definitions (brainstorm, bug, decision-log, review, sprint).
+- `internal/handlers/cluster.go` — `clusterCall` HTTP helper (POST to Phoenix internal API).
+- `internal/handlers/cluster_types.go` — Cluster response types and mapping helpers (`ClusterSearchResult`, `ClusterRoomResult`, etc.).
+- `internal/handlers/cluster_handlers.go` — Cluster-wide tool variants: `handleSearchMessagesCluster`, `handleListRoomsCluster`, `handleRoomStatsCluster`, `handleGetMessagesCluster`, `handleGetDigestCluster`, `handleReadRoomCluster`, `handleReadTranscriptCluster`. Formats results with `[node-name]` prefix and appends warnings for unreachable nodes.
+- `internal/handlers/handler_message_query.go` — `search_messages` (FTS5 + optional semantic, branches on `cluster_wide=true`), `get_messages`, `get_mentions`.
+- `internal/handlers/handler_message_write.go` — `post_to_room`, `update_message`, `delete_messages`, `move_messages`.
+- `internal/handlers/handler_message_annotate.go` — `pin_message`, `react_to_message`.
+- `internal/handlers/handler_message_sync.go` — `mark_read`.
+- `internal/handlers/handler_room_crud.go` — `create_room`, `get_or_create_room`, `update_room`, `read_room`, `delete_room`.
+- `internal/handlers/handler_room_lifecycle.go` — `signal_status`, `bulk_status_update`, `rename_project`.
+- `internal/handlers/handler_room_query.go` — `list_rooms` (compact listing with pinned excerpts 📌, branches on `cluster_wide=true`), `room_stats`.
+- `internal/handlers/handler_room_graph.go` — `get_concept_map` (BFS traversal of related-rooms graph).
+- `internal/handlers/handler_transcript.go` — `read_transcript` (modes: summary, changelog, work_items), `list_archives`, `read_archive`, `archive_room`.
+- `internal/handlers/handler_digest.go` — `get_digest` (with `unread_only` cursor support, branches on `cluster_wide=true`).
+- `internal/handlers/resources.go` — `RegisterResources`: static skill guides (`council://guide`, `council://message-types`, `council://workflows`) + dynamic `council://room/{id}/transcript` template. Also implements `load_resources` tool handler (fallback for clients without resource support).
 - `internal/council/embedder.go` — `Embedder` interface + `OllamaEmbedder` (HTTP client for Ollama `/api/embed`, 2-min timeout, slow-request logging). Default model: `embeddinggemma:300m` (768-dim).
 - `internal/council/vectors.go` — Vector storage (`StoreVector`, `deleteVectorsLocked`), `SearchMessagesSemantic` (two-phase: vector candidate search → metadata filtering), `EmbedAsync` (non-blocking background embed), `RunEmbedBackfill` (10-min retry loop + coverage logging), `BackfillEmbeddings`.
 - `internal/council/janitor.go` — Knowledge Linter + DB integrity sweep: runs every 6h, flags rooms needing synthesis (`needs-synthesis` tag), flags stale rooms (`stale` tag), and runs `PRAGMA integrity_check` via `healIndexes`. `Server.LastIntegrityCheck` timestamps the latest sweep.
