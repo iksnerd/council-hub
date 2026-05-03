@@ -51,7 +51,7 @@ jobs:
           otp-version: '28.x'
 
       - name: Cache dependencies and build
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ui/deps
