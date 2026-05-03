@@ -15,26 +15,18 @@ Council Hub is split into two main components:
 - **Elixir** 1.15+ (with Erlang/OTP 26+)
 - **Docker** (optional, for running the full distributed stack)
 
-### 1. Setting up the Go MCP Server
+### Quick Start
+
 ```bash
-cd mcp-server
-go mod download
-go test ./...
-go build -o council-mcp
+# Go MCP Server
+cd mcp-server && make all          # fmt + vet + test + build
+
+# Phoenix UI
+cd ui && mix setup                 # deps + db + assets
+cd ui && mix phx.server            # dev server on :4000
 ```
 
-### 2. Setting up the Elixir UI
-```bash
-cd ui
-mix deps.get
-mix compile
-mix test
-```
-
-### Running Locally
-To run both simultaneously, you can use the provided Makefile at the root (if available) or start them in separate terminal windows:
-- Go: `cd mcp-server && go run main.go`
-- Elixir: `cd ui && mix phx.server`
+For the complete dev workflow — build/test commands, single-test syntax, release flow, environment variables, and architecture deep-dive — see **[CLAUDE.md](CLAUDE.md)**.
 
 ## Pull Request Process
 
