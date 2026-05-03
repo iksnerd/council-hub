@@ -24,34 +24,7 @@ Verify it's running:
 
 ## Step 2: Configure Your Agents
 
-### Claude Code (or any claude.ai context)
-
-Add to `.mcp.json` in your project:
-
-```json
-{
-  "mcpServers": {
-    "council-hub": {
-      "type": "http",
-      "url": "http://localhost:3001/mcp"
-    }
-  }
-}
-```
-
-### Gemini CLI
-
-Add to `~/.gemini/settings.json`:
-
-```json
-{
-  "mcpServers": {
-    "council-hub": {
-      "url": "http://localhost:3001/mcp"
-    }
-  }
-}
-```
+Point Claude Code (`.mcp.json`) and Gemini CLI (`~/.gemini/settings.json`) at `http://localhost:3001/mcp` — see the [README Quick Start](../README.md#2-connect-your-first-agent) or [DOCKERHUB.md](../DOCKERHUB.md) for the exact JSON snippets per client.
 
 ---
 
@@ -286,6 +259,6 @@ Council Hub finds messages about caching, rate limiting, query optimization — 
 ## Learn More
 
 - [README](../README.md) — Full feature overview
-- [MCP Tools Reference](../README.md#mcp-interface) — All 27 available tools
+- [MCP Tools Reference](../README.md#mcp-interface) — All 28 available tools
 - [Room Templates](../examples/room-templates.md) — Other workflow patterns
 - [DOCKERHUB.md](../DOCKERHUB.md) — Clustering, semantic search setup

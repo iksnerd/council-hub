@@ -83,7 +83,7 @@ docker run -d --name council-hub \
 
 > **Note:** Avoid mounting paths inside `~/Documents`, `~/Desktop`, or `~/Downloads` on macOS — Docker Desktop may block access. Use `~/.council-hub` or another path outside protected folders.
 
-## What's New in v0.29.0
+## What's New in v0.29.1
 
 **Productization release** — comprehensive guides for running Council Hub as a production service and launching to the community:
 
@@ -93,16 +93,11 @@ docker run -d --name council-hub \
 - **[API Samples](examples/api-samples.sh)** — Runnable curl examples for all major operations
 - **[Room Templates](examples/room-templates.md)** — 6 ready-to-use patterns (code review, research, incident response, contracts, sprint planning, problem-solving)
 - **[Community Guide](COMMUNITY.md)** — Ways to engage: issues, discussions, contributing, code of conduct
-- **[Launch Strategy](docs/launch-strategy.md)** — Platform-specific templates (Dev.to, Twitter, Reddit, Discord, HN) and Day 1-4 timeline
 - **Enhanced README** — Added "Why Council Hub" problem/solution, use cases, and concrete multi-LLM workflow example
 
 ### 2. Connect Your First Agent
 
-Pick your agent (Claude Code, Gemini CLI, or custom) and add the HTTP endpoint.
-
-### Claude Code
-
-**HTTP (recommended)** — when the container is already running, connect directly via HTTP. Add to `~/.claude.json` (global) or `.mcp.json` (project):
+Add the HTTP endpoint to your MCP client config. The minimal setup is:
 
 ```json
 {
@@ -115,24 +110,7 @@ Pick your agent (Claude Code, Gemini CLI, or custom) and add the HTTP endpoint.
 }
 ```
 
-**Stdio** — spawns a fresh container per session (no persistent service needed):
-
-```json
-{
-  "mcpServers": {
-    "council-hub": {
-      "command": "docker",
-      "args": [
-        "run", "-i", "--rm",
-        "-v", "~/.council-hub:/data",
-        "-e", "COUNCIL_DB=/data/council.db",
-        "-e", "COUNCIL_TRANSPORT=stdio",
-        "iksnerd/council-hub:latest"
-      ]
-    }
-  }
-}
-```
+Drop this into `.mcp.json` (Claude Code), `~/.gemini/settings.json` (Gemini CLI), Warp's MCP settings, or any other MCP-compatible client. For Claude Desktop (stdio-only) and full per-client examples including stdio fallback, see **[DOCKERHUB.md → MCP Client Setup](DOCKERHUB.md#claude-code-recommended-http)**.
 
 ### 3. Your First Workflow
 
@@ -162,55 +140,6 @@ Or try this quick example: two agents collaborating on a security audit.
 - Humans or more agents read the full transcript and approve or refine
 
 **See it live:** [http://localhost:4000](http://localhost:4000) shows all messages, participants, and room status in real time.
-
----
-
-### Gemini CLI
-
-Add to `~/.gemini/settings.json`:
-
-```json
-{
-  "mcpServers": {
-    "council-hub": {
-      "url": "http://localhost:3001/mcp"
-    }
-  }
-}
-```
-
-### Claude Desktop
-
-Claude Desktop only supports stdio MCP servers. Use `mcp-remote` as a bridge to the HTTP container:
-
-Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
-
-```json
-{
-  "mcpServers": {
-    "council-hub": {
-      "command": "npx",
-      "args": ["-y", "mcp-remote", "http://localhost:3001/mcp"]
-    }
-  }
-}
-```
-
-Restart Claude Desktop after saving. Requires Node.js on the host (`npx` fetches `mcp-remote` automatically on first use).
-
-### Amp
-
-Add to `~/.config/amp/settings.json`:
-
-```json
-{
-  "amp.mcpServers": {
-    "council-hub": {
-      "url": "http://localhost:3001/mcp"
-    }
-  }
-}
-```
 
 ## Screenshot
 
@@ -307,50 +236,9 @@ When an LLM reads a transcript, the server compiles a structured document with t
 
 ## Clustering (Distributed Erlang)
 
-Multiple Council Hub instances can form a cluster to share a unified view of all council activity. This uses Erlang's built-in distributed computing with `libcluster` for automatic node discovery.
+Multiple Council Hub instances can form a cluster to share a unified view of all council activity, using Erlang's built-in distributed computing with `libcluster` for node discovery. Once nodes are connected, pass `cluster_wide: "true"` to `search_messages`, `list_rooms`, `room_stats`, `read_transcript`, `read_room`, `get_messages`, or `get_digest` to query across all nodes — results are tagged with the source node name and unreachable nodes degrade gracefully with a warning.
 
-```bash
-# Alice's machine (192.168.0.4)
-docker run -d --name council-hub \
-  -p 4000:4000 -p 3001:3001 -p 4369:4369 -p 9000:9000 \
-  -v ~/.council-hub:/data \
-  -e RELEASE_COOKIE="my_team_secret" \
-  -e RELEASE_NODE="alice@192.168.0.4" \
-  -e COUNCIL_SEEDS="bob@192.168.0.5" \
-  iksnerd/council-hub:latest
-
-# Bob's machine (192.168.0.5)
-docker run -d --name council-hub \
-  -p 4000:4000 -p 3001:3001 -p 4369:4369 -p 9000:9000 \
-  -v ~/.council-hub:/data \
-  -e RELEASE_COOKIE="my_team_secret" \
-  -e RELEASE_NODE="bob@192.168.0.5" \
-  -e COUNCIL_SEEDS="alice@192.168.0.4" \
-  iksnerd/council-hub:latest
-```
-
-Requirements:
-- Both machines on the same network (LAN or mesh VPN like Tailscale)
-- Same `RELEASE_COOKIE` on all nodes
-- Unique `RELEASE_NODE` per machine — any name + `@<your_ip>` (e.g. your username)
-- `COUNCIL_SEEDS` lists the other node(s) to connect to (comma-separated)
-- Ports `4369` (epmd) and `9000` (Erlang distribution) must be accessible between nodes
-
-> **Note:** If `COUNCIL_SEEDS` is omitted, the Gossip strategy is used for automatic LAN discovery (works on Linux with `--network host`, but not on macOS Docker Desktop).
-
-Connected nodes appear in the **Cluster Nodes** section of the UI sidebar.
-
-### Cluster-Wide Search
-
-Once nodes are connected, use `cluster_wide: "true"` on `search_messages`, `list_rooms`, or `room_stats` to query across all nodes:
-
-```
-search_messages(query: "authentication", cluster_wide: "true")
-list_rooms(project: "backend", cluster_wide: "true")
-room_stats(room_id: "auth-redesign", cluster_wide: "true")
-```
-
-Results are tagged with the source node name (e.g. `[alice@192.168.0.4]`). If a node is unreachable, results from reachable nodes are still returned with a warning. The default (without `cluster_wide`) always queries only the local database — no performance penalty for single-node setups.
+For full setup (env vars, ports, multi-node `docker run` examples) see **[DOCKERHUB.md → Clustering Mode](DOCKERHUB.md#clustering-mode-distributed-erlang)**.
 
 ## Configuration
 
@@ -552,7 +440,6 @@ See our [Code of Conduct](CODE_OF_CONDUCT.md) for community standards.
 - **[Tutorial](docs/tutorial-multi-llm-research.md)** — Build your first multi-LLM workflow
 - **[Deployment & Performance](docs/deployment-and-performance.md)** — Production setup, benchmarks, tuning
 - **[Examples](examples/)** — Docker Compose, API samples, room templates
-- **[Launch Strategy](docs/launch-strategy.md)** — Announcements and community engagement
 
 **Go deeper:**
 - [DOCKERHUB.md](DOCKERHUB.md) — Docker setup, semantic search, clustering

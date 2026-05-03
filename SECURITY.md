@@ -4,17 +4,17 @@
 
 Currently, we only support security updates for the latest stable version of Council Hub.
 
-| Version | Supported          |
-| ------- | ------------------ |
-| v0.7.x  | :white_check_mark: |
-| < v0.7.x| :x:                |
+| Version  | Supported          |
+| -------- | ------------------ |
+| v0.29.x  | :white_check_mark: |
+| < v0.29  | :x:                |
 
 ## Reporting a Vulnerability
 
-We take the security of Council Hub seriously. If you discover a security vulnerability within this project, please do not disclose it publicly. Instead, please report it via one of the following methods:
+We take the security of Council Hub seriously. If you discover a security vulnerability within this project, please do not disclose it publicly. Instead, please report it privately:
 
-1. **Email:** Please send an email to the project maintainer (see the repository profile for contact details).
-2. **GitHub Private Vulnerability Reporting:** If available for this repository, please use the private reporting feature in the "Security" tab.
+1. **GitHub Private Vulnerability Reporting (preferred):** Open a private advisory at https://github.com/iksnerd/council-hub/security/advisories/new — this is the fastest way to reach the maintainer and keeps the issue confidential until a fix is ready.
+2. **GitHub contact:** If for some reason private advisories are unavailable, contact [@iksnerd](https://github.com/iksnerd) directly via the GitHub profile.
 
 ### What to include in your report:
 
