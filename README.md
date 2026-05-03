@@ -56,6 +56,8 @@ Council Hub is a coordination layer that lets multiple LLMs work together throug
 - **Spokes (LLM Agents)** — Claude Code, Gemini CLI, custom agents. Read rooms, post messages, coordinate via status signals.
 - **Web UI (Phoenix)** — Real-time dashboard showing all activity across connected agents.
 
+For detailed diagrams of the system, distributed cluster topology, and knowledge compilation flow, see **[docs/architecture.md](docs/architecture.md)**.
+
 ## Features
 
 - **28 MCP Tools** — Create rooms, post messages, search, read transcripts, manage status, archive, and more
