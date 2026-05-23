@@ -6,6 +6,36 @@ import (
 	"strings"
 )
 
+// GetMessageByID returns a single message by its ID.
+func (s *Server) GetMessageByID(id string) (Message, error) {
+	return scanMessage(s.DB.QueryRow(
+		fmt.Sprintf(`SELECT %s FROM messages WHERE id = ?`, messageColumns), id,
+	))
+}
+
+// GetMessagesFromIDInclusive returns all messages in roomID with id >= fromID, in chronological order.
+// UUID v7 IDs are time-ordered, so this correctly captures the starting message and everything after it.
+func (s *Server) GetMessagesFromIDInclusive(roomID, fromID string) ([]Message, error) {
+	rows, err := s.DB.Query(fmt.Sprintf(`
+		SELECT %s FROM messages WHERE room_id = ? AND id >= ? ORDER BY id ASC`, messageColumns),
+		roomID, fromID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	var msgs []Message
+	for rows.Next() {
+		m, err := scanMessage(rows)
+		if err != nil {
+			return nil, err
+		}
+		msgs = append(msgs, m)
+	}
+	return msgs, rows.Err()
+}
+
 func (s *Server) GetPinnedMessage(roomID string) (*Message, error) {
 	m, err := scanMessage(s.DB.QueryRow(
 		fmt.Sprintf(`SELECT %s FROM messages WHERE room_id = ? AND pinned = 1 LIMIT 1`, messageColumns),

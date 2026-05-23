@@ -39,11 +39,11 @@ docker-stop: ## Stop council-hub container
 docker-logs: ## Tail container logs
 	docker logs -f council-hub
 
-docker-push: ## Build and push arm64 image to Docker Hub with correct manifest
-	docker buildx build --platform linux/arm64 \
+docker-push: ## Build and push multi-arch image (amd64 + arm64) to Docker Hub
+	docker buildx build --platform linux/amd64,linux/arm64 \
 		-t $(IMAGE):latest -t $(IMAGE):$(VERSION) \
 		--push .
-	@echo "Pushed: $(IMAGE):latest + $(IMAGE):$(VERSION) (arm64)"
+	@echo "Pushed: $(IMAGE):latest + $(IMAGE):$(VERSION) (amd64 + arm64)"
 
 test-all: ## Run Go + Elixir tests
 	cd mcp-server && make test
