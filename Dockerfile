@@ -37,6 +37,9 @@ WORKDIR /app
 RUN mix local.hex --force && mix local.rebar --force
 
 ENV MIX_ENV=prod
+# Disable BEAM JIT so mix release works under QEMU when cross-compiling.
+# Only affects the build-time VM; the release binary uses JIT normally at runtime.
+ENV ERL_FLAGS="+JMdisable"
 
 COPY ui/mix.exs ui/mix.lock ./
 RUN mix deps.get --only $MIX_ENV

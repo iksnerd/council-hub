@@ -345,12 +345,27 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "get_concept_map",
-		Description: "Traverse the conceptual relationship graph between rooms starting from a given room. Returns a flat Markdown list grouped by depth, showing how topics relate across the project. Use this to orient yourself within a complex project topology.",
+		Description: "Traverse the conceptual relationship graph between rooms starting from a given room. Returns a flat Markdown list grouped by depth, showing how topics relate across the project. Use this to orient yourself within a complex project topology. Set infer_from to discover rooms not yet explicitly linked.",
 		InputSchema: schema([]string{"room_id"}, map[string]map[string]any{
-			"room_id":   prop("string", "The starting room ID for the graph traversal."),
-			"max_depth": prop("string", "The maximum depth to traverse (default 3, max 5)."),
+			"room_id":    prop("string", "The starting room ID for the graph traversal."),
+			"max_depth":  prop("string", "The maximum depth to traverse (default 3, max 5)."),
+			"infer_from": prop("string", "Auto-include rooms related by shared metadata instead of only following explicit related_rooms links. Values: 'project' (same project), 'tags' (any shared tag), 'project,tags' (both). Useful when related_rooms links haven't been set up yet."),
 		}),
 	}, r.handleGetConceptMap)
+
+	mcp.AddTool(r.Server.MCP, &mcp.Tool{
+		Name: "fork_thread",
+		Description: "Fork a message thread into a new room in one step: creates the new room, moves start_message_id and all subsequent messages from its source room, and links both rooms bidirectionally. " +
+			"Use when a conversation in one room has grown into its own distinct topic. " +
+			"Replaces the manual create_room → move_messages → update_room × 2 sequence.",
+		InputSchema: schema([]string{"start_message_id", "new_room_id"}, map[string]map[string]any{
+			"start_message_id": prop("string", "ID of the first message to move — this message and all later messages in the same room are relocated."),
+			"new_room_id":      prop("string", "ID for the new room to create (must not already exist)."),
+			"topic":            prop("string", "Description for the new room. Defaults to 'Forked from <source_room>'."),
+			"project":          prop("string", "Project for the new room. Defaults to the source room's project."),
+			"tags":             prop("string", "Comma-separated tags for the new room."),
+		}),
+	}, r.handleForkThread)
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name: "load_resources",

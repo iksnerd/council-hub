@@ -40,6 +40,15 @@ type MoveMessagesInput struct {
 	TargetRoomID string `json:"target_room_id"`
 }
 
+// ForkThreadInput represents the parameters for forking a thread into a new room.
+type ForkThreadInput struct {
+	StartMessageID string `json:"start_message_id"`
+	NewRoomID      string `json:"new_room_id"`
+	Topic          string `json:"topic"`
+	Project        string `json:"project"`
+	Tags           string `json:"tags"`
+}
+
 func (r *Registry) handlePostToRoom(ctx context.Context, req *mcp.CallToolRequest, args PostToRoomInput) (*mcp.CallToolResult, ToolOutput, error) {
 	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
 		return &mcp.CallToolResult{
@@ -223,4 +232,73 @@ func (r *Registry) handleMoveMessages(ctx context.Context, req *mcp.CallToolRequ
 	}
 	r.Server.Logger.Info("Messages moved", "count", moved, "target", args.TargetRoomID)
 	return msg(b.String())
+}
+
+func (r *Registry) handleForkThread(ctx context.Context, req *mcp.CallToolRequest, args ForkThreadInput) (*mcp.CallToolResult, ToolOutput, error) {
+	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: text}},
+		}, ToolOutput{Message: text}, nil
+	}
+
+	if args.StartMessageID == "" {
+		return msg("Error: start_message_id is required.")
+	}
+	if args.NewRoomID == "" {
+		return msg("Error: new_room_id is required.")
+	}
+	if err := validateSize("new_room_id", args.NewRoomID, maxIDLen); err != nil {
+		return msg("Error: " + err.Error())
+	}
+
+	// Look up the starting message to find the source room.
+	startMsg, err := r.Server.GetMessageByID(args.StartMessageID)
+	if err != nil {
+		return msg(fmt.Sprintf("Error: message '%s' not found.", args.StartMessageID))
+	}
+	sourceRoomID := startMsg.RoomID
+
+	// Get source room for project/description defaults.
+	sourceRoom, err := r.Server.GetRoom(sourceRoomID)
+	if err != nil {
+		return msg(fmt.Sprintf("Error: source room '%s' not found.", sourceRoomID))
+	}
+
+	// Collect all messages from start_message_id onwards (inclusive).
+	thread, err := r.Server.GetMessagesFromIDInclusive(sourceRoomID, args.StartMessageID)
+	if err != nil {
+		return nil, ToolOutput{}, err
+	}
+	if len(thread) == 0 {
+		return msg(fmt.Sprintf("Error: no messages found from '%s' onwards in room '%s'.", args.StartMessageID, sourceRoomID))
+	}
+
+	// Create the new room. Passing sourceRoomID as related_rooms triggers bidirectional linking.
+	topic := args.Topic
+	if topic == "" {
+		topic = fmt.Sprintf("Forked from %s", sourceRoomID)
+	}
+	project := args.Project
+	if project == "" {
+		project = sourceRoom.Project
+	}
+	if err := r.Server.CreateRoom(args.NewRoomID, topic, project, "", args.Tags, "", sourceRoomID); err != nil {
+		return msg(fmt.Sprintf("Error creating room '%s': %s", args.NewRoomID, err.Error()))
+	}
+
+	// Move the messages.
+	ids := make([]string, len(thread))
+	for i, m := range thread {
+		ids[i] = m.ID
+	}
+	moved, err := r.Server.MoveMessages(ids, args.NewRoomID)
+	if err != nil {
+		return msg(fmt.Sprintf("Error moving messages: %s", err.Error()))
+	}
+
+	r.Server.Logger.Info("Thread forked", "from", sourceRoomID, "to", args.NewRoomID, "messages", moved)
+	return msg(fmt.Sprintf(
+		"Forked %d message(s) from '%s' into new room '%s'. Both rooms are now linked.\n\n```json\n{\"source_room\": \"%s\", \"new_room\": \"%s\", \"messages_moved\": %d}\n```",
+		moved, sourceRoomID, args.NewRoomID, sourceRoomID, args.NewRoomID, moved,
+	))
 }

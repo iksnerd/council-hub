@@ -100,7 +100,7 @@ func TestGetConceptMap(t *testing.T) {
 	s.CreateRoom("e", "Topic E", "proj", "", "tag6", "", "")
 
 	// Test 1: Depth 1
-	nodes, err := s.GetConceptMap("root", 1)
+	nodes, err := s.GetConceptMap("root", 1, "")
 	if err != nil {
 		t.Fatalf("GetConceptMap depth 1 failed: %v", err)
 	}
@@ -111,7 +111,7 @@ func TestGetConceptMap(t *testing.T) {
 	}
 
 	// Test 2: Full traversal (Depth 3)
-	nodes, err = s.GetConceptMap("root", 3)
+	nodes, err = s.GetConceptMap("root", 3, "")
 	if err != nil {
 		t.Fatalf("GetConceptMap depth 3 failed: %v", err)
 	}
@@ -142,15 +142,89 @@ func TestGetConceptMap(t *testing.T) {
 	}
 
 	// Test 3: Unconnected
-	nodes, _ = s.GetConceptMap("e", 3)
+	nodes, _ = s.GetConceptMap("e", 3, "")
 	if len(nodes) != 1 || nodes[0].Room.ID != "e" {
 		t.Errorf("expected only 'e' for unconnected start, got %d nodes", len(nodes))
 	}
 
 	// Test 4: Max depth enforcement
-	nodes, _ = s.GetConceptMap("root", 10) // should be capped to 5
+	nodes, _ = s.GetConceptMap("root", 10, "") // should be capped to 5
 	// Our graph only goes to depth 2, so this should still return 5 nodes
 	if len(nodes) != 5 {
 		t.Errorf("expected 5 nodes for deep search on shallow graph, got %d", len(nodes))
+	}
+}
+
+func TestGetConceptMapInferFrom(t *testing.T) {
+	s := setupTestServer(t)
+
+	// Two rooms in the same project, not explicitly linked.
+	s.CreateRoom("alpha", "Alpha topic", "myproject", "", "go,api", "", "")
+	s.CreateRoom("beta", "Beta topic", "myproject", "", "go,grpc", "", "")
+	// Third room in a different project with a shared tag.
+	s.CreateRoom("gamma", "Gamma topic", "otherproject", "", "grpc,proto", "", "")
+	// Room with no overlap.
+	s.CreateRoom("delta", "Delta topic", "isolated", "", "rust", "", "")
+
+	// infer_from=project: alpha should discover beta via shared project.
+	nodes, err := s.GetConceptMap("alpha", 1, "project")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	ids := make(map[string]string)
+	for _, n := range nodes {
+		ids[n.Room.ID] = n.Inferred
+	}
+	if _, ok := ids["beta"]; !ok {
+		t.Errorf("expected beta to be discovered via project inference, got nodes: %v", ids)
+	}
+	if ids["beta"] != "project" {
+		t.Errorf("expected Inferred='project' for beta, got %q", ids["beta"])
+	}
+	if _, ok := ids["gamma"]; ok {
+		t.Errorf("gamma should not appear (different project), but it did")
+	}
+
+	// infer_from=tags depth=1: alpha (go,api) shares "go" with beta (go,grpc) → beta discovered.
+	// gamma (grpc,proto) shares nothing with alpha directly — it's only reachable at depth=2.
+	nodes, err = s.GetConceptMap("alpha", 1, "tags")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	ids = make(map[string]string)
+	for _, n := range nodes {
+		ids[n.Room.ID] = n.Inferred
+	}
+	if _, ok := ids["beta"]; !ok {
+		t.Errorf("expected beta to be discovered via tag inference (shared: go)")
+	}
+	if _, ok := ids["delta"]; ok {
+		t.Errorf("delta should not appear (no shared tags)")
+	}
+
+	// infer_from=tags depth=2: alpha → beta (go) → gamma (grpc).
+	nodes, err = s.GetConceptMap("alpha", 2, "tags")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	ids = make(map[string]string)
+	for _, n := range nodes {
+		ids[n.Room.ID] = n.Inferred
+	}
+	if _, ok := ids["gamma"]; !ok {
+		t.Errorf("expected gamma at depth=2 via beta (shared tag: grpc)")
+	}
+
+	// infer_from=project,tags depth=1: beta discovered via both project and tags.
+	nodes, err = s.GetConceptMap("alpha", 1, "project,tags")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	ids = make(map[string]string)
+	for _, n := range nodes {
+		ids[n.Room.ID] = n.Inferred
+	}
+	if _, ok := ids["beta"]; !ok {
+		t.Errorf("expected beta with project,tags inference")
 	}
 }

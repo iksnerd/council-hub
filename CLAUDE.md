@@ -33,7 +33,7 @@ Docker Hub image: `iksnerd/council-hub` ([hub.docker.com/r/iksnerd/council-hub](
 3. **Commit & push**: `git commit -m "vX.Y.Z: <summary>" && git push`
 4. **Wait for CI** to pass on main
 5. **Tag & push tag**: `git tag vX.Y.Z && git push origin vX.Y.Z`
-6. **Build & push to Docker Hub**: `make docker-build && make docker-push VERSION=vX.Y.Z`
+6. **Build & push to Docker Hub**: `make docker-push VERSION=vX.Y.Z` — builds amd64 + arm64 locally and pushes a multi-arch manifest. The amd64 cross-compile runs under QEMU (first build ~10-15 min; cached layers are fast). CI also auto-publishes on tag push as a backup.
 
 **Important:** Never move tags. If a fix is needed after tagging, bump to vX.Y.Z+1.
 

@@ -11,8 +11,9 @@ import (
 
 // GetConceptMapInput represents the parameters for getting a room's conceptual graph.
 type GetConceptMapInput struct {
-	RoomID   string `json:"room_id"`
-	MaxDepth string `json:"max_depth"`
+	RoomID    string `json:"room_id"`
+	MaxDepth  string `json:"max_depth"`
+	InferFrom string `json:"infer_from"`
 }
 
 func (r *Registry) handleGetConceptMap(ctx context.Context, req *mcp.CallToolRequest, args GetConceptMapInput) (*mcp.CallToolResult, ToolOutput, error) {
@@ -33,13 +34,17 @@ func (r *Registry) handleGetConceptMap(ctx context.Context, req *mcp.CallToolReq
 		}
 	}
 
-	nodes, err := r.Server.GetConceptMap(args.RoomID, maxDepth)
+	nodes, err := r.Server.GetConceptMap(args.RoomID, maxDepth, args.InferFrom)
 	if err != nil {
 		return msg(fmt.Sprintf("Error: %s", err.Error()))
 	}
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "## Concept Map: %s (depth %d)\n", args.RoomID, maxDepth)
+	header := fmt.Sprintf("## Concept Map: %s (depth %d)", args.RoomID, maxDepth)
+	if args.InferFrom != "" {
+		header += fmt.Sprintf(" [infer_from: %s]", args.InferFrom)
+	}
+	fmt.Fprintln(&b, header)
 
 	// Group nodes by depth for flat Markdown output
 	nodesByDepth := make(map[int][]council.ConceptMapNode)
@@ -64,20 +69,24 @@ func (r *Registry) handleGetConceptMap(ctx context.Context, req *mcp.CallToolReq
 		}
 
 		for _, n := range layer {
-			via := ""
-			if n.Via != "" {
-				via = fmt.Sprintf(" (via: %s)", n.Via)
+			annotation := ""
+			if n.Inferred != "" {
+				annotation = fmt.Sprintf(" (inferred: %s)", n.Inferred)
+			} else if n.Via != "" {
+				annotation = fmt.Sprintf(" (via: %s)", n.Via)
 			}
 			tags := ""
 			if n.Room.Tags != "" {
 				tags = fmt.Sprintf(" | tags: %s", n.Room.Tags)
 			}
-			fmt.Fprintf(&b, "- **%s** [%s]%s%s — %s\n", n.Room.ID, n.Room.Status, tags, via, n.Room.Description)
+			fmt.Fprintf(&b, "- **%s** [%s]%s%s — %s\n", n.Room.ID, n.Room.Status, tags, annotation, n.Room.Description)
 		}
 	}
 
-	if len(nodes) == 1 {
-		b.WriteString("\n⚠️ No related rooms configured for this room. Add links via update_room(related_rooms=...)")
+	if len(nodes) == 1 && args.InferFrom == "" {
+		b.WriteString("\n⚠️ No related rooms configured for this room. Add links via update_room(related_rooms=...) or use infer_from=project to discover related rooms automatically.")
+	} else if len(nodes) == 1 {
+		b.WriteString("\n⚠️ No related or inferred rooms found.")
 	}
 
 	return msg(b.String())

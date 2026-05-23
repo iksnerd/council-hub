@@ -302,3 +302,44 @@ func TestMarkReadAndGetCursor(t *testing.T) {
 		t.Errorf("expected room-b cursor 'msg-099', got %q", cursorB)
 	}
 }
+
+func TestGetMessagesFromIDInclusive(t *testing.T) {
+	s := setupTestServer(t)
+	s.CreateRoom("src", "Source room", "", "", "", "", "")
+
+	id1, _ := s.PostMessage("src", "alice", "first", "message", "")
+	id2, _ := s.PostMessage("src", "alice", "second", "message", "")
+	id3, _ := s.PostMessage("src", "alice", "third", "message", "")
+
+	// From id2 inclusive: should get id2 and id3.
+	msgs, err := s.GetMessagesFromIDInclusive("src", id2)
+	if err != nil {
+		t.Fatalf("GetMessagesFromIDInclusive failed: %v", err)
+	}
+	if len(msgs) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(msgs))
+	}
+	if msgs[0].ID != id2 || msgs[1].ID != id3 {
+		t.Errorf("unexpected message IDs: %v", []string{msgs[0].ID, msgs[1].ID})
+	}
+	_ = id1
+}
+
+func TestGetMessageByID(t *testing.T) {
+	s := setupTestServer(t)
+	s.CreateRoom("room-x", "Test room", "", "", "", "", "")
+	id, _ := s.PostMessage("room-x", "bob", "hello", "thought", "")
+
+	m, err := s.GetMessageByID(id)
+	if err != nil {
+		t.Fatalf("GetMessageByID failed: %v", err)
+	}
+	if m.ID != id || m.RoomID != "room-x" || m.Author != "bob" {
+		t.Errorf("unexpected message: %+v", m)
+	}
+
+	_, err = s.GetMessageByID("nonexistent-id")
+	if err == nil {
+		t.Error("expected error for nonexistent ID, got nil")
+	}
+}
