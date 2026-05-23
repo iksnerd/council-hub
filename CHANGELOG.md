@@ -4,12 +4,17 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.30.1] - 2026-05-23
+
+### Fixed
+- **Dockerfile** — Removed `ENV ERL_FLAGS="+JMdisable"` from the Elixir builder stage; `+JMdisable` is not a valid flag in OTP 28 (only `+JMsingle`/`+JPperf` are supported), causing `mix` to exit 1 on every Docker build. Native BEAM on both amd64 and arm64 doesn't need the flag.
+
 ## [0.30.0] - 2026-05-23
 
 ### Added
 - **`get_concept_map(infer_from=...)`** — new `infer_from` param (`"project"`, `"tags"`, `"project,tags"`) auto-includes rooms related by shared project or overlapping tags, alongside explicit `related_rooms` links. Inferred connections are annotated in the output. No schema changes — purely BFS-level expansion.
 - **`fork_thread(start_message_id, new_room_id)`** — new composite tool that creates a new room, moves the starting message and all subsequent messages in its source room, and links both rooms bidirectionally in one call. Replaces the 4-step `create_room → move_messages → update_room × 2` sequence.
-- **Multi-arch Docker builds** — `make docker-push` now builds `linux/amd64 + linux/arm64` via `docker buildx`, and a new `.github/workflows/docker.yml` publishes a multi-arch manifest to Docker Hub automatically on version-tag pushes. The BEAM JIT crash under QEMU is avoided by setting `ERL_FLAGS="+JMdisable"` in the Dockerfile's Elixir builder stage (applies only during `mix release`, not at runtime).
+- **Multi-arch Docker builds** — `make docker-push` now builds `linux/amd64 + linux/arm64` via `docker buildx`, and a new `.github/workflows/docker.yml` publishes a multi-arch manifest to Docker Hub automatically on version-tag pushes using native GitHub-hosted runners (no QEMU).
 
 ## [0.29.1] - 2026-05-02
 
