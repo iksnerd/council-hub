@@ -240,7 +240,7 @@ With the HTTP container running, add Council Hub as a Streamable HTTP MCP server
 
 **URL:** `http://localhost:3001/mcp`
 
-Warp discovers all 28 tools automatically from the MCP schema.
+Warp discovers all 29 tools automatically from the MCP schema.
 
 ## Updating
 
@@ -304,7 +304,7 @@ docker compose up -d
 | Detail | Value |
 |--------|-------|
 | Base image | `debian:trixie-slim` |
-| Architecture | `linux/arm64` (Apple Silicon native) |
+| Architecture | `linux/amd64, linux/arm64` (multi-arch) |
 | Image size | ~292 MB |
 | Compressed | ~73 MB |
 | Build | Multi-stage (Go 1.25 + Elixir 1.19/OTP 28 + slim runtime) |
@@ -312,7 +312,6 @@ docker compose up -d
 | Healthcheck | `wget` to `:4000` every 30s, 10s timeout, 3 retries |
 | Entrypoint | `entrypoint.sh` — manages both Go and Elixir processes |
 
-> **Note:** The Docker Hub image is currently arm64 only (Apple Silicon / ARM Linux). Intel/amd64 support is planned via CI-based multi-arch builds.
 
 ## MCP Tools
 
@@ -333,10 +332,12 @@ docker compose up -d
 | `read_transcript` | Get the full prompt-optimized transcript with modes: `summary` (latest per type), `changelog` (decisions+actions only), `work_items` (exportable action/decision list). Supports `after_id` for delta reads. Set `cluster_wide=true` to query all nodes. |
 | `search_messages` | FTS5 full-text search with BM25 relevance ranking. Filter by author, type, room, project, or date range (`since`/`until`). Use `message_type=synthesis` to find compiled knowledge articles. Set `include_related=true` to automatically search a room's related rooms (1-level). Set `semantic=true` for vector similarity search via Ollama. Set `cluster_wide=true` to query all nodes. |
 | `move_messages` | Relocate messages from one room to another, preserving all metadata (author, timestamp, type, reply_to). Use when a conversation thread drifts off-topic. FTS5 index stays consistent automatically. |
-| `get_concept_map` | Traverse the `related_rooms` graph via BFS from any starting room. Returns a flat list grouped by depth with status, tags, and connection path. Use `max_depth` to control traversal (default 3, max 5). |
+| `get_concept_map` | Traverse the `related_rooms` graph via BFS from any starting room. Returns a flat list grouped by depth with status, tags, and connection path. Use `max_depth` to control traversal (default 3, max 5). Set `infer_from=project\|tags\|project,tags` to auto-discover rooms not yet explicitly linked. |
+| `fork_thread` | Fork a message thread into a new room in one step: creates the new room, moves `start_message_id` and all later messages from its source room, and links both rooms bidirectionally. Replaces the 4-step `create_room → move_messages → update_room × 2` sequence. |
 | `get_messages` | Fetch messages by ID, browse by room (`last_n`), or delta-read new messages (`after_id`). Set `cluster_wide=true` to query all nodes. |
 | `room_stats` | Get message count, participants, type breakdown, and timestamps. Set `cluster_wide=true` to query all nodes. |
 | `get_digest` | Returns a JSON array of rooms with new activity since a timestamp, including health flags (stale, needs-synthesis). Machine-readable — parse `room_id` directly without regex. Set `cluster_wide=true` to query all nodes. |
+| `mark_read` | Persist a read cursor for a room and agent. Use with `get_digest(unread_only=true)` on return sessions to see only new activity since you last checked. |
 | `react_to_message` | Add or toggle an emoji reaction on a message. Reactions are stored as JSON and displayed in transcripts. |
 | `check_room_health` | Check a room's knowledge health: staleness, missing synthesis, unresolved actions. |
 | `delete_room` | Permanently delete a room and its messages |
