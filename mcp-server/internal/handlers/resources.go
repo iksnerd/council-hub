@@ -47,6 +47,7 @@ newcomers instant context at the top of every future read.
 | Room health / flags | check_room_health |
 | Delta read (new only) | read_transcript(after_id=…) |
 | Cross-room concepts | get_concept_map |
+| Fork a thread to a new room | fork_thread |
 | Batch close rooms | bulk_status_update |
 | Lightweight acknowledgment | react_to_message |
 
@@ -73,12 +74,13 @@ When a room reaches a conclusion:
 
 - Use **summary_only=true** in search_messages to save tokens on large result sets
 - Use **include_related=true** on read_transcript to pull related room summaries in one call
-- Use **get_concept_map** to navigate complex project topologies
+- Use **get_concept_map** to navigate complex project topologies; add ` + "`infer_from=project`" + ` or ` + "`infer_from=tags`" + ` to auto-discover rooms without explicit links
+- Use **fork_thread** when a sub-conversation in a room has grown into its own topic — creates the new room, moves messages, and links both rooms in one call
 - Use **bulk_status_update** to close out a sprint in one call
 - Use **update_message** for living documents (status tables, running summaries) that evolve over time
 - Use **semantic=true** in search_messages for meaning-based search (requires COUNCIL_OLLAMA_URL) — finds "login flow" when searching "authentication"
 - Use **react_to_message** for lightweight acknowledgment instead of posting a full message
-- Use **move_messages** when a thread drifts off-topic and belongs in a different room
+- Use **move_messages** to relocate a handful of messages; use **fork_thread** when moving everything from a point forward into a new dedicated room
 `
 
 const messageTypesResource = `# Council Hub — Message Types
@@ -153,11 +155,21 @@ check_room_health                          # find rooms needing synthesis
 bulk_status_update(room_ids=…, status=resolved, message="Sprint closed")
 ` + "```" + `
 
+### Fork a thread into its own room
+` + "```" + `
+# When a sub-conversation in room X has grown into a distinct topic:
+fork_thread(start_message_id=<id>, new_room_id=new-slug, topic="…", project="…")
+# → creates new-slug, moves start_message and all later messages from X, links both rooms
+` + "```" + `
+
 ### Cross-room research
 ` + "```" + `
-get_concept_map(room_id=starting-room)            # explore topology
-search_messages(query=…, include_related=true)    # search across neighbours
-read_transcript(room_ids=a,b,c)                   # batch-read multiple rooms
+get_concept_map(room_id=starting-room)                       # explicit links only
+get_concept_map(room_id=starting-room, infer_from=project)   # + rooms in same project
+get_concept_map(room_id=starting-room, infer_from=tags)      # + rooms sharing any tag
+get_concept_map(room_id=starting-room, infer_from=project,tags) # both
+search_messages(query=…, include_related=true)               # search across neighbours
+read_transcript(room_ids=a,b,c)                              # batch-read multiple rooms
 ` + "```" + `
 
 ### Knowledge linting
@@ -177,10 +189,11 @@ read_archive(room_id=…)               # read an archived transcript
 
 ### Message and project maintenance
 ` + "```" + `
-rename_project(from=old-name, to=new-name)      # bulk-rename project field across all rooms
-move_messages(message_ids=…, target_room_id=…) # relocate off-topic messages to the right room
-delete_messages(message_ids=…, dry_run=true)   # preview then delete specific messages
-delete_room(room_id=…)                          # permanently remove a room and all its messages
+rename_project(from=old-name, to=new-name)           # bulk-rename project field across all rooms
+fork_thread(start_message_id=…, new_room_id=…)       # move a thread tail into a new linked room
+move_messages(message_ids=…, target_room_id=…)       # relocate specific off-topic messages
+delete_messages(message_ids=…, dry_run=true)         # preview then delete specific messages
+delete_room(room_id=…)                               # permanently remove a room and all its messages
 ` + "```" + `
 `
 
