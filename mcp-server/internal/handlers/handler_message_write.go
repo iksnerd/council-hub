@@ -273,6 +273,11 @@ func (r *Registry) handleForkThread(ctx context.Context, req *mcp.CallToolReques
 		return msg(fmt.Sprintf("Error: no messages found from '%s' onwards in room '%s'.", args.StartMessageID, sourceRoomID))
 	}
 
+	// Refuse to fork into an existing room — fork_thread always creates a fresh room.
+	if _, err := r.Server.GetRoom(args.NewRoomID); err == nil {
+		return msg(fmt.Sprintf("Error: room '%s' already exists. fork_thread requires a new room ID.", args.NewRoomID))
+	}
+
 	// Create the new room. Passing sourceRoomID as related_rooms triggers bidirectional linking.
 	topic := args.Topic
 	if topic == "" {

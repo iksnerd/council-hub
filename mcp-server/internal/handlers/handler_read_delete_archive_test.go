@@ -442,3 +442,56 @@ func TestHandleGetConceptMapNotFound(t *testing.T) {
 		t.Error("expected error for nonexistent room")
 	}
 }
+
+func TestHandleGetConceptMapInferFromProject(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "cm-root", withProject("alpha"))
+	mustCreateRoom(t, reg.Server, "cm-sibling", withProject("alpha"))
+	mustCreateRoom(t, reg.Server, "cm-other", withProject("beta"))
+
+	res, _, err := reg.handleGetConceptMap(context.Background(), nil, GetConceptMapInput{
+		RoomID:    "cm-root",
+		InferFrom: "project",
+	})
+	if err != nil {
+		t.Fatalf("handleGetConceptMap error: %v", err)
+	}
+	text := resultText(res)
+	if !strings.Contains(text, "cm-sibling") {
+		t.Errorf("expected same-project room 'cm-sibling' in output: %s", text)
+	}
+	if strings.Contains(text, "cm-other") {
+		t.Errorf("different-project room 'cm-other' should not appear: %s", text)
+	}
+	if !strings.Contains(text, "inferred: project") {
+		t.Errorf("expected inferred annotation in output: %s", text)
+	}
+	if !strings.Contains(text, "infer_from: project") {
+		t.Errorf("expected infer_from header in output: %s", text)
+	}
+}
+
+func TestHandleGetConceptMapInferFromTags(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "cmt-root", withTags("go,api"))
+	mustCreateRoom(t, reg.Server, "cmt-tagged", withTags("go,grpc"))
+	mustCreateRoom(t, reg.Server, "cmt-unrelated", withTags("python"))
+
+	res, _, err := reg.handleGetConceptMap(context.Background(), nil, GetConceptMapInput{
+		RoomID:    "cmt-root",
+		InferFrom: "tags",
+	})
+	if err != nil {
+		t.Fatalf("handleGetConceptMap error: %v", err)
+	}
+	text := resultText(res)
+	if !strings.Contains(text, "cmt-tagged") {
+		t.Errorf("expected shared-tag room 'cmt-tagged' in output: %s", text)
+	}
+	if strings.Contains(text, "cmt-unrelated") {
+		t.Errorf("no-shared-tag room 'cmt-unrelated' should not appear: %s", text)
+	}
+	if !strings.Contains(text, "inferred: tags") {
+		t.Errorf("expected inferred tags annotation: %s", text)
+	}
+}
