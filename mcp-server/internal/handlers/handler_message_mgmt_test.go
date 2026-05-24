@@ -470,3 +470,150 @@ func TestHandleUpdateMessageNoExpectedContent(t *testing.T) {
 		t.Errorf("expected success, got: %s", resultText(res))
 	}
 }
+
+// ========== fork_thread ==========
+
+func TestHandleForkThread(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "fork-src", withProject("my-project"), withTags("go"))
+	mustPost(t, reg.Server, "fork-src", "Alice", "First message — stays")
+	anchor := mustPost(t, reg.Server, "fork-src", "Bob", "Forked start")
+	mustPost(t, reg.Server, "fork-src", "Alice", "Follow-up")
+
+	res, _, err := reg.handleForkThread(context.Background(), nil, ForkThreadInput{
+		StartMessageID: anchor,
+		NewRoomID:      "fork-dst",
+		Topic:          "Forked topic",
+	})
+	if err != nil {
+		t.Fatalf("handleForkThread error: %v", err)
+	}
+	text := resultText(res)
+	if !strings.Contains(text, "Forked 2 message(s)") {
+		t.Errorf("expected 2 messages forked, got: %s", text)
+	}
+	if !strings.Contains(text, "fork-dst") {
+		t.Errorf("missing new room in output: %s", text)
+	}
+
+	// New room exists with right topic and inherited project.
+	dst, err := reg.Server.GetRoom("fork-dst")
+	if err != nil {
+		t.Fatalf("new room not created: %v", err)
+	}
+	if dst.Description != "Forked topic" {
+		t.Errorf("expected topic 'Forked topic', got %q", dst.Description)
+	}
+	if dst.Project != "my-project" {
+		t.Errorf("expected inherited project 'my-project', got %q", dst.Project)
+	}
+
+	// Source room retains only the first message.
+	srcMsgs, _ := reg.Server.GetRecentMessages("fork-src", 10)
+	if len(srcMsgs) != 1 {
+		t.Errorf("expected 1 message in source, got %d", len(srcMsgs))
+	}
+
+	// New room has the 2 moved messages.
+	dstMsgs, _ := reg.Server.GetRecentMessages("fork-dst", 10)
+	if len(dstMsgs) != 2 {
+		t.Errorf("expected 2 messages in fork-dst, got %d", len(dstMsgs))
+	}
+
+	// Both rooms are bidirectionally linked.
+	src, _ := reg.Server.GetRoom("fork-src")
+	if !strings.Contains(src.RelatedRooms, "fork-dst") {
+		t.Errorf("source not linked to fork-dst: %q", src.RelatedRooms)
+	}
+	if !strings.Contains(dst.RelatedRooms, "fork-src") {
+		t.Errorf("fork-dst not linked to fork-src: %q", dst.RelatedRooms)
+	}
+}
+
+func TestHandleForkThreadInheritsProject(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "fp-src", withProject("inherited-proj"))
+	id := mustPost(t, reg.Server, "fp-src", "Alice", "Message")
+
+	reg.handleForkThread(context.Background(), nil, ForkThreadInput{
+		StartMessageID: id,
+		NewRoomID:      "fp-dst",
+	})
+
+	dst, _ := reg.Server.GetRoom("fp-dst")
+	if dst.Project != "inherited-proj" {
+		t.Errorf("expected inherited project, got %q", dst.Project)
+	}
+	if dst.Description != "Forked from fp-src" {
+		t.Errorf("expected default topic, got %q", dst.Description)
+	}
+}
+
+func TestHandleForkThreadExplicitProjectAndTags(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "fpt-src", withProject("old-project"))
+	id := mustPost(t, reg.Server, "fpt-src", "Alice", "Message")
+
+	reg.handleForkThread(context.Background(), nil, ForkThreadInput{
+		StartMessageID: id,
+		NewRoomID:      "fpt-dst",
+		Project:        "new-project",
+		Tags:           "go,api",
+	})
+
+	dst, _ := reg.Server.GetRoom("fpt-dst")
+	if dst.Project != "new-project" {
+		t.Errorf("expected explicit project 'new-project', got %q", dst.Project)
+	}
+	if !strings.Contains(dst.Tags, "go") {
+		t.Errorf("expected tags, got %q", dst.Tags)
+	}
+}
+
+func TestHandleForkThreadMissingStartMessageID(t *testing.T) {
+	reg := setupHandlerTest(t)
+	res, _, _ := reg.handleForkThread(context.Background(), nil, ForkThreadInput{
+		NewRoomID: "fork-x",
+	})
+	if !strings.Contains(resultText(res), "start_message_id is required") {
+		t.Errorf("expected required error, got: %s", resultText(res))
+	}
+}
+
+func TestHandleForkThreadMissingNewRoomID(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "fmr-src")
+	id := mustPost(t, reg.Server, "fmr-src", "Alice", "Message")
+	res, _, _ := reg.handleForkThread(context.Background(), nil, ForkThreadInput{
+		StartMessageID: id,
+	})
+	if !strings.Contains(resultText(res), "new_room_id is required") {
+		t.Errorf("expected required error, got: %s", resultText(res))
+	}
+}
+
+func TestHandleForkThreadMessageNotFound(t *testing.T) {
+	reg := setupHandlerTest(t)
+	res, _, _ := reg.handleForkThread(context.Background(), nil, ForkThreadInput{
+		StartMessageID: "nonexistent-uuid-00000000",
+		NewRoomID:      "fork-nf",
+	})
+	if !strings.Contains(resultText(res), "not found") {
+		t.Errorf("expected not found error, got: %s", resultText(res))
+	}
+}
+
+func TestHandleForkThreadRoomAlreadyExists(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "fork-collision-src")
+	mustCreateRoom(t, reg.Server, "fork-collision-dst")
+	id := mustPost(t, reg.Server, "fork-collision-src", "Alice", "Message")
+
+	res, _, _ := reg.handleForkThread(context.Background(), nil, ForkThreadInput{
+		StartMessageID: id,
+		NewRoomID:      "fork-collision-dst",
+	})
+	if !strings.Contains(resultText(res), "Error") {
+		t.Errorf("expected error when new_room_id already exists, got: %s", resultText(res))
+	}
+}

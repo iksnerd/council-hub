@@ -4,6 +4,18 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.30.2] - 2026-05-24
+
+### Fixed
+- **`fork_thread` destination collision** — forking into an existing room ID previously silently moved messages into it (due to `INSERT OR IGNORE` in `CreateRoom`). Now returns a clear error: `room 'X' already exists. fork_thread requires a new room ID.`
+
+### Changed
+- **Skill resources updated** — `council://guide` and `council://workflows` now document `fork_thread` and `get_concept_map(infer_from=...)` patterns.
+
+### Tests
+- Added 7 handler-level tests for `fork_thread` (happy path, project/tag inheritance, missing params, not-found, collision).
+- Added 2 handler-level tests for `get_concept_map(infer_from=project/tags)`.
+
 ## [0.30.1] - 2026-05-23
 
 ### Fixed
