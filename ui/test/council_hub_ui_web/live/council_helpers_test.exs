@@ -114,8 +114,8 @@ defmodule CouncilHubUiWeb.CouncilHelpersTest do
   test "status badge classes" do
     assert String.contains?(CouncilHelpers.status_badge_class("active"), "emerald")
     assert String.contains?(CouncilHelpers.status_badge_class("paused"), "amber")
-    assert String.contains?(CouncilHelpers.status_badge_class("resolved"), "slate")
-    assert String.contains?(CouncilHelpers.status_badge_class("unknown"), "slate")
+    assert String.contains?(CouncilHelpers.status_badge_class("resolved"), "ch-raised")
+    assert String.contains?(CouncilHelpers.status_badge_class("unknown"), "ch-raised")
   end
 
   # -- status_dot_class --
@@ -124,8 +124,8 @@ defmodule CouncilHubUiWeb.CouncilHelpersTest do
     assert String.contains?(CouncilHelpers.status_dot_class("active"), "emerald")
     assert String.contains?(CouncilHelpers.status_dot_class("active"), "pulse")
     assert String.contains?(CouncilHelpers.status_dot_class("paused"), "amber")
-    assert String.contains?(CouncilHelpers.status_dot_class("resolved"), "slate")
-    assert String.contains?(CouncilHelpers.status_dot_class("other"), "slate")
+    assert String.contains?(CouncilHelpers.status_dot_class("resolved"), "ch-text-xs")
+    assert String.contains?(CouncilHelpers.status_dot_class("other"), "ch-text-xs")
   end
 
   # -- format_timestamp --
@@ -233,8 +233,8 @@ defmodule CouncilHubUiWeb.CouncilHelpersTest do
     assert String.contains?(CouncilHelpers.type_color("decision"), "emerald")
   end
 
-  test "type_color action is sky" do
-    assert String.contains?(CouncilHelpers.type_color("action"), "sky")
+  test "type_color action uses CSS variable" do
+    assert String.contains?(CouncilHelpers.type_color("action"), "ch-raised")
   end
 
   test "type_color critique is amber" do
@@ -245,12 +245,12 @@ defmodule CouncilHubUiWeb.CouncilHelpersTest do
     assert String.contains?(CouncilHelpers.type_color("code"), "violet")
   end
 
-  test "type_color review is teal" do
-    assert String.contains?(CouncilHelpers.type_color("review"), "teal")
+  test "type_color review uses CSS variable" do
+    assert String.contains?(CouncilHelpers.type_color("review"), "ch-raised")
   end
 
-  test "type_color thought is slate" do
-    assert String.contains?(CouncilHelpers.type_color("thought"), "slate")
+  test "type_color thought uses CSS variable" do
+    assert String.contains?(CouncilHelpers.type_color("thought"), "ch-raised")
   end
 
   test "type_color synthesis uses purple" do
@@ -258,18 +258,18 @@ defmodule CouncilHubUiWeb.CouncilHelpersTest do
     assert String.contains?(result, "purple")
   end
 
-  test "type_color draft is blue" do
-    assert String.contains?(CouncilHelpers.type_color("draft"), "blue")
+  test "type_color draft uses CSS variable" do
+    assert String.contains?(CouncilHelpers.type_color("draft"), "ch-raised")
   end
 
-  test "type_color unknown falls back to slate" do
+  test "type_color unknown falls back to CSS variable" do
     result = CouncilHelpers.type_color("unknown")
-    assert String.contains?(result, "slate")
+    assert String.contains?(result, "ch-raised")
   end
 
-  test "type_color nil falls back to slate" do
+  test "type_color nil falls back to CSS variable" do
     result = CouncilHelpers.type_color(nil)
-    assert String.contains?(result, "slate")
+    assert String.contains?(result, "ch-raised")
   end
 
   # -- type_icon (synthesis) --

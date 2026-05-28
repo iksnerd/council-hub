@@ -128,7 +128,7 @@ defmodule CouncilHubUiWeb.CouncilComponentsRoomTest do
       }
 
       html = render_component(&CouncilComponents.room_card/1, assigns)
-      assert html =~ "sky"
+      assert html =~ "ch-active"
     end
 
     test "renders paused status" do

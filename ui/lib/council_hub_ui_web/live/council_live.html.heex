@@ -1,17 +1,17 @@
-<div class="flex h-screen bg-[#0b1120] text-slate-300 overflow-hidden">
+<div class="flex h-screen bg-[var(--ch-bg)] text-[var(--ch-text-mid)] overflow-hidden">
   <%!-- SIDEBAR --%>
-  <aside class="w-72 bg-[#0f1629] border-r border-slate-700/40 flex flex-col shrink-0">
+  <aside class="w-72 bg-[var(--ch-surface)] border-r border-[var(--ch-border)] flex flex-col shrink-0">
     <%!-- Logo / Title --%>
-    <div class="px-3 py-3 border-b border-slate-700/40">
+    <div class="px-3 py-3 border-b border-[var(--ch-border)]">
       <div class="flex items-center gap-2.5">
         <div class="w-7 h-7 flex items-center justify-center">
           <img src={~p"/images/logo.svg"} alt="Council Hub" class="w-7 h-7" />
         </div>
         <div>
-          <h1 class="text-[12px] font-semibold text-slate-200 tracking-widest uppercase">
+          <h1 class="text-[12px] font-semibold text-[var(--ch-text-hi)] tracking-widest uppercase">
             Council Hub
           </h1>
-          <p class="text-[10px] text-slate-500 font-mono tracking-wide">
+          <p class="text-[10px] text-[var(--ch-text-xs)] font-mono tracking-wide">
             v{Application.spec(:council_hub_ui, :vsn)}
           </p>
         </div>
@@ -27,13 +27,15 @@
     </div>
 
     <%!-- Cluster Nodes --%>
-    <div class="px-3 py-2 border-b border-slate-700/40">
+    <div class="px-3 py-2 border-b border-[var(--ch-border)]">
       <div class="flex items-center gap-1.5 mb-1.5">
-        <span class="w-1.5 h-1.5 rounded-full bg-sky-400/60 animate-pulse"></span>
-        <span class="text-[10px] font-medium text-slate-400 uppercase tracking-[0.15em]">
+        <span class="w-1.5 h-1.5 rounded-full bg-[var(--ch-text-lo)] animate-pulse"></span>
+        <span class="text-[10px] font-medium text-[var(--ch-text-lo)] uppercase tracking-[0.15em]">
           Nodes
         </span>
-        <span class="text-[10px] text-slate-500 font-mono ml-auto">{length(@nodes)}</span>
+        <span class="text-[10px] text-[var(--ch-text-xs)] font-mono ml-auto">
+          {length(@nodes)}
+        </span>
       </div>
       <div class="flex flex-wrap gap-1">
         <%= for node <- @nodes do %>
@@ -41,15 +43,19 @@
             class={[
               "px-1.5 py-px rounded text-[10px] font-mono border flex items-center gap-1 truncate",
               if(node == Node.self(),
-                do: "bg-sky-500/10 text-sky-300 border-sky-500/20",
-                else: "bg-slate-500/5 text-slate-400 border-slate-500/15"
+                do:
+                  "bg-[var(--ch-active-bg)] text-[var(--ch-text-hi)] border-[var(--ch-active-border)]",
+                else: "bg-[var(--ch-raised)] text-[var(--ch-text-lo)] border-[var(--ch-border)]"
               )
             ]}
             title={to_string(node)}
           >
             <span class={[
               "w-1.5 h-1.5 rounded-full shrink-0",
-              if(node == Node.self(), do: "bg-sky-400", else: "bg-slate-500")
+              if(node == Node.self(),
+                do: "bg-[var(--ch-text-hi)]",
+                else: "bg-[var(--ch-text-xs)]"
+              )
             ]}>
             </span>
             {short_node(to_string(node))}
@@ -76,7 +82,7 @@
     <%!-- Search + Cluster Toggle --%>
     <div class="px-3 py-2 flex items-center gap-1.5">
       <form :if={@rooms != []} phx-change="filter_rooms" class="relative flex-1">
-        <span class="hero-magnifying-glass w-3 h-3 text-slate-500 absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none">
+        <span class="hero-magnifying-glass w-3 h-3 text-[var(--ch-text-xs)] absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none">
         </span>
         <input
           type="text"
@@ -85,7 +91,7 @@
           placeholder="Filter..."
           autocomplete="off"
           phx-debounce="150"
-          class="w-full bg-slate-800/40 border border-slate-700/40 rounded text-[11px] text-slate-300 placeholder-slate-500 pl-7 pr-2 py-1 focus:outline-none focus:border-sky-500/40 focus:ring-1 focus:ring-sky-500/15"
+          class="w-full bg-[var(--ch-raised)] border border-[var(--ch-border)] rounded text-[11px] text-[var(--ch-text-mid)] placeholder-[var(--ch-text-xs)] pl-7 pr-2 py-1 focus:outline-none focus:border-[var(--ch-focus-border)] focus:ring-1 focus:ring-[var(--ch-focus-ring)]"
         />
       </form>
       <button
@@ -98,8 +104,10 @@
         class={[
           "shrink-0 px-1.5 py-1 rounded border text-[10px] font-mono transition-colors",
           if(@cluster_wide,
-            do: "bg-sky-500/12 border-sky-500/25 text-sky-300",
-            else: "bg-slate-800/40 border-slate-700/40 text-slate-400 hover:text-slate-200"
+            do:
+              "bg-[var(--ch-active-bg)] border-[var(--ch-active-border)] text-[var(--ch-text-hi)]",
+            else:
+              "bg-[var(--ch-raised)] border-[var(--ch-border)] text-[var(--ch-text-lo)] hover:text-[var(--ch-text-mid)]"
           )
         ]}
       >
@@ -110,7 +118,7 @@
     <%!-- Room List --%>
     <nav class="flex-1 overflow-y-auto px-2 pt-1 pb-2 scrollbar-thin">
       <%= if @rooms == [] do %>
-        <div class="text-center text-slate-500 text-[11px] py-8 px-4">
+        <div class="text-center text-[var(--ch-text-xs)] text-[11px] py-8 px-4">
           <%= if !@db_connected do %>
             Waiting for database...
           <% else %>
@@ -127,14 +135,14 @@
             }
             class="mb-1 group/details"
           >
-            <summary class="flex items-center gap-1.5 px-2 py-1 cursor-pointer list-none select-none hover:text-slate-200 transition-colors">
-              <span class="text-slate-500 group-open/details:rotate-90 transition-transform duration-150 text-[9px]">
+            <summary class="flex items-center gap-1.5 px-2 py-1 cursor-pointer list-none select-none hover:text-[var(--ch-text-mid)] transition-colors">
+              <span class="text-[var(--ch-text-xs)] group-open/details:rotate-90 transition-transform duration-150 text-[9px]">
                 ▶
               </span>
-              <span class="text-[10px] font-medium text-slate-400 uppercase tracking-[0.12em] flex-1">
+              <span class="text-[10px] font-medium text-[var(--ch-text-lo)] uppercase tracking-[0.12em] flex-1">
                 {project}
               </span>
-              <span class="text-[10px] text-slate-500 font-mono">{length(rooms)}</span>
+              <span class="text-[10px] text-[var(--ch-text-xs)] font-mono">{length(rooms)}</span>
             </summary>
             <div class="space-y-px ml-1">
               <%= for room <- rooms do %>
@@ -155,7 +163,7 @@
         <% end %>
         <div
           :if={filtered == [] && @room_filter != ""}
-          class="text-center text-slate-500 text-[11px] py-6"
+          class="text-center text-[var(--ch-text-xs)] text-[11px] py-6"
         >
           No rooms matching "{@room_filter}"
         </div>
@@ -163,7 +171,7 @@
     </nav>
 
     <%!-- Footer --%>
-    <div class="px-3 py-2 border-t border-slate-700/40 text-[10px] text-slate-500 font-mono flex items-center justify-between">
+    <div class="px-3 py-2 border-t border-[var(--ch-border)] text-[10px] text-[var(--ch-text-xs)] font-mono flex items-center justify-between">
       <span>{length(@rooms)} rooms</span>
       <span>v{Application.spec(:council_hub_ui, :vsn)}</span>
       <span class="flex items-center gap-1">
@@ -184,15 +192,16 @@
         tag_input={@tag_input}
         participants={@active_room_participants}
         time_range={Map.get(@time_ranges, @active_room.id)}
+        type_counts={Map.get(@type_counts, @active_room.id, %{})}
       />
 
       <%!-- Message Search + Type Filter --%>
-      <div class="px-4 py-2 border-b border-slate-700/40">
+      <div class="px-4 py-2 border-b border-[var(--ch-border)]">
         <div class="flex items-center gap-2 flex-wrap">
           <form phx-change="search_messages" class="relative flex-1 min-w-32">
             <span class={[
               "w-3 h-3 absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none hero-magnifying-glass",
-              if(@searching, do: "text-sky-400", else: "text-slate-500")
+              if(@searching, do: "text-[var(--ch-text-mid)]", else: "text-[var(--ch-text-xs)]")
             ]}>
             </span>
             <input
@@ -202,7 +211,7 @@
               placeholder="Search..."
               autocomplete="off"
               phx-debounce="300"
-              class="w-full bg-slate-800/40 border border-slate-700/40 rounded text-[11px] text-slate-300 placeholder-slate-500 pl-7 pr-2 py-1 focus:outline-none focus:border-sky-500/40 focus:ring-1 focus:ring-sky-500/15"
+              class="w-full bg-[var(--ch-raised)] border border-[var(--ch-border)] rounded text-[11px] text-[var(--ch-text-mid)] placeholder-[var(--ch-text-xs)] pl-7 pr-2 py-1 focus:outline-none focus:border-[var(--ch-focus-border)] focus:ring-1 focus:ring-[var(--ch-focus-ring)]"
             />
           </form>
           <button
@@ -214,8 +223,10 @@
               if(
                 @show_search_filters or @search_author != "" or @search_since != "" or
                   @search_until != "",
-                do: "bg-sky-500/12 border-sky-500/25 text-sky-300",
-                else: "bg-slate-800/40 border-slate-700/40 text-slate-400 hover:text-slate-200"
+                do:
+                  "bg-[var(--ch-active-bg)] border-[var(--ch-active-border)] text-[var(--ch-text-hi)]",
+                else:
+                  "bg-[var(--ch-raised)] border-[var(--ch-border)] text-[var(--ch-text-lo)] hover:text-[var(--ch-text-mid)]"
               )
             ]}
           >
@@ -229,8 +240,9 @@
                 class={[
                   "inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium transition-colors cursor-pointer",
                   if(@type_filter == value && !@searching,
-                    do: "bg-sky-500/15 text-sky-300",
-                    else: "text-slate-400 hover:text-slate-200 hover:bg-slate-800/40"
+                    do: "bg-[var(--ch-active-bg)] text-[var(--ch-text-hi)]",
+                    else:
+                      "text-[var(--ch-text-lo)] hover:text-[var(--ch-text-mid)] hover:bg-[var(--ch-hover-bg)]"
                   )
                 ]}
               >
@@ -240,10 +252,10 @@
           </div>
         </div>
         <%!-- Advanced filter panel --%>
-        <div :if={@show_search_filters} class="mt-2 pt-2 border-t border-slate-700/30">
+        <div :if={@show_search_filters} class="mt-2 pt-2 border-t border-[var(--ch-border)]">
           <form phx-change="apply_search_filters" class="flex items-center gap-2 flex-wrap">
             <div class="relative flex-1 min-w-24">
-              <span class="hero-user w-3 h-3 absolute left-2 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none">
+              <span class="hero-user w-3 h-3 absolute left-2 top-1/2 -translate-y-1/2 text-[var(--ch-text-xs)] pointer-events-none">
               </span>
               <input
                 type="text"
@@ -252,17 +264,17 @@
                 placeholder="Author..."
                 autocomplete="off"
                 phx-debounce="300"
-                class="w-full bg-slate-800/40 border border-slate-700/40 rounded text-[11px] text-slate-300 placeholder-slate-500 pl-6 pr-2 py-0.5 focus:outline-none focus:border-sky-500/40"
+                class="w-full bg-[var(--ch-raised)] border border-[var(--ch-border)] rounded text-[11px] text-[var(--ch-text-mid)] placeholder-[var(--ch-text-xs)] pl-6 pr-2 py-0.5 focus:outline-none focus:border-[var(--ch-focus-border)]"
               />
             </div>
-            <div class="flex items-center gap-1 text-[10px] text-slate-400 font-mono">
+            <div class="flex items-center gap-1 text-[10px] text-[var(--ch-text-lo)] font-mono">
               <span>from</span>
               <input
                 type="date"
                 name="since"
                 value={@search_since}
                 phx-debounce="300"
-                class="bg-slate-800/40 border border-slate-700/40 rounded text-[11px] text-slate-300 px-1.5 py-0.5 focus:outline-none focus:border-sky-500/40"
+                class="bg-[var(--ch-raised)] border border-[var(--ch-border)] rounded text-[11px] text-[var(--ch-text-mid)] px-1.5 py-0.5 focus:outline-none focus:border-[var(--ch-focus-border)]"
               />
               <span>to</span>
               <input
@@ -270,12 +282,12 @@
                 name="until"
                 value={@search_until}
                 phx-debounce="300"
-                class="bg-slate-800/40 border border-slate-700/40 rounded text-[11px] text-slate-300 px-1.5 py-0.5 focus:outline-none focus:border-sky-500/40"
+                class="bg-[var(--ch-raised)] border border-[var(--ch-border)] rounded text-[11px] text-[var(--ch-text-mid)] px-1.5 py-0.5 focus:outline-none focus:border-[var(--ch-focus-border)]"
               />
             </div>
             <% active_filters =
               Enum.count([@search_author, @search_since, @search_until], &(&1 != "")) %>
-            <span :if={active_filters > 0} class="text-[10px] text-sky-300 font-mono">
+            <span :if={active_filters > 0} class="text-[10px] text-[var(--ch-text-mid)] font-mono">
               {active_filters} active
             </span>
           </form>
@@ -307,22 +319,24 @@
       <%!-- Empty state --%>
       <div :if={!@has_messages} class="flex-1 flex items-center justify-center -mt-16">
         <div class="text-center">
-          <p class="text-[12px] text-slate-400">No messages yet</p>
-          <p class="text-[11px] text-slate-500 mt-1">Agents will post here via MCP tools</p>
+          <p class="text-[12px] text-[var(--ch-text-lo)]">No messages yet</p>
+          <p class="text-[11px] text-[var(--ch-text-xs)] mt-1">
+            Agents will post here via MCP tools
+          </p>
         </div>
       </div>
     <% else %>
       <%!-- No Room Selected --%>
       <div class="flex-1 flex items-center justify-center">
         <div class="text-center max-w-sm">
-          <div class="w-10 h-10 rounded bg-slate-800/40 flex items-center justify-center mx-auto mb-4 border border-slate-700/30">
-            <span class="hero-building-library w-5 h-5 text-slate-500"></span>
+          <div class="w-10 h-10 rounded bg-[var(--ch-raised)] flex items-center justify-center mx-auto mb-4 border border-[var(--ch-border)]">
+            <span class="hero-building-library w-5 h-5 text-[var(--ch-text-xs)]"></span>
           </div>
-          <h2 class="text-sm font-medium text-slate-300 mb-2">Council Hub</h2>
-          <p class="text-slate-400 text-[12px] leading-relaxed">
+          <h2 class="text-sm font-medium text-[var(--ch-text-mid)] mb-2">Council Hub</h2>
+          <p class="text-[var(--ch-text-lo)] text-[12px] leading-relaxed">
             Select a room from the sidebar to observe the council.
           </p>
-          <div class="mt-4 flex items-center justify-center gap-1.5 text-[10px] text-slate-500 font-mono">
+          <div class="mt-4 flex items-center justify-center gap-1.5 text-[10px] text-[var(--ch-text-xs)] font-mono">
             <span class="w-1.5 h-1.5 rounded-full bg-emerald-500/50 animate-pulse"></span> polling
           </div>
         </div>
