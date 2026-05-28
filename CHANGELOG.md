@@ -4,6 +4,11 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.30.4] - 2026-05-28
+
+### Fixed
+- **`/health` version field was stale** — hardcoded `"0.27.0"` in `main.go`'s health handler; now reads from `council.Version` constant. Introduced `internal/council/version.go` as the single source of truth for the version string (used by both the MCP server announcement and the health endpoint).
+
 ## [0.30.3] - 2026-05-28
 
 ### Fixed
