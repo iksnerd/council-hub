@@ -197,7 +197,7 @@ defmodule CouncilHubUiWeb.CouncilComponentsMessageTest do
 
       html = render_component(&CouncilComponents.message_bubble/1, assigns)
       assert html =~ "PIN"
-      assert html =~ "border-sky-500"
+      assert html =~ "ch-border"
     end
 
     test "renders @mention tags when mentions present" do

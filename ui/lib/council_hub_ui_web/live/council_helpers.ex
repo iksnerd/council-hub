@@ -84,14 +84,14 @@ defmodule CouncilHubUiWeb.CouncilHelpers do
   def type_color(type) do
     case type do
       "decision" -> "bg-emerald-500/10 text-emerald-400/80"
-      "action" -> "bg-sky-500/10 text-sky-400/80"
+      "action" -> "bg-[var(--ch-raised)] text-[var(--ch-text-lo)]"
       "critique" -> "bg-amber-500/10 text-amber-400/80"
       "code" -> "bg-violet-500/10 text-violet-400/80"
-      "review" -> "bg-teal-500/10 text-teal-400/80"
-      "thought" -> "bg-slate-700/30 text-slate-500"
-      "draft" -> "bg-blue-500/10 text-blue-300/80"
+      "review" -> "bg-[var(--ch-raised)] text-[var(--ch-text-lo)]"
+      "thought" -> "bg-[var(--ch-raised)] text-[var(--ch-text-xs)]"
+      "draft" -> "bg-[var(--ch-raised)] text-[var(--ch-text-lo)]"
       "synthesis" -> "bg-purple-500/10 text-purple-300/80"
-      _ -> "bg-slate-800/40 text-slate-500"
+      _ -> "bg-[var(--ch-raised)] text-[var(--ch-text-xs)]"
     end
   end
 
@@ -106,10 +106,17 @@ defmodule CouncilHubUiWeb.CouncilHelpers do
 
   def status_badge_class(status) do
     case status do
-      "active" -> "bg-emerald-500/10 text-emerald-400/80 border border-emerald-500/15"
-      "paused" -> "bg-amber-500/10 text-amber-400/80 border border-amber-500/15"
-      "resolved" -> "bg-slate-500/10 text-slate-400/80 border border-slate-500/15"
-      _ -> "bg-slate-500/10 text-slate-400/80 border border-slate-500/15"
+      "active" ->
+        "bg-emerald-500/10 text-emerald-400/80 border border-emerald-500/15"
+
+      "paused" ->
+        "bg-amber-500/10 text-amber-400/80 border border-amber-500/15"
+
+      "resolved" ->
+        "bg-[var(--ch-raised)] text-[var(--ch-text-xs)] border border-[var(--ch-border)]"
+
+      _ ->
+        "bg-[var(--ch-raised)] text-[var(--ch-text-xs)] border border-[var(--ch-border)]"
     end
   end
 
@@ -117,8 +124,8 @@ defmodule CouncilHubUiWeb.CouncilHelpers do
     case status do
       "active" -> "bg-emerald-400 animate-pulse"
       "paused" -> "bg-amber-400"
-      "resolved" -> "bg-slate-500"
-      _ -> "bg-slate-500"
+      "resolved" -> "bg-[var(--ch-text-xs)]"
+      _ -> "bg-[var(--ch-text-xs)]"
     end
   end
 

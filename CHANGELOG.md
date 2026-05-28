@@ -4,6 +4,16 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.31.0] - 2026-05-29
+
+### Changed
+- **UI: full CSS variable color system** — all UI chrome now routes through a `--ch-*` custom property palette defined in `app.css`. A single `:root` block controls every surface, border, text level, and interactive state. No more scattered Tailwind color utilities for chrome.
+- **UI: pure grayscale** — eliminated all `sky-*`, `cyan-*`, `slate-*`, and `neutral-*` color utilities from UI chrome. Backgrounds and interactive states use achromatic `rgba(255,255,255,N)` values. Functional / semantic colors (emerald=active, amber=warn, red=error, purple=synthesis/code, author identity hex) are retained.
+- **UI: tags visible in sidebar room cards** — each room card now shows up to 3 tags (noise tags `stale`/`needs-synthesis` suppressed) as small monospace chips, making room context scannable without opening the room.
+- **UI: source node shown in room header** — cluster-wide rooms now display their owning node (`boyandrenski@…`) in the header metadata column.
+- **UI: type breakdown in room header** — the header right column now shows the compact type count string (e.g. `A:9 S:4 D:3`) alongside the total message count.
+- **UI: dark backgrounds are now truly neutral** — replaced blue-tinted hex backgrounds (`#0b1120`, `#0f1629`, `#131a2e`) with pure achromatic values (`#0e0e0e`, `#161616`, `#262626`).
+
 ## [0.30.4] - 2026-05-28
 
 ### Fixed
