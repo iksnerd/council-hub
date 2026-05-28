@@ -28,7 +28,7 @@ func healthHandler(cs *council.Server) http.HandlerFunc {
 		cs.Mu.RUnlock()
 		body := map[string]any{
 			"status":                "ok",
-			"version":               "0.27.0",
+			"version":               council.Version,
 			"last_integrity_check":  last.UTC().Format(time.RFC3339),
 			"heal_count_since_boot": atomic.LoadUint64(&cs.HealCount),
 			"now":                   time.Now().UTC().Format(time.RFC3339),
