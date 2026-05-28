@@ -38,6 +38,8 @@ defmodule CouncilHubUi.Cluster do
     merged =
       results
       |> List.flatten()
+      |> Enum.group_by(& &1.id)
+      |> Enum.map(fn {_id, items} -> Enum.max_by(items, & &1.updated_at, NaiveDateTime) end)
       |> Enum.sort_by(& &1.updated_at, {:desc, NaiveDateTime})
 
     %{results: merged, warnings: warnings}
@@ -55,7 +57,7 @@ defmodule CouncilHubUi.Cluster do
     # fan_out already unwraps {:ok, data} from local_query,
     # and room_stats returns {:ok, map} which fan_out handles via tag_with_node.
     # Results are already tagged maps or nil.
-    stats = List.first(results)
+    stats = Enum.max_by(results, fn s -> Map.get(s, :message_count, 0) end, fn -> nil end)
 
     %{results: stats, warnings: warnings}
   end
@@ -69,7 +71,9 @@ defmodule CouncilHubUi.Cluster do
     {results, warnings} =
       fan_out(:get_room_with_messages, [room_id])
 
-    data = List.first(results)
+    # Prefer the node with the most messages — the local node may hold an empty
+    # stub while the authoritative copy lives on a peer.
+    data = Enum.max_by(results, fn r -> length(Map.get(r, :messages, [])) end, fn -> nil end)
 
     %{results: data, warnings: warnings}
   end
@@ -114,16 +118,15 @@ defmodule CouncilHubUi.Cluster do
       # Group by room_id and merge counts (assuming room might exist on multiple nodes, though unlikely)
       |> Enum.group_by(& &1.room_id)
       |> Enum.map(fn {room_id, items} ->
-        # Sum new_message_count and take the latest excerpt (we'll just take the first for simplicity, or sum them)
         total_count = Enum.reduce(items, 0, &(&1.new_message_count + &2))
-        latest_excerpt = List.first(items).latest_message_excerpt
-        source_node = List.first(items).source_node
+        # Prefer the node that reported the most activity for this room
+        best = Enum.max_by(items, & &1.new_message_count)
 
         %{
           room_id: room_id,
           new_message_count: total_count,
-          latest_message_excerpt: latest_excerpt,
-          source_node: source_node
+          latest_message_excerpt: best.latest_message_excerpt,
+          source_node: best.source_node
         }
       end)
       |> Enum.sort_by(& &1.new_message_count, :desc)

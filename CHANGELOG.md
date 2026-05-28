@@ -4,6 +4,15 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.30.3] - 2026-05-28
+
+### Fixed
+- **Cluster fan-out: `read_transcript` returns empty stub instead of remote content** — `Cluster.read_transcript/1` used `List.first` to pick among nodes, always preferring the local node even when it held only an empty stub room. Now picks the node with the most messages via `Enum.max_by`.
+- **Cluster fan-out: `room_stats` same local-stub bias** — same `List.first` pattern; now picks by highest `message_count`.
+- **Cluster fan-out: `list_rooms` returns duplicate rooms** — rooms existing on both nodes were returned twice. Now deduplicates by room ID, keeping the most recently updated copy.
+- **Cluster fan-out: `get_digest` excerpt/source_node from wrong node** — `List.first` was picking excerpt and `source_node` arbitrarily from a grouped set. Now picks the node with the highest `new_message_count` for that room.
+- **`handleReadRoomCluster` first-match bias** — Go handler broke on first matching room ID, favouring the local empty stub. Now iterates all matches and picks the one with the latest `UpdatedAt`.
+
 ## [0.30.2] - 2026-05-24
 
 ### Fixed

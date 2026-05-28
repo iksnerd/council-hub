@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"council-hub/internal/council"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -114,11 +115,17 @@ func (r *Registry) handleReadRoomCluster(args ReadRoomInput) (*mcp.CallToolResul
 		return nil, ToolOutput{}, fmt.Errorf("decode cluster room results: %w", err)
 	}
 
+	// Pick the copy with the most recent UpdatedAt — the local node may hold a
+	// stub with no topic/messages while the authoritative copy lives on a peer.
 	var room *ClusterRoomResult
-	for _, res := range results {
+	var bestTime time.Time
+	for i, res := range results {
 		if res.ID == args.RoomID {
-			room = &res
-			break
+			t := parseClusterTime(res.UpdatedAt)
+			if room == nil || t.After(bestTime) {
+				room = &results[i]
+				bestTime = t
+			}
 		}
 	}
 
