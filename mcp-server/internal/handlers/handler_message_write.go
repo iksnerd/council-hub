@@ -76,8 +76,18 @@ func (r *Registry) handlePostToRoom(ctx context.Context, req *mcp.CallToolReques
 		return msg(fmt.Sprintf("Error: Invalid message_type '%s'. Must be one of: message, thought, draft, decision, code, review, action, critique, synthesis.", args.MessageType))
 	}
 
-	// Verify room exists
+	// Verify room exists locally. If it doesn't and we're clustered, the room may
+	// be owned by a peer node — locate the owner and proxy the write there rather
+	// than silently creating a local shadow.
 	if _, err := r.Server.GetRoom(args.RoomID); err != nil {
+		if owner, lerr := r.locateRoomOwner(args.RoomID); lerr == nil && owner != "" {
+			msgID, perr := r.proxyPostToRoom(owner, args)
+			if perr != nil {
+				return msg(fmt.Sprintf("Error: room '%s' is owned by cluster node '%s' but the write could not be forwarded: %s", args.RoomID, owner, perr.Error()))
+			}
+			r.Server.Logger.Info("Message proxied to owner", "room_id", args.RoomID, "owner", owner, "msg_id", msgID)
+			return msg(fmt.Sprintf("Message #%.8s posted to room '%s' (on cluster node %s) by %s.\n\n```json\n{\"message_id\": \"%s\", \"room_id\": \"%s\", \"latest_message_id\": \"%s\", \"owner_node\": \"%s\"}\n```", msgID, args.RoomID, owner, args.Author, msgID, args.RoomID, msgID, owner))
+		}
 		return msg(fmt.Sprintf("Error: Room '%s' not found. Create it first with create_room.", args.RoomID))
 	}
 

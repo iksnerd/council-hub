@@ -415,6 +415,28 @@ defmodule CouncilHubUiWeb.ClusterControllerTest do
       assert %{"results" => []} = json_response(conn, 200)
     end
 
+    # Z2: delta read by room_id + after_id must only return messages after the cursor.
+    test "returns messages after a cursor with after_id", %{conn: conn} do
+      room = create_room(%{id: "api-getmsg-after"})
+      m1 = create_message(%{room_id: room.id, content: "before cursor"})
+      _m2 = create_message(%{room_id: room.id, content: "after cursor one"})
+      _m3 = create_message(%{room_id: room.id, content: "after cursor two"})
+
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> post("/api/internal/cluster/get_messages", %{
+          "room_id" => "api-getmsg-after",
+          "after_id" => m1.id
+        })
+
+      assert %{"results" => results} = json_response(conn, 200)
+      contents = Enum.map(results, & &1["content"])
+      assert "after cursor one" in contents
+      assert "after cursor two" in contents
+      refute "before cursor" in contents
+    end
+
     test "message results include all expected fields", %{conn: conn} do
       room = create_room(%{id: "api-getmsg-fields"})
       msg = create_message(%{room_id: room.id, author: "Claude", content: "field check"})
@@ -516,6 +538,51 @@ defmodule CouncilHubUiWeb.ClusterControllerTest do
         |> post("/api/internal/cluster/read_transcript", %{"room_id" => "nonexistent"})
 
       assert %{"results" => nil} = json_response(conn, 200)
+    end
+  end
+
+  describe "POST /api/internal/cluster/locate_room" do
+    test "returns the owning node for a public room", %{conn: conn} do
+      create_room(%{id: "locate-pub", visibility: "public"})
+      create_message(%{room_id: "locate-pub", content: "exists"})
+
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> post("/api/internal/cluster/locate_room", %{"room_id" => "locate-pub"})
+
+      assert %{"nodes" => nodes} = json_response(conn, 200)
+      assert Atom.to_string(Node.self()) in nodes
+    end
+
+    test "does not locate a private room", %{conn: conn} do
+      create_room(%{id: "locate-priv", visibility: "private"})
+      create_message(%{room_id: "locate-priv", content: "hidden"})
+
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> post("/api/internal/cluster/locate_room", %{"room_id" => "locate-priv"})
+
+      assert %{"nodes" => []} = json_response(conn, 200)
+    end
+
+    test "returns empty nodes for unknown room", %{conn: conn} do
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> post("/api/internal/cluster/locate_room", %{"room_id" => "ghost-room"})
+
+      assert %{"nodes" => []} = json_response(conn, 200)
+    end
+
+    test "returns 400 when room_id missing", %{conn: conn} do
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> post("/api/internal/cluster/locate_room", %{})
+
+      assert %{"error" => "room_id is required"} = json_response(conn, 400)
     end
   end
 end

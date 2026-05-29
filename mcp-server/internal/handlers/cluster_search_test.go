@@ -317,3 +317,61 @@ func TestHandleGetMessagesClusterEmpty(t *testing.T) {
 		t.Errorf("expected no-results message, got: %s", text)
 	}
 }
+
+// Z2: delta reads cluster-wide must forward after_id to the Phoenix API.
+func TestHandleGetMessagesClusterForwardsAfterID(t *testing.T) {
+	var gotBody map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"results":  []map[string]any{},
+			"warnings": []string{},
+		})
+	}))
+	defer server.Close()
+
+	reg := &Registry{
+		HTTPClient: &http.Client{Timeout: 5 * time.Second},
+		PhoenixURL: server.URL,
+	}
+
+	_, _, err := reg.handleGetMessagesCluster(GetMessagesInput{RoomID: "r1", AfterID: "msg-cursor", ClusterWide: "true"})
+	if err != nil {
+		t.Fatalf("handleGetMessagesCluster failed: %v", err)
+	}
+
+	if gotBody["after_id"] != "msg-cursor" {
+		t.Errorf("expected after_id forwarded to Phoenix, got body: %v", gotBody)
+	}
+}
+
+// Z3: empty cluster search must explain that message bodies are node-local.
+func TestHandleSearchMessagesClusterEmptyNodeLocalNote(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"results":  []map[string]any{},
+			"warnings": []string{"node@dead unreachable"},
+		})
+	}))
+	defer server.Close()
+
+	reg := &Registry{
+		HTTPClient: &http.Client{Timeout: 5 * time.Second},
+		PhoenixURL: server.URL,
+	}
+
+	result, _, err := reg.handleSearchMessagesCluster(SearchMessagesInput{Query: "nope", ClusterWide: "true"})
+	if err != nil {
+		t.Fatalf("handleSearchMessagesCluster failed: %v", err)
+	}
+
+	text := resultText(result)
+	if !strings.Contains(text, "node-local") {
+		t.Errorf("expected node-local explanation in empty result, got: %s", text)
+	}
+	if !strings.Contains(text, "**Cluster Warning:** node@dead unreachable") {
+		t.Errorf("expected standardized Cluster Warning format, got: %s", text)
+	}
+}

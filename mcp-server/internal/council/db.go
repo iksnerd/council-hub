@@ -23,6 +23,7 @@ type Room struct {
 	Tags         string
 	SystemPrompt string
 	RelatedRooms string
+	Visibility   string // "public" (default) or "private" (node-local, excluded from cluster fan-out)
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 }
@@ -142,6 +143,7 @@ func initSchema(db *sql.DB) error {
 		tags TEXT DEFAULT '',
 		system_prompt TEXT DEFAULT '',
 		related_rooms TEXT DEFAULT '',
+		visibility TEXT DEFAULT 'public',
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
@@ -206,6 +208,7 @@ func initSchema(db *sql.DB) error {
 		`ALTER TABLE messages ADD COLUMN pinned BOOLEAN DEFAULT 0`,
 		`ALTER TABLE messages ADD COLUMN reactions TEXT DEFAULT '{}'`,
 		`ALTER TABLE messages ADD COLUMN mentions TEXT DEFAULT ''`,
+		`ALTER TABLE rooms ADD COLUMN visibility TEXT DEFAULT 'public'`,
 	}
 	for _, m := range migrations {
 		_, _ = db.Exec(m) // Ignore "duplicate column" errors for already-migrated DBs

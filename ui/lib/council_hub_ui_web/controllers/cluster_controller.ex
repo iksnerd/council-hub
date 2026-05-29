@@ -107,20 +107,42 @@ defmodule CouncilHubUiWeb.ClusterController do
     end
   end
 
-  def get_messages(conn, params) do
-    # Can fetch by message_ids or room_id
-    cluster_params =
-      if Map.has_key?(params, "message_ids") do
-        ids =
-          String.split(Map.get(params, "message_ids", ""), ",", trim: true)
-          |> Enum.map(&String.trim/1)
+  def locate_room(conn, params) do
+    room_id = Map.get(params, "room_id", "")
 
-        %{"message_ids" => ids}
-      else
-        %{
-          "room_id" => Map.get(params, "room_id", ""),
-          "limit" => parse_limit(Map.get(params, "last_n", "10"))
-        }
+    if room_id == "" do
+      conn |> put_status(400) |> json(%{error: "room_id is required"})
+    else
+      result = Cluster.locate_room(room_id)
+      json(conn, %{nodes: result.nodes, warnings: result.warnings})
+    end
+  end
+
+  def get_messages(conn, params) do
+    # Three modes: by message_ids, delta read (room_id + after_id), or recent (room_id + last_n).
+    # Match on non-empty values, not key presence — the Go server always sends every key
+    # (empty string when unset), so Map.has_key? would always pick the message_ids branch.
+    message_ids = Map.get(params, "message_ids", "")
+    room_id = Map.get(params, "room_id", "")
+    after_id = Map.get(params, "after_id", "")
+
+    cluster_params =
+      cond do
+        message_ids != "" ->
+          ids =
+            String.split(message_ids, ",", trim: true)
+            |> Enum.map(&String.trim/1)
+
+          %{"message_ids" => ids}
+
+        room_id != "" and after_id != "" ->
+          %{"room_id" => room_id, "after_id" => after_id}
+
+        true ->
+          %{
+            "room_id" => room_id,
+            "limit" => parse_limit(Map.get(params, "last_n", "10"))
+          }
       end
 
     result = Cluster.get_messages(cluster_params)
@@ -193,6 +215,7 @@ defmodule CouncilHubUiWeb.ClusterController do
       tags: room.tags,
       system_prompt: room.system_prompt,
       related_rooms: room.related_rooms,
+      visibility: Map.get(room, :visibility, "public"),
       created_at: format_datetime(room.created_at),
       updated_at: format_datetime(room.updated_at),
       source_node: Map.get(room, :source_node, nil)

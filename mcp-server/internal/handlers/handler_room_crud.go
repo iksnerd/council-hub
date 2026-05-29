@@ -18,6 +18,7 @@ type CreateRoomInput struct {
 	Tags         string `json:"tags"`
 	SystemPrompt string `json:"system_prompt"`
 	RelatedRooms string `json:"related_rooms"`
+	Visibility   string `json:"visibility"`
 }
 
 // GetOrCreateRoomInput represents the parameters for upserting a room.
@@ -29,6 +30,7 @@ type GetOrCreateRoomInput struct {
 	Tags         string `json:"tags"`
 	SystemPrompt string `json:"system_prompt"`
 	RelatedRooms string `json:"related_rooms"`
+	Visibility   string `json:"visibility"`
 	LastN        string `json:"last_n"`
 }
 
@@ -45,6 +47,7 @@ type UpdateRoomInput struct {
 	RemoveTags   string `json:"remove_tags"`
 	SystemPrompt string `json:"system_prompt"`
 	RelatedRooms string `json:"related_rooms"`
+	Visibility   string `json:"visibility"`
 }
 
 // ReadRoomInput represents the parameters for reading a room's metadata.
@@ -101,9 +104,24 @@ func (r *Registry) handleCreateRoom(ctx context.Context, req *mcp.CallToolReques
 	// Pre-check existence so we know whether to post the initial message
 	_, roomAlreadyExists := r.Server.GetRoom(args.ID)
 
+	// Z1 conflict guard: if the room doesn't exist locally but a public peer owns
+	// the same ID, refuse to create a local shadow — name the owner instead.
+	if roomAlreadyExists != nil {
+		if owner, lerr := r.locateRoomOwner(args.ID); lerr == nil && owner != "" {
+			return msg(fmt.Sprintf("Error: room '%s' already exists on cluster node '%s'. Use post_to_room to participate in it, read_room(cluster_wide=true) to view it, or choose a different id.", args.ID, owner))
+		}
+	}
+
 	if err := r.Server.CreateRoom(args.ID, args.Topic, args.Project, args.TechStack, args.Tags, args.SystemPrompt, args.RelatedRooms); err != nil {
 		r.Server.Logger.Error("Failed to create room", "id", args.ID, "error", err)
 		return nil, ToolOutput{}, err
+	}
+
+	// Apply visibility (defaults to public at the DB level; only act on private).
+	if args.Visibility != "" {
+		if err := r.Server.SetVisibility(args.ID, args.Visibility); err != nil {
+			r.Server.Logger.Error("Failed to set room visibility", "id", args.ID, "error", err)
+		}
 	}
 
 	// Post initial message for new rooms created from a template
@@ -132,6 +150,9 @@ func (r *Registry) handleCreateRoom(ctx context.Context, req *mcp.CallToolReques
 	}
 	if args.RelatedRooms != "" {
 		fmt.Fprintf(&b, "**Related rooms:** %s (bidirectional links created)\n", args.RelatedRooms)
+	}
+	if strings.EqualFold(strings.TrimSpace(args.Visibility), "private") {
+		fmt.Fprintf(&b, "**Visibility:** private (node-local — excluded from cluster fan-out)\n")
 	}
 
 	if args.RelatedRooms == "" {
@@ -170,10 +191,19 @@ func (r *Registry) handleGetOrCreateRoom(ctx context.Context, req *mcp.CallToolR
 	room, err := r.Server.GetRoom(args.ID)
 	created := false
 	if err != nil {
+		// Z1 conflict guard: don't create a local shadow of a room a public peer owns.
+		if owner, lerr := r.locateRoomOwner(args.ID); lerr == nil && owner != "" {
+			return msg(fmt.Sprintf("Error: room '%s' already exists on cluster node '%s'. Use post_to_room to participate in it, or read_room(cluster_wide=true) to view it.", args.ID, owner))
+		}
 		// Room doesn't exist — create it
 		if err := r.Server.CreateRoom(args.ID, args.Topic, args.Project, args.TechStack, args.Tags, args.SystemPrompt, args.RelatedRooms); err != nil {
 			r.Server.Logger.Error("Failed to create room", "id", args.ID, "error", err)
 			return nil, ToolOutput{}, err
+		}
+		if args.Visibility != "" {
+			if err := r.Server.SetVisibility(args.ID, args.Visibility); err != nil {
+				r.Server.Logger.Error("Failed to set room visibility", "id", args.ID, "error", err)
+			}
 		}
 		room, _ = r.Server.GetRoom(args.ID)
 		created = true
@@ -202,6 +232,9 @@ func (r *Registry) handleGetOrCreateRoom(ctx context.Context, req *mcp.CallToolR
 	fmt.Fprintf(&b, "**Topic:** %s\n", room.Description)
 	if room.SystemPrompt != "" {
 		fmt.Fprintf(&b, "**System Prompt:** %s\n", room.SystemPrompt)
+	}
+	if room.Visibility == "private" {
+		fmt.Fprintf(&b, "**Visibility:** private (node-local)\n")
 	}
 
 	if !created {
@@ -280,8 +313,8 @@ func (r *Registry) handleUpdateRoom(ctx context.Context, req *mcp.CallToolReques
 		return msg("Error: room_id, room_ids, or where_project is required.")
 	}
 
-	if args.Topic == "" && args.Project == "" && args.TechStack == "" && args.Tags == "" && args.AddTags == "" && args.RemoveTags == "" && args.SystemPrompt == "" && args.RelatedRooms == "" {
-		return msg("Error: at least one field to update must be provided (topic, project, tech_stack, tags, add_tags, remove_tags, system_prompt, related_rooms).")
+	if args.Topic == "" && args.Project == "" && args.TechStack == "" && args.Tags == "" && args.AddTags == "" && args.RemoveTags == "" && args.SystemPrompt == "" && args.RelatedRooms == "" && args.Visibility == "" {
+		return msg("Error: at least one field to update must be provided (topic, project, tech_stack, tags, add_tags, remove_tags, system_prompt, related_rooms, visibility).")
 	}
 
 	var updated []string
@@ -309,6 +342,9 @@ func (r *Registry) handleUpdateRoom(ctx context.Context, req *mcp.CallToolReques
 	if args.RelatedRooms != "" {
 		updated = append(updated, "related_rooms")
 	}
+	if args.Visibility != "" {
+		updated = append(updated, "visibility")
+	}
 	fieldsLabel := strings.Join(updated, ", ")
 
 	var b strings.Builder
@@ -316,6 +352,12 @@ func (r *Registry) handleUpdateRoom(ctx context.Context, req *mcp.CallToolReques
 		if err := r.Server.UpdateRoom(id, args.Topic, args.Project, args.TechStack, args.Tags, args.AddTags, args.RemoveTags, args.SystemPrompt, args.RelatedRooms); err != nil {
 			fmt.Fprintf(&b, "Error updating '%s': %s\n", id, err.Error())
 			continue
+		}
+		if args.Visibility != "" {
+			if err := r.Server.SetVisibility(id, args.Visibility); err != nil {
+				fmt.Fprintf(&b, "Error setting visibility on '%s': %s\n", id, err.Error())
+				continue
+			}
 		}
 		r.Server.Logger.Info("Room updated", "room_id", id, "fields", fieldsLabel)
 		fmt.Fprintf(&b, "Room '%s' updated: %s.\n", id, fieldsLabel)
@@ -381,6 +423,9 @@ func (r *Registry) handleReadRoom(ctx context.Context, req *mcp.CallToolRequest,
 	}
 	if room.RelatedRooms != "" {
 		fmt.Fprintf(&b, "**Related Rooms:** %s\n", room.RelatedRooms)
+	}
+	if room.Visibility == "private" {
+		fmt.Fprintf(&b, "**Visibility:** private (node-local — excluded from cluster fan-out)\n")
 	}
 	fmt.Fprintf(&b, "**Created:** %s\n", room.CreatedAt.Format("2006-01-02 15:04:05"))
 	fmt.Fprintf(&b, "**Updated:** %s\n", room.UpdatedAt.Format("2006-01-02 15:04:05"))

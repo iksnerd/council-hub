@@ -353,4 +353,55 @@ defmodule CouncilHubUi.ClusterTest do
       assert counts == Enum.sort(counts, :desc)
     end
   end
+
+  describe "private room visibility gate" do
+    test "private rooms are excluded from list_rooms_filtered fan-out" do
+      create_room(%{id: "pub-room", visibility: "public"})
+      create_room(%{id: "priv-room", visibility: "private"})
+
+      result = Cluster.list_rooms(%{})
+      ids = Enum.map(result.results, & &1.id)
+
+      assert "pub-room" in ids
+      refute "priv-room" in ids
+    end
+
+    test "messages in private rooms are excluded from search fan-out" do
+      pub = create_room(%{id: "pub-search", visibility: "public"})
+      priv = create_room(%{id: "priv-search", visibility: "private"})
+      create_message(%{room_id: pub.id, content: "shared secret topic"})
+      create_message(%{room_id: priv.id, content: "shared secret topic"})
+
+      result = Cluster.search_messages(%{"query" => "secret", "limit" => 20})
+      room_ids = Enum.map(result.results, & &1.room_id)
+
+      assert "pub-search" in room_ids
+      refute "priv-search" in room_ids
+    end
+
+    test "room_stats on a private room reports not found cluster-wide" do
+      create_room(%{id: "priv-stats", visibility: "private"})
+      create_message(%{room_id: "priv-stats", content: "hidden"})
+
+      result = Cluster.room_stats("priv-stats")
+      assert result.results == nil
+    end
+
+    test "read_transcript on a private room reports not found cluster-wide" do
+      create_room(%{id: "priv-transcript", visibility: "private"})
+      create_message(%{room_id: "priv-transcript", content: "hidden"})
+
+      result = Cluster.read_transcript("priv-transcript")
+      assert result.results == nil
+    end
+
+    test "delta reads (get_messages) skip private rooms" do
+      create_room(%{id: "priv-delta", visibility: "private"})
+      m1 = create_message(%{room_id: "priv-delta", content: "first"})
+      create_message(%{room_id: "priv-delta", content: "second"})
+
+      result = Cluster.get_messages(%{"room_id" => "priv-delta", "after_id" => m1.id})
+      assert result.results == []
+    end
+  end
 end

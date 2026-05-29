@@ -21,6 +21,7 @@ func (r *Registry) handleGetMessagesCluster(args GetMessagesInput) (*mcp.CallToo
 		"message_ids": args.MessageIDs,
 		"room_id":     args.RoomID,
 		"last_n":      args.LastN,
+		"after_id":    args.AfterID,
 	}
 
 	raw, warnings, err := r.clusterCall("get_messages", params)
@@ -100,6 +101,13 @@ func (r *Registry) handleReadRoomCluster(args ReadRoomInput) (*mcp.CallToolResul
 		}, ToolOutput{Message: text}, nil
 	}
 
+	// When include_last_n is requested, the list_rooms endpoint can't satisfy it
+	// (it carries no messages). Route through read_transcript, which returns the
+	// room plus its messages from the authoritative node, and append the tail.
+	if args.IncludeLastN != "" {
+		return r.handleReadRoomClusterWithMessages(args)
+	}
+
 	// We use the list_rooms cluster call with a search for the specific ID
 	params := map[string]any{
 		"search": args.RoomID,
@@ -156,6 +164,90 @@ func (r *Registry) handleReadRoomCluster(args ReadRoomInput) (*mcp.CallToolResul
 	}
 	fmt.Fprintf(&b, "**Created:** %s\n", room.CreatedAt)
 	fmt.Fprintf(&b, "**Updated:** %s\n", room.UpdatedAt)
+
+	formatClusterWarnings(&b, warnings)
+	return msg(b.String())
+}
+
+// handleReadRoomClusterWithMessages serves read_room(cluster_wide, include_last_n)
+// by fetching the room transcript from the owning node and appending the last N
+// messages, mirroring the local read_room rendering.
+func (r *Registry) handleReadRoomClusterWithMessages(args ReadRoomInput) (*mcp.CallToolResult, ToolOutput, error) {
+	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: text}},
+		}, ToolOutput{Message: text}, nil
+	}
+
+	params := map[string]any{
+		"room_id": args.RoomID,
+	}
+
+	raw, warnings, err := r.clusterCall("read_transcript", params)
+	if err != nil {
+		return msg(fmt.Sprintf("Error: cluster read room failed: %s", err.Error()))
+	}
+
+	var result *ClusterReadTranscriptResult
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return nil, ToolOutput{}, fmt.Errorf("decode cluster room results: %w", err)
+	}
+
+	if result == nil {
+		var b strings.Builder
+		fmt.Fprintf(&b, "Error: room '%s' not found on any cluster node.", args.RoomID)
+		formatClusterWarnings(&b, warnings)
+		return msg(b.String())
+	}
+
+	room := result.Room
+	var b strings.Builder
+	fmt.Fprintf(&b, "[%s] **%s** [%s]\n", room.SourceNode, room.ID, room.Status)
+	fmt.Fprintf(&b, "**Topic:** %s\n", room.Description)
+	if room.Project != "" {
+		fmt.Fprintf(&b, "**Project:** %s\n", room.Project)
+	}
+	if room.TechStack != "" {
+		fmt.Fprintf(&b, "**Tech Stack:** %s\n", room.TechStack)
+	}
+	if room.Tags != "" {
+		fmt.Fprintf(&b, "**Tags:** %s\n", room.Tags)
+	}
+	if room.SystemPrompt != "" {
+		fmt.Fprintf(&b, "**System Prompt:** %s\n", room.SystemPrompt)
+	}
+	if room.RelatedRooms != "" {
+		fmt.Fprintf(&b, "**Related Rooms:** %s\n", room.RelatedRooms)
+	}
+	fmt.Fprintf(&b, "**Created:** %s\n", room.CreatedAt)
+	fmt.Fprintf(&b, "**Updated:** %s\n", room.UpdatedAt)
+
+	// Append the last N messages (cap 50, matching the local read_room handler).
+	lastN := 0
+	_, _ = fmt.Sscanf(args.IncludeLastN, "%d", &lastN)
+	if lastN > 50 {
+		lastN = 50
+	}
+	if lastN > 0 {
+		messages := result.Messages
+		if len(messages) > lastN {
+			messages = messages[len(messages)-lastN:]
+		}
+		if len(messages) > 0 {
+			fmt.Fprintf(&b, "\n---\n**Recent messages (%d):**\n", len(messages))
+			for _, m := range messages {
+				ts := m.Timestamp
+				if len(ts) > 19 {
+					ts = ts[:19]
+				}
+				if m.MessageType != "" && m.MessageType != "message" {
+					fmt.Fprintf(&b, "\n**[#%.8s %s] %s (%s):**\n%s\n", m.ID, ts, m.Author, m.MessageType, m.Content)
+				} else {
+					fmt.Fprintf(&b, "\n**[#%.8s %s] %s:**\n%s\n", m.ID, ts, m.Author, m.Content)
+				}
+			}
+		}
+	}
 
 	formatClusterWarnings(&b, warnings)
 	return msg(b.String())
@@ -288,6 +380,7 @@ func (r *Registry) handleSearchMessagesCluster(args SearchMessagesInput) (*mcp.C
 	if len(results) == 0 {
 		var b strings.Builder
 		b.WriteString("No messages found matching the given filters (cluster-wide).")
+		b.WriteString("\n\nNote: message bodies are node-local — each node only matches against its own messages, and remote nodes fall back to keyword (not semantic) matching. An empty cluster result is not proof that nothing matches; try a node-local search or different terms.")
 		formatClusterWarnings(&b, warnings)
 		return msg(b.String())
 	}

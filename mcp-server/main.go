@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -30,6 +31,15 @@ type clusterNodesResult struct {
 
 // clusterNodes queries Phoenix for the list of connected Erlang nodes with
 // their versions. Returns nil if Phoenix is unavailable.
+// portFromAddr extracts the port from a bind address like ":3001" or
+// "0.0.0.0:3001", defaulting to "3001" when none can be determined.
+func portFromAddr(addr string) string {
+	if i := strings.LastIndex(addr, ":"); i >= 0 && i < len(addr)-1 {
+		return addr[i+1:]
+	}
+	return "3001"
+}
+
 func clusterNodes(phoenixURL string, client *http.Client) *clusterNodesResult {
 	if phoenixURL == "" || client == nil {
 		return nil
@@ -141,10 +151,19 @@ func main() {
 		phoenixURL = "http://127.0.0.1:4000"
 	}
 
+	// Peer MCP port for cross-node write proxying. Defaults to the port this node
+	// serves MCP on (COUNCIL_HTTP_ADDR), or 3001; override with COUNCIL_PEER_MCP_PORT.
+	peerMCPPort := os.Getenv("COUNCIL_PEER_MCP_PORT")
+	if peerMCPPort == "" {
+		peerMCPPort = portFromAddr(os.Getenv("COUNCIL_HTTP_ADDR"))
+	}
+
 	reg := &handlers.Registry{
-		Server:     cs,
-		HTTPClient: &http.Client{Timeout: 10 * time.Second},
-		PhoenixURL: phoenixURL,
+		Server:        cs,
+		HTTPClient:    &http.Client{Timeout: 10 * time.Second},
+		PhoenixURL:    phoenixURL,
+		PeerMCPPort:   peerMCPPort,
+		ClusterSecret: os.Getenv("RELEASE_COOKIE"),
 	}
 	reg.RegisterTools()
 	reg.RegisterResources()
@@ -182,6 +201,8 @@ func main() {
 		mux.Handle("/mcp", mcpHandler)
 		mux.Handle("/mcp/", mcpHandler)
 		mux.HandleFunc("/health", healthHandler(cs, phoenixURL, reg.HTTPClient))
+		// Cross-node write receiver (authenticated by the shared cluster secret).
+		mux.HandleFunc("/api/internal/post_to_room", reg.InternalPostHandler())
 
 		httpServer := &http.Server{
 			Addr:         addr,
