@@ -99,7 +99,9 @@ graph TB
 
 ## Distributed Cluster Topology
 
-How two nodes connect over Erlang distribution. Each node is a self-contained Docker container with its own SQLite, Go MCP server, Phoenix UI, and BEAM VM. The BEAM VMs find each other (via gossip or `COUNCIL_SEEDS`) and exchange PubSub + RPC traffic.
+How two nodes connect over Erlang distribution. Each node is a self-contained Docker container with its own SQLite, Go MCP server, Phoenix UI, and BEAM VM. The BEAM VMs find each other (via gossip or `COUNCIL_SEEDS`) and exchange PubSub + RPC traffic. Cluster-wide **reads** fan out over Erlang distribution (the Go server calls its local Phoenix, which runs `:erpc.multicall` to all nodes).
+
+Cluster-wide **writes** take a separate path: when `post_to_room` targets a room that lives on another node, the Go server asks Phoenix to locate the owner (`/api/internal/cluster/locate_room`), then forwards the write over HTTP to that node's Go MCP server (`POST /api/internal/post_to_room`, authenticated by the shared `RELEASE_COOKIE`). Rooms marked `visibility=private` are node-local — excluded from both the read fan-out and write/owner-lookup, so they never leave their home node.
 
 ```mermaid
 graph TB
