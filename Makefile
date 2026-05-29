@@ -26,6 +26,7 @@ docker-run: ## Run council-hub (MCP on :3001, UI on :4000, cluster on :4369/:900
 		-p 4000:4000 -p 3001:3001 -p 4369:4369 -p 9000:9000 \
 		-v $(DATA_DIR):/data \
 		-e COUNCIL_TRANSPORT=http \
+		-e COUNCIL_OLLAMA_URL=http://host.docker.internal:11434 \
 		-e RELEASE_NODE=$(NODE_NAME) \
 		-e COUNCIL_SEEDS=$(SEEDS) \
 		-e RELEASE_COOKIE=$(COOKIE) \

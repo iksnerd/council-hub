@@ -95,7 +95,7 @@ ENV COUNCIL_DB_PATH=/data/council.db
 ENV RELEASE_COOKIE=council
 ENV RELEASE_DISTRIBUTION=name
 ENV RELEASE_NODE=council_hub@127.0.0.1
-ENV ELIXIR_ERL_OPTIONS="-kernel inet_dist_listen_min 9000 -kernel inet_dist_listen_max 9000"
+ENV ELIXIR_ERL_OPTIONS="-kernel inet_dist_listen_min 9000 -kernel inet_dist_listen_max 9000 +fnu"
 
 VOLUME /data
 EXPOSE 4000 3001 4369 9000

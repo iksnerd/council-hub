@@ -18,9 +18,19 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// clusterNodes queries Phoenix for the list of connected Erlang nodes.
-// Returns nil if Phoenix is unavailable — the health handler degrades gracefully.
-func clusterNodes(phoenixURL string, client *http.Client) []string {
+type clusterNodeInfo struct {
+	Node    string `json:"node"`
+	Version string `json:"version"`
+}
+
+type clusterNodesResult struct {
+	Nodes           []clusterNodeInfo
+	VersionMismatch bool
+}
+
+// clusterNodes queries Phoenix for the list of connected Erlang nodes with
+// their versions. Returns nil if Phoenix is unavailable.
+func clusterNodes(phoenixURL string, client *http.Client) *clusterNodesResult {
 	if phoenixURL == "" || client == nil {
 		return nil
 	}
@@ -30,12 +40,16 @@ func clusterNodes(phoenixURL string, client *http.Client) []string {
 	}
 	defer func() { _ = resp.Body.Close() }()
 	var payload struct {
-		Nodes []string `json:"nodes"`
+		Nodes           []clusterNodeInfo `json:"nodes"`
+		VersionMismatch bool              `json:"version_mismatch"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
 		return nil
 	}
-	return payload.Nodes
+	return &clusterNodesResult{
+		Nodes:           payload.Nodes,
+		VersionMismatch: payload.VersionMismatch,
+	}
 }
 
 // healthHandler exposes a JSON snapshot of database integrity state. Returns
@@ -53,8 +67,11 @@ func healthHandler(cs *council.Server, phoenixURL string, httpClient *http.Clien
 			"heal_count_since_boot": atomic.LoadUint64(&cs.HealCount),
 			"now":                   time.Now().UTC().Format(time.RFC3339),
 		}
-		if nodes := clusterNodes(phoenixURL, httpClient); nodes != nil {
-			body["cluster_nodes"] = nodes
+		if result := clusterNodes(phoenixURL, httpClient); result != nil {
+			body["cluster_nodes"] = result.Nodes
+			if result.VersionMismatch {
+				body["cluster_warning"] = "version mismatch detected across cluster nodes — upgrade all nodes to the same version"
+			}
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(body)
