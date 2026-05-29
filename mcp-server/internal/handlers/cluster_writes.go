@@ -94,14 +94,7 @@ func (r *Registry) proxyPostToRoom(owner string, args PostToRoomInput) (string, 
 		return "", err
 	}
 
-	reqBody, err := json.Marshal(internalPostRequest{
-		RoomID:      args.RoomID,
-		Author:      args.Author,
-		Message:     args.Message,
-		MessageType: args.MessageType,
-		ReplyTo:     args.ReplyTo,
-		Mentions:    args.Mentions,
-	})
+	reqBody, err := json.Marshal(internalPostRequest(args))
 	if err != nil {
 		return "", err
 	}
