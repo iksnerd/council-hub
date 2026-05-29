@@ -4,6 +4,15 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.31.1] - 2026-05-29
+
+### Fixed
+- **Entrypoint auto-detects LAN IP** — if `RELEASE_NODE` is still the loopback default (`council_hub@127.0.0.1`), `entrypoint.sh` now runs `ip route get 1` to detect the container's actual LAN IP and exports it automatically, with a clear warning. Eliminates the most common cluster misconfiguration.
+- **Startup banner shows node and seeds** — boot log now prints `Node:` and `Seeds:` so cluster configuration is immediately visible on startup.
+- **`erpc.multicall` timeout 5s → 2s** — cluster-wide MCP calls now wait 2s per unreachable peer instead of 5s, halving latency on degraded clusters.
+- **`/api/internal/cluster/nodes` endpoint** — Phoenix now exposes `GET /api/internal/cluster/nodes` (localhost-restricted) returning the connected Erlang node list.
+- **`/health` includes cluster nodes** — Go health endpoint now includes `"cluster_nodes": [...]` by querying Phoenix. Omits the field gracefully if Phoenix is unavailable.
+
 ## [0.31.0] - 2026-05-29
 
 ### Changed

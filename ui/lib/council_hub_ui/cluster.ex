@@ -6,7 +6,7 @@ defmodule CouncilHubUi.Cluster do
 
   alias CouncilHubUi.Council
 
-  @rpc_timeout 5_000
+  @rpc_timeout 2_000
 
   @doc """
   Search messages across all cluster nodes.
