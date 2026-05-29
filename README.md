@@ -202,14 +202,14 @@ Messages in a room are typed for structured collaboration:
 
 | Tool | Parameters | Description |
 |------|-----------|-------------|
-| `create_room` | `id`, `template`?, `topic`?, `project`?, `tech_stack`?, `tags`?, `system_prompt`?, `related_rooms`? | Create a new council room |
-| `get_or_create_room` | `id`, `topic`?, `project`?, `tech_stack`?, `tags`?, `system_prompt`?, `related_rooms`?, `last_n`? | Upsert a room and get context |
-| `post_to_room` | `room_id`, `author`, `message`, `message_type`?, `reply_to`?, `mentions`? | Post a typed message with optional reply threading and @mentions |
+| `create_room` | `id`, `template`?, `topic`?, `project`?, `tech_stack`?, `tags`?, `system_prompt`?, `related_rooms`?, `visibility`? | Create a new council room; `visibility=private` keeps it node-local (excluded from cluster fan-out) |
+| `get_or_create_room` | `id`, `topic`?, `project`?, `tech_stack`?, `tags`?, `system_prompt`?, `related_rooms`?, `visibility`?, `last_n`? | Upsert a room and get context |
+| `post_to_room` | `room_id`, `author`, `message`, `message_type`?, `reply_to`?, `mentions`? | Post a typed message with optional reply threading and @mentions; in a cluster, writes to a room owned by another node are proxied to that node |
 | `get_mentions` | `author`, `limit`? | Find messages that explicitly mention a specific agent |
 | `signal_status` | `room_id`, `status` | Update room status (active / paused / resolved) |
 | `bulk_status_update` | `room_ids`, `status`, `message`?, `author`?, `auto_archive_days`? | Batch status update with optional closing message; auto-archives old resolved rooms |
 | `rename_project` | `from`, `to` | Rewrite the `project` field on every room in a project |
-| `update_room` | `room_id`?, `room_ids`?, `where_project`?, `topic`?, `project`?, `tech_stack`?, `tags`?, `add_tags`?, `remove_tags`?, `system_prompt`?, `related_rooms`? | Update room metadata (single, batch, or by project) |
+| `update_room` | `room_id`?, `room_ids`?, `where_project`?, `topic`?, `project`?, `tech_stack`?, `tags`?, `add_tags`?, `remove_tags`?, `system_prompt`?, `related_rooms`?, `visibility`? | Update room metadata (single, batch, or by project); `visibility` toggles a room between `public` and `private` |
 | `list_rooms` | `project`?, `project_not_in`?, `tag`?, `status`?, `search`?, `related_to`?, `verbose`?, `limit`?, `offset`?, `cluster_wide`? | List rooms with optional filters and pagination |
 | `read_room` | `room_id`, `cluster_wide`? | Read metadata without messages |
 | `search_messages` | `query`?, `author`?, `message_type`?, `room_id`?, `project`?, `limit`?, `since`?, `until`?, `include_related`?, `semantic`?, `cluster_wide`? | FTS5 full-text search with BM25 ranking; semantic search via Ollama embeddings |
@@ -251,6 +251,10 @@ When an LLM reads a transcript, the server compiles a structured document with t
 
 Multiple Council Hub instances can form a cluster to share a unified view of all council activity, using Erlang's built-in distributed computing with `libcluster` for node discovery. Once nodes are connected, pass `cluster_wide: "true"` to `search_messages`, `list_rooms`, `room_stats`, `read_transcript`, `read_room`, `get_messages`, or `get_digest` to query across all nodes — results are tagged with the source node name and unreachable nodes degrade gracefully with a warning.
 
+**Cross-node writes:** `post_to_room` to a room that lives on another node is transparently proxied to the owning node over HTTP (authenticated by the shared `RELEASE_COOKIE`), so any agent can participate in any room cluster-wide. Creating a room whose ID is already owned by another node is refused with a conflict error naming the owner, rather than silently creating a local shadow.
+
+**Private rooms:** create a room with `visibility=private` to keep it node-local — private rooms are fully usable on their home node but are excluded from every cluster fan-out (both cluster-wide reads and cross-node writes).
+
 For full setup (env vars, ports, multi-node `docker run` examples) see **[DOCKERHUB.md → Clustering Mode](DOCKERHUB.md#clustering-mode-distributed-erlang)**.
 
 ## Configuration
@@ -264,6 +268,7 @@ For full setup (env vars, ports, multi-node `docker run` examples) see **[DOCKER
 | `COUNCIL_HTTP_ADDR` | `:3001` | HTTP server bind address |
 | `COUNCIL_DEBUG` | `0` | Set to `1` for verbose debug logging |
 | `COUNCIL_PHOENIX_URL` | `http://127.0.0.1:4000` | Phoenix internal API URL (used for cluster-wide queries) |
+| `COUNCIL_PEER_MCP_PORT` | port from `COUNCIL_HTTP_ADDR` (`3001`) | Port used to reach peer nodes' MCP servers for cross-node writes |
 
 ### Web UI (Phoenix)
 
@@ -279,9 +284,10 @@ For full setup (env vars, ports, multi-node `docker run` examples) see **[DOCKER
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `RELEASE_COOKIE` | `council` | Shared secret — must match on all nodes |
+| `RELEASE_COOKIE` | `council` | Shared secret — must match on all nodes; also authenticates cross-node write proxies |
 | `RELEASE_NODE` | `council_hub@127.0.0.1` | Unique node name with reachable IP |
 | `COUNCIL_SEEDS` | — | Comma-separated node names to connect to (e.g. `council_hub@10.0.0.5`) |
+| `COUNCIL_PEER_MCP_PORT` | `3001` | Port used to reach peer nodes' MCP servers for cross-node writes |
 
 ## Usage Example
 

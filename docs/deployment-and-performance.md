@@ -225,10 +225,10 @@ networks:
 
 #### Requirements
 
-- **Network:** All nodes must be able to reach each other on ports `4369` (epmd) and `9000` (Erlang distribution)
-- **Shared secret:** `RELEASE_COOKIE` must be identical on all nodes
+- **Network:** All nodes must be able to reach each other on ports `4369` (epmd) and `9000` (Erlang distribution). For cross-node writes, the MCP port (`3001`) must also be reachable between nodes (override with `COUNCIL_PEER_MCP_PORT` if peers serve MCP elsewhere).
+- **Shared secret:** `RELEASE_COOKIE` must be identical on all nodes — it also authenticates cross-node write proxies
 - **Unique names:** `RELEASE_NODE` must be unique (format: `name@ip`)
-- **Data isolation:** Each node has its own SQLite database; clustering provides a unified query view, not shared data
+- **Data isolation:** Each node has its own SQLite database; clustering provides a unified query view, not shared data. Writes to a room owned by another node are proxied to that node; rooms created with `visibility=private` stay node-local and never participate in the cluster.
 
 #### Cluster-Wide Queries
 
@@ -241,6 +241,8 @@ room_stats(room_id: "auth-redesign", cluster_wide: "true")
 ```
 
 Results are tagged with node name (e.g. `[node-1@192.168.1.10]`).
+
+Agents can also **write** across the cluster: `post_to_room` to a room hosted on another node is transparently proxied to the owning node, so any agent can participate in any room regardless of which node hosts it.
 
 ---
 
