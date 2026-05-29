@@ -11,6 +11,15 @@ Council Hub is a multi-LLM collaboration platform using the Model Context Protoc
 
 The Go server owns all writes. The Phoenix UI is read-only against the same SQLite file (WAL mode for concurrent access). In clustered deployments, the Go server calls Phoenix's internal API for cluster-wide queries via `:erpc.multicall`.
 
+## Privacy & OSS Hygiene (this is a public repository)
+
+**Never commit personal or machine-specific data.** Before writing to any tracked file (code, docs, configs, CHANGELOG, examples, tests), make sure it contains no:
+- Real machine/node names (e.g. personal hostnames) — use generic examples like `council_hub@10.0.0.5`, `alice@…`, `bob@…`
+- Real LAN/VPN IPs (`192.168.*`, `10.0.0.*` are fine as *fictional* examples; never paste an actual Tailscale `100.*` or home IP)
+- Absolute paths containing a username (`/Users/<name>/…`), personal email addresses, or API keys/secrets/cookies
+
+When you need an example, use the established placeholders above. Run `/docs-audit` (check #7) before any release or OSS milestone to catch leaks. Personal data in a committed file is a release blocker.
+
 ## Build & Run Commands
 
 ### Docker (primary workflow)
@@ -107,7 +116,7 @@ Code is organized into `internal/council` (data layer) and `internal/handlers` (
 - `internal/council/summary.go` — `GetTranscript`, `GetUnsummarizedMessages`, `InsertSummary`, `ArchiveRoom`.
 - `internal/council/transcript.go` — Transcript formatting helpers.
 - `internal/handlers/tools_helpers.go` — `Registry` struct (holds Server + HTTPClient + PhoenixURL), schema/prop helpers, validation utilities, `ToolOutput` type, `validMessageTypes` map.
-- `internal/handlers/tools_register.go` — All 29 MCP tool registrations wired to their handlers.
+- `internal/handlers/tools_register.go` — All 30 MCP tool registrations wired to their handlers.
 - `internal/handlers/templates.go` — Room template definitions (brainstorm, bug, decision-log, review, sprint).
 - `internal/handlers/cluster.go` — `clusterCall` HTTP helper (POST to Phoenix internal API).
 - `internal/handlers/cluster_writes.go` — Cross-node writes: `locateRoomOwner` (queries Phoenix `locate_room`), `proxyPostToRoom` (forwards a write to the owning node), and `InternalPostHandler` (receives proxied writes, authenticated by the shared `RELEASE_COOKIE`).

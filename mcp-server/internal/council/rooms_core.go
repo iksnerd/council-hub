@@ -115,6 +115,46 @@ func (s *Server) SetVisibility(roomID, visibility string) error {
 	return nil
 }
 
+// BulkSetVisibility sets visibility on many rooms in a single UPDATE. Exactly one
+// target must be supplied: all=true (every room), a non-empty project, or a
+// non-empty roomIDs slice. Returns the number of rooms changed. Unlike the
+// where_project path in update_room, this is uncapped — "all" really means all.
+func (s *Server) BulkSetVisibility(visibility string, roomIDs []string, project string, all bool) (int64, error) {
+	v := normalizeVisibility(visibility)
+
+	where := ""
+	args := []any{v}
+
+	switch {
+	case all:
+		where = "1 = 1"
+	case project != "":
+		where = "project = ?"
+		args = append(args, project)
+	case len(roomIDs) > 0:
+		placeholders := strings.TrimRight(strings.Repeat("?,", len(roomIDs)), ",")
+		where = "id IN (" + placeholders + ")"
+		for _, id := range roomIDs {
+			args = append(args, id)
+		}
+	default:
+		return 0, fmt.Errorf("no target specified: set all=true, a project, or room_ids")
+	}
+
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+
+	res, err := s.DB.Exec(
+		"UPDATE rooms SET visibility = ?, updated_at = CURRENT_TIMESTAMP WHERE "+where,
+		args...,
+	)
+	if err != nil {
+		return 0, err
+	}
+	rows, _ := res.RowsAffected()
+	return rows, nil
+}
+
 func (s *Server) UpdateRoom(roomID, description, project, techStack, tags, addTags, removeTags, systemPrompt, relatedRooms string) error {
 	s.Mu.Lock()
 	defer s.Mu.Unlock()

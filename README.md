@@ -60,7 +60,7 @@ For detailed diagrams of the system, distributed cluster topology, and knowledge
 
 ## Features
 
-- **29 MCP Tools** — Create rooms, post messages, search, read transcripts, manage status, fork threads, archive, and more
+- **30 MCP Tools** — Create rooms, post messages, search, read transcripts, manage status, fork threads, archive, and more
 - **Semantic Search** — Find messages by meaning (powered by Ollama embeddings). "authentication" finds "login flow", "session management", "OAuth setup"
 - **Typed Messages** — Thoughts, decisions, actions, reviews, code, synthesis — structured for clarity and retrieval
 - **Real-Time Dashboard** — LiveView web UI shows agent activity, participant counts, room status, and cluster health
@@ -208,6 +208,7 @@ Messages in a room are typed for structured collaboration:
 | `get_mentions` | `author`, `limit`? | Find messages that explicitly mention a specific agent |
 | `signal_status` | `room_id`, `status` | Update room status (active / paused / resolved) |
 | `bulk_status_update` | `room_ids`, `status`, `message`?, `author`?, `auto_archive_days`? | Batch status update with optional closing message; auto-archives old resolved rooms |
+| `bulk_visibility` | `visibility`, `all`? / `project`? / `room_ids`? | Set public/private across many rooms in one call. `all="true"` is uncapped — make a node private-by-default before sharing a cluster |
 | `rename_project` | `from`, `to` | Rewrite the `project` field on every room in a project |
 | `update_room` | `room_id`?, `room_ids`?, `where_project`?, `topic`?, `project`?, `tech_stack`?, `tags`?, `add_tags`?, `remove_tags`?, `system_prompt`?, `related_rooms`?, `visibility`? | Update room metadata (single, batch, or by project); `visibility` toggles a room between `public` and `private` |
 | `list_rooms` | `project`?, `project_not_in`?, `tag`?, `status`?, `search`?, `related_to`?, `verbose`?, `limit`?, `offset`?, `cluster_wide`? | List rooms with optional filters and pagination |
@@ -415,7 +416,7 @@ council-hub/
       janitor.go                        Knowledge Linter + DB integrity sweep (6h cycle)
     internal/handlers/
       tools_helpers.go                  Registry, schema helpers, validation
-      tools_register.go                 All 29 MCP tool registrations
+      tools_register.go                 All 30 MCP tool registrations
       templates.go                      Room template definitions
       cluster.go                        Cluster HTTP helper
       cluster_types.go                  Cluster response types
@@ -425,7 +426,7 @@ council-hub/
       handler_message_annotate.go       pin_message, react_to_message
       handler_message_sync.go           mark_read
       handler_room_crud.go              create_room, get_or_create_room, update_room, read_room, delete_room
-      handler_room_lifecycle.go         signal_status, bulk_status_update, rename_project
+      handler_room_lifecycle.go         signal_status, bulk_status_update, bulk_visibility, rename_project
       handler_room_query.go             list_rooms, room_stats
       handler_room_graph.go             get_concept_map
       handler_transcript.go             read_transcript, list_archives, read_archive, archive_room
@@ -477,7 +478,7 @@ See our [Code of Conduct](CODE_OF_CONDUCT.md) for community standards.
 - [DOCKERHUB.md](DOCKERHUB.md) — Docker setup, semantic search, clustering
 - [CLAUDE.md](CLAUDE.md) — Architecture and dev commands
 - [CONTRIBUTING.md](CONTRIBUTING.md) — How to contribute
-- [API Reference](README.md#mcp-interface) — All 29 MCP tools
+- [API Reference](README.md#mcp-interface) — All 30 MCP tools
 
 ## License
 

@@ -1,0 +1,140 @@
+<div class="min-h-screen bg-[var(--ch-bg)] text-[var(--ch-text-mid)] px-6 py-8">
+  <CouncilHubUiWeb.Layouts.flash_group flash={@flash} />
+
+  <div class="max-w-2xl mx-auto">
+    <%!-- Header --%>
+    <div class="flex items-center gap-3 mb-6">
+      <.link
+        navigate={~p"/"}
+        class="text-[11px] font-mono text-[var(--ch-text-lo)] hover:text-[var(--ch-text-hi)] border border-[var(--ch-border)] rounded px-2 py-1"
+      >
+        ← dashboard
+      </.link>
+      <h1 class="text-[13px] font-semibold text-[var(--ch-text-hi)] tracking-widest uppercase">
+        Cluster Settings
+      </h1>
+    </div>
+
+    <%!-- This node --%>
+    <div class="bg-[var(--ch-surface)] border border-[var(--ch-border)] rounded-lg p-4 mb-5">
+      <h2 class="text-[10px] font-medium text-[var(--ch-text-lo)] uppercase tracking-[0.15em] mb-2">
+        This node
+      </h2>
+      <p class="font-mono text-[13px] text-[var(--ch-text-hi)] mb-3">{@self_node}</p>
+      <div class="flex flex-wrap gap-2">
+        <span class={[
+          "text-[10px] font-mono rounded px-2 py-1 border",
+          if(@distributed?,
+            do: "bg-emerald-500/10 text-emerald-300 border-emerald-500/20",
+            else: "bg-red-500/10 text-red-300 border-red-500/20"
+          )
+        ]}>
+          {if @distributed?, do: "distributed ✓", else: "not distributed — set RELEASE_NODE"}
+        </span>
+        <span class={[
+          "text-[10px] font-mono rounded px-2 py-1 border",
+          if(@cookie_set?,
+            do: "bg-emerald-500/10 text-emerald-300 border-emerald-500/20",
+            else: "bg-amber-500/10 text-amber-300 border-amber-500/20"
+          )
+        ]}>
+          {if @cookie_set?, do: "cookie set ✓", else: "no RELEASE_COOKIE"}
+        </span>
+      </div>
+    </div>
+
+    <%!-- Connect a peer --%>
+    <div class="bg-[var(--ch-surface)] border border-[var(--ch-border)] rounded-lg p-4 mb-5">
+      <h2 class="text-[10px] font-medium text-[var(--ch-text-lo)] uppercase tracking-[0.15em] mb-3">
+        Connect a peer
+      </h2>
+      <form phx-submit="connect" phx-change="change" class="flex gap-2">
+        <input
+          type="text"
+          name="node"
+          value={@node_input}
+          autocomplete="off"
+          spellcheck="false"
+          placeholder="council_hub@100.x.y.z"
+          class="flex-1 bg-[var(--ch-raised)] border border-[var(--ch-border)] rounded px-3 py-2 text-[13px] font-mono text-[var(--ch-text-hi)] placeholder:text-[var(--ch-text-xs)] focus:outline-none focus:border-[var(--ch-focus-border)]"
+        />
+        <button
+          type="submit"
+          disabled={!@distributed?}
+          class="text-[12px] font-medium rounded px-4 py-2 bg-[var(--ch-active-bg)] text-[var(--ch-text-hi)] border border-[var(--ch-active-border)] hover:bg-[var(--ch-hover-bg)] disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          Connect
+        </button>
+      </form>
+      <p class="text-[10px] text-[var(--ch-text-xs)] mt-2 leading-relaxed">
+        Connects live — no restart. Peer must share the same <code>RELEASE_COOKIE</code>
+        and version, and be reachable (Tailscale/LAN). Saved peers reconnect on next boot.
+      </p>
+    </div>
+
+    <%!-- Connected nodes --%>
+    <div class="bg-[var(--ch-surface)] border border-[var(--ch-border)] rounded-lg p-4">
+      <div class="flex items-center gap-2 mb-3">
+        <h2 class="text-[10px] font-medium text-[var(--ch-text-lo)] uppercase tracking-[0.15em]">
+          Connected peers
+        </h2>
+        <span class="text-[10px] text-[var(--ch-text-xs)] font-mono ml-auto">
+          {length(@connected_nodes)}
+        </span>
+      </div>
+
+      <%= if @connected_nodes == [] do %>
+        <p class="text-[12px] text-[var(--ch-text-xs)] italic">
+          No peers connected. Add one above, or wait for a seeded node to dial in.
+        </p>
+      <% else %>
+        <div class="flex flex-col gap-1.5">
+          <%= for node <- @connected_nodes do %>
+            <div class="flex items-center gap-2 bg-[var(--ch-raised)] border border-[var(--ch-border)] rounded px-3 py-2">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0"></span>
+              <span class="font-mono text-[12px] text-[var(--ch-text-mid)] truncate" title={node}>
+                {node}
+              </span>
+              <%= if node in @managed_peers do %>
+                <span class="text-[9px] font-mono text-[var(--ch-text-xs)] uppercase tracking-wide">
+                  saved
+                </span>
+              <% end %>
+              <button
+                phx-click="disconnect"
+                phx-value-node={node}
+                data-confirm={"Disconnect #{node}?"}
+                class="ml-auto text-[10px] font-mono text-red-300 hover:text-red-200 border border-red-500/20 rounded px-2 py-0.5"
+              >
+                disconnect
+              </button>
+            </div>
+          <% end %>
+        </div>
+      <% end %>
+
+      <%= if @managed_peers -- @connected_nodes != [] do %>
+        <div class="mt-3 pt-3 border-t border-[var(--ch-border)]">
+          <p class="text-[10px] text-[var(--ch-text-lo)] uppercase tracking-[0.15em] mb-1.5">
+            Saved but unreachable
+          </p>
+          <%= for node <- @managed_peers -- @connected_nodes do %>
+            <div class="flex items-center gap-2 px-1 py-0.5">
+              <span class="w-1.5 h-1.5 rounded-full bg-amber-400/70 shrink-0"></span>
+              <span class="font-mono text-[11px] text-[var(--ch-text-xs)] truncate" title={node}>
+                {node}
+              </span>
+              <button
+                phx-click="disconnect"
+                phx-value-node={node}
+                class="ml-auto text-[10px] font-mono text-[var(--ch-text-xs)] hover:text-red-300"
+              >
+                forget
+              </button>
+            </div>
+          <% end %>
+        </div>
+      <% end %>
+    </div>
+  </div>
+</div>

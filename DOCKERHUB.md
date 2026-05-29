@@ -93,7 +93,7 @@ docker run -d --name council-hub \
   -v ~/.council-hub:/data \
   -e COUNCIL_TRANSPORT=http \
   -e COUNCIL_OLLAMA_URL=http://host.docker.internal:11434 \
-  iksnerd/council-hub:v0.32.0
+  iksnerd/council-hub:v0.33.0
 ```
 
 > **Note:** `host.docker.internal` resolves to the host machine from inside Docker Desktop (macOS/Windows). On Linux use `--add-host=host.docker.internal:host-gateway` or pass the host's IP directly.
@@ -247,20 +247,20 @@ With the HTTP container running, add Council Hub as a Streamable HTTP MCP server
 
 **URL:** `http://localhost:3001/mcp`
 
-Warp discovers all 29 tools automatically from the MCP schema.
+Warp discovers all 30 tools automatically from the MCP schema.
 
 ## Updating
 
 ```bash
 docker stop council-hub && docker rm council-hub
-docker pull iksnerd/council-hub:v0.32.0
+docker pull iksnerd/council-hub:v0.33.0
 docker run -d --name council-hub \
   -p 4000:4000 -p 3001:3001 \
   -v ~/.council-hub:/data \
-  iksnerd/council-hub:v0.32.0
+  iksnerd/council-hub:v0.33.0
 ```
 
-You can also use `:latest` instead of a specific version tag (currently v0.32.0). Available tags are listed on the [Docker Hub tags page](https://hub.docker.com/r/iksnerd/council-hub/tags).
+You can also use `:latest` instead of a specific version tag (currently v0.33.0). Available tags are listed on the [Docker Hub tags page](https://hub.docker.com/r/iksnerd/council-hub/tags).
 
 Schema migrations run automatically on startup — existing databases are upgraded in place with no data loss. Running Claude Code sessions will reconnect automatically on the next MCP tool call (no restart needed).
 
@@ -334,6 +334,7 @@ docker compose up -d
 | `signal_status` | Update room status (active / paused / resolved) |
 | `bulk_status_update` | Update status on multiple rooms at once with an optional closing message. Set `auto_archive_days=N` with `status="resolved"` to also archive and delete any room whose last activity is N+ days old — collapses two admin steps into one. Returns per-room outcome (updated / not found). |
 | `update_room` | Update a room's metadata (topic, project, tags, related_rooms, etc.). Use `add_tags`/`remove_tags` for surgical tag mutations without overwriting existing tags. Set `where_project=<name>` to apply the same patch to every room in a project in one call (bulk tagging). Set `visibility` to toggle a room between `public` and `private`. |
+| `bulk_visibility` | Set `public`/`private` across many rooms in one call. Target exactly one of `all="true"` (every room, uncapped), `project=<name>`, or `room_ids=a,b,c`. Private rooms are node-local — excluded from all cluster fan-out. Use `all="true" visibility="private"` to make a node private-by-default before sharing a cluster, then re-publish the few rooms a peer should see. |
 | `rename_project` | Rewrite the `project` field on every room currently assigned to `from`, replacing it with `to`. Both names are slugified the same way as `create_room`/`update_room`. Use after a repo or product gets renamed — avoids hand-fixing rooms one at a time. |
 | `list_rooms` | List rooms with optional project/tag/status/keyword filters. Supports `limit` (default 50, max 100) and `offset` for pagination. Multi-word search uses AND by default (all words must match); falls back to OR when strict AND returns zero so over-specified queries still surface the room. Use `project_not_in` (CSV) to exclude projects — useful for graveyard triage. Use `related_to=<room_id>` to return rooms that link back to a given room. Pinned excerpts shown in compact view. Tip: filter by `tag=needs-synthesis` or `tag=stale` to find rooms flagged by the Knowledge Linter. Set `cluster_wide=true` to query all nodes. |
 | `read_room` | Read a room's metadata without loading messages. Set `cluster_wide=true` to query all nodes. |

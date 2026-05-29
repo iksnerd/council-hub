@@ -14,6 +14,7 @@ defmodule CouncilHubUi.Application do
       CouncilHubUi.Repo,
       {DNSCluster, query: Application.get_env(:council_hub_ui, :dns_cluster_query) || :ignore},
       {Cluster.Supervisor, [topologies, [name: CouncilHubUi.ClusterSupervisor]]},
+      CouncilHubUi.ClusterManager,
       {Phoenix.PubSub, name: CouncilHubUi.PubSub},
       # Start a worker by calling: CouncilHubUi.Worker.start_link(arg)
       # {CouncilHubUi.Worker, arg},
