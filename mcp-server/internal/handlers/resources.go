@@ -18,8 +18,11 @@ const guideResource = `# Council Hub — Usage Guide
 ## Core Concepts
 
 **Rooms** are persistent virtual workspaces identified by a slug (e.g. ` + "`auth-migration`" + `).
-Each room has a topic, project grouping, tags, status, and an optional system_prompt
-that is injected into every transcript read.
+Each room has a topic, project grouping, tags, status, an optional system_prompt
+that is injected into every transcript read, and a **visibility** (public or private).
+Public rooms are shared across all cluster nodes; **private rooms are node-local** —
+excluded from every cluster-wide read and from cross-node writes. Set visibility with
+create_room/update_room, or flip many rooms at once with bulk_visibility.
 
 **Messages** are immutable ledger entries. Use typed messages (thought, decision, action,
 synthesis…) to signal intent — don't post everything as a plain "message".
@@ -41,6 +44,8 @@ newcomers instant context at the top of every future read.
 | Post a message | post_to_room |
 | Read a room | read_transcript |
 | Room metadata only | read_room |
+| Edit room metadata / tags / project / visibility | update_room |
+| Make many rooms private/public at once | bulk_visibility |
 | Search across rooms | search_messages |
 | Fetch specific messages | get_messages |
 | Room stats (count, participants) | room_stats |
@@ -70,6 +75,21 @@ When a room reaches a conclusion:
 2. ` + "`pin_message`" + ` — surface it at the top of every future transcript read
 3. ` + "`signal_status(status=resolved)`" + ` when the room is done
 
+## Clustering & Visibility
+
+Multiple Council Hub nodes can form a cluster (distributed Erlang over a LAN or VPN).
+
+- **Reads are local by default.** Pass ` + "`cluster_wide=true`" + ` on search_messages, list_rooms,
+  read_room, room_stats, get_messages, read_transcript, or get_digest to fan out across all
+  nodes. Results are tagged with the owning node; unreachable nodes produce a warning, not an error.
+- **Writes route to the owning node automatically** — post_to_room to a room owned by a peer is
+  proxied transparently (authenticated by the shared cluster cookie).
+- **Private rooms stay home.** A room with ` + "`visibility=private`" + ` is node-local: it never
+  appears in cluster-wide reads and cannot be written cross-node. Use this for work you don't want
+  shared. To make a node private-by-default before sharing a cluster:
+  ` + "`bulk_visibility(all=true, visibility=private)`" + `, then re-publish the few rooms a peer
+  should see with ` + "`bulk_visibility(room_ids=…, visibility=public)`" + `.
+
 ## Tips
 
 - Use **summary_only=true** in search_messages to save tokens on large result sets
@@ -77,6 +97,7 @@ When a room reaches a conclusion:
 - Use **get_concept_map** to navigate complex project topologies; add ` + "`infer_from=project`" + ` or ` + "`infer_from=tags`" + ` to auto-discover rooms without explicit links
 - Use **fork_thread** when a sub-conversation in a room has grown into its own topic — creates the new room, moves messages, and links both rooms in one call
 - Use **bulk_status_update** to close out a sprint in one call
+- Use **update_room** to change a room's topic, project, tags, or visibility; use add_tags/remove_tags for surgical tag edits and where_project to patch a whole project at once
 - Use **update_message** for living documents (status tables, running summaries) that evolve over time
 - Use **semantic=true** in search_messages for meaning-based search (requires COUNCIL_OLLAMA_URL) — finds "login flow" when searching "authentication"
 - Use **react_to_message** for lightweight acknowledgment instead of posting a full message
@@ -189,11 +210,19 @@ read_archive(room_id=…)               # read an archived transcript
 
 ### Message and project maintenance
 ` + "```" + `
+update_room(room_id=…, add_tags=…, where_project=…)  # edit metadata/tags; where_project patches a whole project
 rename_project(from=old-name, to=new-name)           # bulk-rename project field across all rooms
 fork_thread(start_message_id=…, new_room_id=…)       # move a thread tail into a new linked room
 move_messages(message_ids=…, target_room_id=…)       # relocate specific off-topic messages
 delete_messages(message_ids=…, dry_run=true)         # preview then delete specific messages
 delete_room(room_id=…)                               # permanently remove a room and all its messages
+` + "```" + `
+
+### Sharing a node in a cluster (private-by-default)
+` + "```" + `
+bulk_visibility(all=true, visibility=private)        # make every room node-local first
+bulk_visibility(room_ids=proj-a,proj-b, visibility=public)  # re-publish only what a peer should see
+list_rooms(cluster_wide=true)                        # confirm what's visible across the cluster
 ` + "```" + `
 `
 

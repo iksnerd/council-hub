@@ -69,6 +69,65 @@ func TestSetVisibility(t *testing.T) {
 	}
 }
 
+func TestBulkSetVisibility(t *testing.T) {
+	s := setupTestServer(t)
+
+	// Two rooms in project "alpha", one in "beta".
+	mustCreate := func(id, project string) {
+		if err := s.CreateRoom(id, "room", project, "", "", "", ""); err != nil {
+			t.Fatalf("createRoom %s failed: %v", id, err)
+		}
+	}
+	mustCreate("a1", "alpha")
+	mustCreate("a2", "alpha")
+	mustCreate("b1", "beta")
+
+	vis := func(id string) string {
+		r, _ := s.GetRoom(id)
+		return r.Visibility
+	}
+
+	// By project: only alpha rooms flip.
+	n, err := s.BulkSetVisibility("private", nil, "alpha", false)
+	if err != nil {
+		t.Fatalf("BulkSetVisibility(project) failed: %v", err)
+	}
+	if n != 2 {
+		t.Errorf("expected 2 rooms changed, got %d", n)
+	}
+	if vis("a1") != "private" || vis("a2") != "private" {
+		t.Errorf("alpha rooms should be private, got a1=%s a2=%s", vis("a1"), vis("a2"))
+	}
+	if vis("b1") != "public" {
+		t.Errorf("beta room should stay public, got %s", vis("b1"))
+	}
+
+	// By room_ids.
+	if _, err := s.BulkSetVisibility("private", []string{"b1"}, "", false); err != nil {
+		t.Fatalf("BulkSetVisibility(room_ids) failed: %v", err)
+	}
+	if vis("b1") != "private" {
+		t.Errorf("b1 should be private, got %s", vis("b1"))
+	}
+
+	// all=true re-publishes everything.
+	n, err = s.BulkSetVisibility("public", nil, "", true)
+	if err != nil {
+		t.Fatalf("BulkSetVisibility(all) failed: %v", err)
+	}
+	if n != 3 {
+		t.Errorf("expected 3 rooms changed by all=true, got %d", n)
+	}
+	if vis("a1") != "public" || vis("a2") != "public" || vis("b1") != "public" {
+		t.Error("all rooms should be public after all=true")
+	}
+
+	// No target is an error.
+	if _, err := s.BulkSetVisibility("private", nil, "", false); err == nil {
+		t.Error("expected error when no target specified")
+	}
+}
+
 func TestCreateRoomDuplicate(t *testing.T) {
 	s := setupTestServer(t)
 

@@ -19,6 +19,11 @@ defmodule CouncilHubUiWeb.Router do
     plug CouncilHubUiWeb.Plugs.RestrictLocalhost
   end
 
+  # Cluster controls are a write surface — restrict to the host's own browser.
+  pipeline :require_localhost do
+    plug CouncilHubUiWeb.Plugs.RestrictLocalhost
+  end
+
   scope "/", CouncilHubUiWeb do
     pipe_through :browser
 
@@ -27,6 +32,14 @@ defmodule CouncilHubUiWeb.Router do
     live_session :default do
       live "/", CouncilLive, :index
       live "/rooms/:room_id", CouncilLive, :show
+    end
+  end
+
+  scope "/", CouncilHubUiWeb do
+    pipe_through [:browser, :require_localhost]
+
+    live_session :settings do
+      live "/settings", SettingsLive, :index
     end
   end
 

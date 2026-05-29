@@ -33,7 +33,14 @@
         <span class="text-[10px] font-medium text-[var(--ch-text-lo)] uppercase tracking-[0.15em]">
           Nodes
         </span>
-        <span class="text-[10px] text-[var(--ch-text-xs)] font-mono ml-auto">
+        <.link
+          navigate={~p"/settings"}
+          title="Cluster settings"
+          class="text-[10px] font-mono text-[var(--ch-text-xs)] hover:text-[var(--ch-text-hi)] ml-auto"
+        >
+          manage
+        </.link>
+        <span class="text-[10px] text-[var(--ch-text-xs)] font-mono">
           {length(@nodes)}
         </span>
       </div>

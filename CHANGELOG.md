@@ -4,6 +4,16 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.33.0] - 2026-05-29
+
+### Added
+- **`bulk_visibility` tool** — set `public`/`private` across many rooms in one call (30 tools total). Targets exactly one of `all="true"` (every room on the node, uncapped), `project=<name>`, or `room_ids=a,b,c`. Backed by a single SQL `UPDATE` in `council.BulkSetVisibility`. Use `all="true" visibility="private"` to make a node private-by-default before sharing a cluster, then re-publish the rooms a peer should see. Unlike `update_room`'s `where_project` (capped at 100), `all` covers every room.
+- **UI: Cluster Settings page** (`/settings`, localhost-only) — connect/disconnect Erlang peer nodes live with no container restart, via `Node.connect/1`. New `CouncilHubUi.ClusterManager` GenServer persists managed peers to `/data/cluster_peers` and reconnects them on boot, complementing the libcluster `COUNCIL_SEEDS` strategy. A "manage" link sits in the sidebar Nodes header. The dashboard otherwise remains read-only.
+
+### Changed
+- **Agent-facing docs** — `council://guide` now documents room visibility in Core Concepts and adds a Clustering & Visibility section; `council://workflows` gains a "private-by-default before sharing a cluster" pattern and `update_room`/`bulk_visibility` coverage (previously absent from all guides). Aligned the message lifecycle string (`thought → draft → critique → decision → action → synthesis`) across the server instructions and `post_to_room`. Clarified `cluster_wide` wording on fetch-style tools.
+- **CLAUDE.md** — added a "Privacy & OSS Hygiene" rule (no personal/machine data in tracked files; use generic placeholders) and scrubbed a personal node name from an earlier changelog example.
+
 ## [0.32.0] - 2026-05-29
 
 ### Added
@@ -40,7 +50,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 - **UI: full CSS variable color system** — all UI chrome now routes through a `--ch-*` custom property palette defined in `app.css`. A single `:root` block controls every surface, border, text level, and interactive state. No more scattered Tailwind color utilities for chrome.
 - **UI: pure grayscale** — eliminated all `sky-*`, `cyan-*`, `slate-*`, and `neutral-*` color utilities from UI chrome. Backgrounds and interactive states use achromatic `rgba(255,255,255,N)` values. Functional / semantic colors (emerald=active, amber=warn, red=error, purple=synthesis/code, author identity hex) are retained.
 - **UI: tags visible in sidebar room cards** — each room card now shows up to 3 tags (noise tags `stale`/`needs-synthesis` suppressed) as small monospace chips, making room context scannable without opening the room.
-- **UI: source node shown in room header** — cluster-wide rooms now display their owning node (`boyandrenski@…`) in the header metadata column.
+- **UI: source node shown in room header** — cluster-wide rooms now display their owning node (e.g. `council_hub@10.0.0.5`) in the header metadata column.
 - **UI: type breakdown in room header** — the header right column now shows the compact type count string (e.g. `A:9 S:4 D:3`) alongside the total message count.
 - **UI: dark backgrounds are now truly neutral** — replaced blue-tinted hex backgrounds (`#0b1120`, `#0f1629`, `#131a2e`) with pure achromatic values (`#0e0e0e`, `#161616`, `#262626`).
 

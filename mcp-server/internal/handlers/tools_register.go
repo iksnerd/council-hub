@@ -50,7 +50,7 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "post_to_room",
-		Description: "Post a message to a council room's ledger. Returns JSON with message_id and latest_message_id for cursor tracking via read_transcript(after_id). Workflow guide — use message_type to signal intent: thought (exploring/reasoning) → critique (pushback/concerns) → decision (choice made, include rationale) → action (work shipped) → synthesis (compiled reference that distills a room's conclusions). Use review for feedback on others' work.",
+		Description: "Post a message to a council room's ledger. Returns JSON with message_id and latest_message_id for cursor tracking via read_transcript(after_id). Workflow guide — use message_type to signal intent: thought (exploring/reasoning) → draft (proposal ready for feedback) → critique (pushback/concerns) → decision (choice made, include rationale) → action (work shipped) → synthesis (compiled reference that distills a room's conclusions). Use review for feedback on others' work.",
 		InputSchema: schema([]string{"room_id", "author", "message"}, map[string]map[string]any{
 			"room_id": prop("string", "Target room ID"),
 			"author":  prop("string", "Name of the posting agent"),
@@ -94,6 +94,21 @@ func (r *Registry) RegisterTools() {
 			"auto_archive_days": prop("string", "When set with status='resolved', any room whose last activity is N+ days old is also archived and deleted. Use 0 or omit to skip auto-archive."),
 		}),
 	}, r.handleBulkStatusUpdate)
+
+	mcp.AddTool(r.Server.MCP, &mcp.Tool{
+		Name: "bulk_visibility",
+		Description: "Set room visibility ('public' or 'private') across many rooms in one call. " +
+			"Private rooms are node-local — excluded from all cluster fan-out (cluster-wide reads and cross-node writes); public rooms are shared across the cluster. " +
+			"Specify exactly one target: all='true' (every room on this node, uncapped), project='<name>' (every room in a project), or room_ids='a,b,c'. " +
+			"Use this to make a node private-by-default before sharing a cluster — e.g. all='true' visibility='private', then re-publish the few rooms you want a peer to see. " +
+			"Unlike update_room's where_project (capped at 100), all='true' really means every room.",
+		InputSchema: schema([]string{"visibility"}, map[string]map[string]any{
+			"visibility": prop("string", "'public' or 'private' (required)."),
+			"all":        prop("string", "Set to 'true' to target every room on this node. Uncapped. Mutually exclusive with project/room_ids."),
+			"project":    prop("string", "Target every room in this project. Mutually exclusive with all/room_ids."),
+			"room_ids":   prop("string", "Comma-separated room IDs to target (e.g. bug-123,feature-x). Mutually exclusive with all/project."),
+		}),
+	}, r.handleBulkVisibility)
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name: "rename_project",
@@ -149,7 +164,7 @@ func (r *Registry) RegisterTools() {
 			"room_id":                   prop("string", "Target room ID"),
 			"include_related_summaries": prop("string", "Set to 'true' to append topic, system_prompt, and pinned message from each related room."),
 			"include_last_n":            prop("string", "Append the last N messages inline after room metadata (max 50). Saves a separate get_messages call."),
-			"cluster_wide":              prop("string", "Set to 'true' to search across all cluster nodes. Default: local only."),
+			"cluster_wide":              prop("string", "Set to 'true' to fetch this room from the cluster node that owns it. Default: local only."),
 		}),
 	}, r.handleReadRoom)
 
@@ -205,7 +220,7 @@ func (r *Registry) RegisterTools() {
 		InputSchema: schema(nil, map[string]map[string]any{
 			"room_id":      prop("string", "Single target room ID."),
 			"room_ids":     prop("string", "Comma-separated room IDs for batch stats (e.g. room-a,room-b). Use instead of or alongside room_id."),
-			"cluster_wide": prop("string", "Set to 'true' to search across all cluster nodes. Default: local only."),
+			"cluster_wide": prop("string", "Set to 'true' to fetch stats from all cluster nodes. Default: local only."),
 		}),
 	}, r.handleRoomStats)
 

@@ -9,6 +9,75 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
+// ========== bulk_visibility ==========
+
+func TestHandleBulkVisibilityAll(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "v1")
+	mustCreateRoom(t, reg.Server, "v2")
+
+	res, _, _ := reg.handleBulkVisibility(context.Background(), nil, BulkVisibilityInput{
+		Visibility: "private", All: "true",
+	})
+	text := resultText(res)
+	if !strings.Contains(text, "Set 2 room(s) to **private**") {
+		t.Errorf("expected 2 rooms set private, got: %s", text)
+	}
+	for _, id := range []string{"v1", "v2"} {
+		room, _ := reg.Server.GetRoom(id)
+		if room.Visibility != "private" {
+			t.Errorf("room '%s' should be private, got '%s'", id, room.Visibility)
+		}
+	}
+}
+
+func TestHandleBulkVisibilityByProject(t *testing.T) {
+	reg := setupHandlerTest(t)
+	_ = reg.Server.CreateRoom("p1", "r", "alpha", "", "", "", "")
+	_ = reg.Server.CreateRoom("p2", "r", "beta", "", "", "", "")
+
+	res, _, _ := reg.handleBulkVisibility(context.Background(), nil, BulkVisibilityInput{
+		Visibility: "private", Project: "alpha",
+	})
+	if !strings.Contains(resultText(res), "project 'alpha'") {
+		t.Errorf("unexpected message: %s", resultText(res))
+	}
+	if r, _ := reg.Server.GetRoom("p1"); r.Visibility != "private" {
+		t.Errorf("p1 should be private, got %s", r.Visibility)
+	}
+	if r, _ := reg.Server.GetRoom("p2"); r.Visibility != "public" {
+		t.Errorf("p2 should stay public, got %s", r.Visibility)
+	}
+}
+
+func TestHandleBulkVisibilityValidation(t *testing.T) {
+	reg := setupHandlerTest(t)
+
+	// Bad visibility value.
+	res, _, _ := reg.handleBulkVisibility(context.Background(), nil, BulkVisibilityInput{
+		Visibility: "secret", All: "true",
+	})
+	if !strings.Contains(resultText(res), "must be 'public' or 'private'") {
+		t.Errorf("expected visibility validation error, got: %s", resultText(res))
+	}
+
+	// No target.
+	res, _, _ = reg.handleBulkVisibility(context.Background(), nil, BulkVisibilityInput{
+		Visibility: "private",
+	})
+	if !strings.Contains(resultText(res), "exactly one target") {
+		t.Errorf("expected no-target error, got: %s", resultText(res))
+	}
+
+	// More than one target.
+	res, _, _ = reg.handleBulkVisibility(context.Background(), nil, BulkVisibilityInput{
+		Visibility: "private", All: "true", Project: "alpha",
+	})
+	if !strings.Contains(resultText(res), "only one target") {
+		t.Errorf("expected multi-target error, got: %s", resultText(res))
+	}
+}
+
 // ========== bulk_status_update ==========
 
 func TestHandleBulkStatusUpdate(t *testing.T) {

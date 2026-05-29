@@ -30,6 +30,14 @@ type RenameProjectInput struct {
 	To   string `json:"to"`
 }
 
+// BulkVisibilityInput represents the parameters for setting visibility on many rooms at once.
+type BulkVisibilityInput struct {
+	Visibility string `json:"visibility"`
+	All        string `json:"all"`
+	Project    string `json:"project"`
+	RoomIDs    string `json:"room_ids"`
+}
+
 func (r *Registry) handleSignalStatus(ctx context.Context, req *mcp.CallToolRequest, args SignalStatusInput) (*mcp.CallToolResult, ToolOutput, error) {
 	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
 		return &mcp.CallToolResult{
@@ -152,6 +160,68 @@ func (r *Registry) handleBulkStatusUpdate(ctx context.Context, req *mcp.CallTool
 
 	r.Server.Logger.Info("Bulk status update", "status", args.Status, "updated", len(updated), "archived", len(archived), "not_found", len(notFound))
 	return msg(b.String())
+}
+
+func (r *Registry) handleBulkVisibility(ctx context.Context, req *mcp.CallToolRequest, args BulkVisibilityInput) (*mcp.CallToolResult, ToolOutput, error) {
+	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: text}},
+		}, ToolOutput{Message: text}, nil
+	}
+
+	v := strings.ToLower(strings.TrimSpace(args.Visibility))
+	if v != "public" && v != "private" {
+		return msg("Error: visibility is required and must be 'public' or 'private'.")
+	}
+
+	all := strings.EqualFold(strings.TrimSpace(args.All), "true")
+	project := strings.TrimSpace(args.Project)
+
+	var roomIDs []string
+	for _, p := range strings.Split(args.RoomIDs, ",") {
+		if id := strings.TrimSpace(p); id != "" {
+			roomIDs = append(roomIDs, id)
+		}
+	}
+
+	// Exactly one targeting mode.
+	targets := 0
+	for _, set := range []bool{all, project != "", len(roomIDs) > 0} {
+		if set {
+			targets++
+		}
+	}
+	if targets == 0 {
+		return msg("Error: specify exactly one target — all='true', project='<name>', or room_ids='a,b,c'.")
+	}
+	if targets > 1 {
+		return msg("Error: specify only one target — all, project, or room_ids (not more than one).")
+	}
+
+	count, err := r.Server.BulkSetVisibility(v, roomIDs, project, all)
+	if err != nil {
+		return msg(fmt.Sprintf("Error: %s", err.Error()))
+	}
+
+	var scope string
+	switch {
+	case all:
+		scope = "all rooms"
+	case project != "":
+		scope = fmt.Sprintf("project '%s'", project)
+	default:
+		scope = fmt.Sprintf("%d listed room(s)", len(roomIDs))
+	}
+
+	r.Server.Logger.Info("Bulk visibility update", "visibility", v, "scope", scope, "rooms_changed", count)
+
+	note := ""
+	if v == "private" {
+		note = " They are now node-local — excluded from all cluster fan-out (cluster-wide reads and cross-node writes)."
+	} else {
+		note = " They are now public — visible across the cluster again."
+	}
+	return msg(fmt.Sprintf("Set %d room(s) to **%s** (%s).%s", count, v, scope, note))
 }
 
 func (r *Registry) handleRenameProject(ctx context.Context, req *mcp.CallToolRequest, args RenameProjectInput) (*mcp.CallToolResult, ToolOutput, error) {
