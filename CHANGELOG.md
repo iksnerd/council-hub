@@ -4,6 +4,18 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.32.0] - 2026-05-29
+
+### Added
+- **Room visibility (public/private)** — new `visibility` param on `create_room`, `get_or_create_room`, and `update_room` (default `public`, backward compatible). Private rooms are node-local: excluded from every cluster fan-out (cluster-wide reads and cross-node writes) via a single gate in the Phoenix `Cluster.local_query` path. Local and per-node UI access is unaffected. Surfaced in `read_room`.
+- **Cross-node writes (Y1)** — `post_to_room` now proxies to the owning node when a room doesn't exist locally. The Go server discovers the owner via the new Phoenix `POST /api/internal/cluster/locate_room` endpoint, then forwards the write over HTTP to that node's new `/api/internal/post_to_room` receiver, authenticated by the shared `RELEASE_COOKIE`. New `COUNCIL_PEER_MCP_PORT` env (defaults to the local MCP port) sets the peer port. Single-node deployments are unaffected.
+- **Room-creation conflict guard (Z1)** — `create_room`/`get_or_create_room` refuse to create a local shadow when a public peer already owns the same room ID, returning an error naming the owning node instead.
+
+### Fixed
+- **`get_messages(cluster_wide, after_id)` delta reads (Z2)** — `after_id` was dropped on both sides, so cluster-wide delta reads always returned empty. The Go handler now forwards `after_id`, the Phoenix controller routes by value (not key presence), and the fan-out uses the existing `get_messages_since` query.
+- **`read_room(cluster_wide, include_last_n)` dropped messages (Z4)** — the cluster path sourced from `list_rooms` (metadata only), so `include_last_n` was silently ignored. It now routes through `read_transcript` and returns the last N messages (capped at 50, matching the local handler).
+- **Cluster search warnings (Z3)** — standardized warning formatting to `**Cluster Warning:**` across handlers, and empty cluster-wide searches now note that message bodies are node-local (so an empty result isn't mistaken for "nothing matches").
+
 ## [0.31.2] - 2026-05-29
 
 ### Fixed

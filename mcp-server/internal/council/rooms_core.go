@@ -75,13 +75,44 @@ func (s *Server) CreateRoom(id, description, project, techStack, tags, systemPro
 func (s *Server) GetRoom(roomID string) (Room, error) {
 	var r Room
 	err := s.DB.QueryRow(
-		`SELECT id, description, status, project, tech_stack, tags, system_prompt, related_rooms, created_at, updated_at FROM rooms WHERE id = ?`,
+		`SELECT id, description, status, project, tech_stack, tags, system_prompt, related_rooms, COALESCE(visibility, 'public'), created_at, updated_at FROM rooms WHERE id = ?`,
 		roomID,
-	).Scan(&r.ID, &r.Description, &r.Status, &r.Project, &r.TechStack, &r.Tags, &r.SystemPrompt, &r.RelatedRooms, &r.CreatedAt, &r.UpdatedAt)
+	).Scan(&r.ID, &r.Description, &r.Status, &r.Project, &r.TechStack, &r.Tags, &r.SystemPrompt, &r.RelatedRooms, &r.Visibility, &r.CreatedAt, &r.UpdatedAt)
 	if err != nil {
 		return r, err
 	}
 	return r, nil
+}
+
+// normalizeVisibility validates a room visibility value, defaulting empty/unknown
+// to "public". Only "public" and "private" are accepted.
+func normalizeVisibility(v string) string {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "private":
+		return "private"
+	default:
+		return "public"
+	}
+}
+
+// SetVisibility sets a room's visibility ("public" or "private"). Private rooms
+// stay node-local: they are excluded from every cluster fan-out (reads and writes).
+func (s *Server) SetVisibility(roomID, visibility string) error {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+
+	res, err := s.DB.Exec(
+		`UPDATE rooms SET visibility = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+		normalizeVisibility(visibility), roomID,
+	)
+	if err != nil {
+		return err
+	}
+	rows, _ := res.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("room '%s' not found", roomID)
+	}
+	return nil
 }
 
 func (s *Server) UpdateRoom(roomID, description, project, techStack, tags, addTags, removeTags, systemPrompt, relatedRooms string) error {

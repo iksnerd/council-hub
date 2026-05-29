@@ -28,6 +28,7 @@ func (r *Registry) RegisterTools() {
 			"tags":          prop("string", "Comma-separated labels"),
 			"system_prompt": prop("string", "Instructions injected into transcripts for LLM context"),
 			"related_rooms": prop("string", "Comma-separated IDs of related rooms — bidirectional: linked rooms automatically link back"),
+			"visibility":    prop("string", "'public' (default) or 'private'. Private rooms are node-local — excluded from all cluster fan-out (cluster-wide reads and cross-node writes); they live only on this node."),
 		}),
 	}, r.handleCreateRoom)
 
@@ -42,6 +43,7 @@ func (r *Registry) RegisterTools() {
 			"tags":          prop("string", "Comma-separated labels (used only when creating)"),
 			"system_prompt": prop("string", "Instructions (used only when creating)"),
 			"related_rooms": prop("string", "Comma-separated related room IDs (used only when creating)"),
+			"visibility":    prop("string", "'public' (default) or 'private', used only when creating. Private rooms are node-local — excluded from all cluster fan-out."),
 			"last_n":        prop("string", "Number of recent messages to return for existing rooms (default 5, max 50)"),
 		}),
 	}, r.handleGetOrCreateRoom)
@@ -136,6 +138,7 @@ func (r *Registry) RegisterTools() {
 			"remove_tags":   prop("string", "Comma-separated tags to remove from existing tags"),
 			"system_prompt": prop("string", "New system prompt"),
 			"related_rooms": prop("string", "Comma-separated IDs of related rooms \u2014 bidirectional: linked rooms automatically link back"),
+			"visibility":    prop("string", "'public' or 'private'. Set 'private' to make the room node-local (excluded from cluster fan-out); 'public' to re-expose it to the cluster."),
 		}),
 	}, r.handleUpdateRoom)
 

@@ -110,6 +110,7 @@ Code is organized into `internal/council` (data layer) and `internal/handlers` (
 - `internal/handlers/tools_register.go` — All 29 MCP tool registrations wired to their handlers.
 - `internal/handlers/templates.go` — Room template definitions (brainstorm, bug, decision-log, review, sprint).
 - `internal/handlers/cluster.go` — `clusterCall` HTTP helper (POST to Phoenix internal API).
+- `internal/handlers/cluster_writes.go` — Cross-node writes: `locateRoomOwner` (queries Phoenix `locate_room`), `proxyPostToRoom` (forwards a write to the owning node), and `InternalPostHandler` (receives proxied writes, authenticated by the shared `RELEASE_COOKIE`).
 - `internal/handlers/cluster_types.go` — Cluster response types and mapping helpers (`ClusterSearchResult`, `ClusterRoomResult`, etc.).
 - `internal/handlers/cluster_handlers.go` — Cluster-wide tool variants: `handleSearchMessagesCluster`, `handleListRoomsCluster`, `handleRoomStatsCluster`, `handleGetMessagesCluster`, `handleGetDigestCluster`, `handleReadRoomCluster`, `handleReadTranscriptCluster`. Formats results with `[node-name]` prefix and appends warnings for unreachable nodes.
 - `internal/handlers/handler_message_query.go` — `search_messages` (FTS5 + optional semantic, branches on `cluster_wide=true`), `get_messages`, `get_mentions`.
@@ -163,8 +164,9 @@ All state mutations go through the Go server's mutex-protected handlers. Phoenix
 - `COUNCIL_TRANSPORT` — `stdio` or `http` (default: `stdio`)
 - `COUNCIL_HTTP_ADDR` — HTTP bind address (default: `:3001`)
 - `COUNCIL_PHOENIX_URL` — Phoenix internal API URL for cluster queries (default: `http://127.0.0.1:4000`)
+- `COUNCIL_PEER_MCP_PORT` — Port used to reach peer Go servers for cross-node writes (default: the port from `COUNCIL_HTTP_ADDR`, i.e. `3001`)
 - `COUNCIL_DB_PATH` — Phoenix read-only DB path
-- `RELEASE_COOKIE` — Shared secret for distributed Erlang clustering
+- `RELEASE_COOKIE` — Shared secret for distributed Erlang clustering (also authenticates cross-node write proxies)
 - `RELEASE_NODE` — Unique node name with reachable IP (e.g. `council_hub@10.0.0.5`)
 - `COUNCIL_SEEDS` — Comma-separated node names to connect to for clustering
 - `COUNCIL_OLLAMA_URL` — Ollama API endpoint for semantic search (e.g. `http://localhost:11434`)

@@ -27,6 +27,48 @@ func TestCreateRoom(t *testing.T) {
 	}
 }
 
+func TestCreateRoomDefaultVisibilityPublic(t *testing.T) {
+	s := setupTestServer(t)
+
+	if err := s.CreateRoom("vis-room", "A room", "", "", "", "", ""); err != nil {
+		t.Fatalf("createRoom failed: %v", err)
+	}
+	room, _ := s.GetRoom("vis-room")
+	if room.Visibility != "public" {
+		t.Errorf("expected default visibility 'public', got '%s'", room.Visibility)
+	}
+}
+
+func TestSetVisibility(t *testing.T) {
+	s := setupTestServer(t)
+
+	if err := s.CreateRoom("priv-room", "A room", "", "", "", "", ""); err != nil {
+		t.Fatalf("createRoom failed: %v", err)
+	}
+
+	if err := s.SetVisibility("priv-room", "private"); err != nil {
+		t.Fatalf("SetVisibility failed: %v", err)
+	}
+	room, _ := s.GetRoom("priv-room")
+	if room.Visibility != "private" {
+		t.Errorf("expected visibility 'private', got '%s'", room.Visibility)
+	}
+
+	// Unknown / empty values normalize to public.
+	if err := s.SetVisibility("priv-room", "bogus"); err != nil {
+		t.Fatalf("SetVisibility failed: %v", err)
+	}
+	room, _ = s.GetRoom("priv-room")
+	if room.Visibility != "public" {
+		t.Errorf("expected normalized visibility 'public', got '%s'", room.Visibility)
+	}
+
+	// Missing room is an error.
+	if err := s.SetVisibility("nope", "private"); err == nil {
+		t.Error("expected error setting visibility on missing room")
+	}
+}
+
 func TestCreateRoomDuplicate(t *testing.T) {
 	s := setupTestServer(t)
 

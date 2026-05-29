@@ -28,6 +28,56 @@ func TestHandleCreateRoom(t *testing.T) {
 	}
 }
 
+func TestHandleCreateRoomPrivateVisibility(t *testing.T) {
+	reg := setupHandlerTest(t)
+
+	res, _, err := reg.handleCreateRoom(context.Background(), nil, CreateRoomInput{
+		ID: "secret-room", Topic: "node-local", Visibility: "private",
+	})
+	if err != nil {
+		t.Fatalf("handleCreateRoom error: %v", err)
+	}
+	if text := resultText(res); !strings.Contains(text, "private") {
+		t.Errorf("expected visibility note in output, got: %s", text)
+	}
+
+	room, _ := reg.Server.GetRoom("secret-room")
+	if room.Visibility != "private" {
+		t.Errorf("expected visibility 'private', got '%s'", room.Visibility)
+	}
+
+	// read_room surfaces the private flag.
+	readRes, _, _ := reg.handleReadRoom(context.Background(), nil, ReadRoomInput{RoomID: "secret-room"})
+	if text := resultText(readRes); !strings.Contains(text, "private") {
+		t.Errorf("expected read_room to show private visibility, got: %s", text)
+	}
+}
+
+func TestHandleUpdateRoomVisibility(t *testing.T) {
+	reg := setupHandlerTest(t)
+
+	if _, _, err := reg.handleCreateRoom(context.Background(), nil, CreateRoomInput{ID: "toggle-room", Topic: "t"}); err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+
+	if _, _, err := reg.handleUpdateRoom(context.Background(), nil, UpdateRoomInput{RoomID: "toggle-room", Visibility: "private"}); err != nil {
+		t.Fatalf("update failed: %v", err)
+	}
+	room, _ := reg.Server.GetRoom("toggle-room")
+	if room.Visibility != "private" {
+		t.Errorf("expected 'private' after update, got '%s'", room.Visibility)
+	}
+
+	// Re-expose to the cluster.
+	if _, _, err := reg.handleUpdateRoom(context.Background(), nil, UpdateRoomInput{RoomID: "toggle-room", Visibility: "public"}); err != nil {
+		t.Fatalf("update failed: %v", err)
+	}
+	room, _ = reg.Server.GetRoom("toggle-room")
+	if room.Visibility != "public" {
+		t.Errorf("expected 'public' after update, got '%s'", room.Visibility)
+	}
+}
+
 func TestHandleCreateRoomMissingID(t *testing.T) {
 	reg := setupHandlerTest(t)
 

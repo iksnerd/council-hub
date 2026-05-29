@@ -39,9 +39,11 @@ func validateRoomMetadata(topic, project, techStack, tags, systemPrompt string) 
 
 // Registry holds the council server and handles MCP tool registration.
 type Registry struct {
-	Server     *council.Server
-	HTTPClient *http.Client // for cluster-wide queries via Phoenix internal API
-	PhoenixURL string       // e.g. "http://127.0.0.1:4000"
+	Server        *council.Server
+	HTTPClient    *http.Client // for cluster-wide queries via Phoenix internal API
+	PhoenixURL    string       // e.g. "http://127.0.0.1:4000"
+	PeerMCPPort   string       // MCP HTTP port used to reach peer Go servers for cross-node writes (default "3001")
+	ClusterSecret string       // shared secret (RELEASE_COOKIE) authenticating cross-node write proxies
 }
 
 // toolResultText extracts the text content from a CallToolResult.

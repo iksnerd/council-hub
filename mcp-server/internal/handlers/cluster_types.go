@@ -68,7 +68,7 @@ func formatClusterWarnings(b *strings.Builder, warnings []string) {
 	if len(warnings) > 0 {
 		b.WriteString("\n---\n")
 		for _, w := range warnings {
-			fmt.Fprintf(b, "**Warning:** %s\n", w)
+			fmt.Fprintf(b, "**Cluster Warning:** %s\n", w)
 		}
 	}
 }

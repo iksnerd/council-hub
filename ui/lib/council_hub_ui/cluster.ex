@@ -4,7 +4,11 @@ defmodule CouncilHubUi.Cluster do
   Queries all connected Erlang nodes and aggregates results.
   """
 
+  import Ecto.Query
+
   alias CouncilHubUi.Council
+  alias CouncilHubUi.Council.Room
+  alias CouncilHubUi.Repo
 
   @rpc_timeout 2_000
 
@@ -79,18 +83,37 @@ defmodule CouncilHubUi.Cluster do
   end
 
   @doc """
+  Locate the cluster node(s) that own a (public) room. Fans out room_stats and
+  collects the source nodes that hold the room. Private rooms are excluded by the
+  fan-out gate, so they are never located. Returns %{nodes: [node_names], warnings: [strings]}.
+  """
+  def locate_room(room_id) do
+    {results, warnings} = fan_out(:room_stats, [room_id])
+
+    nodes =
+      results
+      |> Enum.map(&Map.get(&1, :source_node))
+      |> Enum.reject(&is_nil/1)
+      |> Enum.uniq()
+
+    %{nodes: nodes, warnings: warnings}
+  end
+
+  @doc """
   Fetch messages by IDs or room recent messages across all cluster nodes.
   Returns %{results: [message_maps], warnings: [strings]}.
   """
   def get_messages(params) do
-    func =
-      if Map.has_key?(params, "message_ids"), do: :get_messages_by_ids, else: :get_recent_messages
+    {func, args} =
+      cond do
+        Map.has_key?(params, "message_ids") ->
+          {:get_messages_by_ids, [Map.get(params, "message_ids")]}
 
-    args =
-      if func == :get_messages_by_ids do
-        [Map.get(params, "message_ids")]
-      else
-        [Map.get(params, "room_id"), Map.get(params, "limit", 10)]
+        Map.has_key?(params, "after_id") ->
+          {:get_messages_since, [Map.get(params, "room_id"), Map.get(params, "after_id")]}
+
+        true ->
+          {:get_recent_messages, [Map.get(params, "room_id"), Map.get(params, "limit", 10)]}
       end
 
     {results, warnings} = fan_out(func, args)
@@ -169,10 +192,46 @@ defmodule CouncilHubUi.Cluster do
   end
 
   @doc false
-  # Called via :erpc on each node. Executes a local Council query.
-  # Returns the raw result from Council — caller handles ok/error tuples.
+  # Called via :erpc on each node. Executes a local Council query, then strips
+  # any private rooms (and their messages) from the result so they never leave
+  # this node. Private rooms remain fully visible to local/UI queries — only the
+  # cluster fan-out path goes through here.
   def local_query(func, args) do
     apply(Council, func, args)
+    |> reject_private()
+  end
+
+  # Drop private rooms from cluster fan-out results. Shapes returned by the
+  # fanned-out Council functions: a list (rooms/messages/digest items), an
+  # {:ok, %{room: ...}} tuple (read_transcript), an {:ok, %{room_id: ...}} tuple
+  # (room_stats), or an {:error, _} tuple.
+  defp reject_private(result) do
+    private = private_room_ids()
+
+    case result do
+      list when is_list(list) ->
+        Enum.reject(list, &private_item?(&1, private))
+
+      {:ok, %{room: %{id: id}}} = ok ->
+        if MapSet.member?(private, id), do: {:error, "not found"}, else: ok
+
+      {:ok, %{room_id: rid}} = ok ->
+        if MapSet.member?(private, rid), do: {:error, "not found"}, else: ok
+
+      other ->
+        other
+    end
+  end
+
+  # A room result carries its own visibility; a message/digest result carries a
+  # room_id whose room may be private.
+  defp private_item?(%{visibility: "private"}, _private), do: true
+  defp private_item?(%{room_id: rid}, private), do: MapSet.member?(private, rid)
+  defp private_item?(_item, _private), do: false
+
+  defp private_room_ids do
+    Repo.all(from r in Room, where: r.visibility == "private", select: r.id)
+    |> MapSet.new()
   end
 
   # Tag results with source node name.

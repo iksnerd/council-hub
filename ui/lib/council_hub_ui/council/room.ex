@@ -12,6 +12,7 @@ defmodule CouncilHubUi.Council.Room do
     field :tags, :string, default: ""
     field :system_prompt, :string, default: ""
     field :related_rooms, :string, default: ""
+    field :visibility, :string, default: "public"
     field :created_at, :naive_datetime
     field :updated_at, :naive_datetime
 
