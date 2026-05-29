@@ -3,6 +3,11 @@ defmodule CouncilHubUiWeb.ClusterController do
 
   alias CouncilHubUi.Cluster
 
+  def nodes(conn, _params) do
+    nodes = [Node.self() | Node.list()] |> Enum.map(&to_string/1)
+    json(conn, %{nodes: nodes, count: length(nodes)})
+  end
+
   def search_messages(conn, params) do
     cluster_params = %{
       "query" => Map.get(params, "query", ""),

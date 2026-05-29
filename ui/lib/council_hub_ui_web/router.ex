@@ -33,6 +33,7 @@ defmodule CouncilHubUiWeb.Router do
   scope "/api/internal/cluster", CouncilHubUiWeb do
     pipe_through :internal_api
 
+    get "/nodes", ClusterController, :nodes
     post "/search_messages", ClusterController, :search_messages
     post "/list_rooms", ClusterController, :list_rooms
     post "/room_stats", ClusterController, :room_stats
