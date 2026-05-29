@@ -4,8 +4,27 @@ defmodule CouncilHubUiWeb.ClusterController do
   alias CouncilHubUi.Cluster
 
   def nodes(conn, _params) do
-    nodes = [Node.self() | Node.list()] |> Enum.map(&to_string/1)
-    json(conn, %{nodes: nodes, count: length(nodes)})
+    local_vsn = Application.spec(:council_hub_ui, :vsn) |> to_string()
+    local = %{node: to_string(Node.self()), version: local_vsn}
+
+    peers =
+      Node.list()
+      |> Enum.map(fn node ->
+        version =
+          case :erpc.call(node, Application, :spec, [:council_hub_ui, :vsn], 1_000) do
+            vsn when is_list(vsn) -> to_string(vsn)
+            _ -> "unknown"
+          end
+
+        %{node: to_string(node), version: version}
+      end)
+
+    all = [local | peers]
+
+    versions = all |> Enum.map(& &1.version) |> Enum.uniq()
+    mismatch = length(versions) > 1
+
+    json(conn, %{nodes: all, count: length(all), version_mismatch: mismatch})
   end
 
   def search_messages(conn, params) do

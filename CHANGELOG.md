@@ -4,6 +4,15 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.31.2] - 2026-05-29
+
+### Fixed
+- **`/api/internal/cluster/nodes` includes version per node** — endpoint now returns `{node, version}` objects and a `version_mismatch` boolean. Allows operators to detect mixed-version clusters at a glance.
+- **`/health` surfaces version mismatch** — Go health endpoint includes `cluster_warning` when connected nodes report different versions.
+- **`make docker-run` now passes `COUNCIL_OLLAMA_URL`** — semantic search was silently disabled every time `make docker-run` was used because the env var wasn't forwarded.
+- **Dockerfile: `+fnu` added to `ELIXIR_ERL_OPTIONS`** — eliminates the `latin1` native name encoding warning at startup.
+- **`docker-compose.yml` updated** — now documents `COUNCIL_SEEDS` and `COUNCIL_OLLAMA_URL` env vars; entrypoint auto-detect note added for `RELEASE_NODE`.
+
 ## [0.31.1] - 2026-05-29
 
 ### Fixed
