@@ -33,19 +33,23 @@
         <span class="text-[10px] font-medium text-[var(--ch-text-lo)] uppercase tracking-[0.15em]">
           Nodes
         </span>
+        <.link
+          navigate={~p"/status"}
+          title="Status & health"
+          class="text-[10px] font-mono text-[var(--ch-text-xs)] hover:text-[var(--ch-text-hi)] ml-auto"
+        >
+          status
+        </.link>
         <%= if @cluster_admin do %>
           <.link
             navigate={~p"/settings"}
             title="Cluster settings"
-            class="text-[10px] font-mono text-[var(--ch-text-xs)] hover:text-[var(--ch-text-hi)] ml-auto"
+            class="text-[10px] font-mono text-[var(--ch-text-xs)] hover:text-[var(--ch-text-hi)]"
           >
             manage
           </.link>
         <% end %>
-        <span class={[
-          "text-[10px] text-[var(--ch-text-xs)] font-mono",
-          if(!@cluster_admin, do: "ml-auto")
-        ]}>
+        <span class="text-[10px] text-[var(--ch-text-xs)] font-mono">
           {length(@nodes)}
         </span>
       </div>
