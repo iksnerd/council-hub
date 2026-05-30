@@ -1,0 +1,153 @@
+<div class="min-h-screen bg-[var(--ch-bg)] text-[var(--ch-text-mid)] px-6 py-8">
+  <CouncilHubUiWeb.Layouts.flash_group flash={@flash} />
+
+  <div class="max-w-2xl mx-auto">
+    <%!-- Header --%>
+    <div class="flex items-center gap-3 mb-6">
+      <.link
+        navigate={~p"/"}
+        class="text-[11px] font-mono text-[var(--ch-text-lo)] hover:text-[var(--ch-text-hi)] border border-[var(--ch-border)] rounded px-2 py-1"
+      >
+        ← dashboard
+      </.link>
+      <h1 class="text-[13px] font-semibold text-[var(--ch-text-hi)] tracking-widest uppercase">
+        Status
+      </h1>
+      <span class="text-[10px] font-mono text-[var(--ch-text-xs)] ml-auto">
+        v{@version} · {@transport} · refreshes 5s
+      </span>
+    </div>
+
+    <%!-- Config doctor (only when something needs attention) --%>
+    <%= if @warnings != [] do %>
+      <div class="bg-amber-500/5 border border-amber-500/20 rounded-lg p-4 mb-5">
+        <h2 class="text-[10px] font-medium text-amber-300/90 uppercase tracking-[0.15em] mb-2">
+          Needs attention
+        </h2>
+        <ul class="flex flex-col gap-1.5">
+          <%= for w <- @warnings do %>
+            <li class="text-[12px] text-amber-200/90 flex gap-2">
+              <span class="text-amber-400 shrink-0">▲</span>
+              <span>{w}</span>
+            </li>
+          <% end %>
+        </ul>
+      </div>
+    <% end %>
+
+    <%!-- This node --%>
+    <div class="bg-[var(--ch-surface)] border border-[var(--ch-border)] rounded-lg p-4 mb-5">
+      <h2 class="text-[10px] font-medium text-[var(--ch-text-lo)] uppercase tracking-[0.15em] mb-2">
+        This node
+      </h2>
+      <p class="font-mono text-[13px] text-[var(--ch-text-hi)] mb-3">{@self_node}</p>
+      <div class="flex flex-wrap gap-2">
+        <span class={[
+          "text-[10px] font-mono rounded px-2 py-1 border",
+          if(@distributed?,
+            do: "bg-emerald-500/10 text-emerald-300 border-emerald-500/20",
+            else: "bg-red-500/10 text-red-300 border-red-500/20"
+          )
+        ]}>
+          {if @distributed?, do: "distributed ✓", else: "not distributed"}
+        </span>
+        <span class={[
+          "text-[10px] font-mono rounded px-2 py-1 border",
+          if(@cookie_set?,
+            do: "bg-emerald-500/10 text-emerald-300 border-emerald-500/20",
+            else: "bg-amber-500/10 text-amber-300 border-amber-500/20"
+          )
+        ]}>
+          {if @cookie_set?, do: "cookie set ✓", else: "no RELEASE_COOKIE"}
+        </span>
+      </div>
+    </div>
+
+    <%!-- Cluster peers --%>
+    <div class="bg-[var(--ch-surface)] border border-[var(--ch-border)] rounded-lg p-4 mb-5">
+      <div class="flex items-center gap-2 mb-3">
+        <h2 class="text-[10px] font-medium text-[var(--ch-text-lo)] uppercase tracking-[0.15em]">
+          Cluster peers
+        </h2>
+        <span class="text-[10px] text-[var(--ch-text-xs)] font-mono ml-auto">
+          {length(@peers)} connected
+        </span>
+      </div>
+
+      <%= if @peers == [] do %>
+        <p class="text-[12px] text-[var(--ch-text-xs)] italic">
+          <%= if present_seeds?(@seeds) do %>
+            No peers connected yet — seeded {@seeds}.
+          <% else %>
+            Single node (no seeds configured). Manage peers in <.link
+              navigate={~p"/settings"}
+              class="underline hover:text-[var(--ch-text-hi)]"
+            >
+              settings
+            </.link>.
+          <% end %>
+        </p>
+      <% else %>
+        <div class="flex flex-col gap-1.5">
+          <%= for node <- @peers do %>
+            <div class="flex items-center gap-2 bg-[var(--ch-raised)] border border-[var(--ch-border)] rounded px-3 py-2">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0"></span>
+              <span class="font-mono text-[12px] text-[var(--ch-text-mid)] truncate" title={node}>
+                {@short_node_fun.(node)}
+              </span>
+            </div>
+          <% end %>
+        </div>
+      <% end %>
+    </div>
+
+    <%!-- Database --%>
+    <div class="bg-[var(--ch-surface)] border border-[var(--ch-border)] rounded-lg p-4 mb-5">
+      <h2 class="text-[10px] font-medium text-[var(--ch-text-lo)] uppercase tracking-[0.15em] mb-3">
+        Database
+      </h2>
+      <div class="grid grid-cols-2 gap-3">
+        <.stat label="rooms" value={@stats.room_count} />
+        <.stat label="messages" value={@stats.message_count} />
+        <.stat label="private rooms" value={@stats.private_rooms} />
+        <.stat
+          label="last activity"
+          value={
+            if @stats.last_message_at,
+              do: Calendar.strftime(@stats.last_message_at, "%Y-%m-%d %H:%M"),
+              else: "—"
+          }
+        />
+      </div>
+      <p class="text-[10px] font-mono text-[var(--ch-text-xs)] mt-3 truncate" title={@db_path}>
+        {@db_path}
+      </p>
+    </div>
+
+    <%!-- Semantic search --%>
+    <div class="bg-[var(--ch-surface)] border border-[var(--ch-border)] rounded-lg p-4">
+      <h2 class="text-[10px] font-medium text-[var(--ch-text-lo)] uppercase tracking-[0.15em] mb-3">
+        Semantic search
+      </h2>
+      <%= if is_nil(@stats.embedded) do %>
+        <p class="text-[12px] text-[var(--ch-text-xs)] italic">
+          Not available (no embeddings table / not enabled). Set COUNCIL_OLLAMA_URL on the
+          server to enable.
+        </p>
+      <% else %>
+        <div class="flex items-center gap-3">
+          <span class="font-mono text-[20px] text-[var(--ch-text-hi)]">
+            {@stats.coverage_pct}%
+          </span>
+          <span class="text-[11px] text-[var(--ch-text-lo)]">
+            {@stats.embedded} / {@stats.message_count} messages embedded
+          </span>
+        </div>
+        <div class="w-full h-1.5 bg-[var(--ch-raised)] rounded-full mt-2 overflow-hidden">
+          <div class="h-full bg-emerald-400/70" style={"width: #{@stats.coverage_pct || 0}%"}>
+          </div>
+        </div>
+      <% end %>
+    </div>
+  </div>
+</div>

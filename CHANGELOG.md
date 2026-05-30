@@ -4,6 +4,13 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.34.0] - 2026-05-30
+
+### Added
+- **UI: Status / Health page** (`/status`, public read-only) — node identity, distributed/cookie badges, live cluster peers, database stats (rooms/messages/private rooms/last activity), semantic-search embedding coverage, and a "config doctor" that flags common misconfig (not distributed, missing `RELEASE_COOKIE`, loopback `RELEASE_NODE`, seeds set but no peers connected). A `status` link sits in the sidebar Nodes header. Backed by `CouncilHubUi.HealthStats` (read-only queries against the shared SQLite file; embedding coverage degrades gracefully when the Go-owned `message_vectors` table isn't reachable).
+- **App icon / favicon** — a grayscale dock/tab icon derived from the logo: `favicon.svg` (tab), `apple-touch-icon.png` (Safari "Add to Dock"), `icon-192/512.png` + `site.webmanifest` (PWA/standalone). Head links and `static_paths` updated.
+- **Docs: Tailscale clustering guide** (`docs/clustering-tailscale.md` + `clustering-tailscale.mmd`) — sidecar-per-node pattern for clustering across machines/NAT/different tailnets, working around Docker Desktop on macOS not exposing published container ports on the Tailscale interface. Includes a Mermaid architecture diagram, bring-up steps, and a diagnostic runbook.
+
 ## [0.33.1] - 2026-05-30
 
 ### Fixed

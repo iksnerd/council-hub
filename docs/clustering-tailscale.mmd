@@ -1,0 +1,70 @@
+%% Council Hub — clustering two nodes over Tailscale with a sidecar per machine.
+%% Render: mmdc -i clustering-tailscale.mmd -o clustering-tailscale.svg
+%%   (or paste into https://mermaid.live)
+flowchart TB
+    subgraph TS["Tailscale Coordination / MagicDNS"]
+        direction LR
+        DNS["MagicDNS<br/>council-a.&lt;tailnet&gt;.ts.net<br/>council-b.&lt;tailnet&gt;.ts.net"]
+    end
+
+    subgraph MA["Machine A (e.g. macOS)"]
+        direction TB
+        subgraph NSA["shared network namespace"]
+            TSA["tailscale sidecar<br/>hostname: council-a<br/>tailnet IP 100.x.a"]
+            subgraph CHA["council-hub container"]
+                direction TB
+                GOA["Go MCP server<br/>:3001"]
+                PXA["Phoenix BEAM node<br/>council_hub@council-a<br/>epmd :4369 · dist :9000"]
+                DBA[("SQLite<br/>/data/council.db")]
+            end
+        end
+        BrowserA["Browser / Claude Code<br/>localhost:4000 · :3001"]
+    end
+
+    subgraph MB["Machine B (e.g. macOS)"]
+        direction TB
+        subgraph NSB["shared network namespace"]
+            TSB["tailscale sidecar<br/>hostname: council-b<br/>tailnet IP 100.x.b"]
+            subgraph CHB["council-hub container"]
+                direction TB
+                GOB["Go MCP server<br/>:3001"]
+                PXB["Phoenix BEAM node<br/>council_hub@council-b<br/>epmd :4369 · dist :9000"]
+                DBB[("SQLite<br/>/data/council.db")]
+            end
+        end
+        BrowserB["Browser / Claude Code<br/>localhost:4000 · :3001"]
+    end
+
+    %% Tailscale control plane
+    TSA -. "register / resolve" .-> DNS
+    TSB -. "register / resolve" .-> DNS
+
+    %% network_mode: service:tailscale — app rides the sidecar's tailnet identity
+    TSA === CHA
+    TSB === CHB
+
+    %% Erlang distribution over the tailnet (one TCP conn carries both ways)
+    PXA <== "epmd lookup + Erlang dist<br/>(encrypted WireGuard via tailnet)" ==> PXB
+
+    %% Local access stays on the host
+    BrowserA --> GOA
+    BrowserB --> GOB
+
+    %% Each node owns its own DB; cluster gives a unified query view
+    PXA --- DBA
+    PXB --- DBB
+    GOA --- DBA
+    GOB --- DBB
+
+    %% Cross-node reads/writes
+    GOA -. "cluster_wide query /<br/>cross-node write proxy" .-> PXB
+    GOB -. "cluster_wide query /<br/>cross-node write proxy" .-> PXA
+
+    classDef ts fill:#e8f0ff,stroke:#3b82f6,color:#1e3a8a;
+    classDef app fill:#eafff0,stroke:#16a34a,color:#14532d;
+    classDef db fill:#fff7e6,stroke:#d97706,color:#7c2d12;
+    classDef ext fill:#f3f4f6,stroke:#6b7280,color:#111827;
+    class TSA,TSB,DNS ts;
+    class GOA,GOB,PXA,PXB app;
+    class DBA,DBB db;
+    class BrowserA,BrowserB ext;
