@@ -178,6 +178,7 @@ All state mutations go through the Go server's mutex-protected handlers. Phoenix
 - `RELEASE_COOKIE` — Shared secret for distributed Erlang clustering (also authenticates cross-node write proxies)
 - `RELEASE_NODE` — Unique node name with reachable IP (e.g. `council_hub@10.0.0.5`)
 - `COUNCIL_SEEDS` — Comma-separated node names to connect to for clustering
+- `COUNCIL_CLUSTER_ADMIN_TOKEN` — Enables the UI Cluster Settings page (`/settings`) when set. Unlock by visiting `/settings?token=<token>` once. Unset = page disabled (404). IP gating can't work behind Docker NAT, so this token is the gate.
 - `COUNCIL_OLLAMA_URL` — Ollama API endpoint for semantic search (e.g. `http://localhost:11434`)
 - `COUNCIL_EMBED_MODEL` — Ollama embedding model name (default: `embeddinggemma:300m`)
 - Data volume mounts to `/data` in Docker
