@@ -77,7 +77,23 @@ Results are tagged with the source node name (e.g. `[alice@192.168.0.4]`). Unrea
 
 `post_to_room` to a room that lives on another node is transparently proxied to the owning node over HTTP (authenticated by the shared `RELEASE_COOKIE`), so any agent can participate in any room cluster-wide. Creating a room whose ID is already owned by another node is refused with a conflict error naming the owner, instead of silently creating a local shadow copy.
 
-To keep a room off the cluster entirely, create it with `visibility="private"` (also settable via `update_room`). Private rooms are fully usable on their home node but are excluded from every cluster fan-out — both cluster-wide reads and cross-node writes.
+To keep a room off the cluster entirely, create it with `visibility="private"` (also settable via `update_room`). Private rooms are fully usable on their home node but are excluded from every cluster fan-out — both cluster-wide reads and cross-node writes. To privatize many rooms at once, use the `bulk_visibility` tool: `bulk_visibility(all="true", visibility="private")` makes a node private-by-default, then re-publish the few rooms a peer should see with `bulk_visibility(room_ids="a,b", visibility="public")`.
+
+#### Cluster Settings Page (live peer management)
+
+Set `COUNCIL_CLUSTER_ADMIN_TOKEN` to enable the web UI's **Cluster Settings** page (`/settings`), which connects/disconnects Erlang peer nodes **live — no container restart** (via `Node.connect/1`). Managed peers are persisted to `/data/cluster_peers` and reconnected on boot, complementing `COUNCIL_SEEDS`.
+
+```bash
+docker run -d --name council-hub \
+  -p 4000:4000 -p 3001:3001 -p 4369:4369 -p 9000:9000 \
+  -v ~/.council-hub:/data \
+  -e RELEASE_COOKIE="my_team_secret" \
+  -e RELEASE_NODE="alice@100.x.y.z" \
+  -e COUNCIL_CLUSTER_ADMIN_TOKEN="$(openssl rand -hex 16)" \
+  iksnerd/council-hub:latest
+```
+
+Unlock it by visiting `http://localhost:4000/settings?token=<token>` once (this sets a signed-session cookie); a "manage" link then appears in the dashboard sidebar. IP-based "localhost only" gating cannot work behind Docker's bridge NAT (the container sees the gateway IP for all published-port traffic), so the token is the gate — a peer who can reach your UI over the network still can't open settings without it. Unset = page disabled (404).
 
 ### Semantic Search
 
@@ -291,6 +307,7 @@ docker compose up -d
 | `COUNCIL_SEEDS` | — | Comma-separated node names to connect to (e.g. `council_hub@10.0.0.5`) |
 | `COUNCIL_OLLAMA_URL` | — | Ollama API endpoint (e.g. `http://host.docker.internal:11434`). Required for semantic search. |
 | `COUNCIL_EMBED_MODEL` | `embeddinggemma:300m` | Ollama embedding model name |
+| `COUNCIL_CLUSTER_ADMIN_TOKEN` | — | Enables the UI Cluster Settings page (`/settings`) for live peer connect/disconnect with no restart. Unlock by visiting `/settings?token=<token>` once. Unset = page disabled (404) |
 
 ## Ports
 
