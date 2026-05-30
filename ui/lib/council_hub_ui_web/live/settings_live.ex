@@ -2,9 +2,10 @@ defmodule CouncilHubUiWeb.SettingsLive do
   @moduledoc """
   Cluster settings page — the one write surface in the UI.
 
-  Lets the host connect/disconnect Erlang peer nodes live via
-  `CouncilHubUi.ClusterManager`, no container restart. Gated to localhost at
-  both the router (dead render) and here (websocket) via `:peer_data`.
+  Lets the operator connect/disconnect Erlang peer nodes live via
+  `CouncilHubUi.ClusterManager`, no container restart. Gated behind an admin
+  token: the router plug (RequireClusterAdmin) sets a signed-session flag on the
+  dead render, and the websocket mount re-checks that same session flag.
   """
   use CouncilHubUiWeb, :live_view
 
@@ -16,23 +17,15 @@ defmodule CouncilHubUiWeb.SettingsLive do
   @refresh_interval 3_000
 
   @impl true
-  def mount(_params, _session, socket) do
-    if connected?(socket) do
-      case allowed?(socket) do
-        true -> Process.send_after(self(), :refresh, @refresh_interval)
-        false -> nil
-      end
-
-      if !allowed?(socket) do
-        {:ok,
-         socket
-         |> put_flash(:error, "Cluster settings are restricted to localhost.")
-         |> redirect(to: ~p"/")}
-      else
-        {:ok, assign_state(socket)}
-      end
-    else
+  def mount(_params, session, socket) do
+    if session["cluster_admin"] == true do
+      if connected?(socket), do: Process.send_after(self(), :refresh, @refresh_interval)
       {:ok, assign_state(socket)}
+    else
+      {:ok,
+       socket
+       |> put_flash(:error, "Cluster settings require an admin token.")
+       |> redirect(to: ~p"/")}
     end
   end
 
@@ -89,18 +82,4 @@ defmodule CouncilHubUiWeb.SettingsLive do
     |> assign_new(:node_input, fn -> "" end)
     |> assign(:short_node_fun, &short_node/1)
   end
-
-  defp allowed?(socket) do
-    case get_connect_info(socket, :peer_data) do
-      %{address: address} -> loopback?(address)
-      # No peer_data (e.g. test/longpoll without it) — the router plug already
-      # gated the dead render, so don't lock out legitimate connections.
-      _ -> true
-    end
-  end
-
-  defp loopback?({127, _, _, _}), do: true
-  defp loopback?({0, 0, 0, 0, 0, 0, 0, 1}), do: true
-  defp loopback?({0, 0, 0, 0, 0, 65535, 32512, 1}), do: true
-  defp loopback?(_), do: false
 end

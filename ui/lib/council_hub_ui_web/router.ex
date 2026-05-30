@@ -19,9 +19,10 @@ defmodule CouncilHubUiWeb.Router do
     plug CouncilHubUiWeb.Plugs.RestrictLocalhost
   end
 
-  # Cluster controls are a write surface — restrict to the host's own browser.
-  pipeline :require_localhost do
-    plug CouncilHubUiWeb.Plugs.RestrictLocalhost
+  # Cluster controls are a write surface — gate behind an admin token.
+  # (IP-based localhost gating can't work behind Docker NAT; see the plug.)
+  pipeline :require_cluster_admin do
+    plug CouncilHubUiWeb.Plugs.RequireClusterAdmin
   end
 
   scope "/", CouncilHubUiWeb do
@@ -36,7 +37,7 @@ defmodule CouncilHubUiWeb.Router do
   end
 
   scope "/", CouncilHubUiWeb do
-    pipe_through [:browser, :require_localhost]
+    pipe_through [:browser, :require_cluster_admin]
 
     live_session :settings do
       live "/settings", SettingsLive, :index

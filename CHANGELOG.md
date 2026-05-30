@@ -4,6 +4,11 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.33.1] - 2026-05-30
+
+### Fixed
+- **Cluster Settings page was unreachable in Docker** — the v0.33.0 `/settings` page was gated to localhost by source IP, but Docker's bridge NAT rewrites every published-port request to the gateway IP, so the page returned 403 to everyone (including the host). Replaced the IP gate with a token gate: `/settings` is disabled unless `COUNCIL_CLUSTER_ADMIN_TOKEN` is set, and access requires visiting `/settings?token=<token>` once (sets a signed-session flag). Works correctly behind Docker NAT and over Tailscale — a peer who reaches the UI cannot open settings without the token. The sidebar "manage" link only shows to an authenticated admin.
+
 ## [0.33.0] - 2026-05-29
 
 ### Added
