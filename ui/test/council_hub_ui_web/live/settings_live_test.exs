@@ -2,6 +2,8 @@ defmodule CouncilHubUiWeb.SettingsLiveTest do
   # async: false — these tests mutate the global COUNCIL_CLUSTER_ADMIN_TOKEN env var.
   use CouncilHubUiWeb.ConnCase, async: false
 
+  import Phoenix.LiveViewTest
+
   @token "test-admin-token"
 
   setup do

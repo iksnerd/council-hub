@@ -17,7 +17,7 @@ defmodule CouncilHubUiWeb.CouncilLive do
   @archives_poll_interval 30_000
 
   @impl true
-  def mount(_params, _session, socket) do
+  def mount(_params, session, socket) do
     if connected?(socket) do
       Polling.schedule_poll(:poll_messages, @poll_interval)
       Polling.schedule_poll(:poll_rooms, @rooms_poll_interval)
@@ -57,6 +57,7 @@ defmodule CouncilHubUiWeb.CouncilLive do
        search_since: "",
        search_until: "",
        nodes: [Node.self() | Node.list()],
+       cluster_admin: session["cluster_admin"] == true,
        cluster_wide: false,
        cluster_warnings: [],
        editing_tags: false,
