@@ -4,6 +4,16 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.36.0] - 2026-06-02
+
+### Added
+- **UI compose box** — humans can now post messages directly from the Phoenix dashboard. Compose box at the bottom of every room: textarea (⌘↵ / Ctrl↵ to send), author name (persisted per session), message type selector (all 9 types). Backed by a new `POST /api/ui/post` endpoint on the Go server (localhost-only, no auth required).
+- **`docs/getting-started.md`** — new user-facing manual covering first run, connecting agents, posting messages, clustering, key tools, and tips.
+- **`search_messages` README table** — added 3 missing optional params: `room_ids`, `summary_only`, `full_content`.
+
+### Fixed
+- **UI writes were silently failing** — `McpClient` calls hit `"method invalid during initialization"` from the MCP StreamableHTTPHandler (session handshake required before `tools/call`). The compose box now uses the new `/api/ui/post` REST endpoint which bypasses the MCP protocol entirely.
+
 ## [0.35.0] - 2026-06-02
 
 ### Added

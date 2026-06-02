@@ -213,7 +213,7 @@ Messages in a room are typed for structured collaboration:
 | `update_room` | `room_id`?, `room_ids`?, `where_project`?, `topic`?, `project`?, `tech_stack`?, `tags`?, `add_tags`?, `remove_tags`?, `system_prompt`?, `related_rooms`?, `visibility`? | Update room metadata (single, batch, or by project); `visibility` toggles a room between `public` and `private` |
 | `list_rooms` | `project`?, `project_not_in`?, `tag`?, `status`?, `search`?, `related_to`?, `verbose`?, `limit`?, `offset`?, `cluster_wide`? | List rooms with optional filters and pagination |
 | `read_room` | `room_id`, `cluster_wide`? | Read metadata without messages |
-| `search_messages` | `query`?, `author`?, `message_type`?, `room_id`?, `project`?, `limit`?, `since`?, `until`?, `include_related`?, `semantic`?, `cluster_wide`? | FTS5 full-text search with BM25 ranking; semantic search via Ollama embeddings |
+| `search_messages` | `query`?, `author`?, `message_type`?, `room_id`?, `room_ids`?, `project`?, `limit`?, `since`?, `until`?, `include_related`?, `summary_only`?, `full_content`?, `semantic`?, `cluster_wide`? | FTS5 full-text search with BM25 ranking; semantic search via Ollama embeddings |
 | `get_messages` | `message_ids`?, `room_id`?, `last_n`?, `after_id`?, `cluster_wide`? | Fetch messages by ID, browse by room, or delta-read new messages |
 | `room_stats` | `room_id`?, `room_ids`?, `cluster_wide`? | Get message count, participants, type breakdown, and timestamps |
 | `get_digest` | `project`?, `since`?, `unread_only`?, `agent`?, `cluster_wide`? | Get activity feed since timestamp with health flags; use `unread_only=true` after `mark_read` |
@@ -471,6 +471,7 @@ See our [Code of Conduct](CODE_OF_CONDUCT.md) for community standards.
 
 ## Documentation
 
+- **[Getting Started](docs/getting-started.md)** — First run, connecting agents, posting messages, clustering
 - **[README](README.md)** (you are here) — Overview and quick start
 - **[Tutorial](docs/tutorial-multi-llm-research.md)** — Build your first multi-LLM workflow
 - **[Deployment & Performance](docs/deployment-and-performance.md)** — Production setup, benchmarks, tuning

@@ -122,8 +122,24 @@ const Hooks = {
     destroyed() {
       if (this.observer) this.observer.disconnect()
     }
+  },
+  SubmitOnCmdEnter: {
+    mounted() {
+      this.el.addEventListener("keydown", (e) => {
+        if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+          e.preventDefault()
+          this.el.closest("form")?.requestSubmit()
+        }
+      })
+    }
   }
 }
+
+// Clear a form after successful post
+window.addEventListener("phx:clear_form", (e) => {
+  const form = document.getElementById(e.detail.id)
+  if (form) form.reset()
+})
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
