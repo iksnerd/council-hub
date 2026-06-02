@@ -158,7 +158,7 @@ services:
       RELEASE_DISTRIBUTION: "name"
       RELEASE_COOKIE: "<shared-secret-change-me>"   # ← identical on every node
       RELEASE_NODE: "council_hub@council-a.<your-tailnet>.ts.net"
-      COUNCIL_SEEDS: "council_hub@council-b.<your-tailnet>.ts.net"
+      COUNCIL_SEEDS: "council-b"                                     # MagicDNS hostname — resolved at startup
       COUNCIL_CLUSTER_ADMIN_TOKEN: "<random-hex>"   # optional: enables /settings
       # COUNCIL_OLLAMA_URL: "http://host.docker.internal:11434"  # optional semantic search
 ```
@@ -172,13 +172,14 @@ services:
 |-------|--------|--------|
 | sidecar `hostname` | `council-a` | `council-b` |
 | `RELEASE_NODE` | `council_hub@council-a.<tailnet>.ts.net` | `council_hub@council-b.<tailnet>.ts.net` |
-| `COUNCIL_SEEDS` | `council_hub@council-b.<tailnet>.ts.net` | `council_hub@council-a.<tailnet>.ts.net` |
+| `COUNCIL_SEEDS` | `council-b` | `council-a` |
 | `TS_AUTHKEY` | node-A key | node-B key |
 | `RELEASE_COOKIE` | **same on both** | **same on both** |
 
-- `RELEASE_NODE` is each node's own MagicDNS name; `COUNCIL_SEEDS` is the *other*
-  node's. With 3+ nodes, set `COUNCIL_SEEDS` to a comma-separated list of all peers.
-- The node basename can stay `council_hub` on every node because the host part differs.
+- `COUNCIL_SEEDS` accepts a bare MagicDNS hostname — the entrypoint probes `:3001/health`
+  at startup to resolve it to the full `node@host` Erlang name automatically. With 3+ nodes,
+  comma-separate the peer hostnames: `council-b,council-c`.
+- `RELEASE_NODE` must use the full MagicDNS FQDN so Erlang distribution matches the resolved name.
 - `RELEASE_COOKIE` **must be byte-identical everywhere** — it also authenticates
   cross-node write proxies. A mismatch fails the handshake silently.
 
@@ -253,4 +254,6 @@ share it and accept the invite, or move both nodes onto one tailnet.
 - [deployment-and-performance.md](./deployment-and-performance.md) — single-node and
   flat-LAN cluster setups, performance tuning.
 - Key environment variables: `RELEASE_NODE`, `RELEASE_COOKIE`, `COUNCIL_SEEDS`,
-  `COUNCIL_PEER_MCP_PORT`, `COUNCIL_CLUSTER_ADMIN_TOKEN` (see the project README).
+  `COUNCIL_NO_DISCOVER`, `COUNCIL_PEER_MCP_PORT`, `COUNCIL_CLUSTER_ADMIN_TOKEN` (see the project README).
+- Set `COUNCIL_NO_DISCOVER=1` to skip the LAN `/24` subnet scan — recommended when running
+  on a VPN where the scan is unnecessary.

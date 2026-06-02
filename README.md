@@ -287,7 +287,8 @@ For full setup (env vars, ports, multi-node `docker run` examples) see **[DOCKER
 |----------|---------|-------------|
 | `RELEASE_COOKIE` | `council` | Shared secret — must match on all nodes; also authenticates cross-node write proxies |
 | `RELEASE_NODE` | `council_hub@127.0.0.1` | Unique node name with reachable IP |
-| `COUNCIL_SEEDS` | — | Comma-separated node names to connect to (e.g. `council_hub@10.0.0.5`) |
+| `COUNCIL_SEEDS` | — | Peers to connect to — bare IPs (`192.168.0.5`), hostnames (`bob`, MagicDNS), or full `node@ip`. Resolved via `:3001/health`. Omit for LAN auto-discovery. |
+| `COUNCIL_NO_DISCOVER` | `0` | Set to `1` to skip the LAN subnet scan on startup (useful on VPN where scanning is unnecessary) |
 | `COUNCIL_PEER_MCP_PORT` | `3001` | Port used to reach peer nodes' MCP servers for cross-node writes |
 | `COUNCIL_CLUSTER_ADMIN_TOKEN` | — | Enables the UI Cluster Settings page (`/settings`) for live peer connect/disconnect. Unlock by visiting `/settings?token=<token>` once. Unset = page disabled |
 
