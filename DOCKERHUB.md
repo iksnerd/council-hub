@@ -40,7 +40,6 @@ docker run -d --name council-hub \
   -v ~/.council-hub:/data \
   -e RELEASE_COOKIE="my_team_secret" \
   -e RELEASE_NODE="alice@192.168.0.4" \
-  -e COUNCIL_SEEDS="bob@192.168.0.5" \
   iksnerd/council-hub:latest
 
 # Bob's machine (192.168.0.5)
@@ -49,17 +48,18 @@ docker run -d --name council-hub \
   -v ~/.council-hub:/data \
   -e RELEASE_COOKIE="my_team_secret" \
   -e RELEASE_NODE="bob@192.168.0.5" \
-  -e COUNCIL_SEEDS="alice@192.168.0.4" \
   iksnerd/council-hub:latest
 ```
 
 - **`RELEASE_COOKIE`**: Must be identical on all nodes (shared secret). Also authenticates cross-node write proxies.
 - **`RELEASE_NODE`**: Must be unique per machine — use any name you like (e.g. your username) followed by `@<your_ip>`.
-- **`COUNCIL_SEEDS`**: Comma-separated list of other node(s) to connect to.
+- **`COUNCIL_SEEDS`** (optional): Comma-separated peers to connect to. Accepts bare IPs (`192.168.0.5`), hostnames (`bob`, `bob.my-tailnet.ts.net`), or full Erlang node names (`bob@192.168.0.5`). Bare values are resolved automatically by probing `:3001/health`. **If omitted entirely, the entrypoint scans the local `/24` subnet for peers automatically** (LAN only).
 - **`COUNCIL_PEER_MCP_PORT`** (optional): Port used to reach peer nodes' MCP servers for cross-node writes. Defaults to the port from `COUNCIL_HTTP_ADDR` (`3001`); only set it if peers serve MCP on a different port.
 - **Ports**: `4369` (epmd) and `9000` (Erlang distribution) must be mapped and accessible between machines. For cross-node writes, the MCP port (`3001`) must also be reachable between machines.
 
-> If `COUNCIL_SEEDS` is omitted, automatic LAN discovery via multicast is used (works on Linux with `--network host`, but not on macOS Docker Desktop).
+> **VPN / Tailscale:** Pass the peer's VPN IP or MagicDNS hostname as a bare value in `COUNCIL_SEEDS` — e.g. `-e COUNCIL_SEEDS=bob` (resolved via MagicDNS) or `-e COUNCIL_SEEDS=100.x.y.z`. The entrypoint probes `:3001/health` to resolve the Erlang node name automatically. Set `COUNCIL_NO_DISCOVER=1` to skip the LAN subnet scan when running on a VPN where the scan is unnecessary.
+
+For cross-machine clusters over Tailscale (different networks, behind NAT, Docker Desktop on macOS) see the **[Tailscale clustering guide](https://github.com/iksnerd/council-hub/blob/main/docs/clustering-tailscale.md)** — it covers the sidecar pattern, MagicDNS setup, and a diagnostic runbook.
 
 Once connected, all nodes appear in the **Cluster Nodes** section of the UI sidebar.
 
@@ -109,7 +109,7 @@ docker run -d --name council-hub \
   -v ~/.council-hub:/data \
   -e COUNCIL_TRANSPORT=http \
   -e COUNCIL_OLLAMA_URL=http://host.docker.internal:11434 \
-  iksnerd/council-hub:v0.34.0
+  iksnerd/council-hub:v0.35.0
 ```
 
 > **Note:** `host.docker.internal` resolves to the host machine from inside Docker Desktop (macOS/Windows). On Linux use `--add-host=host.docker.internal:host-gateway` or pass the host's IP directly.
@@ -269,14 +269,14 @@ Warp discovers all 30 tools automatically from the MCP schema.
 
 ```bash
 docker stop council-hub && docker rm council-hub
-docker pull iksnerd/council-hub:v0.34.0
+docker pull iksnerd/council-hub:v0.35.0
 docker run -d --name council-hub \
   -p 4000:4000 -p 3001:3001 \
   -v ~/.council-hub:/data \
-  iksnerd/council-hub:v0.34.0
+  iksnerd/council-hub:v0.35.0
 ```
 
-You can also use `:latest` instead of a specific version tag (currently v0.34.0). Available tags are listed on the [Docker Hub tags page](https://hub.docker.com/r/iksnerd/council-hub/tags).
+You can also use `:latest` instead of a specific version tag (currently v0.35.0). Available tags are listed on the [Docker Hub tags page](https://hub.docker.com/r/iksnerd/council-hub/tags).
 
 Schema migrations run automatically on startup — existing databases are upgraded in place with no data loss. Running Claude Code sessions will reconnect automatically on the next MCP tool call (no restart needed).
 
@@ -304,7 +304,8 @@ docker compose up -d
 | `RELEASE_COOKIE` | `council` | Shared secret cookie for clustering multiple nodes; also authenticates cross-node write proxies |
 | `COUNCIL_PEER_MCP_PORT` | `3001` | Port used to reach peer nodes' MCP servers for cross-node writes |
 | `RELEASE_NODE` | `council_hub@127.0.0.1` | Unique node name (e.g. `council_hub@10.0.0.5`) for distributed Erlang |
-| `COUNCIL_SEEDS` | — | Comma-separated node names to connect to (e.g. `council_hub@10.0.0.5`) |
+| `COUNCIL_SEEDS` | — | Peers to connect to — bare IPs (`192.168.0.5`), hostnames (`bob`, MagicDNS), or full `node@ip`. Resolved via `:3001/health`. Omit for LAN auto-discovery. |
+| `COUNCIL_NO_DISCOVER` | `0` | Set to `1` to skip the LAN subnet scan on startup (useful on VPN where the scan is unnecessary) |
 | `COUNCIL_OLLAMA_URL` | — | Ollama API endpoint (e.g. `http://host.docker.internal:11434`). Required for semantic search. |
 | `COUNCIL_EMBED_MODEL` | `embeddinggemma:300m` | Ollama embedding model name |
 | `COUNCIL_CLUSTER_ADMIN_TOKEN` | — | Enables the UI Cluster Settings page (`/settings`) for live peer connect/disconnect with no restart. Unlock by visiting `/settings?token=<token>` once. Unset = page disabled (404) |

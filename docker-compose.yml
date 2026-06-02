@@ -16,8 +16,10 @@ services:
       # The entrypoint will auto-detect if left as the loopback default,
       # but setting it explicitly is recommended for stable clustering.
       - RELEASE_NODE=${COUNCIL_NODE_NAME:-council_hub@127.0.0.1}
-      # Comma-separated peer node names, e.g. peer@192.168.1.11
+      # Peers to connect to: bare IP (192.168.1.11), MagicDNS name (bob), or full node@ip.
+      # Omit for LAN auto-discovery. Set COUNCIL_NO_DISCOVER=1 to skip scan on VPN.
       - COUNCIL_SEEDS=${COUNCIL_SEEDS:-}
+      - COUNCIL_NO_DISCOVER=${COUNCIL_NO_DISCOVER:-0}
       # Ollama endpoint for semantic search (optional)
       - COUNCIL_OLLAMA_URL=${COUNCIL_OLLAMA_URL:-}
     restart: unless-stopped

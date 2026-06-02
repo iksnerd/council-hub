@@ -177,7 +177,8 @@ All state mutations go through the Go server's mutex-protected handlers. Phoenix
 - `COUNCIL_DB_PATH` — Phoenix read-only DB path
 - `RELEASE_COOKIE` — Shared secret for distributed Erlang clustering (also authenticates cross-node write proxies)
 - `RELEASE_NODE` — Unique node name with reachable IP (e.g. `council_hub@10.0.0.5`)
-- `COUNCIL_SEEDS` — Comma-separated node names to connect to for clustering
+- `COUNCIL_SEEDS` — Peers to connect to. Accepts bare IPs (`192.168.0.5`), hostnames (MagicDNS names, FQDNs), or full `node@ip`. Bare values resolved at startup via `:3001/health`. When empty, auto-discovery scans the local /24 subnet for EPMD (4369) then probes health.
+- `COUNCIL_NO_DISCOVER` — Set to `1` to skip the LAN subnet scan on startup (useful on VPN where scanning is unnecessary)
 - `COUNCIL_CLUSTER_ADMIN_TOKEN` — Enables the UI Cluster Settings page (`/settings`) when set. Unlock by visiting `/settings?token=<token>` once. Unset = page disabled (404). IP gating can't work behind Docker NAT, so this token is the gate.
 - `COUNCIL_OLLAMA_URL` — Ollama API endpoint for semantic search (e.g. `http://localhost:11434`)
 - `COUNCIL_EMBED_MODEL` — Ollama embedding model name (default: `embeddinggemma:300m`)

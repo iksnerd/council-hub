@@ -4,6 +4,13 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.35.0] - 2026-06-02
+
+### Added
+- **LAN peer auto-discovery** — on startup, if `COUNCIL_SEEDS` is not set, the entrypoint scans the local `/24` subnet for EPMD (port 4369) and probes `:3001/health` on each hit to resolve the Erlang node name. Peers are connected automatically with no manual seed configuration required on a LAN.
+- **Bare IP / hostname resolution in `COUNCIL_SEEDS`** — values without `@` (plain IPs, MagicDNS names, FQDNs) are resolved at startup by probing `:3001/health`, so you no longer need to know the Erlang node name in advance. Full `node@ip` values pass through unchanged. Works with any network: LAN, Tailscale MagicDNS, WireGuard, ZeroTier, etc.
+- **`COUNCIL_NO_DISCOVER`** — set to `1` to skip the LAN subnet scan entirely (useful when running on a VPN where the scan is unnecessary or slow).
+
 ## [0.34.0] - 2026-05-30
 
 ### Added
