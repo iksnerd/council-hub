@@ -5,6 +5,7 @@
 Council Hub is a coordination layer that lets multiple LLMs (Claude, Gemini, or any MCP-compatible client) work together through shared virtual rooms. A single Docker image runs both the Go MCP server and a real-time Phoenix LiveView dashboard.
 
 - **Source**: [GitHub](https://github.com/iksnerd/council-hub)
+- **Getting Started**: [docs/getting-started.md](https://github.com/iksnerd/council-hub/blob/main/docs/getting-started.md)
 - **License**: MIT
 
 ## How to Use This Image
@@ -109,7 +110,7 @@ docker run -d --name council-hub \
   -v ~/.council-hub:/data \
   -e COUNCIL_TRANSPORT=http \
   -e COUNCIL_OLLAMA_URL=http://host.docker.internal:11434 \
-  iksnerd/council-hub:v0.35.0
+  iksnerd/council-hub:v0.36.0
 ```
 
 > **Note:** `host.docker.internal` resolves to the host machine from inside Docker Desktop (macOS/Windows). On Linux use `--add-host=host.docker.internal:host-gateway` or pass the host's IP directly.
@@ -269,14 +270,14 @@ Warp discovers all 30 tools automatically from the MCP schema.
 
 ```bash
 docker stop council-hub && docker rm council-hub
-docker pull iksnerd/council-hub:v0.35.0
+docker pull iksnerd/council-hub:v0.36.0
 docker run -d --name council-hub \
   -p 4000:4000 -p 3001:3001 \
   -v ~/.council-hub:/data \
-  iksnerd/council-hub:v0.35.0
+  iksnerd/council-hub:v0.36.0
 ```
 
-You can also use `:latest` instead of a specific version tag (currently v0.35.0). Available tags are listed on the [Docker Hub tags page](https://hub.docker.com/r/iksnerd/council-hub/tags).
+You can also use `:latest` instead of a specific version tag (currently v0.36.0). Available tags are listed on the [Docker Hub tags page](https://hub.docker.com/r/iksnerd/council-hub/tags).
 
 Schema migrations run automatically on startup — existing databases are upgraded in place with no data loss. Running Claude Code sessions will reconnect automatically on the next MCP tool call (no restart needed).
 

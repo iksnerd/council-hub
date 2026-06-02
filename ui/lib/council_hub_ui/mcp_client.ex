@@ -12,6 +12,28 @@ defmodule CouncilHubUi.McpClient do
     Application.get_env(:council_hub_ui, :mcp_server_url, @default_url)
   end
 
+  @doc "Post a message to a room via the UI REST endpoint (bypasses MCP session handshake)."
+  def post_to_room(room_id, author, message, message_type) do
+    body =
+      Jason.encode!(%{
+        room_id: room_id,
+        author: author,
+        message: message,
+        message_type: message_type
+      })
+
+    base = mcp_url() |> String.replace(~r{/mcp$}, "")
+    url = String.to_charlist(base <> "/api/ui/post")
+    headers = [{~c"Content-Type", ~c"application/json"}]
+
+    :httpc.request(:post, {url, headers, ~c"application/json", body}, [{:timeout, 8000}], [])
+    |> handle_ui_post_response()
+  rescue
+    e ->
+      Logger.warning("McpClient error calling post_to_room: #{inspect(e)}")
+      {:error, :request_failed}
+  end
+
   @doc "Add or remove an emoji reaction on a message."
   def react_to_message(message_id, emoji, author) do
     call_tool("react_to_message", %{message_id: message_id, emoji: emoji, author: author})
@@ -48,6 +70,31 @@ defmodule CouncilHubUi.McpClient do
   end
 
   # --- Private ---
+
+  defp handle_ui_post_response({:ok, {{_http, status, _}, _headers, body}})
+       when status in 200..299 do
+    case Jason.decode(to_string(body)) do
+      {:ok, %{"error" => err}} when err != "" and err != nil ->
+        Logger.warning("UI post error: #{err}")
+        {:error, err}
+
+      {:ok, _} ->
+        :ok
+
+      {:error, _} ->
+        {:error, :json_decode_failed}
+    end
+  end
+
+  defp handle_ui_post_response({:ok, {{_http, status, _}, _, body}}) do
+    Logger.warning("UI post unexpected status #{status}: #{inspect(body)}")
+    {:error, {:http_error, status}}
+  end
+
+  defp handle_ui_post_response({:error, reason}) do
+    Logger.warning("McpClient request failed: #{inspect(reason)}")
+    {:error, reason}
+  end
 
   defp call_tool(name, arguments) do
     body =

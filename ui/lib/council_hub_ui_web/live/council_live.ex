@@ -65,7 +65,8 @@ defmodule CouncilHubUiWeb.CouncilLive do
        mentions: [],
        mention_author: System.get_env("COUNCIL_AUTHOR", "claude-code"),
        archives: [],
-       active_archive: nil
+       active_archive: nil,
+       compose_author: "human"
      )
      |> stream(:messages, [])}
   end
@@ -403,6 +404,40 @@ defmodule CouncilHubUiWeb.CouncilLive do
 
   def handle_event("close_archive", _params, socket) do
     {:noreply, assign(socket, active_archive: nil)}
+  end
+
+  def handle_event(
+        "post_message",
+        %{"author" => author, "type" => type, "message" => message},
+        socket
+      ) do
+    message = String.trim(message)
+    author = String.trim(author)
+
+    cond do
+      message == "" ->
+        {:noreply, socket}
+
+      is_nil(socket.assigns.active_room) ->
+        {:noreply, socket}
+
+      true ->
+        room_id = socket.assigns.active_room.id
+
+        case CouncilHubUi.McpClient.post_to_room(room_id, author, message, type) do
+          :ok ->
+            {:noreply,
+             socket
+             |> assign(compose_author: author)
+             |> push_event("clear_form", %{id: "compose-form"})}
+
+          {:error, reason} ->
+            Logger.warning("post_to_room failed: #{inspect(reason)}")
+
+            {:noreply,
+             put_flash(socket, :error, "Post failed — is the MCP server running in HTTP mode?")}
+        end
+    end
   end
 
   def handle_event("save_tags", %{"tags" => tags}, socket) do

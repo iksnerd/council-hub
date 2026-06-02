@@ -341,6 +341,47 @@
           </p>
         </div>
       </div>
+
+      <%!-- Compose Box --%>
+      <div class="border-t border-[var(--ch-border)] px-4 py-3 bg-[var(--ch-surface)] shrink-0">
+        <form id="compose-form" phx-submit="post_message" class="flex flex-col gap-2">
+          <textarea
+            id="compose-message"
+            name="message"
+            placeholder="Post a message… (⌘↵ to send)"
+            rows="2"
+            phx-hook="SubmitOnCmdEnter"
+            class="w-full bg-[var(--ch-raised)] border border-[var(--ch-border)] rounded text-[12px] text-[var(--ch-text-mid)] placeholder-[var(--ch-text-xs)] px-3 py-2 resize-none focus:outline-none focus:border-[var(--ch-focus-border)] focus:ring-1 focus:ring-[var(--ch-focus-ring)]"
+          ></textarea>
+          <div class="flex items-center gap-2">
+            <input
+              type="text"
+              name="author"
+              value={@compose_author}
+              placeholder="Your name"
+              autocomplete="off"
+              class="w-28 bg-[var(--ch-raised)] border border-[var(--ch-border)] rounded text-[11px] text-[var(--ch-text-mid)] placeholder-[var(--ch-text-xs)] px-2 py-1 focus:outline-none focus:border-[var(--ch-focus-border)]"
+            />
+            <select
+              name="type"
+              class="bg-[var(--ch-raised)] border border-[var(--ch-border)] rounded text-[11px] text-[var(--ch-text-mid)] px-2 py-1 focus:outline-none focus:border-[var(--ch-focus-border)]"
+            >
+              <%= for type <- ~w(message thought draft decision action review code critique synthesis) do %>
+                <option value={type}>{type}</option>
+              <% end %>
+            </select>
+            <span class="flex-1 text-[10px] text-[var(--ch-text-xs)] font-mono hidden sm:block">
+              ⌘↵ to send
+            </span>
+            <button
+              type="submit"
+              class="px-3 py-1 rounded bg-[var(--ch-active-bg)] border border-[var(--ch-active-border)] text-[11px] text-[var(--ch-text-hi)] font-medium hover:opacity-80 transition-opacity"
+            >
+              Send
+            </button>
+          </div>
+        </form>
+      </div>
     <% else %>
       <%!-- No Room Selected --%>
       <div class="flex-1 flex items-center justify-center">

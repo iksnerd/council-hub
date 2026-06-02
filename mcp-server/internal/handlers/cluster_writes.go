@@ -181,3 +181,57 @@ func (r *Registry) InternalPostHandler() http.HandlerFunc {
 		writeJSON(internalPostResponse{MessageID: msgID, RoomID: in.RoomID})
 	}
 }
+
+// UIPostHandler allows the Phoenix web UI to post messages without going through
+// the MCP protocol (which requires a session handshake). Restricted to localhost.
+// Mounted at POST /api/ui/post.
+func (r *Registry) UIPostHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		if req.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// Restrict to loopback — this endpoint is for the co-located Phoenix UI only.
+		host := req.RemoteAddr
+		if i := strings.LastIndex(host, ":"); i >= 0 {
+			host = host[:i]
+		}
+		host = strings.Trim(host, "[]")
+		if host != "127.0.0.1" && host != "::1" {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+
+		var in internalPostRequest
+		if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+
+		writeJSON := func(v internalPostResponse) {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(v)
+		}
+
+		if in.RoomID == "" || in.Author == "" || in.Message == "" {
+			writeJSON(internalPostResponse{Error: "room_id, author, and message are required"})
+			return
+		}
+
+		msgType := in.MessageType
+		if msgType == "" {
+			msgType = "message"
+		}
+
+		msgID, err := r.Server.PostMessageWithMentions(in.RoomID, in.Author, in.Message, msgType, in.ReplyTo, in.Mentions)
+		if err != nil {
+			r.Server.Logger.Error("UI post failed", "room_id", in.RoomID, "error", err)
+			writeJSON(internalPostResponse{Error: err.Error()})
+			return
+		}
+
+		r.Server.Logger.Info("UI post applied", "room_id", in.RoomID, "author", in.Author, "msg_id", msgID)
+		writeJSON(internalPostResponse{MessageID: msgID, RoomID: in.RoomID})
+	}
+}

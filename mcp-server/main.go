@@ -203,6 +203,8 @@ func main() {
 		mux.HandleFunc("/health", healthHandler(cs, phoenixURL, reg.HTTPClient))
 		// Cross-node write receiver (authenticated by the shared cluster secret).
 		mux.HandleFunc("/api/internal/post_to_room", reg.InternalPostHandler())
+		// UI write endpoint (localhost-only, no auth — for the Phoenix dashboard compose box).
+		mux.HandleFunc("/api/ui/post", reg.UIPostHandler())
 
 		httpServer := &http.Server{
 			Addr:         addr,
