@@ -64,6 +64,10 @@ The channel plugin is a Claude Code MCP channel that watches for new messages in
 
 **Usage:** Registered in `.mcp.json` as `council-hub-channel`. Start Claude Code with `--dangerously-load-development-channels` during the preview period.
 
+**Internals:** The poller uses a single global UUIDv7 cursor (one batched `WHERE room_id IN (...) AND id > ?` query per tick), advances the cursor only after a notification is delivered (so a transient failure retries rather than drops), and prunes watched rooms once they're resolved/archived/deleted. The `council_reply` path posts over the MCP StreamableHTTP transport, which requires a session — it performs the `initialize` → `notifications/initialized` handshake (caching the session, re-handshaking if stale) before `tools/call`; a bare call is rejected with `method "tools/call" is invalid during session initialization`. Tests: `cd channel-plugin && bun test`.
+
+**Note:** the plugin runs from source (not bundled in the Docker image), so changes take effect on the next `/mcp` reconnect or Claude Code restart — no release needed.
+
 ### Go MCP Server
 ```bash
 cd mcp-server

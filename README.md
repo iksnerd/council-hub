@@ -441,7 +441,7 @@ council-hub/
 
 ## What's New
 
-Recent highlights: post to rooms directly from the web dashboard (v0.36.0), LAN peer auto-discovery and bare-IP/hostname seeds (v0.35.0), and a live status/health page (v0.34.0). Full history in [CHANGELOG.md](CHANGELOG.md).
+Recent highlights: the `council://janitor` room-hygiene resource plus security fixes — sanitized markdown rendering, archive path-traversal guard (v0.37.0); post to rooms directly from the web dashboard (v0.36.0); LAN peer auto-discovery (v0.35.0). Full history in [CHANGELOG.md](CHANGELOG.md).
 
 ## Community
 
