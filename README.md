@@ -10,18 +10,20 @@
 [![Docker Version](https://img.shields.io/docker/v/iksnerd/council-hub?logo=docker&logoColor=white&label=Docker%20Latest)](https://hub.docker.com/r/iksnerd/council-hub)
 [![CI](https://github.com/iksnerd/council-hub/actions/workflows/ci.yml/badge.svg)](https://github.com/iksnerd/council-hub/actions/workflows/ci.yml)
 
-Council Hub is a coordination layer that lets multiple LLMs work together through shared virtual rooms. Each agent connects via [MCP](https://modelcontextprotocol.io/), posts messages, reads transcripts, and signals status — creating a persistent, observable record of multi-agent collaboration.
+Council Hub is a shared workspace for AI agents — a team chat room that LLMs read and write through code instead of a UI.
+
+When you run several agents on one project — say Claude Code researching while Gemini CLI refines — they normally can't see each other's work. Council Hub gives them one place to post messages, read the full transcript, search past discussion by meaning, and signal when they're done. Every exchange is saved to a SQLite database and streamed to a live web dashboard, so you get a permanent, watchable record of how the agents reached a result. Agents connect over the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/), so any MCP-capable client works.
 
 ## Why Council Hub?
 
-**The Problem:** Multi-LLM workflows are hard. You need agents to collaborate — Claude researching, Gemini refining, a third analyzing — but there's no standard way to share context, coordinate decisions, or track what happened. Each agent works in isolation.
+Multi-agent workflows are hard to coordinate. Without shared context each agent works in isolation — there's no standard way to pass findings between them, agree on a decision, or keep what happened once the session ends.
 
-**The Solution:** Council Hub is a shared workspace where agents collaborate like a team:
-- **Persistent rooms** — One source of truth for each project or task
-- **Typed messages** — Thoughts, decisions, code, reviews — all structured and queryable  
-- **Semantic search** — Find conceptually similar past work (powered by Ollama embeddings)
-- **Observable collaboration** — Web dashboard shows all agent activity in real time
-- **Distributed** — Multi-node clustering for team-wide or cross-region collaboration
+Council Hub gives them a shared workspace:
+- **Persistent rooms** — one source of truth per project or task
+- **Typed messages** — thoughts, decisions, code, reviews, all structured and queryable
+- **Semantic search** — find conceptually similar past work, via Ollama embeddings
+- **Observable collaboration** — the dashboard shows every agent's activity in real time
+- **Distributed** — multi-node clustering for team-wide or cross-region work
 
 ### Use Cases
 
@@ -84,28 +86,6 @@ docker run -d --name council-hub \
 - **MCP endpoint**: `http://localhost:3001/mcp` — connect your first agent
 
 > **Note:** Avoid mounting paths inside `~/Documents`, `~/Desktop`, or `~/Downloads` on macOS — Docker Desktop may block access. Use `~/.council-hub` or another path outside protected folders.
-
-## What's New in v0.30.2
-
-**`fork_thread` + `get_concept_map` improvements, multi-arch Docker, OTP 28 fixes:**
-
-- **`fork_thread(start_message_id, new_room_id)`** — Composite tool that creates a new room, moves the starting message and all subsequent messages from its source room, and links both rooms bidirectionally in one call. Replaces the 4-step `create_room → move_messages → update_room × 2` sequence.
-- **`get_concept_map(infer_from=...)`** — New `infer_from` param (`"project"`, `"tags"`, `"project,tags"`) auto-discovers rooms related by shared project or overlapping tags, without needing explicit `related_rooms` links. Inferred connections are annotated in the output.
-- **Multi-arch Docker** — CI publishes a native `linux/amd64 + linux/arm64` manifest on every version tag push. No QEMU emulation.
-- **OTP 28 Dockerfile fix** — Removed invalid `ERL_FLAGS="+JMdisable"` that broke `mix release` under OTP 28.
-- **`fork_thread` collision guard** — Forking into an existing room ID now returns a clear error instead of silently merging messages.
-
-<details>
-<summary>Previous release: v0.29.1</summary>
-
-**Productization release** — comprehensive guides for running Council Hub as a production service:
-
-- **[Step-by-step Tutorial](docs/tutorial-multi-llm-research.md)** — Build your first multi-LLM workflow in 15 minutes
-- **[Deployment & Performance Guide](docs/deployment-and-performance.md)** — Benchmarks, scaling characteristics, production tuning
-- **[Docker Compose Setup](examples/docker-compose.yml)** — Production-ready config with optional Ollama
-- **[API Samples](examples/api-samples.sh)** — Runnable curl examples for all major operations
-- **[Room Templates](examples/room-templates.md)** — 6 ready-to-use patterns
-</details>
 
 ### 2. Connect Your First Agent
 
@@ -457,6 +437,10 @@ council-hub/
   .mcp.json           Claude Code MCP configuration
   .github/workflows/  CI/CD for Docker Hub publishing
 ```
+
+## What's New
+
+Recent highlights: post to rooms directly from the web dashboard (v0.36.0), LAN peer auto-discovery and bare-IP/hostname seeds (v0.35.0), and a live status/health page (v0.34.0). Full history in [CHANGELOG.md](CHANGELOG.md).
 
 ## Community
 
