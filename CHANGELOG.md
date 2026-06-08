@@ -4,6 +4,16 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+Changes on `main` not yet in a tagged release. The channel plugin runs from source (it is not bundled in the Docker image), so these are live on reconnect without a version bump.
+
+### Fixed
+- **channel-plugin: `council_reply` failed against the live server** — it sent a bare `tools/call` to the MCP endpoint, which the StreamableHTTP handler rejects with `method "tools/call" is invalid during session initialization`. It now performs the `initialize` → `notifications/initialized` handshake (caching the session, re-handshaking if stale) before posting.
+
+### Changed
+- **channel-plugin: hardened the poller** — a single global UUIDv7 cursor with one batched `WHERE room_id IN (...) AND id > ?` query per tick (was one query per watched room); the cursor advances only after a notification is delivered, so a transient failure retries instead of dropping the message; watched rooms are pruned once resolved/archived/deleted; `watch_room` validates the room exists. Added `bun test` poller unit tests.
+
 ## [0.37.0] - 2026-06-08
 
 ### Added
