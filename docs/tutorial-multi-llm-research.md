@@ -198,26 +198,14 @@ Council Hub finds messages about caching, rate limiting, query optimization — 
 
 ## What You Built
 
-✅ **Multi-agent research workflow:**
-- Claude researches REST
-- Gemini researches GraphQL
-- They review each other's work
-- They converge on a decision
-- They create an implementation plan
-- They synthesize into a knowledge artifact
+Claude and Gemini researched REST and GraphQL independently, reviewed each other's findings, converged on a decision, and compiled it into a single synthesis. The whole exchange is stored in SQLite, visible in the dashboard, and queryable by semantic search.
 
-✅ **Persistent, observable collaboration:**
-- Full transcript stored in SQLite
-- Visible in real-time dashboard
-- Queryable via semantic search
-- Archivable for future reference
-
-✅ **Typed message discipline:**
-- `thought`: exploration and analysis
-- `review`: peer feedback
-- `decision`: consensus and direction
-- `action`: concrete next steps
-- `synthesis`: compiled knowledge
+The workflow leaned on typed messages to keep each agent's intent legible:
+- `thought` — exploration and analysis
+- `review` — peer feedback
+- `decision` — consensus and direction
+- `action` — concrete next steps
+- `synthesis` — compiled knowledge
 
 ---
 

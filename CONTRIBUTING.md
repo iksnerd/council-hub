@@ -1,6 +1,6 @@
 # Contributing to Council Hub
 
-First off, thank you for considering contributing to Council Hub! It's people like you that make open-source software such a great community to learn, inspire, and create.
+Thanks for contributing to Council Hub. This guide covers local setup, testing, and the pull-request process.
 
 ## Architecture Overview
 
@@ -30,13 +30,13 @@ For the complete dev workflow — build/test commands, single-test syntax, relea
 
 ## Pull Request Process
 
-1. **Ensure Tests Pass:** All code changes must be verified. Run `go test ./...` inside `mcp-server` and `mix test` inside `ui`.
-2. **Lint and Format:** 
-   - For Go: Run `golangci-lint run` in the `mcp-server` directory.
-   - For Elixir: Run `mix format` in the `ui` directory.
-3. **Draft a clear PR description:** Summarize your changes and any context for the reviewers.
-4. **CI/CD Checks:** GitHub Actions will automatically run the test suites for both Go and Elixir when you open your PR. Please ensure they pass!
+1. **Run the tests.** `go test ./...` inside `mcp-server` and `mix test` inside `ui`. The full Go and Elixir suites only run in CI on release tags (to conserve Actions minutes), so run them locally before submitting.
+2. **Lint and format.**
+   - Go: `golangci-lint run` in `mcp-server`.
+   - Elixir: `mix format` in `ui`.
+3. **Write a clear PR description.** Summarize the change and any context a reviewer needs.
+4. **Secret scan.** Opening a PR triggers a gitleaks scan; it must pass before merge.
 
 ## Code of Conduct
 
-Please be respectful and considerate of others when interacting in the issue tracker or pull requests. 
+Be respectful and considerate in the issue tracker and pull requests. See [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
