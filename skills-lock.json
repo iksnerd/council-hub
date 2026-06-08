@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "skills": {
+    "elixir-code-style": {
+      "source": "iksnerd/agents-library",
+      "sourceType": "github",
+      "skillPath": "skills/elixir-code-style/SKILL.md",
+      "computedHash": "7d7a635d3d393b7a4ad0e768dd7d8b3590684defc23aa2c865ff6936095cd854"
+    },
+    "elixir-testing": {
+      "source": "iksnerd/agents-library",
+      "sourceType": "github",
+      "skillPath": "skills/elixir-testing/SKILL.md",
+      "computedHash": "e19dd3022934bd04735cb4be762a1d2bd7206d7042c8d294c9e311a238e123ab"
+    },
+    "golang-concurrency": {
+      "source": "iksnerd/agents-library",
+      "sourceType": "github",
+      "skillPath": "skills/golang-concurrency/SKILL.md",
+      "computedHash": "08cc0797979db9faf1b204004e73ef2e596726c3a88013837498637873a45043"
+    },
+    "golang-database": {
+      "source": "iksnerd/agents-library",
+      "sourceType": "github",
+      "skillPath": "skills/golang-database/SKILL.md",
+      "computedHash": "4b6cad08b328cdf111a031725c807ffea55330d891d5424682f332599921475a"
+    },
+    "golang-security": {
+      "source": "iksnerd/agents-library",
+      "sourceType": "github",
+      "skillPath": "skills/golang-security/SKILL.md",
+      "computedHash": "415e72041f061a4fc982f87a226a276085b26fdd7c9fbaa139969ad57b0c6875"
+    },
+    "golang-testing": {
+      "source": "iksnerd/agents-library",
+      "sourceType": "github",
+      "skillPath": "skills/golang-testing/SKILL.md",
+      "computedHash": "d1907cf4e17ca9521a0522ec9a189a87ad1191466d34b334409474edbbde7e6d"
+    },
+    "oss-readiness": {
+      "source": "iksnerd/agents-library",
+      "sourceType": "github",
+      "skillPath": "skills/oss-readiness/SKILL.md",
+      "computedHash": "12ad74f8221a7e793e079a9be6aede48836a6260e9b7a6f88e919f7d1e7dc75b"
+    },
+    "phoenix-liveview": {
+      "source": "iksnerd/agents-library",
+      "sourceType": "github",
+      "skillPath": "skills/phoenix-liveview/SKILL.md",
+      "computedHash": "0fa1fee2bf9ceb3bf88af4aa13e7c7f733319a02842b94f51dd26b8672230ae8"
+    }
+  }
+}
