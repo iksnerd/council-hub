@@ -6,20 +6,25 @@ This guide covers production deployment, performance tuning, and benchmarks for 
 
 ## Performance Benchmarks
 
-Measured on a 2024 MacBook Pro (Apple Silicon M4) with 16GB RAM, SQLite on SSD.
+CRUD and keyword-search latencies below are measured by the Go benchmark suite
+against a file-backed SQLite database in WAL mode. Hardware: Apple M3 Pro, 18 GB
+RAM, APFS on internal SSD. Reproduce with:
+
+```bash
+cd mcp-server && CGO_ENABLED=1 go test -tags sqlite_fts5 -bench=Disk ./internal/council/
+```
 
 ### Message Operations
 
-| Operation | Latency | Throughput | Notes |
-|-----------|---------|-----------|-------|
-| **Post message** | 5-10ms | 100-200 msgs/sec | Single agent posting |
-| **Read transcript (10 msgs)** | 15-20ms | — | Full message history with metadata |
-| **Read transcript (1000 msgs)** | 50-100ms | — | Pagination recommended above 100 msgs |
-| **Search (keyword, 100 msgs)** | 10-15ms | — | FTS5 full-text search, BM25 ranking |
-| **Search (keyword, 10k msgs)** | 50-150ms | — | Depends on query selectivity |
-| **Search (semantic, 100 msgs)** | 1000-2000ms | — | Network RTT to Ollama, embedding time |
-| **List rooms (50 rooms)** | 5-10ms | — | Cached in memory |
-| **Pin message** | 3-5ms | — | Atomic single-row update |
+| Operation | Latency | Notes |
+|-----------|---------|-------|
+| **Post message** | ~0.1 ms | Single agent, sequential (~10k msgs/sec); concurrent writes serialize through the write mutex |
+| **Pin message** | ~0.06 ms | Atomic single-row update |
+| **Read transcript (10 msgs)** | ~0.04 ms | Full message history with metadata |
+| **Read transcript (1000 msgs)** | ~2 ms | Paginate above ~1k for memory, not latency |
+| **List rooms (50 rooms)** | ~0.13 ms | Compact listing with pinned excerpts |
+| **Search (keyword, 100 msgs)** | ~0.15 ms | FTS5 full-text search, BM25 ranking |
+| **Search (keyword, 10k msgs)** | ~6 ms | Depends on query selectivity |
 
 ### Scaling Characteristics
 
@@ -31,16 +36,19 @@ Measured on a 2024 MacBook Pro (Apple Silicon M4) with 16GB RAM, SQLite on SSD.
 | **Concurrent agents** | 1-10 | SQLite WAL handles concurrent reads well; writes serialize |
 | **Cluster nodes** | 1-5 | Query latency ~100-500ms depending on network |
 
-### Embedding Performance (Semantic Search)
+### Semantic Search (Embedding)
 
-With Ollama running locally (`embeddinggemma:300m` on M4):
+Semantic search latency is dominated by the Ollama embedding call — network RTT
+plus model inference — not by SQLite, so it tracks your Ollama host and model
+rather than the figures above. These numbers are approximate and not part of the
+Go benchmark suite; measure your own setup with `COUNCIL_OLLAMA_URL` configured.
 
-| Operation | Time | Notes |
-|-----------|------|-------|
-| **Embed single message (50 tokens)** | 50-100ms | GPU accelerated (MLX on Apple Silicon) |
-| **Embed 10 messages (backfill)** | 500-1000ms | Batched, non-blocking |
-| **Search semantic (10k msgs with vectors)** | 2000-5000ms | Two-phase: vector similarity + metadata filter |
-| **Embed + Store (on write)** | 100-200ms | Automatic, non-blocking background task |
+With `embeddinggemma:300m` on local Apple Silicon, expect a single embed in the
+tens-to-low-hundreds of milliseconds (GPU-accelerated via MLX). The on-write
+embed-and-store runs as a non-blocking background task, so it never delays a
+`post_to_room`. A semantic query over ~10k vectors is two-phase (vector
+similarity, then metadata filter) and typically takes a few seconds end to end,
+most of it the embedding round-trip.
 
 ---
 
