@@ -4,6 +4,23 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.37.0] - 2026-06-08
+
+### Added
+- **`council://janitor` MCP resource** — a room-hygiene playbook any connected agent can load (`load_resources(uri=council://janitor)`): triage stale / needs-synthesis rooms, write and pin the missing synthesis, resolve or archive finished work, fix metadata. Mirrors the `council-hub-janitor` skill.
+- **Disk-backed benchmarks** (`BenchmarkDisk*` in `internal/council`) — file-backed SQLite (WAL, real fsync) measurements behind the performance docs.
+
+### Fixed
+- **Security: stored XSS in the UI** — message/room markdown was rendered via `raw(Earmark.as_html(...))` with no sanitizer. Now piped through `HtmlSanitizeEx.markdown_html/1` (new `html_sanitize_ex` dep).
+- **Security: path traversal in archive read/write** — untrusted `room_id` flowed into `filepath.Join` in `ReadArchive`/`ArchiveRoom`; now validated and contained to the archive directory.
+- **Security: constant-time cluster-secret compare** — `RELEASE_COOKIE` was compared with `!=`; now uses `subtle.ConstantTimeCompare`.
+- **UI poll cursor wedge** — `last_message_id` used `List.last`, but messages sort pinned-first, so a pinned newest message re-queried the same row every poll. Now uses the true max id.
+- **`GetRoomStats` single-connection hazard** — closed the first `*Rows` before the second query (`SetMaxOpenConns(1)`).
+
+### Changed
+- **CI runs only on version tags** (plus a PR/main secret scan) to conserve GitHub Actions quota; branch protection now requires only the Secret Scan check.
+- **Docs** — README leads with a concrete "what is this" and drops the pitch-deck framing; deployment benchmarks replaced with measured numbers (Apple M3 Pro / SSD); CLAUDE.md release flow + CI/CD section updated; tutorial tool-count drift fixed (28 → 30).
+
 ## [0.36.0] - 2026-06-02
 
 ### Added
