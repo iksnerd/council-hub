@@ -226,6 +226,46 @@ list_rooms(cluster_wide=true)                        # confirm what's visible ac
 ` + "```" + `
 `
 
+const janitorResource = `# Council Hub — Janitor (Room Hygiene Pass)
+
+A periodic hygiene pass over one project's rooms. The built-in Knowledge Linter
+already tags rooms ` + "`stale`" + ` and ` + "`needs-synthesis`" + ` every 6h; this
+playbook acts on those flags.
+
+**Hard rule:** never destroy signal. Don't delete messages, resolve a room with an
+open question, or archive something still in use. Compile and close finished work;
+leave ambiguous rooms for a human.
+
+## Triage (one project at a time)
+
+` + "```" + `
+get_digest(unread_only=false)
+list_rooms(project="<proj>", tag="needs-synthesis")   # concluded but uncompiled
+list_rooms(project="<proj>", tag="stale")             # gone quiet
+list_rooms(project="<proj>", status="active")         # still open
+` + "```" + `
+
+Private rooms are node-local — skip in cluster context (or pass cluster_wide=true).
+
+## Per-room: read_room first, then one disposition
+
+- Concluded, no synthesis → write a ` + "`synthesis`" + ` (decision/outcome first, then
+  rationale, then open follow-ups) → pin_message → signal_status(resolved).
+- Resolved + synthesized + finished → archive_room.
+- Stale but still live/blocked → post a short ` + "`thought`" + `/` + "`decision`" + ` status
+  note; keep active or set paused.
+- Open question still live → leave it; get_mentions the owner to resurface.
+- Metadata drift → fix tags / related_rooms / project via update_room (never content).
+- Ambiguous → leave it; report to the user.
+
+Always mark_read after touching a room.
+
+## Close out
+
+Report what changed — resolved / archived / nudged counts and the ambiguous rooms
+you left for a human. Never resolve in bulk silently.
+`
+
 // staticResources is the canonical list of static skill resources.
 // Kept in sync with RegisterResources and handleLoadResources.
 var staticResources = []struct {
@@ -251,6 +291,12 @@ var staticResources = []struct {
 		name:        "Workflows & Room Templates",
 		description: "Room templates (brainstorm, bug, decision-log, review, sprint) and common workflow patterns (bug investigation, sprint wrap-up, cross-room research, knowledge linting).",
 		content:     workflowsResource,
+	},
+	{
+		uri:         "council://janitor",
+		name:        "Janitor (Room Hygiene)",
+		description: "Periodic room-hygiene playbook: triage stale and needs-synthesis rooms, write and pin the missing synthesis, resolve or archive finished work, fix metadata, and report what changed. Acts on the Knowledge Linter's flags.",
+		content:     janitorResource,
 	},
 }
 
