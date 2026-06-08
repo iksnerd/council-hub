@@ -2,6 +2,7 @@ package council
 
 import (
 	"fmt"
+	"path/filepath"
 	"testing"
 )
 
@@ -177,6 +178,92 @@ func BenchmarkGetRoomStats(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		_, err := s.GetRoomStats("bench-stats")
 		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+// --- Disk-backed (SSD) benchmarks ---
+// These mirror the operations in docs/deployment-and-performance.md against a
+// file-backed SQLite DB (WAL mode) instead of :memory:, so write latencies
+// include real fsync cost. Run: go test -tags sqlite_fts5 -bench=Disk -benchmem
+
+func setupBenchServerDisk(b *testing.B) *Server {
+	b.Helper()
+	s, err := NewServer(filepath.Join(b.TempDir(), "bench.db"), testLogger())
+	if err != nil {
+		b.Fatalf("Failed to create server: %v", err)
+	}
+	b.Cleanup(func() { _ = s.DB.Close() })
+	return s
+}
+
+func BenchmarkDiskPostMessage(b *testing.B) {
+	s := setupBenchServerDisk(b)
+	if err := s.CreateRoom("bench-write", "Write bench", "", "", "", "", ""); err != nil {
+		b.Fatal(err)
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := s.PostMessage("bench-write", "Alice", fmt.Sprintf("msg %d", i), "message", ""); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkDiskPinMessage(b *testing.B) {
+	s := setupBenchServerDisk(b)
+	seedRoom(b, s, "bench-pin", 100)
+	msgs, _ := s.GetRecentMessages("bench-pin", 1)
+	id := msgs[0].ID
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := s.PinMessage("bench-pin", id); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkDiskGetTranscript(b *testing.B) {
+	for _, n := range []int{10, 1000} {
+		b.Run(fmt.Sprintf("%dmsgs", n), func(b *testing.B) {
+			s := setupBenchServerDisk(b)
+			seedRoom(b, s, "bench-transcript", n)
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				if _, err := s.GetTranscript("bench-transcript"); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+func BenchmarkDiskSearchMessages(b *testing.B) {
+	for _, n := range []int{100, 10000} {
+		b.Run(fmt.Sprintf("%dmsgs", n), func(b *testing.B) {
+			s := setupBenchServerDisk(b)
+			seedRoom(b, s, "bench-search", n)
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				if _, err := s.SearchMessages("content to search", "", "", "", "", "", "", 20); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+func BenchmarkDiskListRooms(b *testing.B) {
+	s := setupBenchServerDisk(b)
+	for i := 0; i < 50; i++ {
+		if err := s.CreateRoom(fmt.Sprintf("room-%d", i), "Bench room", "alpha", "Go", "bench", "", ""); err != nil {
+			b.Fatal(err)
+		}
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := s.ListRooms("", "", "", "", 100, 0); err != nil {
 			b.Fatal(err)
 		}
 	}
