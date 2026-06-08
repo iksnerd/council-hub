@@ -1,11 +1,11 @@
 name: CI
 
 on:
+  # Runs only on version tags to conserve GitHub Actions quota.
+  # Trade-off: PRs and main pushes are not tested by CI; run tests locally
+  # (make test / mix test) before tagging a release.
   push:
-    branches: [ "main" ]
     tags: [ "v*.*.*" ]
-  pull_request:
-    branches: [ "main" ]
 
 jobs:
   go-ci:
