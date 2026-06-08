@@ -194,7 +194,11 @@ defmodule CouncilHubUiWeb.CouncilLivePolling do
   # -- Pure helpers --
 
   def last_message_id([]), do: ""
-  def last_message_id(messages), do: List.last(messages).id
+  # Messages are ordered pinned-first for display, so List.last is not the newest
+  # id. The poll cursor must be the true max id (UUIDv7 is lexicographically
+  # time-ordered); otherwise a pinned newest message wedges the poll into
+  # re-querying the same row every tick.
+  def last_message_id(messages), do: messages |> Enum.map(& &1.id) |> Enum.max()
 
   def group_rooms_by_project(rooms) do
     rooms

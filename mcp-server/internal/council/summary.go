@@ -108,12 +108,14 @@ func (s *Server) ArchiveRoom(roomID string) (string, error) {
 	epitaph := buildEpitaph(room, messages)
 	transcript := epitaph + FormatTranscript(room, messages)
 
-	archiveDir := s.archiveDir()
-	if err := os.MkdirAll(archiveDir, 0755); err != nil {
+	archivePath, err := s.archivePathFor(roomID)
+	if err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(s.archiveDir(), 0755); err != nil {
 		return "", fmt.Errorf("failed to create archive directory: %w", err)
 	}
 
-	archivePath := filepath.Join(archiveDir, roomID+".md")
 	if err := os.WriteFile(archivePath, []byte(transcript), 0644); err != nil {
 		return "", fmt.Errorf("failed to write archive: %w", err)
 	}
@@ -174,6 +176,22 @@ func (s *Server) archiveDir() string {
 	return filepath.Join(filepath.Dir(s.DBPath), "archives")
 }
 
+// archivePathFor resolves the on-disk path for a room's archive, guarding against
+// path traversal. Room IDs flow from untrusted MCP input and are used as filename
+// components, so a malicious ID like "../../etc/passwd" must not escape archiveDir.
+func (s *Server) archivePathFor(roomID string) (string, error) {
+	if roomID == "" || strings.ContainsAny(roomID, "/\\") || strings.Contains(roomID, "..") {
+		return "", fmt.Errorf("invalid room id '%s'", roomID)
+	}
+	dir := s.archiveDir()
+	path := filepath.Join(dir, roomID+".md")
+	// Defense in depth: confirm the cleaned path is still inside archiveDir.
+	if rel, err := filepath.Rel(dir, path); err != nil || rel != roomID+".md" {
+		return "", fmt.Errorf("invalid room id '%s'", roomID)
+	}
+	return path, nil
+}
+
 // ListArchives scans the archives directory and returns metadata for each archived room,
 // sorted by archive date descending (most recent first). Returns an empty slice if no
 // archives exist.
@@ -214,7 +232,10 @@ func (s *Server) ListArchives() ([]ArchiveEntry, error) {
 
 // ReadArchive reads and returns the contents of an archived room transcript.
 func (s *Server) ReadArchive(roomID string) (string, error) {
-	path := filepath.Join(s.archiveDir(), roomID+".md")
+	path, err := s.archivePathFor(roomID)
+	if err != nil {
+		return "", err
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {

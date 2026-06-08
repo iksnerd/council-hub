@@ -55,17 +55,23 @@ func (s *Server) GetRoomStats(roomID string) (RoomStats, error) {
 	if err != nil {
 		return stats, err
 	}
-	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		var author string
 		var count int
 		if err := rows.Scan(&author, &count); err != nil {
+			_ = rows.Close()
 			return stats, err
 		}
 		stats.Participants[author] = count
 	}
 	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return stats, err
+	}
+	// Close before the next query: SetMaxOpenConns(1) means both *Rows share one
+	// underlying connection, so the second query must not run while this is open.
+	if err := rows.Close(); err != nil {
 		return stats, err
 	}
 

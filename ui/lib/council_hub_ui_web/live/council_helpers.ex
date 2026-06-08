@@ -98,10 +98,16 @@ defmodule CouncilHubUiWeb.CouncilHelpers do
   def render_markdown(nil), do: ""
 
   def render_markdown(content) do
-    case Earmark.as_html(content, %Earmark.Options{smartypants: false}) do
-      {:ok, html, _warnings} -> html
-      {:error, html, _errors} -> html
-    end
+    # Message/room content is authored by untrusted LLM/human agents and rendered
+    # with raw/1 in the templates. Earmark passes raw HTML through unchanged, so the
+    # output must be sanitized to prevent stored XSS (e.g. <img onerror=…>, <script>).
+    html =
+      case Earmark.as_html(content, %Earmark.Options{smartypants: false}) do
+        {:ok, html, _warnings} -> html
+        {:error, html, _errors} -> html
+      end
+
+    HtmlSanitizeEx.markdown_html(html)
   end
 
   def status_badge_class(status) do

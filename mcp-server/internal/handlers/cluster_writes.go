@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -138,7 +139,9 @@ func (r *Registry) InternalPostHandler() http.HandlerFunc {
 		}
 
 		// Cross-node writes require a shared secret. Reject if unset or mismatched.
-		if r.ClusterSecret == "" || req.Header.Get(clusterSecretHeader) != r.ClusterSecret {
+		// Constant-time compare avoids leaking the secret via response timing.
+		got := req.Header.Get(clusterSecretHeader)
+		if r.ClusterSecret == "" || subtle.ConstantTimeCompare([]byte(got), []byte(r.ClusterSecret)) != 1 {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}

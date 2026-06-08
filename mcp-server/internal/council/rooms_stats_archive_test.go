@@ -87,6 +87,31 @@ func TestArchiveRoomNotFound(t *testing.T) {
 	}
 }
 
+func TestArchivePathTraversalRejected(t *testing.T) {
+	s := setupTestServer(t)
+
+	// Room IDs come from untrusted MCP input and are used as archive filenames.
+	// Traversal attempts must be rejected, not resolved to a path outside archiveDir.
+	bad := []string{
+		"../../etc/passwd",
+		"..",
+		"foo/bar",
+		`foo\bar`,
+		"a/../../b",
+	}
+	for _, id := range bad {
+		if _, err := s.ReadArchive(id); err == nil {
+			t.Errorf("ReadArchive(%q) should be rejected, got nil error", id)
+		}
+		// ArchiveRoom validates the path before any room lookup matters; a traversal
+		// ID must never produce a write path outside the archive directory.
+		s.CreateRoom(id, "t", "p", "Go", "t", "", "")
+		if _, err := s.ArchiveRoom(id); err == nil {
+			t.Errorf("ArchiveRoom(%q) should be rejected, got nil error", id)
+		}
+	}
+}
+
 func TestRoomLifecycle(t *testing.T) {
 	s := setupTestServer(t)
 

@@ -109,6 +109,22 @@ defmodule CouncilHubUiWeb.CouncilHelpersTest do
     assert String.contains?(html, "<code")
   end
 
+  test "render_markdown strips XSS from untrusted content" do
+    malicious = "<img src=x onerror=\"steal()\"> <script>danger()</script>"
+    html = CouncilHelpers.render_markdown(malicious)
+    # The executable surfaces — the event-handler attribute and the script tag —
+    # must be stripped. Inert leftover text is harmless.
+    refute String.contains?(html, "onerror")
+    refute String.contains?(html, "<script")
+  end
+
+  test "render_markdown keeps safe markdown after sanitizing" do
+    html = CouncilHelpers.render_markdown("**bold** and [link](/local-path)")
+    assert String.contains?(html, "<strong>bold</strong>")
+    assert String.contains?(html, "<a")
+    assert String.contains?(html, "/local-path")
+  end
+
   # -- status_badge_class --
 
   test "status badge classes" do
