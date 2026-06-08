@@ -39,10 +39,9 @@ Docker Hub image: `iksnerd/council-hub` ([hub.docker.com/r/iksnerd/council-hub](
    - `mcp-server/internal/council/db.go` — `Version: "X.Y.Z"` in the `mcp.NewServer` call
    - `ui/mix.exs` — `version: "X.Y.Z"`
 2. **Update docs**: `DOCKERHUB.md` version refs, `CHANGELOG.md` entry
-3. **Commit & push**: `git commit -m "vX.Y.Z: <summary>" && git push`
-4. **Wait for CI** to pass on main
-5. **Tag & push tag**: `git tag vX.Y.Z && git push origin vX.Y.Z`
-6. **Wait for Docker CI**: the tag push auto-triggers `.github/workflows/docker.yml` which builds `linux/amd64 + linux/arm64` on native GitHub runners and pushes the multi-arch manifest. Watch with `gh run list --workflow=docker.yml --limit 1` + `gh run watch <id>`. `make docker-push` is an arm64-only emergency fallback (QEMU cross-compile for amd64 fails on OTP 28).
+3. **Run tests locally, then commit & push**: `make test` (mcp-server) + `mix test` (ui). The suites no longer run in CI on a main push — `ci.yml` is tags-only to conserve Actions minutes — so verify locally first. Then `git commit -m "vX.Y.Z: <summary>" && git push`. The push triggers only the gitleaks Secret Scan.
+4. **Tag & push tag**: `git tag vX.Y.Z && git push origin vX.Y.Z`
+5. **Wait for CI + Docker**: the tag triggers `ci.yml` (Go + Elixir tests/lint), `docker.yml` (builds `linux/amd64 + linux/arm64` on native runners → multi-arch manifest to Docker Hub), and `release.yml` (GitHub release) in parallel. Watch with `gh run list --limit 3` + `gh run watch <id>`. `make docker-push` is an arm64-only emergency fallback (QEMU cross-compile for amd64 fails on OTP 28).
 
 **Important:** Never move tags. If a fix is needed after tagging, bump to vX.Y.Z+1.
 
@@ -154,7 +153,11 @@ The `Dockerfile` is a 3-stage build: Go builder → Elixir builder → debian:tr
 
 ### CI/CD
 
-`.github/workflows/ci.yml` — Runs Go and Elixir tests + lint on push to main and PRs. Docker Hub publishing is done manually via `make docker-build && make docker-push VERSION=vX.Y.Z`.
+Workflows (all in `.github/workflows/`):
+- `ci.yml` — Go + Elixir tests + lint. Runs **only on `v*.*.*` tags** (not on main pushes or PRs) to conserve Actions minutes, so run `make test` / `mix test` locally before pushing.
+- `secret-scan.yml` — gitleaks. Runs on PRs and main pushes; it is the only required status check on PRs (so dependabot can still auto-merge).
+- `docker.yml` — multi-arch build (`linux/amd64 + linux/arm64`) + Docker Hub publish, on tags.
+- `release.yml` — GitHub release, on tags.
 
 ### Data Flow
 
