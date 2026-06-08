@@ -34,6 +34,9 @@ func TestHandleLoadResourcesNoURI(t *testing.T) {
 	if !strings.Contains(text, "council://workflows") {
 		t.Errorf("expected council://workflows in listing, got: %s", text)
 	}
+	if !strings.Contains(text, "council://janitor") {
+		t.Errorf("expected council://janitor in listing, got: %s", text)
+	}
 	if !strings.Contains(text, "council://room/{room_id}/transcript") {
 		t.Errorf("expected dynamic transcript template in listing, got: %s", text)
 	}
@@ -66,6 +69,16 @@ func TestHandleLoadResourcesWorkflows(t *testing.T) {
 	text := resultText(res)
 	if text == "" {
 		t.Error("expected non-empty workflows content")
+	}
+}
+
+func TestHandleLoadResourcesJanitor(t *testing.T) {
+	reg := setupHandlerTest(t)
+
+	res, _, _ := reg.handleLoadResources(context.Background(), nil, loadResourcesArgs{URI: "council://janitor"})
+	text := resultText(res)
+	if !strings.Contains(text, "Janitor") || !strings.Contains(text, "needs-synthesis") {
+		t.Errorf("expected janitor playbook content, got: %s", text)
 	}
 }
 
