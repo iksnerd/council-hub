@@ -101,6 +101,16 @@ Project-specific skills live in `.claude/skills/` (gitignored — local only):
 
 Use `/release` for all version bumps — it enforces the gofmt preflight that prevents CI failures from struct alignment drift (lesson from v0.26.4).
 
+## Capturing learnings
+
+After a non-trivial task, fold what you learned back into the place that surfaces it next time — don't let it die with the session:
+
+- Reusable pattern, gotcha, or workflow correction → update the relevant **skill** (`~/.claude/skills/` global, `.claude/skills/` project).
+- Project-specific fact, convention, or process change → update **this CLAUDE.md**.
+- Something the harness should do automatically → a **hook** in `settings.json`.
+
+The test: if the same mistake or question could recur, the fix belongs in a durable file, not just this conversation. Keep edits small and specific, and delete guidance that turns out to be wrong.
+
 ## Architecture
 
 ### MCP Server (Go)
