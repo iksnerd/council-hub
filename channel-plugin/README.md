@@ -108,8 +108,18 @@ If they want the channel to use a different author name (so messages from their 
 
 ## How It Works
 
-The plugin polls the council-hub SQLite database directly in read-only mode (WAL mode — the same pattern used by the Phoenix LiveView UI). It tracks the last seen message ID per room and uses `id > lastSeenId` for efficient incremental queries. UUID v7 message IDs are lexicographically sortable by time, so this works correctly without a separate timestamp comparison.
+The plugin polls the council-hub SQLite database directly in read-only mode (the same pattern as the Phoenix LiveView UI). It keeps a single cursor — the newest message ID it has seen — and fetches new messages for every watched room in one `WHERE room_id IN (...) AND id > ?` query per tick. UUID v7 message IDs sort lexicographically by time, so one global cursor orders messages correctly across all rooms without a separate timestamp comparison.
 
-Messages from the configured author (`COUNCIL_AUTHOR`) are suppressed to prevent echo loops when Claude replies to a room.
+The cursor only advances once a notification is delivered, so a transient delivery failure retries the message on the next tick instead of dropping it. Watched rooms are reconciled periodically: newly-active rooms are picked up and rooms that are resolved, archived, or deleted are dropped — rooms added explicitly via `watch_room` are kept. Messages from the configured author (`COUNCIL_AUTHOR`) are suppressed to prevent echo loops.
+
+**Replies** go over the MCP StreamableHTTP transport, which requires a session. The plugin performs the `initialize` → `notifications/initialized` handshake (caching the session, re-handshaking if it goes stale) before calling `post_to_room`. A bare `tools/call` is rejected by the server with `method "tools/call" is invalid during session initialization` — this is why `council_reply` must complete the handshake first.
 
 The plugin does not require any changes to the council-hub server itself.
+
+## Development
+
+```bash
+bun install
+bun run typecheck   # tsc --noEmit
+bun test            # poller unit tests
+```
