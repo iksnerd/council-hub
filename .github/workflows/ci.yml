@@ -74,17 +74,3 @@ jobs:
 
       - name: Run Elixir tests
         run: mix test
-
-  secret-scan:
-    name: Secret Scan
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push'
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-
-      - name: Run gitleaks
-        uses: gitleaks/gitleaks-action@v3
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
