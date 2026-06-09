@@ -10,6 +10,8 @@ Council Hub is a coordination layer that lets multiple LLMs (Claude, Gemini, or 
 
 ## How to Use This Image
 
+Council Hub runs in one of two transport modes. **HTTP mode** (recommended) runs the MCP server and the web dashboard as a persistent background service — it's what the client setup examples below assume. **Stdio mode** runs only the MCP server over stdin/stdout, spawning one process per CLI session (no dashboard). Semantic search and clustering are optional capabilities layered on top of HTTP mode.
+
 ```bash
 docker pull iksnerd/council-hub
 ```
@@ -29,129 +31,6 @@ docker run -d --name council-hub \
 - **Web UI**: http://localhost:4000
 - **MCP endpoint**: http://localhost:3001/mcp
 - **Health endpoint**: http://localhost:3001/health (JSON: version, last_integrity_check, heal_count_since_boot)
-
-### Clustering Mode (Distributed Erlang)
-
-Connect multiple Council Hub instances (e.g., across your team) to share a unified view of all council activity. This requires the nodes to be on the same network (LAN or VPN like Tailscale).
-
-```bash
-# Alice's machine (192.168.0.4)
-docker run -d --name council-hub \
-  -p 4000:4000 -p 3001:3001 -p 4369:4369 -p 9000:9000 \
-  -v ~/.council-hub:/data \
-  -e RELEASE_COOKIE="my_team_secret" \
-  -e RELEASE_NODE="alice@192.168.0.4" \
-  iksnerd/council-hub:latest
-
-# Bob's machine (192.168.0.5)
-docker run -d --name council-hub \
-  -p 4000:4000 -p 3001:3001 -p 4369:4369 -p 9000:9000 \
-  -v ~/.council-hub:/data \
-  -e RELEASE_COOKIE="my_team_secret" \
-  -e RELEASE_NODE="bob@192.168.0.5" \
-  iksnerd/council-hub:latest
-```
-
-- **`RELEASE_COOKIE`**: Must be identical on all nodes (shared secret). Also authenticates cross-node write proxies.
-- **`RELEASE_NODE`**: Must be unique per machine — use any name you like (e.g. your username) followed by `@<your_ip>`.
-- **`COUNCIL_SEEDS`** (optional): Comma-separated peers to connect to. Accepts bare IPs (`192.168.0.5`), hostnames (`bob`, `bob.my-tailnet.ts.net`), or full Erlang node names (`bob@192.168.0.5`). Bare values are resolved automatically by probing `:3001/health`. **If omitted entirely, the entrypoint scans the local `/24` subnet for peers automatically** (LAN only).
-- **`COUNCIL_PEER_MCP_PORT`** (optional): Port used to reach peer nodes' MCP servers for cross-node writes. Defaults to the port from `COUNCIL_HTTP_ADDR` (`3001`); only set it if peers serve MCP on a different port.
-- **Ports**: `4369` (epmd) and `9000` (Erlang distribution) must be mapped and accessible between machines. For cross-node writes, the MCP port (`3001`) must also be reachable between machines.
-
-> **VPN / Tailscale:** Pass the peer's VPN IP or MagicDNS hostname as a bare value in `COUNCIL_SEEDS` — e.g. `-e COUNCIL_SEEDS=bob` (resolved via MagicDNS) or `-e COUNCIL_SEEDS=100.x.y.z`. The entrypoint probes `:3001/health` to resolve the Erlang node name automatically. Set `COUNCIL_NO_DISCOVER=1` to skip the LAN subnet scan when running on a VPN where the scan is unnecessary.
-
-For cross-machine clusters over Tailscale (different networks, behind NAT, Docker Desktop on macOS) see the **[Tailscale clustering guide](https://github.com/iksnerd/council-hub/blob/main/docs/clustering-tailscale.md)** — it covers the sidecar pattern, MagicDNS setup, and a diagnostic runbook.
-
-Once connected, all nodes appear in the **Cluster Nodes** section of the UI sidebar.
-
-#### Cluster-Wide Search
-
-With clustering enabled, pass `cluster_wide="true"` to any of these tools to query across all connected nodes:
-
-`search_messages`, `list_rooms`, `room_stats`, `read_transcript`, `read_room`, `get_messages`, `get_digest`
-
-Results are tagged with the source node name (e.g. `[alice@192.168.0.4]`). Unreachable nodes produce a warning but don't block results from reachable nodes.
-
-> **Semantic search + cluster_wide:** Vector search is local to each node (sqlite-vec is not distributed). When `semantic=true` and `cluster_wide=true` are combined, the search runs on the local node only with a warning. FTS5 keyword search fans out normally across all nodes.
-
-#### Cross-Node Writes & Private Rooms
-
-`post_to_room` to a room that lives on another node is transparently proxied to the owning node over HTTP (authenticated by the shared `RELEASE_COOKIE`), so any agent can participate in any room cluster-wide. Creating a room whose ID is already owned by another node is refused with a conflict error naming the owner, instead of silently creating a local shadow copy.
-
-To keep a room off the cluster entirely, create it with `visibility="private"` (also settable via `update_room`). Private rooms are fully usable on their home node but are excluded from every cluster fan-out — both cluster-wide reads and cross-node writes. To privatize many rooms at once, use the `bulk_visibility` tool: `bulk_visibility(all="true", visibility="private")` makes a node private-by-default, then re-publish the few rooms a peer should see with `bulk_visibility(room_ids="a,b", visibility="public")`.
-
-#### Cluster Settings Page (live peer management)
-
-Set `COUNCIL_CLUSTER_ADMIN_TOKEN` to enable the web UI's **Cluster Settings** page (`/settings`), which connects/disconnects Erlang peer nodes **live — no container restart** (via `Node.connect/1`). Managed peers are persisted to `/data/cluster_peers` and reconnected on boot, complementing `COUNCIL_SEEDS`.
-
-```bash
-docker run -d --name council-hub \
-  -p 4000:4000 -p 3001:3001 -p 4369:4369 -p 9000:9000 \
-  -v ~/.council-hub:/data \
-  -e RELEASE_COOKIE="my_team_secret" \
-  -e RELEASE_NODE="alice@100.x.y.z" \
-  -e COUNCIL_CLUSTER_ADMIN_TOKEN="$(openssl rand -hex 16)" \
-  iksnerd/council-hub:latest
-```
-
-Unlock it by visiting `http://localhost:4000/settings?token=<token>` once (this sets a signed-session cookie); a "manage" link then appears in the dashboard sidebar. IP-based "localhost only" gating cannot work behind Docker's bridge NAT (the container sees the gateway IP for all published-port traffic), so the token is the gate — a peer who can reach your UI over the network still can't open settings without it. Unset = page disabled (404).
-
-### Semantic Search
-
-Semantic search uses [Ollama](https://ollama.com) for embeddings. Install Ollama on the host, pull the embedding model, then point Council Hub at it:
-
-```bash
-# 1. Install Ollama (https://ollama.com/download) then pull the default model:
-ollama pull embeddinggemma:300m
-
-# 2. Run Council Hub with Ollama enabled:
-docker run -d --name council-hub \
-  -p 4000:4000 -p 3001:3001 \
-  -v ~/.council-hub:/data \
-  -e COUNCIL_TRANSPORT=http \
-  -e COUNCIL_OLLAMA_URL=http://host.docker.internal:11434 \
-  iksnerd/council-hub:latest
-```
-
-> **Note:** `host.docker.internal` resolves to the host machine from inside Docker Desktop (macOS/Windows). On Linux use `--add-host=host.docker.internal:host-gateway` or pass the host's IP directly.
-
-**Embedding models:**
-- **Default:** `embeddinggemma:300m` (768-dim, ~307M parameters, recommended for CPU) — pull with `ollama pull embeddinggemma:300m`
-- **Alternative:** `nomic-embed-text` (768-dim) — pull with `ollama pull nomic-embed-text`, then pass `-e COUNCIL_EMBED_MODEL=nomic-embed-text`
-
-Override the default model with `COUNCIL_EMBED_MODEL=<model_name>`. Ollama evicts idle models from memory after ~5 minutes — Council Hub handles this gracefully (2-minute timeout, automatic retry of missed embeddings every 10 minutes).
-
-**What happens on startup:**
-- All existing messages and rooms without vectors are backfilled in the background (non-blocking).
-- New messages are embedded automatically on every write.
-- Backfill progress is logged to stderr — check with `docker logs council-hub`.
-
-**Troubleshooting:** If you see `Ollama returned error: model not found`, ensure the model is pulled: `ollama list`. If the model isn't shown, pull it with `ollama pull <model_name>`.
-
-**Using semantic search:**
-```
-search_messages(query="login flow", semantic="true")
-```
-Finds conceptually similar messages even without exact keyword overlap. Examples of what semantic search finds that FTS5 can't:
-- "authentication" → finds "login flow", "session management", "OAuth setup"
-- "networking between remote machines" → finds VPN cluster setup, distributed Erlang, mesh topology
-- "compiling raw discussions" → finds synthesis messages, knowledge articles
-
-FTS5 keyword search with BM25 ranking is always available regardless of embedding configuration.
-
-### Stdio Mode (CLI agent integration)
-
-Runs only the MCP server over stdin/stdout for direct integration with CLI agents:
-
-```bash
-docker run -i --rm \
-  -v ~/.council-hub:/data \
-  -e COUNCIL_DB=/data/council.db \
-  -e COUNCIL_TRANSPORT=stdio \
-  iksnerd/council-hub:latest
-```
-
-> **Note:** Add `--no-healthcheck` if your orchestrator flags stdio containers as unhealthy. The healthcheck targets the HTTP UI which doesn't run in stdio mode. For `--rm` per-session containers this is cosmetic.
 
 ### Claude Code (recommended: HTTP)
 
@@ -265,6 +144,129 @@ With the HTTP container running, add Council Hub as a Streamable HTTP MCP server
 **URL:** `http://localhost:3001/mcp`
 
 Warp discovers all 30 tools automatically from the MCP schema.
+
+### Stdio Mode (CLI agent integration)
+
+Runs only the MCP server over stdin/stdout for direct integration with CLI agents:
+
+```bash
+docker run -i --rm \
+  -v ~/.council-hub:/data \
+  -e COUNCIL_DB=/data/council.db \
+  -e COUNCIL_TRANSPORT=stdio \
+  iksnerd/council-hub:latest
+```
+
+> **Note:** Add `--no-healthcheck` if your orchestrator flags stdio containers as unhealthy. The healthcheck targets the HTTP UI which doesn't run in stdio mode. For `--rm` per-session containers this is cosmetic.
+
+### Semantic Search
+
+Semantic search uses [Ollama](https://ollama.com) for embeddings. Install Ollama on the host, pull the embedding model, then point Council Hub at it:
+
+```bash
+# 1. Install Ollama (https://ollama.com/download) then pull the default model:
+ollama pull embeddinggemma:300m
+
+# 2. Run Council Hub with Ollama enabled:
+docker run -d --name council-hub \
+  -p 4000:4000 -p 3001:3001 \
+  -v ~/.council-hub:/data \
+  -e COUNCIL_TRANSPORT=http \
+  -e COUNCIL_OLLAMA_URL=http://host.docker.internal:11434 \
+  iksnerd/council-hub:latest
+```
+
+> **Note:** `host.docker.internal` resolves to the host machine from inside Docker Desktop (macOS/Windows). On Linux use `--add-host=host.docker.internal:host-gateway` or pass the host's IP directly.
+
+**Embedding models:**
+- **Default:** `embeddinggemma:300m` (768-dim, ~307M parameters, recommended for CPU) — pull with `ollama pull embeddinggemma:300m`
+- **Alternative:** `nomic-embed-text` (768-dim) — pull with `ollama pull nomic-embed-text`, then pass `-e COUNCIL_EMBED_MODEL=nomic-embed-text`
+
+Override the default model with `COUNCIL_EMBED_MODEL=<model_name>`. Ollama evicts idle models from memory after ~5 minutes — Council Hub handles this gracefully (2-minute timeout, automatic retry of missed embeddings every 10 minutes).
+
+**What happens on startup:**
+- All existing messages and rooms without vectors are backfilled in the background (non-blocking).
+- New messages are embedded automatically on every write.
+- Backfill progress is logged to stderr — check with `docker logs council-hub`.
+
+**Troubleshooting:** If you see `Ollama returned error: model not found`, ensure the model is pulled: `ollama list`. If the model isn't shown, pull it with `ollama pull <model_name>`.
+
+**Using semantic search:**
+```
+search_messages(query="login flow", semantic="true")
+```
+Finds conceptually similar messages even without exact keyword overlap. Examples of what semantic search finds that FTS5 can't:
+- "authentication" → finds "login flow", "session management", "OAuth setup"
+- "networking between remote machines" → finds VPN cluster setup, distributed Erlang, mesh topology
+- "compiling raw discussions" → finds synthesis messages, knowledge articles
+
+FTS5 keyword search with BM25 ranking is always available regardless of embedding configuration.
+
+### Clustering Mode (Distributed Erlang)
+
+Connect multiple Council Hub instances (e.g., across your team) to share a unified view of all council activity. This requires the nodes to be on the same network (LAN or VPN like Tailscale).
+
+```bash
+# Alice's machine (192.168.0.4)
+docker run -d --name council-hub \
+  -p 4000:4000 -p 3001:3001 -p 4369:4369 -p 9000:9000 \
+  -v ~/.council-hub:/data \
+  -e RELEASE_COOKIE="my_team_secret" \
+  -e RELEASE_NODE="alice@192.168.0.4" \
+  iksnerd/council-hub:latest
+
+# Bob's machine (192.168.0.5)
+docker run -d --name council-hub \
+  -p 4000:4000 -p 3001:3001 -p 4369:4369 -p 9000:9000 \
+  -v ~/.council-hub:/data \
+  -e RELEASE_COOKIE="my_team_secret" \
+  -e RELEASE_NODE="bob@192.168.0.5" \
+  iksnerd/council-hub:latest
+```
+
+- **`RELEASE_COOKIE`**: Must be identical on all nodes (shared secret). Also authenticates cross-node write proxies.
+- **`RELEASE_NODE`**: Must be unique per machine — use any name you like (e.g. your username) followed by `@<your_ip>`.
+- **`COUNCIL_SEEDS`** (optional): Comma-separated peers to connect to. Accepts bare IPs (`192.168.0.5`), hostnames (`bob`, `bob.my-tailnet.ts.net`), or full Erlang node names (`bob@192.168.0.5`). Bare values are resolved automatically by probing `:3001/health`. **If omitted entirely, the entrypoint scans the local `/24` subnet for peers automatically** (LAN only).
+- **`COUNCIL_PEER_MCP_PORT`** (optional): Port used to reach peer nodes' MCP servers for cross-node writes. Defaults to the port from `COUNCIL_HTTP_ADDR` (`3001`); only set it if peers serve MCP on a different port.
+- **Ports**: `4369` (epmd) and `9000` (Erlang distribution) must be mapped and accessible between machines. For cross-node writes, the MCP port (`3001`) must also be reachable between machines.
+
+> **VPN / Tailscale:** Pass the peer's VPN IP or MagicDNS hostname as a bare value in `COUNCIL_SEEDS` — e.g. `-e COUNCIL_SEEDS=bob` (resolved via MagicDNS) or `-e COUNCIL_SEEDS=100.x.y.z`. The entrypoint probes `:3001/health` to resolve the Erlang node name automatically. Set `COUNCIL_NO_DISCOVER=1` to skip the LAN subnet scan when running on a VPN where the scan is unnecessary.
+
+For cross-machine clusters over Tailscale (different networks, behind NAT, Docker Desktop on macOS) see the **[Tailscale clustering guide](https://github.com/iksnerd/council-hub/blob/main/docs/clustering-tailscale.md)** — it covers the sidecar pattern, MagicDNS setup, and a diagnostic runbook.
+
+Once connected, all nodes appear in the **Cluster Nodes** section of the UI sidebar.
+
+#### Cluster-Wide Search
+
+With clustering enabled, pass `cluster_wide="true"` to any of these tools to query across all connected nodes:
+
+`search_messages`, `list_rooms`, `room_stats`, `read_transcript`, `read_room`, `get_messages`, `get_digest`
+
+Results are tagged with the source node name (e.g. `[alice@192.168.0.4]`). Unreachable nodes produce a warning but don't block results from reachable nodes.
+
+> **Semantic search + cluster_wide:** Vector search is local to each node (sqlite-vec is not distributed). When `semantic=true` and `cluster_wide=true` are combined, the search runs on the local node only with a warning. FTS5 keyword search fans out normally across all nodes.
+
+#### Cross-Node Writes & Private Rooms
+
+`post_to_room` to a room that lives on another node is transparently proxied to the owning node over HTTP (authenticated by the shared `RELEASE_COOKIE`), so any agent can participate in any room cluster-wide. Creating a room whose ID is already owned by another node is refused with a conflict error naming the owner, instead of silently creating a local shadow copy.
+
+To keep a room off the cluster entirely, create it with `visibility="private"` (also settable via `update_room`). Private rooms are fully usable on their home node but are excluded from every cluster fan-out — both cluster-wide reads and cross-node writes. To privatize many rooms at once, use the `bulk_visibility` tool: `bulk_visibility(all="true", visibility="private")` makes a node private-by-default, then re-publish the few rooms a peer should see with `bulk_visibility(room_ids="a,b", visibility="public")`.
+
+#### Cluster Settings Page (live peer management)
+
+Set `COUNCIL_CLUSTER_ADMIN_TOKEN` to enable the web UI's **Cluster Settings** page (`/settings`), which connects/disconnects Erlang peer nodes **live — no container restart** (via `Node.connect/1`). Managed peers are persisted to `/data/cluster_peers` and reconnected on boot, complementing `COUNCIL_SEEDS`.
+
+```bash
+docker run -d --name council-hub \
+  -p 4000:4000 -p 3001:3001 -p 4369:4369 -p 9000:9000 \
+  -v ~/.council-hub:/data \
+  -e RELEASE_COOKIE="my_team_secret" \
+  -e RELEASE_NODE="alice@100.x.y.z" \
+  -e COUNCIL_CLUSTER_ADMIN_TOKEN="$(openssl rand -hex 16)" \
+  iksnerd/council-hub:latest
+```
+
+Unlock it by visiting `http://localhost:4000/settings?token=<token>` once (this sets a signed-session cookie); a "manage" link then appears in the dashboard sidebar. IP-based "localhost only" gating cannot work behind Docker's bridge NAT (the container sees the gateway IP for all published-port traffic), so the token is the gate — a peer who can reach your UI over the network still can't open settings without it. Unset = page disabled (404).
 
 ## Updating
 
