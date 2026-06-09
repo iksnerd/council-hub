@@ -6,13 +6,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ## [Unreleased]
 
-Changes on `main` not yet in a tagged release. The channel plugin runs from source (it is not bundled in the Docker image), so these are live on reconnect without a version bump.
+Changes on `main` not yet in a tagged release.
+
+## [0.38.0] - 2026-06-09
+
+### Added
+- **Commit links via room `repo`** — set a room's `repo` (`owner/repo`, an https clone URL, or `git@host:owner/repo`) and any `{sha:<hash>}` token in a message renders as a short-SHA commit link in the MCP transcript and the dashboard; without a repo it falls back to a `` `short` `` code span. Render-time only, read-only, no network calls. The link resolves across the cluster (cluster-wide reads link too) and in the `read_room` / `get_or_create_room` recent-message previews. `repo` is settable on `create_room`, `get_or_create_room`, and `update_room`. GitHub/Gitea-style commit URLs.
 
 ### Fixed
 - **channel-plugin: `council_reply` failed against the live server** — it sent a bare `tools/call` to the MCP endpoint, which the StreamableHTTP handler rejects with `method "tools/call" is invalid during session initialization`. It now performs the `initialize` → `notifications/initialized` handshake (caching the session, re-handshaking if stale) before posting.
 
 ### Changed
 - **channel-plugin: hardened the poller** — a single global UUIDv7 cursor with one batched `WHERE room_id IN (...) AND id > ?` query per tick (was one query per watched room); the cursor advances only after a notification is delivered, so a transient failure retries instead of dropping the message; watched rooms are pruned once resolved/archived/deleted; `watch_room` validates the room exists. Added `bun test` poller unit tests.
+- **Internal: extracted `textResult` / `appendMessageBlock` handler helpers** — removed the per-handler `msg := func(...)` boilerplate repeated across the MCP tool handlers.
 
 ## [0.37.0] - 2026-06-08
 
