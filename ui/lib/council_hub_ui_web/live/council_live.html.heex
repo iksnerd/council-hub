@@ -325,9 +325,10 @@
             <.summary_block
               msg={msg}
               collapsed={MapSet.member?(@collapsed_summaries, msg.id)}
+              repo={Map.get(@active_room, :repo, "")}
             />
           <% else %>
-            <.message_bubble msg={msg} />
+            <.message_bubble msg={msg} repo={Map.get(@active_room, :repo, "")} />
           <% end %>
         </div>
       </div>

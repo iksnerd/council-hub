@@ -1,11 +1,11 @@
 name: CI
 
 on:
+  # Runs only on version tags to conserve GitHub Actions quota.
+  # Trade-off: PRs and main pushes are not tested by CI; run tests locally
+  # (make test / mix test) before tagging a release.
   push:
-    branches: [ "main" ]
     tags: [ "v*.*.*" ]
-  pull_request:
-    branches: [ "main" ]
 
 jobs:
   go-ci:
@@ -74,17 +74,3 @@ jobs:
 
       - name: Run Elixir tests
         run: mix test
-
-  secret-scan:
-    name: Secret Scan
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push'
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-
-      - name: Run gitleaks
-        uses: gitleaks/gitleaks-action@v3
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

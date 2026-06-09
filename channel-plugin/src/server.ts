@@ -150,6 +150,69 @@ export function createServer(config: Config, poller: Poller): Server {
   return server;
 }
 
+// The Go server speaks MCP over StreamableHTTP, which requires a session before
+// any tools/call: initialize -> capture the Mcp-Session-Id header -> send
+// notifications/initialized. We cache the session and re-handshake if it's lost
+// (e.g. the server restarted). Posting a bare tools/call — as this plugin used
+// to — fails with `method "tools/call" is invalid during session initialization`.
+let mcpSession: string | null = null;
+
+type RpcResponse = { result?: unknown; error?: { message: string } };
+
+// Parse a StreamableHTTP response, which may be a single JSON object or an SSE
+// stream of `data:` lines. Returns the first JSON-RPC payload found.
+async function parseRpcResponse(resp: Response): Promise<RpcResponse> {
+  const contentType = resp.headers.get("content-type") ?? "";
+  if (contentType.includes("text/event-stream")) {
+    const text = await resp.text();
+    for (const line of text.split("\n")) {
+      if (line.startsWith("data: ")) return JSON.parse(line.slice(6)) as RpcResponse;
+    }
+    return {};
+  }
+  return (await resp.json()) as RpcResponse;
+}
+
+// Establish an MCP session and return its id. Must run before any tools/call.
+async function mcpHandshake(config: Config): Promise<string> {
+  const resp = await fetch(config.mcpUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json, text/event-stream",
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 0,
+      method: "initialize",
+      params: {
+        protocolVersion: "2024-11-05",
+        capabilities: {},
+        clientInfo: { name: "council-hub-channel", version: "0.1.0" },
+      },
+    }),
+  });
+  if (!resp.ok) {
+    throw new Error(`MCP initialize failed: HTTP ${resp.status}: ${await resp.text()}`);
+  }
+  const sessionId = resp.headers.get("mcp-session-id");
+  await resp.text(); // drain the SSE body so the stream completes
+  if (!sessionId) {
+    throw new Error("MCP initialize returned no Mcp-Session-Id header");
+  }
+  // Complete the handshake — the server rejects tools/call until this arrives.
+  await fetch(config.mcpUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json, text/event-stream",
+      "Mcp-Session-Id": sessionId,
+    },
+    body: JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }),
+  }).catch(() => {});
+  return sessionId;
+}
+
 async function postToRoom(
   config: Config,
   args: { room_id: string; content: string; message_type: string; reply_to: string }
@@ -170,38 +233,43 @@ async function postToRoom(
     },
   };
 
-  const resp = await fetch(config.mcpUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json, text/event-stream",
-    },
-    body: JSON.stringify(body),
-  });
+  // Two attempts: the second forces a fresh session if the first failed because
+  // the cached session was missing or stale (e.g. the server restarted).
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (!mcpSession) mcpSession = await mcpHandshake(config);
 
-  if (!resp.ok) {
-    throw new Error(`HTTP ${resp.status}: ${await resp.text()}`);
-  }
+    const resp = await fetch(config.mcpUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json, text/event-stream",
+        "Mcp-Session-Id": mcpSession,
+      },
+      body: JSON.stringify(body),
+    });
 
-  const contentType = resp.headers.get("content-type") ?? "";
-
-  // Handle SSE response (stream of events)
-  if (contentType.includes("text/event-stream")) {
-    const text = await resp.text();
-    // Extract data lines from SSE
-    for (const line of text.split("\n")) {
-      if (line.startsWith("data: ")) {
-        const json = JSON.parse(line.slice(6));
-        if (json.result) return extractText(json.result);
-        if (json.error) throw new Error(json.error.message);
-      }
+    // 404/400 means the session is unknown/expired — drop it and retry once.
+    if ((resp.status === 404 || resp.status === 400) && attempt === 0) {
+      mcpSession = null;
+      continue;
     }
-    return "Posted";
-  }
+    if (!resp.ok) {
+      throw new Error(`HTTP ${resp.status}: ${await resp.text()}`);
+    }
 
-  const json = await resp.json() as { result?: unknown; error?: { message: string } };
-  if (json.error) throw new Error(json.error.message);
-  return extractText(json.result);
+    const json = await parseRpcResponse(resp);
+    if (json.error) {
+      const m = json.error.message ?? "";
+      // Session lost mid-flight (e.g. server restarted): re-handshake once.
+      if (attempt === 0 && /session|initializ/i.test(m)) {
+        mcpSession = null;
+        continue;
+      }
+      throw new Error(m);
+    }
+    return extractText(json.result);
+  }
+  throw new Error("post_to_room failed after re-establishing the MCP session");
 }
 
 function extractText(result: unknown): string {

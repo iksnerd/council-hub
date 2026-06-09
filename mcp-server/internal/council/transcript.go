@@ -52,7 +52,7 @@ func FormatTranscript(room Room, messages []Message) string {
 		if m.Pinned {
 			pinnedID = m.ID
 			ts := m.Timestamp.Format("2006-01-02 15:04:05")
-			fmt.Fprintf(&b, "\n**PINNED [#%.8s %s] %s:**\n%s\n---\n", m.ID, ts, m.Author, m.Content)
+			fmt.Fprintf(&b, "\n**PINNED [#%.8s %s] %s:**\n%s\n---\n", m.ID, ts, m.Author, ResolveCommitRefs(m.Content, room.Repo))
 			break
 		}
 	}
@@ -62,6 +62,7 @@ func FormatTranscript(room Room, messages []Message) string {
 			continue // already rendered above
 		}
 		ts := m.Timestamp.Format("2006-01-02 15:04:05")
+		content := ResolveCommitRefs(m.Content, room.Repo)
 		replyTag := ""
 		if m.ReplyTo != "" {
 			replyTag = fmt.Sprintf(", re: #%.8s", m.ReplyTo)
@@ -80,13 +81,13 @@ func FormatTranscript(room Room, messages []Message) string {
 			}
 		}
 		if m.IsSummary {
-			fmt.Fprintf(&b, "\n**[%s] SUMMARY:**\n%s\n", ts, m.Content)
+			fmt.Fprintf(&b, "\n**[%s] SUMMARY:**\n%s\n", ts, content)
 		} else if m.MessageType != "" && m.MessageType != "message" {
-			fmt.Fprintf(&b, "\n**[#%.8s %s] %s (%s%s)%s:**\n%s\n", m.ID, ts, m.Author, m.MessageType, replyTag, mentionTag, m.Content)
+			fmt.Fprintf(&b, "\n**[#%.8s %s] %s (%s%s)%s:**\n%s\n", m.ID, ts, m.Author, m.MessageType, replyTag, mentionTag, content)
 		} else if m.ReplyTo != "" {
-			fmt.Fprintf(&b, "\n**[#%.8s %s] %s (re: #%.8s)%s:**\n%s\n", m.ID, ts, m.Author, m.ReplyTo, mentionTag, m.Content)
+			fmt.Fprintf(&b, "\n**[#%.8s %s] %s (re: #%.8s)%s:**\n%s\n", m.ID, ts, m.Author, m.ReplyTo, mentionTag, content)
 		} else {
-			fmt.Fprintf(&b, "\n**[#%.8s %s] %s%s:**\n%s\n", m.ID, ts, m.Author, mentionTag, m.Content)
+			fmt.Fprintf(&b, "\n**[#%.8s %s] %s%s:**\n%s\n", m.ID, ts, m.Author, mentionTag, content)
 		}
 		if r := formatReactions(m.Reactions); r != "" {
 			fmt.Fprintf(&b, "  Reactions: %s\n", r)

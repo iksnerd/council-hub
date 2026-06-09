@@ -109,6 +109,59 @@ defmodule CouncilHubUiWeb.CouncilHelpersTest do
     assert String.contains?(html, "<code")
   end
 
+  test "render_markdown strips XSS from untrusted content" do
+    malicious = "<img src=x onerror=\"steal()\"> <script>danger()</script>"
+    html = CouncilHelpers.render_markdown(malicious)
+    # The executable surfaces — the event-handler attribute and the script tag —
+    # must be stripped. Inert leftover text is harmless.
+    refute String.contains?(html, "onerror")
+    refute String.contains?(html, "<script")
+  end
+
+  test "render_markdown keeps safe markdown after sanitizing" do
+    html = CouncilHelpers.render_markdown("**bold** and [link](/local-path)")
+    assert String.contains?(html, "<strong>bold</strong>")
+    assert String.contains?(html, "<a")
+    assert String.contains?(html, "/local-path")
+  end
+
+  # -- resolve_commit_refs --
+
+  test "resolve_commit_refs links {sha:...} against an owner/repo" do
+    out = CouncilHelpers.resolve_commit_refs("Shipped {sha:89cfaf1abc}", "iksnerd/council-hub")
+    assert out == "Shipped [`89cfaf1`](https://github.com/iksnerd/council-hub/commit/89cfaf1abc)"
+  end
+
+  test "resolve_commit_refs handles full URLs and scp remotes" do
+    assert CouncilHelpers.resolve_commit_refs("{sha:abc1234}", "https://github.com/o/r.git") ==
+             "[`abc1234`](https://github.com/o/r/commit/abc1234)"
+
+    assert CouncilHelpers.resolve_commit_refs("{sha:abc1234}", "git@gitea.example.com:team/repo") ==
+             "[`abc1234`](https://gitea.example.com/team/repo/commit/abc1234)"
+  end
+
+  test "resolve_commit_refs falls back to a code span without a repo" do
+    assert CouncilHelpers.resolve_commit_refs("fixed {sha:deadbeef}", "") == "fixed `deadbee`"
+  end
+
+  test "resolve_commit_refs leaves non-matching tokens and token-free text alone" do
+    assert CouncilHelpers.resolve_commit_refs("{sha:short} {sha:nothex!}", "o/r") ==
+             "{sha:short} {sha:nothex!}"
+
+    assert CouncilHelpers.resolve_commit_refs("plain text", "o/r") == "plain text"
+  end
+
+  test "resolve_commit_refs renders to a real anchor through render_markdown" do
+    html =
+      "see {sha:89cfaf1}"
+      |> CouncilHelpers.resolve_commit_refs("iksnerd/council-hub")
+      |> CouncilHelpers.render_markdown()
+
+    assert String.contains?(html, "<a")
+    assert String.contains?(html, "github.com/iksnerd/council-hub/commit/89cfaf1")
+    assert String.contains?(html, "<code")
+  end
+
   # -- status_badge_class --
 
   test "status badge classes" do

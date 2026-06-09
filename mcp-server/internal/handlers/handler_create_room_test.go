@@ -53,6 +53,46 @@ func TestHandleCreateRoomPrivateVisibility(t *testing.T) {
 	}
 }
 
+func TestHandleCreateRoomWithRepo(t *testing.T) {
+	reg := setupHandlerTest(t)
+
+	res, _, err := reg.handleCreateRoom(context.Background(), nil, CreateRoomInput{
+		ID: "repo-room", Topic: "commit links", Repo: "iksnerd/council-hub",
+	})
+	if err != nil {
+		t.Fatalf("handleCreateRoom error: %v", err)
+	}
+	if text := resultText(res); !strings.Contains(text, "iksnerd/council-hub") {
+		t.Errorf("expected repo note in output, got: %s", text)
+	}
+
+	room, _ := reg.Server.GetRoom("repo-room")
+	if room.Repo != "iksnerd/council-hub" {
+		t.Errorf("expected repo persisted, got '%s'", room.Repo)
+	}
+
+	// read_room surfaces the repo.
+	readRes, _, _ := reg.handleReadRoom(context.Background(), nil, ReadRoomInput{RoomID: "repo-room"})
+	if text := resultText(readRes); !strings.Contains(text, "iksnerd/council-hub") {
+		t.Errorf("expected read_room to show repo, got: %s", text)
+	}
+}
+
+func TestHandleUpdateRoomRepo(t *testing.T) {
+	reg := setupHandlerTest(t)
+
+	if _, _, err := reg.handleCreateRoom(context.Background(), nil, CreateRoomInput{ID: "repo-update", Topic: "t"}); err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+	if _, _, err := reg.handleUpdateRoom(context.Background(), nil, UpdateRoomInput{RoomID: "repo-update", Repo: "owner/widget"}); err != nil {
+		t.Fatalf("update failed: %v", err)
+	}
+	room, _ := reg.Server.GetRoom("repo-update")
+	if room.Repo != "owner/widget" {
+		t.Errorf("expected repo 'owner/widget' after update, got '%s'", room.Repo)
+	}
+}
+
 func TestHandleUpdateRoomVisibility(t *testing.T) {
 	reg := setupHandlerTest(t)
 

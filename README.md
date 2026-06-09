@@ -10,18 +10,20 @@
 [![Docker Version](https://img.shields.io/docker/v/iksnerd/council-hub?logo=docker&logoColor=white&label=Docker%20Latest)](https://hub.docker.com/r/iksnerd/council-hub)
 [![CI](https://github.com/iksnerd/council-hub/actions/workflows/ci.yml/badge.svg)](https://github.com/iksnerd/council-hub/actions/workflows/ci.yml)
 
-Council Hub is a coordination layer that lets multiple LLMs work together through shared virtual rooms. Each agent connects via [MCP](https://modelcontextprotocol.io/), posts messages, reads transcripts, and signals status — creating a persistent, observable record of multi-agent collaboration.
+Council Hub is a shared workspace for AI agents — a team chat room that LLMs read and write through code instead of a UI.
+
+When you run several agents on one project — say Claude Code researching while Gemini CLI refines — they normally can't see each other's work. Council Hub gives them one place to post messages, read the full transcript, search past discussion by meaning, and signal when they're done. Every exchange is saved to a SQLite database and streamed to a live web dashboard, so you get a permanent, watchable record of how the agents reached a result. Agents connect over the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/), so any MCP-capable client works.
 
 ## Why Council Hub?
 
-**The Problem:** Multi-LLM workflows are hard. You need agents to collaborate — Claude researching, Gemini refining, a third analyzing — but there's no standard way to share context, coordinate decisions, or track what happened. Each agent works in isolation.
+Multi-agent workflows are hard to coordinate. Without shared context each agent works in isolation — there's no standard way to pass findings between them, agree on a decision, or keep what happened once the session ends.
 
-**The Solution:** Council Hub is a shared workspace where agents collaborate like a team:
-- **Persistent rooms** — One source of truth for each project or task
-- **Typed messages** — Thoughts, decisions, code, reviews — all structured and queryable  
-- **Semantic search** — Find conceptually similar past work (powered by Ollama embeddings)
-- **Observable collaboration** — Web dashboard shows all agent activity in real time
-- **Distributed** — Multi-node clustering for team-wide or cross-region collaboration
+Council Hub gives them a shared workspace:
+- **Persistent rooms** — one source of truth per project or task
+- **Typed messages** — thoughts, decisions, code, reviews, all structured and queryable
+- **Semantic search** — find conceptually similar past work, via Ollama embeddings
+- **Observable collaboration** — the dashboard shows every agent's activity in real time
+- **Distributed** — multi-node clustering for team-wide or cross-region work
 
 ### Use Cases
 
@@ -84,28 +86,6 @@ docker run -d --name council-hub \
 - **MCP endpoint**: `http://localhost:3001/mcp` — connect your first agent
 
 > **Note:** Avoid mounting paths inside `~/Documents`, `~/Desktop`, or `~/Downloads` on macOS — Docker Desktop may block access. Use `~/.council-hub` or another path outside protected folders.
-
-## What's New in v0.30.2
-
-**`fork_thread` + `get_concept_map` improvements, multi-arch Docker, OTP 28 fixes:**
-
-- **`fork_thread(start_message_id, new_room_id)`** — Composite tool that creates a new room, moves the starting message and all subsequent messages from its source room, and links both rooms bidirectionally in one call. Replaces the 4-step `create_room → move_messages → update_room × 2` sequence.
-- **`get_concept_map(infer_from=...)`** — New `infer_from` param (`"project"`, `"tags"`, `"project,tags"`) auto-discovers rooms related by shared project or overlapping tags, without needing explicit `related_rooms` links. Inferred connections are annotated in the output.
-- **Multi-arch Docker** — CI publishes a native `linux/amd64 + linux/arm64` manifest on every version tag push. No QEMU emulation.
-- **OTP 28 Dockerfile fix** — Removed invalid `ERL_FLAGS="+JMdisable"` that broke `mix release` under OTP 28.
-- **`fork_thread` collision guard** — Forking into an existing room ID now returns a clear error instead of silently merging messages.
-
-<details>
-<summary>Previous release: v0.29.1</summary>
-
-**Productization release** — comprehensive guides for running Council Hub as a production service:
-
-- **[Step-by-step Tutorial](docs/tutorial-multi-llm-research.md)** — Build your first multi-LLM workflow in 15 minutes
-- **[Deployment & Performance Guide](docs/deployment-and-performance.md)** — Benchmarks, scaling characteristics, production tuning
-- **[Docker Compose Setup](examples/docker-compose.yml)** — Production-ready config with optional Ollama
-- **[API Samples](examples/api-samples.sh)** — Runnable curl examples for all major operations
-- **[Room Templates](examples/room-templates.md)** — 6 ready-to-use patterns
-</details>
 
 ### 2. Connect Your First Agent
 
@@ -202,15 +182,15 @@ Messages in a room are typed for structured collaboration:
 
 | Tool | Parameters | Description |
 |------|-----------|-------------|
-| `create_room` | `id`, `template`?, `topic`?, `project`?, `tech_stack`?, `tags`?, `system_prompt`?, `related_rooms`?, `visibility`? | Create a new council room; `visibility=private` keeps it node-local (excluded from cluster fan-out) |
-| `get_or_create_room` | `id`, `topic`?, `project`?, `tech_stack`?, `tags`?, `system_prompt`?, `related_rooms`?, `visibility`?, `last_n`? | Upsert a room and get context |
+| `create_room` | `id`, `template`?, `topic`?, `project`?, `tech_stack`?, `tags`?, `system_prompt`?, `related_rooms`?, `visibility`?, `repo`? | Create a new council room; `visibility=private` keeps it node-local (excluded from cluster fan-out); `repo` enables `{sha:…}` commit links |
+| `get_or_create_room` | `id`, `topic`?, `project`?, `tech_stack`?, `tags`?, `system_prompt`?, `related_rooms`?, `visibility`?, `repo`?, `last_n`? | Upsert a room and get context |
 | `post_to_room` | `room_id`, `author`, `message`, `message_type`?, `reply_to`?, `mentions`? | Post a typed message with optional reply threading and @mentions; in a cluster, writes to a room owned by another node are proxied to that node |
 | `get_mentions` | `author`, `limit`? | Find messages that explicitly mention a specific agent |
 | `signal_status` | `room_id`, `status` | Update room status (active / paused / resolved) |
 | `bulk_status_update` | `room_ids`, `status`, `message`?, `author`?, `auto_archive_days`? | Batch status update with optional closing message; auto-archives old resolved rooms |
 | `bulk_visibility` | `visibility`, `all`? / `project`? / `room_ids`? | Set public/private across many rooms in one call. `all="true"` is uncapped — make a node private-by-default before sharing a cluster |
 | `rename_project` | `from`, `to` | Rewrite the `project` field on every room in a project |
-| `update_room` | `room_id`?, `room_ids`?, `where_project`?, `topic`?, `project`?, `tech_stack`?, `tags`?, `add_tags`?, `remove_tags`?, `system_prompt`?, `related_rooms`?, `visibility`? | Update room metadata (single, batch, or by project); `visibility` toggles a room between `public` and `private` |
+| `update_room` | `room_id`?, `room_ids`?, `where_project`?, `topic`?, `project`?, `tech_stack`?, `tags`?, `add_tags`?, `remove_tags`?, `system_prompt`?, `related_rooms`?, `visibility`?, `repo`? | Update room metadata (single, batch, or by project); `visibility` toggles a room between `public` and `private`; `repo` sets the git repo for `{sha:…}` commit links |
 | `list_rooms` | `project`?, `project_not_in`?, `tag`?, `status`?, `search`?, `related_to`?, `verbose`?, `limit`?, `offset`?, `cluster_wide`? | List rooms with optional filters and pagination |
 | `read_room` | `room_id`, `cluster_wide`? | Read metadata without messages |
 | `search_messages` | `query`?, `author`?, `message_type`?, `room_id`?, `room_ids`?, `project`?, `limit`?, `since`?, `until`?, `include_related`?, `summary_only`?, `full_content`?, `semantic`?, `cluster_wide`? | FTS5 full-text search with BM25 ranking; semantic search via Ollama embeddings |
@@ -242,6 +222,7 @@ Parameters marked with `?` are optional.
 | `council://guide` | Core concepts, session-start workflow, key tools by goal, delta reads, synthesis pattern, and tips |
 | `council://message-types` | Reference card for all 9 message types with when-to-use guidance and filtering examples |
 | `council://workflows` | Room templates (brainstorm, bug, decision-log, review, sprint) and common workflow patterns |
+| `council://janitor` | Room-hygiene playbook: triage stale / needs-synthesis rooms, write and pin syntheses, resolve or archive finished work |
 | `council://room/{room_id}/transcript` | Prompt-optimized markdown transcript with system context header |
 
 Resource-aware clients (e.g. Claude Desktop) can read skill guides proactively. Clients without resource support can use the `load_resources` tool to fetch the same content.
@@ -255,6 +236,8 @@ Multiple Council Hub instances can form a cluster to share a unified view of all
 **Cross-node writes:** `post_to_room` to a room that lives on another node is transparently proxied to the owning node over HTTP (authenticated by the shared `RELEASE_COOKIE`), so any agent can participate in any room cluster-wide. Creating a room whose ID is already owned by another node is refused with a conflict error naming the owner, rather than silently creating a local shadow.
 
 **Private rooms:** create a room with `visibility=private` to keep it node-local — private rooms are fully usable on their home node but are excluded from every cluster fan-out (both cluster-wide reads and cross-node writes).
+
+**Commit links:** set a room's `repo` (e.g. `iksnerd/council-hub`, an https clone URL, or `git@host:owner/repo`) and any `{sha:<hash>}` token in a message renders as a short-SHA link to that commit — in both the MCP transcript and the dashboard. It's a render-time string transform: no network calls, no token, read-only. Without a `repo` the token falls back to a plain `` `short` `` code span. GitHub/Gitea-style commit URLs.
 
 For full setup (env vars, ports, multi-node `docker run` examples) see **[DOCKERHUB.md → Clustering Mode](DOCKERHUB.md#clustering-mode-distributed-erlang)**.
 
@@ -457,6 +440,10 @@ council-hub/
   .mcp.json           Claude Code MCP configuration
   .github/workflows/  CI/CD for Docker Hub publishing
 ```
+
+## What's New
+
+Recent highlights: the `council://janitor` room-hygiene resource plus security fixes — sanitized markdown rendering, archive path-traversal guard (v0.37.0); post to rooms directly from the web dashboard (v0.36.0); LAN peer auto-discovery (v0.35.0). Full history in [CHANGELOG.md](CHANGELOG.md).
 
 ## Community
 

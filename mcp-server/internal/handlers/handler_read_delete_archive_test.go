@@ -77,6 +77,27 @@ func TestHandleReadRoomIncludeLastN(t *testing.T) {
 	}
 }
 
+func TestHandleReadRoomIncludeLastNResolvesCommitRefs(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-lastn-sha")
+	if err := reg.Server.SetRepo("h-lastn-sha", "iksnerd/council-hub"); err != nil {
+		t.Fatalf("SetRepo failed: %v", err)
+	}
+	mustPost(t, reg.Server, "h-lastn-sha", "Claude", "Shipped {sha:89cfaf1abc}")
+
+	res, _, _ := reg.handleReadRoom(context.Background(), nil, ReadRoomInput{
+		RoomID:       "h-lastn-sha",
+		IncludeLastN: "5",
+	})
+	text := resultText(res)
+	if !strings.Contains(text, "[`89cfaf1`](https://github.com/iksnerd/council-hub/commit/89cfaf1abc)") {
+		t.Errorf("expected resolved commit link in recent-messages preview, got: %s", text)
+	}
+	if strings.Contains(text, "{sha:") {
+		t.Errorf("raw {sha:...} token should not survive the preview, got: %s", text)
+	}
+}
+
 func TestHandleReadRoomIncludeLastNZero(t *testing.T) {
 	reg := setupHandlerTest(t)
 	mustCreateRoom(t, reg.Server, "h-lastn-zero")

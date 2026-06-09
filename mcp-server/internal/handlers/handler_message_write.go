@@ -50,11 +50,7 @@ type ForkThreadInput struct {
 }
 
 func (r *Registry) handlePostToRoom(ctx context.Context, req *mcp.CallToolRequest, args PostToRoomInput) (*mcp.CallToolResult, ToolOutput, error) {
-	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: text}},
-		}, ToolOutput{Message: text}, nil
-	}
+	msg := textResult
 
 	if args.RoomID == "" || args.Author == "" || args.Message == "" {
 		return msg("Error: room_id, author, and message are all required.")
@@ -102,11 +98,7 @@ func (r *Registry) handlePostToRoom(ctx context.Context, req *mcp.CallToolReques
 }
 
 func (r *Registry) handleUpdateMessage(ctx context.Context, req *mcp.CallToolRequest, args UpdateMessageInput) (*mcp.CallToolResult, ToolOutput, error) {
-	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: text}},
-		}, ToolOutput{Message: text}, nil
-	}
+	msg := textResult
 
 	if args.MessageID == "" {
 		return msg("Error: message_id is required.")
@@ -139,11 +131,7 @@ func (r *Registry) handleUpdateMessage(ctx context.Context, req *mcp.CallToolReq
 }
 
 func (r *Registry) handleDeleteMessages(ctx context.Context, req *mcp.CallToolRequest, args DeleteMessagesInput) (*mcp.CallToolResult, ToolOutput, error) {
-	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: text}},
-		}, ToolOutput{Message: text}, nil
-	}
+	msg := textResult
 
 	if args.MessageIDs == "" {
 		return msg("Error: message_ids is required (comma-separated list of message IDs).")
@@ -201,11 +189,7 @@ func (r *Registry) handleDeleteMessages(ctx context.Context, req *mcp.CallToolRe
 }
 
 func (r *Registry) handleMoveMessages(ctx context.Context, req *mcp.CallToolRequest, args MoveMessagesInput) (*mcp.CallToolResult, ToolOutput, error) {
-	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: text}},
-		}, ToolOutput{Message: text}, nil
-	}
+	msg := textResult
 
 	if args.MessageIDs == "" {
 		return msg("Error: message_ids is required (comma-separated list of message IDs).")
@@ -245,11 +229,7 @@ func (r *Registry) handleMoveMessages(ctx context.Context, req *mcp.CallToolRequ
 }
 
 func (r *Registry) handleForkThread(ctx context.Context, req *mcp.CallToolRequest, args ForkThreadInput) (*mcp.CallToolResult, ToolOutput, error) {
-	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: text}},
-		}, ToolOutput{Message: text}, nil
-	}
+	msg := textResult
 
 	if args.StartMessageID == "" {
 		return msg("Error: start_message_id is required.")

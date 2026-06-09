@@ -139,6 +139,36 @@ func TestFormatTranscriptWithSummary(t *testing.T) {
 	}
 }
 
+// -- formatTranscript resolves {sha:...} commit tokens when the room has a repo --
+
+func TestFormatTranscriptResolvesCommitRefs(t *testing.T) {
+	room := Room{ID: "sha-room", Description: "Test", Status: "active", Repo: "iksnerd/council-hub"}
+	msgs := []Message{
+		{ID: "uuid-0001", Author: "Claude", Content: "Shipped {sha:89cfaf1abc} — done", MessageType: "action"},
+	}
+	transcript := FormatTranscript(room, msgs)
+	if !strings.Contains(transcript, "[`89cfaf1`](https://github.com/iksnerd/council-hub/commit/89cfaf1abc)") {
+		t.Errorf("expected resolved commit link in transcript, got: %s", transcript)
+	}
+	if strings.Contains(transcript, "{sha:") {
+		t.Errorf("raw {sha:...} token should not survive rendering, got: %s", transcript)
+	}
+}
+
+func TestFormatTranscriptCommitRefsNoRepoFallsBack(t *testing.T) {
+	room := Room{ID: "sha-room-norepo", Description: "Test", Status: "active"}
+	msgs := []Message{
+		{ID: "uuid-0001", Author: "Claude", Content: "Shipped {sha:89cfaf1abc}", MessageType: "action"},
+	}
+	transcript := FormatTranscript(room, msgs)
+	if !strings.Contains(transcript, "`89cfaf1`") {
+		t.Errorf("expected bare short-SHA code span when no repo set, got: %s", transcript)
+	}
+	if strings.Contains(transcript, "https://") {
+		t.Errorf("no link should be produced without a repo, got: %s", transcript)
+	}
+}
+
 // ========== Janitor / Knowledge Linter ==========
 
 func TestHasTag(t *testing.T) {

@@ -8,6 +8,7 @@ defmodule CouncilHubUiWeb.MessageComponents do
   # -- Message Bubble --
 
   attr :msg, :map, required: true
+  attr :repo, :string, default: ""
 
   def message_bubble(assigns) do
     ~H"""
@@ -92,7 +93,7 @@ defmodule CouncilHubUiWeb.MessageComponents do
 
           <%!-- Message content --%>
           <div class={"council-prose text-[var(--ch-text-mid)] border-l border-[var(--ch-border-mid)] pl-2.5 #{author_prose_class(@msg.author)}"}>
-            {raw(render_markdown(@msg.content))}
+            {raw(render_markdown(resolve_commit_refs(@msg.content, @repo)))}
           </div>
 
           <%!-- Reactions --%>
@@ -149,6 +150,7 @@ defmodule CouncilHubUiWeb.MessageComponents do
 
   attr :msg, :map, required: true
   attr :collapsed, :boolean, default: false
+  attr :repo, :string, default: ""
 
   def summary_block(assigns) do
     ~H"""
@@ -174,7 +176,7 @@ defmodule CouncilHubUiWeb.MessageComponents do
         "council-prose text-[var(--ch-text-mid)] transition-all",
         if(@collapsed, do: "line-clamp-2 opacity-60", else: "")
       ]}>
-        {raw(render_markdown(@msg.content))}
+        {raw(render_markdown(resolve_commit_refs(@msg.content, @repo)))}
       </div>
       <div
         :if={parse_reactions(Map.get(@msg, :reactions)) != %{}}

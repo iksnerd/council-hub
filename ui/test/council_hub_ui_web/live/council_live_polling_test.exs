@@ -209,4 +209,24 @@ defmodule CouncilHubUiWeb.CouncilLivePollingTest do
       assert render(view) =~ "cw-poll-room-2"
     end
   end
+
+  describe "last_message_id/1" do
+    alias CouncilHubUiWeb.CouncilLivePolling
+
+    test "empty list yields empty cursor" do
+      assert CouncilLivePolling.last_message_id([]) == ""
+    end
+
+    test "returns the max id even when a newer message is pinned first" do
+      # Messages are ordered pinned-first for display, so the newest id is NOT last.
+      # The cursor must still be the max id, or the poll re-queries the pinned row forever.
+      messages = [
+        %{id: "019ea7ec-ffff-7000-0000-000000000000", pinned: true},
+        %{id: "019ea7ea-0000-7000-0000-000000000000", pinned: false}
+      ]
+
+      assert CouncilLivePolling.last_message_id(messages) ==
+               "019ea7ec-ffff-7000-0000-000000000000"
+    end
+  end
 end

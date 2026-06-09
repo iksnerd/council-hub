@@ -39,10 +39,9 @@ Docker Hub image: `iksnerd/council-hub` ([hub.docker.com/r/iksnerd/council-hub](
    - `mcp-server/internal/council/db.go` — `Version: "X.Y.Z"` in the `mcp.NewServer` call
    - `ui/mix.exs` — `version: "X.Y.Z"`
 2. **Update docs**: `DOCKERHUB.md` version refs, `CHANGELOG.md` entry
-3. **Commit & push**: `git commit -m "vX.Y.Z: <summary>" && git push`
-4. **Wait for CI** to pass on main
-5. **Tag & push tag**: `git tag vX.Y.Z && git push origin vX.Y.Z`
-6. **Wait for Docker CI**: the tag push auto-triggers `.github/workflows/docker.yml` which builds `linux/amd64 + linux/arm64` on native GitHub runners and pushes the multi-arch manifest. Watch with `gh run list --workflow=docker.yml --limit 1` + `gh run watch <id>`. `make docker-push` is an arm64-only emergency fallback (QEMU cross-compile for amd64 fails on OTP 28).
+3. **Run tests locally, then commit & push**: `make test` (mcp-server) + `mix test` (ui). The suites no longer run in CI on a main push — `ci.yml` is tags-only to conserve Actions minutes — so verify locally first. Then `git commit -m "vX.Y.Z: <summary>" && git push`. The push triggers only the gitleaks Secret Scan.
+4. **Tag & push tag**: `git tag vX.Y.Z && git push origin vX.Y.Z`
+5. **Wait for CI + Docker**: the tag triggers `ci.yml` (Go + Elixir tests/lint), `docker.yml` (builds `linux/amd64 + linux/arm64` on native runners → multi-arch manifest to Docker Hub), and `release.yml` (GitHub release) in parallel. Watch with `gh run list --limit 3` + `gh run watch <id>`. `make docker-push` is an arm64-only emergency fallback (QEMU cross-compile for amd64 fails on OTP 28).
 
 **Important:** Never move tags. If a fix is needed after tagging, bump to vX.Y.Z+1.
 
@@ -64,6 +63,10 @@ The channel plugin is a Claude Code MCP channel that watches for new messages in
 - `COUNCIL_CHANNEL_DEBUG` — set to `1` for debug logging to stderr
 
 **Usage:** Registered in `.mcp.json` as `council-hub-channel`. Start Claude Code with `--dangerously-load-development-channels` during the preview period.
+
+**Internals:** The poller uses a single global UUIDv7 cursor (one batched `WHERE room_id IN (...) AND id > ?` query per tick), advances the cursor only after a notification is delivered (so a transient failure retries rather than drops), and prunes watched rooms once they're resolved/archived/deleted. The `council_reply` path posts over the MCP StreamableHTTP transport, which requires a session — it performs the `initialize` → `notifications/initialized` handshake (caching the session, re-handshaking if stale) before `tools/call`; a bare call is rejected with `method "tools/call" is invalid during session initialization`. Tests: `cd channel-plugin && bun test`.
+
+**Note:** the plugin runs from source (not bundled in the Docker image), so changes take effect on the next `/mcp` reconnect or Claude Code restart — no release needed.
 
 ### Go MCP Server
 ```bash
@@ -102,6 +105,16 @@ Project-specific skills live in `.claude/skills/` (gitignored — local only):
 
 Use `/release` for all version bumps — it enforces the gofmt preflight that prevents CI failures from struct alignment drift (lesson from v0.26.4).
 
+## Capturing learnings
+
+After a non-trivial task, fold what you learned back into the place that surfaces it next time — don't let it die with the session:
+
+- Reusable pattern, gotcha, or workflow correction → update the relevant **skill** (`~/.claude/skills/` global, `.claude/skills/` project).
+- Project-specific fact, convention, or process change → update **this CLAUDE.md**.
+- Something the harness should do automatically → a **hook** in `settings.json`.
+
+The test: if the same mistake or question could recur, the fix belongs in a durable file, not just this conversation. Keep edits small and specific, and delete guidance that turns out to be wrong.
+
 ## Architecture
 
 ### MCP Server (Go)
@@ -132,7 +145,7 @@ Code is organized into `internal/council` (data layer) and `internal/handlers` (
 - `internal/handlers/handler_room_graph.go` — `get_concept_map` (BFS traversal of related-rooms graph; `infer_from` auto-discovers rooms by shared project or tags).
 - `internal/handlers/handler_transcript.go` — `read_transcript` (modes: summary, changelog, work_items), `list_archives`, `read_archive`, `archive_room`.
 - `internal/handlers/handler_digest.go` — `get_digest` (with `unread_only` cursor support, branches on `cluster_wide=true`).
-- `internal/handlers/resources.go` — `RegisterResources`: static skill guides (`council://guide`, `council://message-types`, `council://workflows`) + dynamic `council://room/{id}/transcript` template. Also implements `load_resources` tool handler (fallback for clients without resource support).
+- `internal/handlers/resources.go` — `RegisterResources`: static skill guides (`council://guide`, `council://message-types`, `council://workflows`, `council://janitor`) + dynamic `council://room/{id}/transcript` template. Also implements `load_resources` tool handler (fallback for clients without resource support).
 - `internal/council/embedder.go` — `Embedder` interface + `OllamaEmbedder` (HTTP client for Ollama `/api/embed`, 2-min timeout, slow-request logging). Default model: `embeddinggemma:300m` (768-dim).
 - `internal/council/vectors.go` — Vector storage (`StoreVector`, `deleteVectorsLocked`), `SearchMessagesSemantic` (two-phase: vector candidate search → metadata filtering), `EmbedAsync` (non-blocking background embed), `RunEmbedBackfill` (10-min retry loop + coverage logging), `BackfillEmbeddings`.
 - `internal/council/janitor.go` — Knowledge Linter + DB integrity sweep: runs every 6h, flags rooms needing synthesis (`needs-synthesis` tag), flags stale rooms (`stale` tag), and runs `PRAGMA integrity_check` via `healIndexes`. `Server.LastIntegrityCheck` timestamps the latest sweep.
@@ -154,7 +167,11 @@ The `Dockerfile` is a 3-stage build: Go builder → Elixir builder → debian:tr
 
 ### CI/CD
 
-`.github/workflows/ci.yml` — Runs Go and Elixir tests + lint on push to main and PRs. Docker Hub publishing is done manually via `make docker-build && make docker-push VERSION=vX.Y.Z`.
+Workflows (all in `.github/workflows/`):
+- `ci.yml` — Go + Elixir tests + lint. Runs **only on `v*.*.*` tags** (not on main pushes or PRs) to conserve Actions minutes, so run `make test` / `mix test` locally before pushing.
+- `secret-scan.yml` — gitleaks. Runs on PRs and main pushes; it is the only required status check on PRs (so dependabot can still auto-merge).
+- `docker.yml` — multi-arch build (`linux/amd64 + linux/arm64`) + Docker Hub publish, on tags.
+- `release.yml` — GitHub release, on tags.
 
 ### Data Flow
 

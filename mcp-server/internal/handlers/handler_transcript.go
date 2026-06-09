@@ -27,11 +27,7 @@ type ArchiveRoomInput struct {
 }
 
 func (r *Registry) handleReadTranscript(ctx context.Context, req *mcp.CallToolRequest, args ReadTranscriptInput) (*mcp.CallToolResult, ToolOutput, error) {
-	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: text}},
-		}, ToolOutput{Message: text}, nil
-	}
+	msg := textResult
 
 	// Batch mode: room_ids takes precedence
 	if args.RoomIDs != "" {
@@ -121,11 +117,7 @@ func (r *Registry) handleReadTranscript(ctx context.Context, req *mcp.CallToolRe
 
 // readSingleTranscript handles a single room transcript read (all modes).
 func (r *Registry) readSingleTranscript(args ReadTranscriptInput) (*mcp.CallToolResult, ToolOutput, error) {
-	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: text}},
-		}, ToolOutput{Message: text}, nil
-	}
+	msg := textResult
 
 	room, err := r.Server.GetRoom(args.RoomID)
 	if err != nil {
@@ -340,11 +332,7 @@ type ReadArchiveInput struct {
 }
 
 func (r *Registry) handleListArchives(ctx context.Context, req *mcp.CallToolRequest, args ListArchivesInput) (*mcp.CallToolResult, ToolOutput, error) {
-	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: text}},
-		}, ToolOutput{Message: text}, nil
-	}
+	msg := textResult
 
 	archives, err := r.Server.ListArchives()
 	if err != nil {
@@ -366,11 +354,7 @@ func (r *Registry) handleListArchives(ctx context.Context, req *mcp.CallToolRequ
 }
 
 func (r *Registry) handleReadArchive(ctx context.Context, req *mcp.CallToolRequest, args ReadArchiveInput) (*mcp.CallToolResult, ToolOutput, error) {
-	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: text}},
-		}, ToolOutput{Message: text}, nil
-	}
+	msg := textResult
 
 	if args.RoomID == "" {
 		return msg("Error: room_id is required.")
@@ -384,11 +368,7 @@ func (r *Registry) handleReadArchive(ctx context.Context, req *mcp.CallToolReque
 }
 
 func (r *Registry) handleArchiveRoom(ctx context.Context, req *mcp.CallToolRequest, args ArchiveRoomInput) (*mcp.CallToolResult, ToolOutput, error) {
-	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: text}},
-		}, ToolOutput{Message: text}, nil
-	}
+	msg := textResult
 
 	if args.RoomID == "" {
 		return msg("Error: room_id is required.")

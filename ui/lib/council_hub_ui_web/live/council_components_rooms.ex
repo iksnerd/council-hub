@@ -131,6 +131,8 @@ defmodule CouncilHubUiWeb.RoomComponents do
   attr :type_counts, :map, default: %{}
 
   def room_header(assigns) do
+    assigns = assign(assigns, :repo_link, repo_url(Map.get(assigns.room, :repo, "")))
+
     ~H"""
     <header class="bg-[var(--ch-surface)]/90 border-b border-[var(--ch-border)] px-4 py-3 shrink-0 backdrop-blur-sm">
       <div class="flex items-start justify-between gap-3">
@@ -183,6 +185,16 @@ defmodule CouncilHubUiWeb.RoomComponents do
           <span :if={present?(Map.get(@room, :source_node))} class="text-[var(--ch-text-xs)]">
             {Map.get(@room, :source_node)}
           </span>
+          <a
+            :if={@repo_link != ""}
+            href={@repo_link}
+            target="_blank"
+            rel="noopener noreferrer"
+            class="text-[var(--ch-text-xs)] hover:text-[var(--ch-text-mid)] transition-colors font-mono"
+            title="Repository for {sha:...} commit links"
+          >
+            {Map.get(@room, :repo, "")}
+          </a>
           <span :if={@room.created_at}>{format_date(@room.created_at)}</span>
           <span :if={@time_range} class="text-[var(--ch-text-xs)]" title="First → last message">
             {format_time_range(elem(@time_range, 0), elem(@time_range, 1))}

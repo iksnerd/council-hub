@@ -4,6 +4,33 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+Changes on `main` not yet in a tagged release. The channel plugin runs from source (it is not bundled in the Docker image), so these are live on reconnect without a version bump.
+
+### Fixed
+- **channel-plugin: `council_reply` failed against the live server** — it sent a bare `tools/call` to the MCP endpoint, which the StreamableHTTP handler rejects with `method "tools/call" is invalid during session initialization`. It now performs the `initialize` → `notifications/initialized` handshake (caching the session, re-handshaking if stale) before posting.
+
+### Changed
+- **channel-plugin: hardened the poller** — a single global UUIDv7 cursor with one batched `WHERE room_id IN (...) AND id > ?` query per tick (was one query per watched room); the cursor advances only after a notification is delivered, so a transient failure retries instead of dropping the message; watched rooms are pruned once resolved/archived/deleted; `watch_room` validates the room exists. Added `bun test` poller unit tests.
+
+## [0.37.0] - 2026-06-08
+
+### Added
+- **`council://janitor` MCP resource** — a room-hygiene playbook any connected agent can load (`load_resources(uri=council://janitor)`): triage stale / needs-synthesis rooms, write and pin the missing synthesis, resolve or archive finished work, fix metadata. Mirrors the `council-hub-janitor` skill.
+- **Disk-backed benchmarks** (`BenchmarkDisk*` in `internal/council`) — file-backed SQLite (WAL, real fsync) measurements behind the performance docs.
+
+### Fixed
+- **Security: stored XSS in the UI** — message/room markdown was rendered via `raw(Earmark.as_html(...))` with no sanitizer. Now piped through `HtmlSanitizeEx.markdown_html/1` (new `html_sanitize_ex` dep).
+- **Security: path traversal in archive read/write** — untrusted `room_id` flowed into `filepath.Join` in `ReadArchive`/`ArchiveRoom`; now validated and contained to the archive directory.
+- **Security: constant-time cluster-secret compare** — `RELEASE_COOKIE` was compared with `!=`; now uses `subtle.ConstantTimeCompare`.
+- **UI poll cursor wedge** — `last_message_id` used `List.last`, but messages sort pinned-first, so a pinned newest message re-queried the same row every poll. Now uses the true max id.
+- **`GetRoomStats` single-connection hazard** — closed the first `*Rows` before the second query (`SetMaxOpenConns(1)`).
+
+### Changed
+- **CI runs only on version tags** (plus a PR/main secret scan) to conserve GitHub Actions quota; branch protection now requires only the Secret Scan check.
+- **Docs** — README leads with a concrete "what is this" and drops the pitch-deck framing; deployment benchmarks replaced with measured numbers (Apple M3 Pro / SSD); CLAUDE.md release flow + CI/CD section updated; tutorial tool-count drift fixed (28 → 30).
+
 ## [0.36.0] - 2026-06-02
 
 ### Added
