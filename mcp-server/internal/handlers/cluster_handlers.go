@@ -11,11 +11,7 @@ import (
 )
 
 func (r *Registry) handleGetMessagesCluster(args GetMessagesInput) (*mcp.CallToolResult, ToolOutput, error) {
-	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: text}},
-		}, ToolOutput{Message: text}, nil
-	}
+	msg := textResult
 
 	params := map[string]any{
 		"message_ids": args.MessageIDs,
@@ -56,11 +52,7 @@ func (r *Registry) handleGetMessagesCluster(args GetMessagesInput) (*mcp.CallToo
 }
 
 func (r *Registry) handleGetDigestCluster(args DigestInput) (*mcp.CallToolResult, ToolOutput, error) {
-	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: text}},
-		}, ToolOutput{Message: text}, nil
-	}
+	msg := textResult
 
 	if args.Since == "" {
 		return msg("Error: since is required (ISO timestamp, e.g. 2026-03-31T12:00:00).")
@@ -95,11 +87,7 @@ func (r *Registry) handleGetDigestCluster(args DigestInput) (*mcp.CallToolResult
 }
 
 func (r *Registry) handleReadRoomCluster(args ReadRoomInput) (*mcp.CallToolResult, ToolOutput, error) {
-	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: text}},
-		}, ToolOutput{Message: text}, nil
-	}
+	msg := textResult
 
 	// When include_last_n is requested, the list_rooms endpoint can't satisfy it
 	// (it carries no messages). Route through read_transcript, which returns the
@@ -162,6 +150,9 @@ func (r *Registry) handleReadRoomCluster(args ReadRoomInput) (*mcp.CallToolResul
 	if room.RelatedRooms != "" {
 		fmt.Fprintf(&b, "**Related Rooms:** %s\n", room.RelatedRooms)
 	}
+	if room.Repo != "" {
+		fmt.Fprintf(&b, "**Repo:** %s\n", room.Repo)
+	}
 	fmt.Fprintf(&b, "**Created:** %s\n", room.CreatedAt)
 	fmt.Fprintf(&b, "**Updated:** %s\n", room.UpdatedAt)
 
@@ -173,11 +164,7 @@ func (r *Registry) handleReadRoomCluster(args ReadRoomInput) (*mcp.CallToolResul
 // by fetching the room transcript from the owning node and appending the last N
 // messages, mirroring the local read_room rendering.
 func (r *Registry) handleReadRoomClusterWithMessages(args ReadRoomInput) (*mcp.CallToolResult, ToolOutput, error) {
-	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: text}},
-		}, ToolOutput{Message: text}, nil
-	}
+	msg := textResult
 
 	params := map[string]any{
 		"room_id": args.RoomID,
@@ -219,6 +206,9 @@ func (r *Registry) handleReadRoomClusterWithMessages(args ReadRoomInput) (*mcp.C
 	if room.RelatedRooms != "" {
 		fmt.Fprintf(&b, "**Related Rooms:** %s\n", room.RelatedRooms)
 	}
+	if room.Repo != "" {
+		fmt.Fprintf(&b, "**Repo:** %s\n", room.Repo)
+	}
 	fmt.Fprintf(&b, "**Created:** %s\n", room.CreatedAt)
 	fmt.Fprintf(&b, "**Updated:** %s\n", room.UpdatedAt)
 
@@ -240,11 +230,7 @@ func (r *Registry) handleReadRoomClusterWithMessages(args ReadRoomInput) (*mcp.C
 				if len(ts) > 19 {
 					ts = ts[:19]
 				}
-				if m.MessageType != "" && m.MessageType != "message" {
-					fmt.Fprintf(&b, "\n**[#%.8s %s] %s (%s):**\n%s\n", m.ID, ts, m.Author, m.MessageType, m.Content)
-				} else {
-					fmt.Fprintf(&b, "\n**[#%.8s %s] %s:**\n%s\n", m.ID, ts, m.Author, m.Content)
-				}
+				appendMessageBlock(&b, m.ID, ts, m.Author, m.MessageType, m.Content, room.Repo)
 			}
 		}
 	}
@@ -254,11 +240,7 @@ func (r *Registry) handleReadRoomClusterWithMessages(args ReadRoomInput) (*mcp.C
 }
 
 func (r *Registry) handleReadTranscriptCluster(args ReadTranscriptInput, roomID string) (*mcp.CallToolResult, ToolOutput, error) {
-	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: text}},
-		}, ToolOutput{Message: text}, nil
-	}
+	msg := textResult
 
 	params := map[string]any{
 		"room_id": roomID,
@@ -348,11 +330,7 @@ func (r *Registry) handleReadTranscriptCluster(args ReadTranscriptInput, roomID 
 }
 
 func (r *Registry) handleSearchMessagesCluster(args SearchMessagesInput) (*mcp.CallToolResult, ToolOutput, error) {
-	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: text}},
-		}, ToolOutput{Message: text}, nil
-	}
+	msg := textResult
 
 	params := map[string]any{
 		"query":        args.Query,
@@ -420,11 +398,7 @@ func (r *Registry) handleSearchMessagesCluster(args SearchMessagesInput) (*mcp.C
 }
 
 func (r *Registry) handleListRoomsCluster(args ListRoomsInput) (*mcp.CallToolResult, ToolOutput, error) {
-	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: text}},
-		}, ToolOutput{Message: text}, nil
-	}
+	msg := textResult
 
 	params := map[string]any{
 		"project": args.Project,
@@ -497,11 +471,7 @@ func (r *Registry) handleListRoomsCluster(args ListRoomsInput) (*mcp.CallToolRes
 }
 
 func (r *Registry) handleRoomStatsCluster(args RoomStatsInput) (*mcp.CallToolResult, ToolOutput, error) {
-	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: text}},
-		}, ToolOutput{Message: text}, nil
-	}
+	msg := textResult
 
 	params := map[string]any{
 		"room_id":  args.RoomID,

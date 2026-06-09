@@ -19,6 +19,7 @@ type CreateRoomInput struct {
 	SystemPrompt string `json:"system_prompt"`
 	RelatedRooms string `json:"related_rooms"`
 	Visibility   string `json:"visibility"`
+	Repo         string `json:"repo"`
 }
 
 // GetOrCreateRoomInput represents the parameters for upserting a room.
@@ -31,6 +32,7 @@ type GetOrCreateRoomInput struct {
 	SystemPrompt string `json:"system_prompt"`
 	RelatedRooms string `json:"related_rooms"`
 	Visibility   string `json:"visibility"`
+	Repo         string `json:"repo"`
 	LastN        string `json:"last_n"`
 }
 
@@ -48,6 +50,7 @@ type UpdateRoomInput struct {
 	SystemPrompt string `json:"system_prompt"`
 	RelatedRooms string `json:"related_rooms"`
 	Visibility   string `json:"visibility"`
+	Repo         string `json:"repo"`
 }
 
 // ReadRoomInput represents the parameters for reading a room's metadata.
@@ -64,11 +67,7 @@ type DeleteRoomInput struct {
 }
 
 func (r *Registry) handleCreateRoom(ctx context.Context, req *mcp.CallToolRequest, args CreateRoomInput) (*mcp.CallToolResult, ToolOutput, error) {
-	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: text}},
-		}, ToolOutput{Message: text}, nil
-	}
+	msg := textResult
 
 	if args.ID == "" {
 		return msg("Error: room id is required.")
@@ -124,6 +123,13 @@ func (r *Registry) handleCreateRoom(ctx context.Context, req *mcp.CallToolReques
 		}
 	}
 
+	// Apply repo (used for {sha:...} commit-link resolution at render time).
+	if args.Repo != "" {
+		if err := r.Server.SetRepo(args.ID, args.Repo); err != nil {
+			r.Server.Logger.Error("Failed to set room repo", "id", args.ID, "error", err)
+		}
+	}
+
 	// Post initial message for new rooms created from a template
 	if args.Template != "" && roomAlreadyExists != nil {
 		tpl := roomTemplates[args.Template]
@@ -151,6 +157,9 @@ func (r *Registry) handleCreateRoom(ctx context.Context, req *mcp.CallToolReques
 	if args.RelatedRooms != "" {
 		fmt.Fprintf(&b, "**Related rooms:** %s (bidirectional links created)\n", args.RelatedRooms)
 	}
+	if args.Repo != "" {
+		fmt.Fprintf(&b, "**Repo:** %s ({sha:...} tokens resolve to commit links)\n", args.Repo)
+	}
 	if strings.EqualFold(strings.TrimSpace(args.Visibility), "private") {
 		fmt.Fprintf(&b, "**Visibility:** private (node-local — excluded from cluster fan-out)\n")
 	}
@@ -171,11 +180,7 @@ func (r *Registry) handleCreateRoom(ctx context.Context, req *mcp.CallToolReques
 }
 
 func (r *Registry) handleGetOrCreateRoom(ctx context.Context, req *mcp.CallToolRequest, args GetOrCreateRoomInput) (*mcp.CallToolResult, ToolOutput, error) {
-	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: text}},
-		}, ToolOutput{Message: text}, nil
-	}
+	msg := textResult
 
 	if args.ID == "" {
 		return msg("Error: id is required.")
@@ -203,6 +208,11 @@ func (r *Registry) handleGetOrCreateRoom(ctx context.Context, req *mcp.CallToolR
 		if args.Visibility != "" {
 			if err := r.Server.SetVisibility(args.ID, args.Visibility); err != nil {
 				r.Server.Logger.Error("Failed to set room visibility", "id", args.ID, "error", err)
+			}
+		}
+		if args.Repo != "" {
+			if err := r.Server.SetRepo(args.ID, args.Repo); err != nil {
+				r.Server.Logger.Error("Failed to set room repo", "id", args.ID, "error", err)
 			}
 		}
 		room, _ = r.Server.GetRoom(args.ID)
@@ -236,18 +246,16 @@ func (r *Registry) handleGetOrCreateRoom(ctx context.Context, req *mcp.CallToolR
 	if room.Visibility == "private" {
 		fmt.Fprintf(&b, "**Visibility:** private (node-local)\n")
 	}
+	if room.Repo != "" {
+		fmt.Fprintf(&b, "**Repo:** %s\n", room.Repo)
+	}
 
 	if !created {
 		messages, _ := r.Server.GetRecentMessages(args.ID, limit)
 		if len(messages) > 0 {
 			fmt.Fprintf(&b, "---\n**Recent messages (%d):**\n", len(messages))
 			for _, m := range messages {
-				ts := m.Timestamp.Format("2006-01-02 15:04:05")
-				if m.MessageType != "" && m.MessageType != "message" {
-					fmt.Fprintf(&b, "\n**[#%.8s %s] %s (%s):**\n%s\n", m.ID, ts, m.Author, m.MessageType, m.Content)
-				} else {
-					fmt.Fprintf(&b, "\n**[#%.8s %s] %s:**\n%s\n", m.ID, ts, m.Author, m.Content)
-				}
+				appendMessageBlock(&b, m.ID, m.Timestamp.Format("2006-01-02 15:04:05"), m.Author, m.MessageType, m.Content, room.Repo)
 			}
 		} else {
 			b.WriteString("No messages yet.\n")
@@ -274,11 +282,7 @@ func (r *Registry) handleGetOrCreateRoom(ctx context.Context, req *mcp.CallToolR
 }
 
 func (r *Registry) handleUpdateRoom(ctx context.Context, req *mcp.CallToolRequest, args UpdateRoomInput) (*mcp.CallToolResult, ToolOutput, error) {
-	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: text}},
-		}, ToolOutput{Message: text}, nil
-	}
+	msg := textResult
 
 	// Collect all target room IDs (room_ids takes comma-separated list; room_id is single/legacy)
 	seen := map[string]bool{}
@@ -313,8 +317,8 @@ func (r *Registry) handleUpdateRoom(ctx context.Context, req *mcp.CallToolReques
 		return msg("Error: room_id, room_ids, or where_project is required.")
 	}
 
-	if args.Topic == "" && args.Project == "" && args.TechStack == "" && args.Tags == "" && args.AddTags == "" && args.RemoveTags == "" && args.SystemPrompt == "" && args.RelatedRooms == "" && args.Visibility == "" {
-		return msg("Error: at least one field to update must be provided (topic, project, tech_stack, tags, add_tags, remove_tags, system_prompt, related_rooms, visibility).")
+	if args.Topic == "" && args.Project == "" && args.TechStack == "" && args.Tags == "" && args.AddTags == "" && args.RemoveTags == "" && args.SystemPrompt == "" && args.RelatedRooms == "" && args.Visibility == "" && args.Repo == "" {
+		return msg("Error: at least one field to update must be provided (topic, project, tech_stack, tags, add_tags, remove_tags, system_prompt, related_rooms, visibility, repo).")
 	}
 
 	var updated []string
@@ -345,6 +349,9 @@ func (r *Registry) handleUpdateRoom(ctx context.Context, req *mcp.CallToolReques
 	if args.Visibility != "" {
 		updated = append(updated, "visibility")
 	}
+	if args.Repo != "" {
+		updated = append(updated, "repo")
+	}
 	fieldsLabel := strings.Join(updated, ", ")
 
 	var b strings.Builder
@@ -356,6 +363,12 @@ func (r *Registry) handleUpdateRoom(ctx context.Context, req *mcp.CallToolReques
 		if args.Visibility != "" {
 			if err := r.Server.SetVisibility(id, args.Visibility); err != nil {
 				fmt.Fprintf(&b, "Error setting visibility on '%s': %s\n", id, err.Error())
+				continue
+			}
+		}
+		if args.Repo != "" {
+			if err := r.Server.SetRepo(id, args.Repo); err != nil {
+				fmt.Fprintf(&b, "Error setting repo on '%s': %s\n", id, err.Error())
 				continue
 			}
 		}
@@ -379,6 +392,9 @@ func (r *Registry) handleUpdateRoom(ctx context.Context, req *mcp.CallToolReques
 			if room.RelatedRooms != "" {
 				fmt.Fprintf(&b, "\n- Related rooms: %s", room.RelatedRooms)
 			}
+			if room.Repo != "" {
+				fmt.Fprintf(&b, "\n- Repo: %s", room.Repo)
+			}
 			fmt.Fprintf(&b, "\n- Status: %s", room.Status)
 		}
 	}
@@ -391,11 +407,7 @@ func (r *Registry) handleReadRoom(ctx context.Context, req *mcp.CallToolRequest,
 		return r.handleReadRoomCluster(args)
 	}
 
-	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: text}},
-		}, ToolOutput{Message: text}, nil
-	}
+	msg := textResult
 
 	if args.RoomID == "" {
 		return msg("Error: room_id is required.")
@@ -427,6 +439,9 @@ func (r *Registry) handleReadRoom(ctx context.Context, req *mcp.CallToolRequest,
 	if room.Visibility == "private" {
 		fmt.Fprintf(&b, "**Visibility:** private (node-local — excluded from cluster fan-out)\n")
 	}
+	if room.Repo != "" {
+		fmt.Fprintf(&b, "**Repo:** %s\n", room.Repo)
+	}
 	fmt.Fprintf(&b, "**Created:** %s\n", room.CreatedAt.Format("2006-01-02 15:04:05"))
 	fmt.Fprintf(&b, "**Updated:** %s\n", room.UpdatedAt.Format("2006-01-02 15:04:05"))
 
@@ -442,12 +457,7 @@ func (r *Registry) handleReadRoom(ctx context.Context, req *mcp.CallToolRequest,
 			if len(messages) > 0 {
 				fmt.Fprintf(&b, "\n---\n**Recent messages (%d):**\n", len(messages))
 				for _, m := range messages {
-					ts := m.Timestamp.Format("2006-01-02 15:04:05")
-					if m.MessageType != "" && m.MessageType != "message" {
-						fmt.Fprintf(&b, "\n**[#%.8s %s] %s (%s):**\n%s\n", m.ID, ts, m.Author, m.MessageType, m.Content)
-					} else {
-						fmt.Fprintf(&b, "\n**[#%.8s %s] %s:**\n%s\n", m.ID, ts, m.Author, m.Content)
-					}
+					appendMessageBlock(&b, m.ID, m.Timestamp.Format("2006-01-02 15:04:05"), m.Author, m.MessageType, m.Content, room.Repo)
 				}
 			}
 		}
@@ -490,11 +500,7 @@ func (r *Registry) handleReadRoom(ctx context.Context, req *mcp.CallToolRequest,
 }
 
 func (r *Registry) handleDeleteRoom(ctx context.Context, req *mcp.CallToolRequest, args DeleteRoomInput) (*mcp.CallToolResult, ToolOutput, error) {
-	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: text}},
-		}, ToolOutput{Message: text}, nil
-	}
+	msg := textResult
 
 	if args.RoomID == "" {
 		return msg("Error: room_id is required.")

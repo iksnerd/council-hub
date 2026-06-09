@@ -39,11 +39,7 @@ type BulkVisibilityInput struct {
 }
 
 func (r *Registry) handleSignalStatus(ctx context.Context, req *mcp.CallToolRequest, args SignalStatusInput) (*mcp.CallToolResult, ToolOutput, error) {
-	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: text}},
-		}, ToolOutput{Message: text}, nil
-	}
+	msg := textResult
 
 	validStatuses := map[string]bool{"active": true, "paused": true, "resolved": true}
 	if !validStatuses[args.Status] {
@@ -70,11 +66,7 @@ func (r *Registry) handleSignalStatus(ctx context.Context, req *mcp.CallToolRequ
 }
 
 func (r *Registry) handleBulkStatusUpdate(ctx context.Context, req *mcp.CallToolRequest, args BulkStatusInput) (*mcp.CallToolResult, ToolOutput, error) {
-	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: text}},
-		}, ToolOutput{Message: text}, nil
-	}
+	msg := textResult
 
 	validStatuses := map[string]bool{"active": true, "paused": true, "resolved": true}
 	if !validStatuses[args.Status] {
@@ -163,11 +155,7 @@ func (r *Registry) handleBulkStatusUpdate(ctx context.Context, req *mcp.CallTool
 }
 
 func (r *Registry) handleBulkVisibility(ctx context.Context, req *mcp.CallToolRequest, args BulkVisibilityInput) (*mcp.CallToolResult, ToolOutput, error) {
-	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: text}},
-		}, ToolOutput{Message: text}, nil
-	}
+	msg := textResult
 
 	v := strings.ToLower(strings.TrimSpace(args.Visibility))
 	if v != "public" && v != "private" {
@@ -225,11 +213,7 @@ func (r *Registry) handleBulkVisibility(ctx context.Context, req *mcp.CallToolRe
 }
 
 func (r *Registry) handleRenameProject(ctx context.Context, req *mcp.CallToolRequest, args RenameProjectInput) (*mcp.CallToolResult, ToolOutput, error) {
-	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: text}},
-		}, ToolOutput{Message: text}, nil
-	}
+	msg := textResult
 
 	if args.From == "" || args.To == "" {
 		return msg("Error: both 'from' and 'to' are required.")

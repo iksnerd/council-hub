@@ -75,9 +75,9 @@ func (s *Server) CreateRoom(id, description, project, techStack, tags, systemPro
 func (s *Server) GetRoom(roomID string) (Room, error) {
 	var r Room
 	err := s.DB.QueryRow(
-		`SELECT id, description, status, project, tech_stack, tags, system_prompt, related_rooms, COALESCE(visibility, 'public'), created_at, updated_at FROM rooms WHERE id = ?`,
+		`SELECT id, description, status, project, tech_stack, tags, system_prompt, related_rooms, COALESCE(visibility, 'public'), COALESCE(repo, ''), created_at, updated_at FROM rooms WHERE id = ?`,
 		roomID,
-	).Scan(&r.ID, &r.Description, &r.Status, &r.Project, &r.TechStack, &r.Tags, &r.SystemPrompt, &r.RelatedRooms, &r.Visibility, &r.CreatedAt, &r.UpdatedAt)
+	).Scan(&r.ID, &r.Description, &r.Status, &r.Project, &r.TechStack, &r.Tags, &r.SystemPrompt, &r.RelatedRooms, &r.Visibility, &r.Repo, &r.CreatedAt, &r.UpdatedAt)
 	if err != nil {
 		return r, err
 	}
@@ -153,6 +153,27 @@ func (s *Server) BulkSetVisibility(visibility string, roomIDs []string, project 
 	}
 	rows, _ := res.RowsAffected()
 	return rows, nil
+}
+
+// SetRepo sets a room's optional git repo reference (owner/repo or a clone URL),
+// used to resolve {sha:...} tokens in message bodies into commit links at render
+// time. Stored verbatim (trimmed); link resolution happens in resolveCommitRefs.
+func (s *Server) SetRepo(roomID, repo string) error {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+
+	res, err := s.DB.Exec(
+		`UPDATE rooms SET repo = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+		strings.TrimSpace(repo), roomID,
+	)
+	if err != nil {
+		return err
+	}
+	rows, _ := res.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("room '%s' not found", roomID)
+	}
+	return nil
 }
 
 func (s *Server) UpdateRoom(roomID, description, project, techStack, tags, addTags, removeTags, systemPrompt, relatedRooms string) error {

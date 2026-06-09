@@ -32,6 +32,7 @@ type ClusterRoomResult struct {
 	Tags         string `json:"tags"`
 	SystemPrompt string `json:"system_prompt"`
 	RelatedRooms string `json:"related_rooms"`
+	Repo         string `json:"repo"`
 	CreatedAt    string `json:"created_at"`
 	UpdatedAt    string `json:"updated_at"`
 	SourceNode   string `json:"source_node"`
@@ -102,6 +103,7 @@ func mapClusterRoom(r ClusterRoomResult) council.Room {
 		Tags:         r.Tags,
 		SystemPrompt: r.SystemPrompt,
 		RelatedRooms: r.RelatedRooms,
+		Repo:         r.Repo,
 		CreatedAt:    parseClusterTime(r.CreatedAt),
 		UpdatedAt:    parseClusterTime(r.UpdatedAt),
 	}

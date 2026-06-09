@@ -4,9 +4,35 @@ import (
 	"council-hub/internal/council"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
+
+// textResult wraps a plain-text response in the standard MCP tool-result tuple
+// that every handler returns. Handlers alias it as `msg := textResult` so the
+// terse `msg("...")` call sites stay unchanged.
+func textResult(text string) (*mcp.CallToolResult, ToolOutput, error) {
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{&mcp.TextContent{Text: text}},
+	}, ToolOutput{Message: text}, nil
+}
+
+// appendMessageBlock writes one message in the compact "[#id ts] author (type):"
+// form shared by get_or_create_room, read_room (include_last_n), and the cluster
+// read_room transcript. ts must already be a formatted "2006-01-02 15:04:05"
+// string (callers derive it differently — time.Time vs a string field). A plain
+// "message" type (or empty) omits the trailing "(type)" tag. {sha:...} tokens in
+// the body resolve to commit links using the room's repo (empty repo → bare code
+// spans), matching FormatTranscript.
+func appendMessageBlock(b *strings.Builder, id, ts, author, msgType, content, repo string) {
+	content = council.ResolveCommitRefs(content, repo)
+	if msgType != "" && msgType != "message" {
+		fmt.Fprintf(b, "\n**[#%.8s %s] %s (%s):**\n%s\n", id, ts, author, msgType, content)
+	} else {
+		fmt.Fprintf(b, "\n**[#%.8s %s] %s:**\n%s\n", id, ts, author, content)
+	}
+}
 
 // Input size limits to prevent DoS and unbounded database growth.
 const (

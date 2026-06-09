@@ -95,6 +95,73 @@ defmodule CouncilHubUiWeb.CouncilHelpers do
     end
   end
 
+  # MIRROR: this resolver is duplicated in the Go server
+  # (mcp-server/internal/council/commits.go — ResolveCommitRefs, commitBaseURL)
+  # because the BEAM and Go render the same content independently and can't share
+  # code. The two must stay byte-for-byte identical (regexes, short-SHA rule, URL
+  # normalization). Their paired tests are load-bearing — if you change one side,
+  # change the other and update both test files.
+  @commit_ref_re ~r/\{sha:([0-9a-fA-F]{7,40})\}/
+  @owner_repo_re ~r/^[\w.-]+\/[\w.-]+$/
+  @scp_remote_re ~r/^[\w.-]+@([\w.-]+):(.+)$/
+
+  @doc """
+  Resolves `{sha:<hash>}` tokens in message content into short-SHA markdown
+  commit links when `repo` maps to a known host, or a bare `` `short` `` code
+  span otherwise. Mirrors the Go server's render-time resolver (`commits.go`).
+  Render-time only, read-only — the link is built purely from the SHA and repo.
+  """
+  def resolve_commit_refs(content, repo) when is_binary(content) do
+    if String.contains?(content, "{sha:") do
+      base = repo_url(repo)
+
+      Regex.replace(@commit_ref_re, content, fn _full, hash ->
+        short = String.slice(hash, 0, 7)
+
+        if base == "",
+          do: "`#{short}`",
+          else: "[`#{short}`](#{base}/commit/#{hash})"
+      end)
+    else
+      content
+    end
+  end
+
+  def resolve_commit_refs(content, _repo), do: content
+
+  @doc """
+  Converts a room's repo reference (owner/repo, clone URL, or scp remote) into
+  its canonical https base URL — e.g. `https://github.com/owner/repo`. Its
+  "/commit/<sha>" path points at a single commit. Returns "" for empty or
+  unrecognised values. Used both for {sha:...} links and the room-header link.
+  """
+  def repo_url(repo) when is_binary(repo) do
+    repo =
+      repo
+      |> String.trim()
+      |> String.replace_suffix("/", "")
+      |> String.replace_suffix(".git", "")
+
+    cond do
+      repo == "" ->
+        ""
+
+      String.starts_with?(repo, "http://") or String.starts_with?(repo, "https://") ->
+        repo
+
+      Regex.match?(@owner_repo_re, repo) ->
+        "https://github.com/#{repo}"
+
+      true ->
+        case Regex.run(@scp_remote_re, repo) do
+          [_, host, path] -> "https://#{host}/#{path}"
+          _ -> ""
+        end
+    end
+  end
+
+  def repo_url(_), do: ""
+
   def render_markdown(nil), do: ""
 
   def render_markdown(content) do
