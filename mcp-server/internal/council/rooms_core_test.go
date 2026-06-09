@@ -69,6 +69,34 @@ func TestSetVisibility(t *testing.T) {
 	}
 }
 
+func TestSetRepo(t *testing.T) {
+	s := setupTestServer(t)
+
+	if err := s.CreateRoom("repo-room", "A room", "", "", "", "", ""); err != nil {
+		t.Fatalf("createRoom failed: %v", err)
+	}
+
+	// Default is empty.
+	room, _ := s.GetRoom("repo-room")
+	if room.Repo != "" {
+		t.Errorf("expected empty default repo, got '%s'", room.Repo)
+	}
+
+	// Set + round-trip, trimming whitespace.
+	if err := s.SetRepo("repo-room", "  iksnerd/council-hub  "); err != nil {
+		t.Fatalf("SetRepo failed: %v", err)
+	}
+	room, _ = s.GetRoom("repo-room")
+	if room.Repo != "iksnerd/council-hub" {
+		t.Errorf("expected repo 'iksnerd/council-hub', got '%s'", room.Repo)
+	}
+
+	// Missing room is an error.
+	if err := s.SetRepo("nope", "owner/repo"); err == nil {
+		t.Error("expected error setting repo on missing room")
+	}
+}
+
 func TestBulkSetVisibility(t *testing.T) {
 	s := setupTestServer(t)
 

@@ -26,11 +26,7 @@ func (r *Registry) handleGetDigest(ctx context.Context, req *mcp.CallToolRequest
 		return r.handleGetDigestCluster(args)
 	}
 
-	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: text}},
-		}, ToolOutput{Message: text}, nil
-	}
+	msg := textResult
 
 	// unread_only mode: filter rooms to only those with messages after the agent's stored cursor.
 	if args.UnreadOnly == "true" {

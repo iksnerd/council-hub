@@ -36,11 +36,7 @@ func (r *Registry) handleListRooms(ctx context.Context, req *mcp.CallToolRequest
 		return r.handleListRoomsCluster(args)
 	}
 
-	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: text}},
-		}, ToolOutput{Message: text}, nil
-	}
+	msg := textResult
 
 	limit := 50
 	if args.Limit != "" {
@@ -155,11 +151,7 @@ func (r *Registry) handleRoomStats(ctx context.Context, req *mcp.CallToolRequest
 		return r.handleRoomStatsCluster(args)
 	}
 
-	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: text}},
-		}, ToolOutput{Message: text}, nil
-	}
+	msg := textResult
 
 	// Collect target room IDs from room_id and/or room_ids
 	seen := map[string]bool{}

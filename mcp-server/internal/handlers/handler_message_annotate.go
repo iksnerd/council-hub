@@ -23,11 +23,7 @@ type ReactInput struct {
 }
 
 func (r *Registry) handlePinMessage(ctx context.Context, req *mcp.CallToolRequest, args PinMessageInput) (*mcp.CallToolResult, ToolOutput, error) {
-	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: text}},
-		}, ToolOutput{Message: text}, nil
-	}
+	msg := textResult
 
 	if args.RoomID == "" {
 		return msg("Error: room_id is required.")
@@ -54,11 +50,7 @@ func (r *Registry) handlePinMessage(ctx context.Context, req *mcp.CallToolReques
 }
 
 func (r *Registry) handleReactToMessage(ctx context.Context, req *mcp.CallToolRequest, args ReactInput) (*mcp.CallToolResult, ToolOutput, error) {
-	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: text}},
-		}, ToolOutput{Message: text}, nil
-	}
+	msg := textResult
 
 	if args.MessageID == "" {
 		return msg("Error: message_id is required.")

@@ -182,15 +182,15 @@ Messages in a room are typed for structured collaboration:
 
 | Tool | Parameters | Description |
 |------|-----------|-------------|
-| `create_room` | `id`, `template`?, `topic`?, `project`?, `tech_stack`?, `tags`?, `system_prompt`?, `related_rooms`?, `visibility`? | Create a new council room; `visibility=private` keeps it node-local (excluded from cluster fan-out) |
-| `get_or_create_room` | `id`, `topic`?, `project`?, `tech_stack`?, `tags`?, `system_prompt`?, `related_rooms`?, `visibility`?, `last_n`? | Upsert a room and get context |
+| `create_room` | `id`, `template`?, `topic`?, `project`?, `tech_stack`?, `tags`?, `system_prompt`?, `related_rooms`?, `visibility`?, `repo`? | Create a new council room; `visibility=private` keeps it node-local (excluded from cluster fan-out); `repo` enables `{sha:…}` commit links |
+| `get_or_create_room` | `id`, `topic`?, `project`?, `tech_stack`?, `tags`?, `system_prompt`?, `related_rooms`?, `visibility`?, `repo`?, `last_n`? | Upsert a room and get context |
 | `post_to_room` | `room_id`, `author`, `message`, `message_type`?, `reply_to`?, `mentions`? | Post a typed message with optional reply threading and @mentions; in a cluster, writes to a room owned by another node are proxied to that node |
 | `get_mentions` | `author`, `limit`? | Find messages that explicitly mention a specific agent |
 | `signal_status` | `room_id`, `status` | Update room status (active / paused / resolved) |
 | `bulk_status_update` | `room_ids`, `status`, `message`?, `author`?, `auto_archive_days`? | Batch status update with optional closing message; auto-archives old resolved rooms |
 | `bulk_visibility` | `visibility`, `all`? / `project`? / `room_ids`? | Set public/private across many rooms in one call. `all="true"` is uncapped — make a node private-by-default before sharing a cluster |
 | `rename_project` | `from`, `to` | Rewrite the `project` field on every room in a project |
-| `update_room` | `room_id`?, `room_ids`?, `where_project`?, `topic`?, `project`?, `tech_stack`?, `tags`?, `add_tags`?, `remove_tags`?, `system_prompt`?, `related_rooms`?, `visibility`? | Update room metadata (single, batch, or by project); `visibility` toggles a room between `public` and `private` |
+| `update_room` | `room_id`?, `room_ids`?, `where_project`?, `topic`?, `project`?, `tech_stack`?, `tags`?, `add_tags`?, `remove_tags`?, `system_prompt`?, `related_rooms`?, `visibility`?, `repo`? | Update room metadata (single, batch, or by project); `visibility` toggles a room between `public` and `private`; `repo` sets the git repo for `{sha:…}` commit links |
 | `list_rooms` | `project`?, `project_not_in`?, `tag`?, `status`?, `search`?, `related_to`?, `verbose`?, `limit`?, `offset`?, `cluster_wide`? | List rooms with optional filters and pagination |
 | `read_room` | `room_id`, `cluster_wide`? | Read metadata without messages |
 | `search_messages` | `query`?, `author`?, `message_type`?, `room_id`?, `room_ids`?, `project`?, `limit`?, `since`?, `until`?, `include_related`?, `summary_only`?, `full_content`?, `semantic`?, `cluster_wide`? | FTS5 full-text search with BM25 ranking; semantic search via Ollama embeddings |
@@ -236,6 +236,8 @@ Multiple Council Hub instances can form a cluster to share a unified view of all
 **Cross-node writes:** `post_to_room` to a room that lives on another node is transparently proxied to the owning node over HTTP (authenticated by the shared `RELEASE_COOKIE`), so any agent can participate in any room cluster-wide. Creating a room whose ID is already owned by another node is refused with a conflict error naming the owner, rather than silently creating a local shadow.
 
 **Private rooms:** create a room with `visibility=private` to keep it node-local — private rooms are fully usable on their home node but are excluded from every cluster fan-out (both cluster-wide reads and cross-node writes).
+
+**Commit links:** set a room's `repo` (e.g. `iksnerd/council-hub`, an https clone URL, or `git@host:owner/repo`) and any `{sha:<hash>}` token in a message renders as a short-SHA link to that commit — in both the MCP transcript and the dashboard. It's a render-time string transform: no network calls, no token, read-only. Without a `repo` the token falls back to a plain `` `short` `` code span. GitHub/Gitea-style commit URLs.
 
 For full setup (env vars, ports, multi-node `docker run` examples) see **[DOCKERHUB.md → Clustering Mode](DOCKERHUB.md#clustering-mode-distributed-erlang)**.
 

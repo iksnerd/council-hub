@@ -48,11 +48,7 @@ func (r *Registry) handleSearchMessages(ctx context.Context, req *mcp.CallToolRe
 			// Semantic search uses sqlite-vec which is local-only; the Phoenix
 			// cluster fan-out path uses Elixir LIKE queries and cannot do vector
 			// search. Fall back to local semantic search with a warning.
-			msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
-				return &mcp.CallToolResult{
-					Content: []mcp.Content{&mcp.TextContent{Text: text}},
-				}, ToolOutput{Message: text}, nil
-			}
+			msg := textResult
 			if args.Query == "" {
 				return msg("Error: query is required for semantic search.")
 			}
@@ -85,11 +81,7 @@ func (r *Registry) handleSearchMessages(ctx context.Context, req *mcp.CallToolRe
 		return r.handleSearchMessagesCluster(args)
 	}
 
-	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: text}},
-		}, ToolOutput{Message: text}, nil
-	}
+	msg := textResult
 
 	if args.Query == "" && args.Author == "" && args.MessageType == "" && args.RoomID == "" && args.RoomIDs == "" && args.Project == "" {
 		return msg("Error: at least one search filter is required (query, author, message_type, room_id, room_ids, or project).")
@@ -187,11 +179,7 @@ func (r *Registry) handleGetMessages(ctx context.Context, req *mcp.CallToolReque
 		return r.handleGetMessagesCluster(args)
 	}
 
-	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: text}},
-		}, ToolOutput{Message: text}, nil
-	}
+	msg := textResult
 
 	var messages []council.Message
 
@@ -258,11 +246,7 @@ func (r *Registry) handleGetMessages(ctx context.Context, req *mcp.CallToolReque
 }
 
 func (r *Registry) handleGetMentions(ctx context.Context, req *mcp.CallToolRequest, args GetMentionsInput) (*mcp.CallToolResult, ToolOutput, error) {
-	msg := func(text string) (*mcp.CallToolResult, ToolOutput, error) {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: text}},
-		}, ToolOutput{Message: text}, nil
-	}
+	msg := textResult
 
 	if args.Author == "" {
 		return msg("Error: author is required.")
