@@ -46,6 +46,9 @@ go.work.sum
 .claude/
 .gemini/
 .mcp.json
+.codex/
+.agents/
+AGENTS.md
 
 # Personal notes (local only — not for public repo)
 docs/personal/
