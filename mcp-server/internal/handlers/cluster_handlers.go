@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -84,6 +85,63 @@ func (r *Registry) handleGetDigestCluster(args DigestInput) (*mcp.CallToolResult
 	}
 
 	return msg(string(out))
+}
+
+func (r *Registry) handleReadNotebookCluster(args ReadNotebookInput) (*mcp.CallToolResult, ToolOutput, error) {
+	msg := textResult
+
+	params := map[string]any{
+		"project":  args.Project,
+		"types":    args.Types,
+		"since":    args.Since,
+		"until":    args.Until,
+		"after_id": args.AfterID,
+		"limit":    args.Limit,
+	}
+
+	raw, warnings, err := r.clusterCall("read_notebook", params)
+	if err != nil {
+		return msg(fmt.Sprintf("Error: cluster read_notebook failed: %s", err.Error()))
+	}
+
+	var results []ClusterNotebookResult
+	if err := json.Unmarshal(raw, &results); err != nil {
+		return nil, ToolOutput{}, fmt.Errorf("decode cluster notebook results: %w", err)
+	}
+
+	if len(results) == 0 {
+		var b strings.Builder
+		fmt.Fprintf(&b, "No notebook entries for project '%s' on any cluster node.", args.Project)
+		formatClusterWarnings(&b, warnings)
+		return msg(b.String())
+	}
+
+	// Phoenix merges and sorts by UUIDv7 ID (lexicographic == chronological,
+	// valid across nodes); re-sort defensively in case of mixed peer versions.
+	sort.Slice(results, func(i, j int) bool { return results[i].ID < results[j].ID })
+
+	types, _ := parseNotebookTypes(args.Types)
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "# Notebook — %s (cluster-wide)\n", args.Project)
+	fmt.Fprintf(&b, "**Types:** %s | **Entries:** %d\n---\n", describeNotebookTypes(types), len(results))
+
+	day := ""
+	for _, res := range results {
+		e := council.NotebookEntry{Message: mapClusterMessage(res.ClusterSearchResult), Repo: res.Repo}
+		d := e.Timestamp.Format("2006-01-02")
+		if d != day {
+			day = d
+			fmt.Fprintf(&b, "\n## %s\n", day)
+		}
+		writeNotebookEntry(&b, e, res.SourceNode)
+	}
+
+	latest := results[len(results)-1].ID
+	fmt.Fprintf(&b, "\n```json\n{\"latest_message_id\":\"%s\",\"entry_count\":%d}\n```\n", latest, len(results))
+
+	formatClusterWarnings(&b, warnings)
+	return msg(b.String())
 }
 
 func (r *Registry) handleReadRoomCluster(args ReadRoomInput) (*mcp.CallToolResult, ToolOutput, error) {

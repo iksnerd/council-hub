@@ -114,7 +114,7 @@ func NewServer(dbPath string, logger *slog.Logger) (*Server, error) {
 			"3. load_resources(uri=council://guide) — read usage patterns on your first session in a new project\n\n" +
 			"Key conventions:\n" +
 			"- Prefer get_or_create_room over create_room — returns existing content and avoids duplicates\n" +
-			"- Use typed messages: thought → draft → critique → decision → action → synthesis. Avoid posting everything as 'message'\n" +
+			"- Use typed messages: thought → draft → critique → decision → action → synthesis (plus note for journal entries). Avoid posting everything as 'message'\n" +
 			"- After conclusions: post a synthesis, pin it, then signal_status(resolved)\n" +
 			"- Call mark_read after each session; use get_digest(unread_only=true) on return to see only new activity\n" +
 			"- Use search_messages for cross-room queries or filtered lookups; use read_transcript for full sequential context\n" +
@@ -173,6 +173,25 @@ func initSchema(db *sql.DB) error {
 		PRIMARY KEY (agent, room_id)
 	);
 
+	CREATE TABLE IF NOT EXISTS notebooks (
+		id TEXT PRIMARY KEY,
+		project TEXT DEFAULT '',
+		title TEXT DEFAULT '',
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+
+	CREATE TABLE IF NOT EXISTS notebook_entries (
+		id TEXT PRIMARY KEY,
+		notebook_id TEXT NOT NULL,
+		position INTEGER NOT NULL,
+		kind TEXT NOT NULL DEFAULT 'prose',
+		ref_id TEXT DEFAULT '',
+		prose TEXT DEFAULT '',
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY(notebook_id) REFERENCES notebooks(id)
+	);
+
 	CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
 		content,
 		author UNINDEXED,
@@ -226,6 +245,8 @@ func initSchema(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_messages_room_id_is_summary ON messages(room_id, is_summary)`,
 		`CREATE INDEX IF NOT EXISTS idx_rooms_project ON rooms(project)`,
 		`CREATE INDEX IF NOT EXISTS idx_rooms_status ON rooms(status)`,
+		`CREATE INDEX IF NOT EXISTS idx_notebook_entries_nb ON notebook_entries(notebook_id, position)`,
+		`CREATE INDEX IF NOT EXISTS idx_notebooks_project ON notebooks(project)`,
 	}
 	for _, idx := range indexes {
 		if _, err := db.Exec(idx); err != nil {

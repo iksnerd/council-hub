@@ -58,6 +58,14 @@ type ClusterReadTranscriptResult struct {
 	Pinned   *ClusterSearchResult  `json:"pinned"`
 }
 
+// ClusterNotebookResult is one notebook timeline entry from a cluster-wide
+// read_notebook fan-out: a message plus the owning room's repo (for {sha:...}
+// resolution) and the source node.
+type ClusterNotebookResult struct {
+	ClusterSearchResult
+	Repo string `json:"repo"`
+}
+
 type ClusterDigestResult struct {
 	RoomID               string `json:"room_id"`
 	NewMessageCount      int    `json:"new_message_count"`
