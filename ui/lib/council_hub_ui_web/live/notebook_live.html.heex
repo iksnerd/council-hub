@@ -20,110 +20,212 @@
 
     <%!-- Project picker + type filters (ViewSpec toggles) --%>
     <div class="bg-[var(--ch-surface)] border border-[var(--ch-border)] rounded-lg p-4 mb-6">
-      <%= if @projects == [] do %>
-        <p class="text-[12px] text-[var(--ch-text-xs)] italic">
-          No projects yet — rooms get a notebook once they belong to a project.
-        </p>
-      <% else %>
-        <form phx-change="select_project" class="mb-3">
-          <label class="text-[10px] font-medium text-[var(--ch-text-lo)] uppercase tracking-[0.15em] block mb-1.5">
-            Project
-          </label>
-          <select
-            name="project"
-            class="w-full bg-[var(--ch-raised)] border border-[var(--ch-border)] rounded px-2 py-1.5 text-[12px] font-mono text-[var(--ch-text-hi)]"
+      <%= if @notebook do %>
+        <div class="flex items-center gap-2 flex-wrap">
+          <.link
+            patch={~p"/notebook?#{%{project: @project}}"}
+            class="text-[11px] font-mono text-[var(--ch-text-lo)] hover:text-[var(--ch-text-hi)] border border-[var(--ch-border)] rounded px-2 py-1"
           >
-            <%= for project <- @projects do %>
-              <option value={project} selected={project == @project}>{project}</option>
-            <% end %>
-          </select>
-        </form>
-
-        <div>
-          <label class="text-[10px] font-medium text-[var(--ch-text-lo)] uppercase tracking-[0.15em] block mb-1.5">
-            Types
-          </label>
-          <div class="flex flex-wrap gap-1">
-            <%= for type <- @all_types do %>
-              <button
-                phx-click="toggle_type"
-                phx-value-type={type}
-                class={[
-                  "px-2 py-0.5 rounded text-[10px] font-mono border transition-colors",
-                  if(type in @selected_types,
-                    do: "#{type_color(type)} border-[var(--ch-border)]",
-                    else:
-                      "bg-transparent text-[var(--ch-text-xs)] border-[var(--ch-border)] opacity-50 hover:opacity-100"
-                  )
-                ]}
-              >
-                {type}
-              </button>
-            <% end %>
-          </div>
+            ← timeline
+          </.link>
+          <span class="text-[12px] font-mono text-[var(--ch-text-hi)]">📓 {@notebook.id}</span>
+          <span class="text-[10px] font-mono text-[var(--ch-text-xs)]">
+            project: {@notebook.project}
+          </span>
         </div>
+      <% else %>
+        <%= if @projects == [] do %>
+          <p class="text-[12px] text-[var(--ch-text-xs)] italic">
+            No projects yet — rooms get a notebook once they belong to a project.
+          </p>
+        <% else %>
+          <form phx-change="select_project" class="mb-3">
+            <label class="text-[10px] font-medium text-[var(--ch-text-lo)] uppercase tracking-[0.15em] block mb-1.5">
+              Project
+            </label>
+            <select
+              name="project"
+              class="w-full bg-[var(--ch-raised)] border border-[var(--ch-border)] rounded px-2 py-1.5 text-[12px] font-mono text-[var(--ch-text-hi)]"
+            >
+              <%= for project <- @projects do %>
+                <option value={project} selected={project == @project}>{project}</option>
+              <% end %>
+            </select>
+          </form>
+
+          <div>
+            <label class="text-[10px] font-medium text-[var(--ch-text-lo)] uppercase tracking-[0.15em] block mb-1.5">
+              Types
+            </label>
+            <div class="flex flex-wrap gap-1">
+              <%= for type <- @all_types do %>
+                <button
+                  phx-click="toggle_type"
+                  phx-value-type={type}
+                  class={[
+                    "px-2 py-0.5 rounded text-[10px] font-mono border transition-colors",
+                    if(type in @selected_types,
+                      do: "#{type_color(type)} border-[var(--ch-border)]",
+                      else:
+                        "bg-transparent text-[var(--ch-text-xs)] border-[var(--ch-border)] opacity-50 hover:opacity-100"
+                    )
+                  ]}
+                >
+                  {type}
+                </button>
+              <% end %>
+            </div>
+          </div>
+
+          <%= if @notebooks != [] do %>
+            <div class="mt-3">
+              <label class="text-[10px] font-medium text-[var(--ch-text-lo)] uppercase tracking-[0.15em] block mb-1.5">
+                Curated notebooks
+              </label>
+              <div class="flex flex-wrap gap-1">
+                <%= for nb <- @notebooks do %>
+                  <.link
+                    patch={~p"/notebook?#{%{project: @project, notebook: nb.id}}"}
+                    class="px-2 py-0.5 rounded text-[10px] font-mono border border-[var(--ch-border)] text-[var(--ch-text-lo)] hover:text-[var(--ch-text-hi)]"
+                    title={nb.title}
+                  >
+                    📓 {nb.id} ({nb.entry_count})
+                  </.link>
+                <% end %>
+              </div>
+            </div>
+          <% end %>
+        <% end %>
       <% end %>
     </div>
 
-    <%!-- Timeline --%>
-    <%= if @entries == [] do %>
-      <p class="text-[12px] text-[var(--ch-text-xs)] italic">
-        <%= if @project == "" do %>
-          Select a project to compile its notebook.
-        <% else %>
-          No entries for <span class="font-mono">{@project}</span>
-          with the selected types yet — decisions, actions, and syntheses land here as the
-          project's rooms record them.
-        <% end %>
-      </p>
-    <% else %>
-      <%= for day_entries <- @days do %>
-        <div class="mb-6">
-          <h2 class="text-[10px] font-medium text-[var(--ch-text-lo)] uppercase tracking-[0.15em] mb-2 sticky top-0 bg-[var(--ch-bg)] py-1">
-            {Calendar.strftime(hd(day_entries).timestamp, "%Y-%m-%d")}
-          </h2>
-          <div class="flex flex-col gap-2 border-l border-[var(--ch-border)] pl-4">
-            <%= for entry <- day_entries do %>
-              <div
-                id={"entry-#{entry.id}"}
-                class="bg-[var(--ch-surface)] border border-[var(--ch-border)] rounded-lg p-3"
-              >
-                <div class="flex items-center gap-2 mb-1.5 flex-wrap">
-                  <span class="text-[10px] font-mono text-[var(--ch-text-xs)]">
-                    {format_timestamp(entry.timestamp)}
-                  </span>
-                  <.link
-                    navigate={~p"/rooms/#{entry.room_id}"}
-                    class="text-[10px] font-mono text-[var(--ch-text-lo)] hover:text-[var(--ch-text-hi)] underline decoration-dotted"
-                  >
-                    {entry.room_id}
-                  </.link>
-                  <span
-                    class="text-[11px] font-medium"
-                    style={"color: #{author_hex(entry.author)}"}
-                  >
-                    {entry.author}
-                  </span>
-                  <span class={[
-                    "px-1.5 py-px rounded text-[10px] font-mono",
-                    type_color(entry.message_type)
-                  ]}>
-                    {entry.message_type}
-                  </span>
-                  <%= if entry.pinned do %>
-                    <span title="Pinned">📌</span>
-                  <% end %>
-                  <span class="text-[9px] font-mono text-[var(--ch-text-xs)] ml-auto">
-                    #{String.slice(entry.id, 0, 8)}
-                  </span>
+    <%!-- Outline (curated notebook) --%>
+    <%= if @notebook do %>
+      <%= if @notebook.title != "" do %>
+        <h2 class="text-[15px] font-semibold text-[var(--ch-text-hi)] mb-4">{@notebook.title}</h2>
+      <% end %>
+      <%= if @outline == [] do %>
+        <p class="text-[12px] text-[var(--ch-text-xs)] italic">
+          Empty notebook — agents add entries with <span class="font-mono">edit_notebook(action=add, notebook_id={@notebook.id}, ...)</span>.
+        </p>
+      <% else %>
+        <div class="flex flex-col gap-3">
+          <%= for entry <- @outline do %>
+            <%= cond do %>
+              <% entry.kind == "prose" -> %>
+                <div id={"outline-#{entry.id}"} class="council-prose text-[13px] leading-relaxed">
+                  {raw(render_markdown(entry.prose))}
                 </div>
-                <div class="council-prose text-[12px] leading-relaxed">
-                  {raw(render_markdown(resolve_commit_refs(entry.content, entry.repo)))}
+              <% not entry.ref_found -> %>
+                <div
+                  id={"outline-#{entry.id}"}
+                  class="bg-amber-500/5 border border-amber-500/20 rounded-lg p-3 text-[11px] text-amber-200/90 font-mono"
+                >
+                  ⚠ referenced message #{String.slice(entry.ref_id, 0, 8)} not found — deleted, or it lives on another cluster node
                 </div>
-              </div>
+              <% true -> %>
+                <div
+                  id={"outline-#{entry.id}"}
+                  class="bg-[var(--ch-surface)] border-l-2 border border-[var(--ch-border)] rounded-lg p-3"
+                >
+                  <div class="flex items-center gap-2 mb-1.5 flex-wrap">
+                    <span class="text-[10px] font-mono text-[var(--ch-text-xs)]">
+                      {format_date(entry.timestamp)}
+                    </span>
+                    <.link
+                      navigate={~p"/rooms/#{entry.room_id}"}
+                      class="text-[10px] font-mono text-[var(--ch-text-lo)] hover:text-[var(--ch-text-hi)] underline decoration-dotted"
+                    >
+                      {entry.room_id}
+                    </.link>
+                    <span
+                      class="text-[11px] font-medium"
+                      style={"color: #{author_hex(entry.author)}"}
+                    >
+                      {entry.author}
+                    </span>
+                    <span class={[
+                      "px-1.5 py-px rounded text-[10px] font-mono",
+                      type_color(entry.message_type)
+                    ]}>
+                      {entry.message_type}
+                    </span>
+                    <%= if entry.pinned do %>
+                      <span title="Pinned">📌</span>
+                    <% end %>
+                    <span class="text-[9px] font-mono text-[var(--ch-text-xs)] ml-auto">
+                      #{String.slice(entry.ref_id, 0, 8)}
+                    </span>
+                  </div>
+                  <div class="council-prose text-[12px] leading-relaxed">
+                    {raw(render_markdown(resolve_commit_refs(entry.content, entry.repo)))}
+                  </div>
+                </div>
             <% end %>
-          </div>
+          <% end %>
         </div>
+      <% end %>
+    <% else %>
+      <%!-- Timeline --%>
+      <%= if @entries == [] do %>
+        <p class="text-[12px] text-[var(--ch-text-xs)] italic">
+          <%= if @project == "" do %>
+            Select a project to compile its notebook.
+          <% else %>
+            No entries for <span class="font-mono">{@project}</span>
+            with the selected types yet — decisions, actions, and syntheses land here as the
+            project's rooms record them.
+          <% end %>
+        </p>
+      <% else %>
+        <%= for day_entries <- @days do %>
+          <div class="mb-6">
+            <h2 class="text-[10px] font-medium text-[var(--ch-text-lo)] uppercase tracking-[0.15em] mb-2 sticky top-0 bg-[var(--ch-bg)] py-1">
+              {Calendar.strftime(hd(day_entries).timestamp, "%Y-%m-%d")}
+            </h2>
+            <div class="flex flex-col gap-2 border-l border-[var(--ch-border)] pl-4">
+              <%= for entry <- day_entries do %>
+                <div
+                  id={"entry-#{entry.id}"}
+                  class="bg-[var(--ch-surface)] border border-[var(--ch-border)] rounded-lg p-3"
+                >
+                  <div class="flex items-center gap-2 mb-1.5 flex-wrap">
+                    <span class="text-[10px] font-mono text-[var(--ch-text-xs)]">
+                      {format_timestamp(entry.timestamp)}
+                    </span>
+                    <.link
+                      navigate={~p"/rooms/#{entry.room_id}"}
+                      class="text-[10px] font-mono text-[var(--ch-text-lo)] hover:text-[var(--ch-text-hi)] underline decoration-dotted"
+                    >
+                      {entry.room_id}
+                    </.link>
+                    <span
+                      class="text-[11px] font-medium"
+                      style={"color: #{author_hex(entry.author)}"}
+                    >
+                      {entry.author}
+                    </span>
+                    <span class={[
+                      "px-1.5 py-px rounded text-[10px] font-mono",
+                      type_color(entry.message_type)
+                    ]}>
+                      {entry.message_type}
+                    </span>
+                    <%= if entry.pinned do %>
+                      <span title="Pinned">📌</span>
+                    <% end %>
+                    <span class="text-[9px] font-mono text-[var(--ch-text-xs)] ml-auto">
+                      #{String.slice(entry.id, 0, 8)}
+                    </span>
+                  </div>
+                  <div class="council-prose text-[12px] leading-relaxed">
+                    {raw(render_markdown(resolve_commit_refs(entry.content, entry.repo)))}
+                  </div>
+                </div>
+              <% end %>
+            </div>
+          </div>
+        <% end %>
       <% end %>
     <% end %>
   </div>

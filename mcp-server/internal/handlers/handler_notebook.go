@@ -9,9 +9,11 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// ReadNotebookInput represents the parameters for reading a project notebook.
+// ReadNotebookInput represents the parameters for reading a project notebook
+// (compiled timeline via project, or a curated outline via notebook_id).
 type ReadNotebookInput struct {
 	Project     string `json:"project"`
+	NotebookID  string `json:"notebook_id"`
 	Types       string `json:"types"`
 	Since       string `json:"since"`
 	Until       string `json:"until"`
@@ -43,8 +45,16 @@ func parseNotebookTypes(csv string) ([]string, error) {
 func (r *Registry) handleReadNotebook(ctx context.Context, req *mcp.CallToolRequest, args ReadNotebookInput) (*mcp.CallToolResult, ToolOutput, error) {
 	msg := textResult
 
+	// Curated outline mode — notebook_id takes precedence over project.
+	if args.NotebookID != "" {
+		if args.ClusterWide == "true" {
+			return msg("Error: notebook outlines are node-local — read them without cluster_wide.")
+		}
+		return r.renderOutline(args.NotebookID)
+	}
+
 	if args.Project == "" {
-		return msg("Error: project is required.")
+		return msg("Error: project or notebook_id is required.")
 	}
 
 	types, err := parseNotebookTypes(args.Types)
@@ -88,6 +98,8 @@ func (r *Registry) handleReadNotebook(ctx context.Context, req *mcp.CallToolRequ
 	// as read_transcript's after_id mode).
 	latest := entries[len(entries)-1].ID
 	fmt.Fprintf(&b, "\n```json\n{\"latest_message_id\":\"%s\",\"entry_count\":%d}\n```\n", latest, len(entries))
+
+	r.appendNotebookList(&b, args.Project)
 
 	return msg(b.String())
 }

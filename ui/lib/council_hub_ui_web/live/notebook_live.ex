@@ -14,6 +14,7 @@ defmodule CouncilHubUiWeb.NotebookLive do
       type_color: 1,
       author_hex: 1,
       format_timestamp: 1,
+      format_date: 1,
       render_markdown: 1,
       resolve_commit_refs: 2
     ]
@@ -38,10 +39,11 @@ defmodule CouncilHubUiWeb.NotebookLive do
   def handle_params(params, _uri, socket) do
     project = Map.get(params, "project", "") |> default_project(socket.assigns.projects)
     types = parse_types(Map.get(params, "types", ""))
+    notebook_id = Map.get(params, "notebook", "")
 
     {:noreply,
      socket
-     |> assign(project: project, selected_types: types)
+     |> assign(project: project, selected_types: types, notebook_id: notebook_id)
      |> load_entries()}
   end
 
@@ -84,6 +86,30 @@ defmodule CouncilHubUiWeb.NotebookLive do
     )
   end
 
+  # Outline mode: ?notebook=<id> shows a curated outline instead of the
+  # compiled timeline. The notebook's project wins over the project param so
+  # deep links stay consistent.
+  defp load_outline(socket, notebook_id) do
+    case Council.get_notebook(notebook_id) do
+      nil ->
+        socket
+        |> assign(notebook: nil, outline: [], entries: [], entry_count: 0, days: [])
+        |> put_flash(:error, "Notebook '#{notebook_id}' not found")
+
+      notebook ->
+        outline = Council.outline_entries(notebook_id)
+
+        assign(socket,
+          notebook: notebook,
+          outline: outline,
+          project: notebook.project,
+          entries: [],
+          entry_count: length(outline),
+          days: []
+        )
+    end
+  end
+
   defp default_project("", [first | _]), do: first
   defp default_project(project, _projects), do: project
 
@@ -94,6 +120,13 @@ defmodule CouncilHubUiWeb.NotebookLive do
       [] -> @default_types
       types -> types
     end
+  end
+
+  defp load_entries(%{assigns: %{notebook_id: notebook_id}} = socket)
+       when notebook_id != "" do
+    socket
+    |> load_outline(notebook_id)
+    |> assign(notebooks: Council.list_notebooks(socket.assigns.project))
   end
 
   defp load_entries(socket) do
@@ -110,6 +143,9 @@ defmodule CouncilHubUiWeb.NotebookLive do
       end
 
     assign(socket,
+      notebook: nil,
+      notebooks: Council.list_notebooks(project),
+      outline: [],
       entries: entries,
       entry_count: length(entries),
       days: Enum.chunk_by(entries, &NaiveDateTime.to_date(&1.timestamp))

@@ -55,6 +55,11 @@ defmodule CouncilHubUi.Council do
   defdelegate notebook_entries(params), to: CouncilHubUi.CouncilNotebook
   defdelegate list_projects(), to: CouncilHubUi.CouncilNotebook
 
+  def list_notebooks(project \\ ""), do: CouncilHubUi.CouncilNotebook.list_notebooks(project)
+
+  defdelegate get_notebook(id), to: CouncilHubUi.CouncilNotebook
+  defdelegate outline_entries(notebook_id), to: CouncilHubUi.CouncilNotebook
+
   # -- Format --
 
   defdelegate format_transcript(room, messages), to: CouncilHubUi.CouncilFormat
