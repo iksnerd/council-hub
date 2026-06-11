@@ -185,24 +185,32 @@ func (r *Registry) InternalPostHandler() http.HandlerFunc {
 	}
 }
 
+// requireLocalhostPost gates the /api/ui/* endpoints: POST only, loopback only
+// (they exist for the co-located Phoenix UI, which has no MCP session).
+// Returns false after writing the error response when the request is rejected.
+func requireLocalhostPost(w http.ResponseWriter, req *http.Request) bool {
+	if req.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return false
+	}
+	host := req.RemoteAddr
+	if i := strings.LastIndex(host, ":"); i >= 0 {
+		host = host[:i]
+	}
+	host = strings.Trim(host, "[]")
+	if host != "127.0.0.1" && host != "::1" {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return false
+	}
+	return true
+}
+
 // UIPostHandler allows the Phoenix web UI to post messages without going through
 // the MCP protocol (which requires a session handshake). Restricted to localhost.
 // Mounted at POST /api/ui/post.
 func (r *Registry) UIPostHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
-		if req.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-
-		// Restrict to loopback — this endpoint is for the co-located Phoenix UI only.
-		host := req.RemoteAddr
-		if i := strings.LastIndex(host, ":"); i >= 0 {
-			host = host[:i]
-		}
-		host = strings.Trim(host, "[]")
-		if host != "127.0.0.1" && host != "::1" {
-			http.Error(w, "forbidden", http.StatusForbidden)
+		if !requireLocalhostPost(w, req) {
 			return
 		}
 
@@ -236,5 +244,63 @@ func (r *Registry) UIPostHandler() http.HandlerFunc {
 
 		r.Server.Logger.Info("UI post applied", "room_id", in.RoomID, "author", in.Author, "msg_id", msgID)
 		writeJSON(internalPostResponse{MessageID: msgID, RoomID: in.RoomID})
+	}
+}
+
+// uiNotebookEntryRequest is the payload for the UI "pin into notebook" path.
+type uiNotebookEntryRequest struct {
+	NotebookID   string `json:"notebook_id"`
+	RefID        string `json:"ref_id"`
+	Prose        string `json:"prose"`
+	AfterEntryID string `json:"after_entry_id"`
+}
+
+type uiNotebookEntryResponse struct {
+	EntryID    string `json:"entry_id,omitempty"`
+	NotebookID string `json:"notebook_id,omitempty"`
+	Error      string `json:"error,omitempty"`
+}
+
+// UINotebookEntryHandler lets the Phoenix dashboard add an outline entry —
+// the "📌 into notebook" button on timeline entries. Same trust model as
+// UIPostHandler: localhost-only, no MCP session. Kind is inferred (ref_id →
+// ref, prose → prose), matching edit_notebook(action=add).
+// Mounted at POST /api/ui/notebook_entry.
+func (r *Registry) UINotebookEntryHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		if !requireLocalhostPost(w, req) {
+			return
+		}
+
+		var in uiNotebookEntryRequest
+		if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+
+		writeJSON := func(v uiNotebookEntryResponse) {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(v)
+		}
+
+		if in.NotebookID == "" {
+			writeJSON(uiNotebookEntryResponse{Error: "notebook_id is required"})
+			return
+		}
+
+		kind := "prose"
+		if in.RefID != "" {
+			kind = "ref"
+		}
+
+		entryID, err := r.Server.AddOutlineEntry(in.NotebookID, kind, in.RefID, in.Prose, in.AfterEntryID)
+		if err != nil {
+			r.Server.Logger.Error("UI notebook entry failed", "notebook_id", in.NotebookID, "error", err)
+			writeJSON(uiNotebookEntryResponse{Error: err.Error()})
+			return
+		}
+
+		r.Server.Logger.Info("UI notebook entry added", "notebook_id", in.NotebookID, "entry_id", entryID, "kind", kind)
+		writeJSON(uiNotebookEntryResponse{EntryID: entryID, NotebookID: in.NotebookID})
 	}
 }

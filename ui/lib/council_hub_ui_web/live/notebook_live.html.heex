@@ -95,6 +95,59 @@
               </div>
             </div>
           <% end %>
+
+          <%!-- Note composer — notes are ledger messages (dialog first), not
+               notebook rows; the outline transcludes them afterwards. --%>
+          <%= if @rooms != [] do %>
+            <form
+              id="note-form"
+              phx-submit="post_note"
+              class="mt-4 pt-3 border-t border-[var(--ch-border)] flex flex-col gap-2"
+            >
+              <label class="text-[10px] font-medium text-[var(--ch-text-lo)] uppercase tracking-[0.15em]">
+                Add a note
+              </label>
+              <textarea
+                id="note-message"
+                name="message"
+                placeholder="Post a note into the project's dialog ledger…"
+                rows="2"
+                class="w-full bg-[var(--ch-raised)] border border-[var(--ch-border)] rounded text-[12px] text-[var(--ch-text-mid)] placeholder-[var(--ch-text-xs)] px-3 py-2 resize-none focus:outline-none focus:border-[var(--ch-focus-border)]"
+              ></textarea>
+              <div class="flex items-center gap-2 flex-wrap">
+                <input
+                  type="text"
+                  name="author"
+                  value={@compose_author}
+                  placeholder="Your name"
+                  autocomplete="off"
+                  class="w-28 bg-[var(--ch-raised)] border border-[var(--ch-border)] rounded text-[11px] text-[var(--ch-text-mid)] placeholder-[var(--ch-text-xs)] px-2 py-1 focus:outline-none focus:border-[var(--ch-focus-border)]"
+                />
+                <select
+                  name="room_id"
+                  class="bg-[var(--ch-raised)] border border-[var(--ch-border)] rounded text-[11px] text-[var(--ch-text-mid)] px-2 py-1 focus:outline-none focus:border-[var(--ch-focus-border)]"
+                >
+                  <%= for room <- @rooms do %>
+                    <option value={room.id}>{room.id}</option>
+                  <% end %>
+                </select>
+                <select
+                  name="type"
+                  class="bg-[var(--ch-raised)] border border-[var(--ch-border)] rounded text-[11px] text-[var(--ch-text-mid)] px-2 py-1 focus:outline-none focus:border-[var(--ch-focus-border)]"
+                >
+                  <%= for type <- ~w(thought message decision action synthesis) do %>
+                    <option value={type}>{type}</option>
+                  <% end %>
+                </select>
+                <button
+                  type="submit"
+                  class="ml-auto px-3 py-1 rounded bg-[var(--ch-active-bg)] border border-[var(--ch-active-border)] text-[11px] text-[var(--ch-text-hi)] font-medium hover:opacity-80 transition-opacity"
+                >
+                  Post note
+                </button>
+              </div>
+            </form>
+          <% end %>
         <% end %>
       <% end %>
     </div>
@@ -217,6 +270,17 @@
                     <span class="text-[9px] font-mono text-[var(--ch-text-xs)] ml-auto">
                       #{String.slice(entry.id, 0, 8)}
                     </span>
+                    <%= for nb <- @notebooks do %>
+                      <button
+                        phx-click="pin_entry"
+                        phx-value-message-id={entry.id}
+                        phx-value-notebook={nb.id}
+                        title={"Add to notebook #{nb.id}"}
+                        class="px-1.5 py-px rounded text-[9px] font-mono border border-[var(--ch-border)] text-[var(--ch-text-xs)] hover:text-[var(--ch-text-hi)] transition-colors"
+                      >
+                        📓+{nb.id}
+                      </button>
+                    <% end %>
                   </div>
                   <div class="council-prose text-[12px] leading-relaxed">
                     {raw(render_markdown(resolve_commit_refs(entry.content, entry.repo)))}
