@@ -119,10 +119,15 @@ const messageTypesResource = `# Council Hub — Message Types
 | **review** | Structured feedback on someone else's work (code, design, proposal). |
 | **code** | Code snippets, diffs, or technical artifacts. |
 | **synthesis** | Compiled knowledge article distilling a room's conclusions. Write one after deliberation to capture what was learned. Pin it so it appears first in every transcript. |
+| **note** | Journal entry — an observation, context, or human-authored note worth keeping, outside the deliberation lifecycle. Appears in the project notebook timeline (read_notebook) by default. |
 
 ## Recommended Flow
 
 thought → draft → critique → decision → action → synthesis
+
+**note** sits outside this lifecycle — it is the Journal: drop an observation worth keeping
+without implying a deliberation step. Notes surface in read_notebook's default timeline
+alongside decisions, actions, and syntheses.
 
 The **draft** type sits between exploration (thought) and commitment (decision). It signals
 "I've worked this out and would like feedback" — as opposed to a thought which is still raw,
@@ -285,7 +290,7 @@ var staticResources = []struct {
 	{
 		uri:         "council://message-types",
 		name:        "Message Types",
-		description: "Reference card for all 9 message types (message, thought, draft, critique, decision, action, review, code, synthesis) with when-to-use guidance and filtering examples.",
+		description: "Reference card for all 10 message types (message, thought, draft, critique, decision, action, review, code, synthesis, note) with when-to-use guidance and filtering examples.",
 		content:     messageTypesResource,
 	},
 	{

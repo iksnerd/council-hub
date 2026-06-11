@@ -98,6 +98,7 @@ var validMessageTypes = map[string]bool{
 	"action":    true,
 	"critique":  true,
 	"synthesis": true,
+	"note":      true,
 }
 
 // schema builds a JSON Schema object with additionalProperties: true.

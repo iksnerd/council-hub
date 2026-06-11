@@ -114,7 +114,7 @@ func NewServer(dbPath string, logger *slog.Logger) (*Server, error) {
 			"3. load_resources(uri=council://guide) — read usage patterns on your first session in a new project\n\n" +
 			"Key conventions:\n" +
 			"- Prefer get_or_create_room over create_room — returns existing content and avoids duplicates\n" +
-			"- Use typed messages: thought → draft → critique → decision → action → synthesis. Avoid posting everything as 'message'\n" +
+			"- Use typed messages: thought → draft → critique → decision → action → synthesis (plus note for journal entries). Avoid posting everything as 'message'\n" +
 			"- After conclusions: post a synthesis, pin it, then signal_status(resolved)\n" +
 			"- Call mark_read after each session; use get_digest(unread_only=true) on return to see only new activity\n" +
 			"- Use search_messages for cross-room queries or filtered lookups; use read_transcript for full sequential context\n" +

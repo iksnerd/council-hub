@@ -16,8 +16,8 @@ type NotebookEntry struct {
 
 // DefaultNotebookTypes are the message types compiled into a notebook when the
 // caller doesn't specify any: the decision → action → synthesis spine of a
-// project, skipping exploratory chatter.
-var DefaultNotebookTypes = []string{"decision", "action", "synthesis"}
+// project plus note (human journal entries), skipping exploratory chatter.
+var DefaultNotebookTypes = []string{"decision", "action", "synthesis", "note"}
 
 const (
 	defaultNotebookLimit = 100

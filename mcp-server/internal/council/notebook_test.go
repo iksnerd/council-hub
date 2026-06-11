@@ -60,6 +60,23 @@ func TestGetNotebookEntriesAcrossProject(t *testing.T) {
 	}
 }
 
+func TestGetNotebookEntriesIncludesNoteByDefault(t *testing.T) {
+	s := setupTestServer(t)
+	seedNotebookProject(t, s)
+	noteID := mustPostTyped(t, s, "nb-room-a", "human", "journal observation", "note")
+
+	entries, err := s.GetNotebookEntries("nb-proj", nil, "", "", "", 0)
+	if err != nil {
+		t.Fatalf("GetNotebookEntries failed: %v", err)
+	}
+	if len(entries) != 4 {
+		t.Fatalf("expected 4 entries (3 typed + 1 note), got %d", len(entries))
+	}
+	if entries[3].ID != noteID || entries[3].MessageType != "note" {
+		t.Errorf("note entry missing from default timeline: %+v", entries[3])
+	}
+}
+
 func TestGetNotebookEntriesTypeFilter(t *testing.T) {
 	s := setupTestServer(t)
 	seedNotebookProject(t, s)

@@ -59,7 +59,7 @@ func (r *Registry) handleReadNotebook(ctx context.Context, req *mcp.CallToolRequ
 
 	types, err := parseNotebookTypes(args.Types)
 	if err != nil {
-		return msg(fmt.Sprintf("Error: %s. Valid types: message, thought, draft, decision, code, review, action, critique, synthesis.", err.Error()))
+		return msg(fmt.Sprintf("Error: %s. Valid types: message, thought, draft, decision, code, review, action, critique, synthesis, note.", err.Error()))
 	}
 
 	if args.ClusterWide == "true" {

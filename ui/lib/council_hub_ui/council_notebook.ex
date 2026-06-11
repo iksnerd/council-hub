@@ -11,7 +11,7 @@ defmodule CouncilHubUi.CouncilNotebook do
   alias CouncilHubUi.Repo
   alias CouncilHubUi.Council.{Room, Message, Notebook, NotebookEntry}
 
-  @default_types ~w(decision action synthesis)
+  @default_types ~w(decision action synthesis note)
   @default_limit 100
   @max_limit 500
 
