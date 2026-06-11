@@ -126,15 +126,16 @@ Code is organized into `internal/council` (data layer) and `internal/handlers` (
 - `internal/council/rooms.go` — Room CRUD: `CreateRoom`, `GetRoom`, `UpdateRoom`, `DeleteRoom`, `ListRooms`, `UpdateStatus`, bidirectional `syncReverseLinks`.
 - `internal/council/messages.go` — Message CRUD: `PostMessage`, `SearchMessages` (FTS5 full-text search with BM25 ranking, multi-word AND queries, since/until date filters), `GetRecentMessages`, `GetMessagesAfterID`, `GetLatestPerType`, `PinMessage`, `DeleteMessages`.
 - `internal/council/stats.go` — `GetRoomStats`, `GetDigest`, `GetMessageCounts`, `GetPinnedExcerpts`, `GetRoomsNeedingSummary`.
+- `internal/council/notebook.go` — `GetNotebookEntries`: cross-room project timeline of typed messages, ordered by UUIDv7 ID (chronological weave + `after_id` delta cursor), each entry carrying its room's `repo` for `{sha:...}` resolution.
 - `internal/council/summary.go` — `GetTranscript`, `GetUnsummarizedMessages`, `InsertSummary`, `ArchiveRoom`.
 - `internal/council/transcript.go` — Transcript formatting helpers.
 - `internal/handlers/tools_helpers.go` — `Registry` struct (holds Server + HTTPClient + PhoenixURL), schema/prop helpers, validation utilities, `ToolOutput` type, `validMessageTypes` map.
-- `internal/handlers/tools_register.go` — All 30 MCP tool registrations wired to their handlers.
+- `internal/handlers/tools_register.go` — All 31 MCP tool registrations wired to their handlers.
 - `internal/handlers/templates.go` — Room template definitions (brainstorm, bug, decision-log, review, sprint).
 - `internal/handlers/cluster.go` — `clusterCall` HTTP helper (POST to Phoenix internal API).
 - `internal/handlers/cluster_writes.go` — Cross-node writes: `locateRoomOwner` (queries Phoenix `locate_room`), `proxyPostToRoom` (forwards a write to the owning node), and `InternalPostHandler` (receives proxied writes, authenticated by the shared `RELEASE_COOKIE`).
 - `internal/handlers/cluster_types.go` — Cluster response types and mapping helpers (`ClusterSearchResult`, `ClusterRoomResult`, etc.).
-- `internal/handlers/cluster_handlers.go` — Cluster-wide tool variants: `handleSearchMessagesCluster`, `handleListRoomsCluster`, `handleRoomStatsCluster`, `handleGetMessagesCluster`, `handleGetDigestCluster`, `handleReadRoomCluster`, `handleReadTranscriptCluster`. Formats results with `[node-name]` prefix and appends warnings for unreachable nodes.
+- `internal/handlers/cluster_handlers.go` — Cluster-wide tool variants: `handleSearchMessagesCluster`, `handleListRoomsCluster`, `handleRoomStatsCluster`, `handleGetMessagesCluster`, `handleGetDigestCluster`, `handleReadRoomCluster`, `handleReadTranscriptCluster`, `handleReadNotebookCluster`. Formats results with `[node-name]` prefix and appends warnings for unreachable nodes.
 - `internal/handlers/handler_message_query.go` — `search_messages` (FTS5 + optional semantic, branches on `cluster_wide=true`), `get_messages`, `get_mentions`.
 - `internal/handlers/handler_message_write.go` — `post_to_room`, `update_message`, `delete_messages`, `move_messages`, `fork_thread`.
 - `internal/handlers/handler_message_annotate.go` — `pin_message`, `react_to_message`.
@@ -145,6 +146,7 @@ Code is organized into `internal/council` (data layer) and `internal/handlers` (
 - `internal/handlers/handler_room_graph.go` — `get_concept_map` (BFS traversal of related-rooms graph; `infer_from` auto-discovers rooms by shared project or tags).
 - `internal/handlers/handler_transcript.go` — `read_transcript` (modes: summary, changelog, work_items), `list_archives`, `read_archive`, `archive_room`.
 - `internal/handlers/handler_digest.go` — `get_digest` (with `unread_only` cursor support, branches on `cluster_wide=true`).
+- `internal/handlers/handler_notebook.go` — `read_notebook`: day-grouped project timeline (decision/action/synthesis by default), per-entry commit-ref resolution, 📌 pinned markers, JSON cursor footer; branches on `cluster_wide=true`.
 - `internal/handlers/resources.go` — `RegisterResources`: static skill guides (`council://guide`, `council://message-types`, `council://workflows`, `council://janitor`) + dynamic `council://room/{id}/transcript` template. Also implements `load_resources` tool handler (fallback for clients without resource support).
 - `internal/council/embedder.go` — `Embedder` interface + `OllamaEmbedder` (HTTP client for Ollama `/api/embed`, 2-min timeout, slow-request logging). Default model: `embeddinggemma:300m` (768-dim).
 - `internal/council/vectors.go` — Vector storage (`StoreVector`, `deleteVectorsLocked`), `SearchMessagesSemantic` (two-phase: vector candidate search → metadata filtering), `EmbedAsync` (non-blocking background embed), `RunEmbedBackfill` (10-min retry loop + coverage logging), `BackfillEmbeddings`.
@@ -153,6 +155,7 @@ Code is organized into `internal/council` (data layer) and `internal/handlers` (
 ### Web UI (Elixir/Phoenix)
 
 - `lib/council_hub_ui_web/live/council_live.ex` — Main LiveView. Polls messages every 3s, rooms every 5s, cluster nodes every 3s. Uses Phoenix streams for efficient DOM updates.
+- `lib/council_hub_ui_web/live/notebook_live.ex` — `/notebook` page: project notebook timeline (UI twin of the `read_notebook` tool). Project picker + type filter toggles, day-grouped entries, 5s refresh. Queries SQLite via `CouncilHubUi.CouncilNotebook` (also the cluster fan-out target for `read_notebook`).
 - `lib/council_hub_ui_web/live/council_components.ex` — Reusable function components for room cards, message rendering, headers.
 - `lib/council_hub_ui_web/live/council_helpers.ex` — Color assignment per author (deterministic hex from name hash), relative timestamps, markdown rendering via Earmark.
 - `lib/council_hub_ui/council.ex` — Ecto context module with query functions. Read-only against Go server's SQLite. Includes `search_messages/1`, `list_rooms_filtered/1`, `room_stats/1` for cluster fan-out.

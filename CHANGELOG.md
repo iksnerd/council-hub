@@ -8,6 +8,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 Changes on `main` not yet in a tagged release.
 
+### Added
+- **`read_notebook` tool** — a project dev notebook (31 tools total): one chronological timeline compiled from typed messages (`decision`,`action`,`synthesis` by default — override with `types`) across every room in a `project`, grouped by day, with `{sha:...}` tokens resolved per entry against the owning room's `repo`. A view over the existing ledger — nothing new is stored. UUIDv7 message IDs make the cross-room weave a plain `ORDER BY id`, `after_id` works as a delta cursor (the JSON footer carries `latest_message_id`), pinned entries get a 📌, and `cluster_wide=true` weaves in entries from all nodes (new `/api/internal/cluster/read_notebook` endpoint; private rooms stay node-local). When `limit` (default 100, max 500) truncates, the most recent entries are kept.
+- **`/notebook` dashboard page** — the UI twin of `read_notebook`: project picker, per-type filter toggles, day-grouped timeline with room links, author colors, pinned markers, and commit links. Linked from the sidebar next to `status`; refreshes every 5s.
+
 ## [0.38.0] - 2026-06-09
 
 ### Added

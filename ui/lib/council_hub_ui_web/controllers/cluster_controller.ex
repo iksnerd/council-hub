@@ -153,6 +153,30 @@ defmodule CouncilHubUiWeb.ClusterController do
     })
   end
 
+  def read_notebook(conn, params) do
+    project = Map.get(params, "project", "")
+
+    if project == "" do
+      conn |> put_status(400) |> json(%{error: "project is required"})
+    else
+      cluster_params = %{
+        "project" => project,
+        "types" => Map.get(params, "types", ""),
+        "since" => Map.get(params, "since", ""),
+        "until" => Map.get(params, "until", ""),
+        "after_id" => Map.get(params, "after_id", ""),
+        "limit" => parse_notebook_limit(Map.get(params, "limit", ""))
+      }
+
+      result = Cluster.read_notebook(cluster_params)
+
+      json(conn, %{
+        results: Enum.map(result.results, &serialize_notebook_entry/1),
+        warnings: result.warnings
+      })
+    end
+  end
+
   def get_digest(conn, params) do
     cluster_params = %{
       "project" => Map.get(params, "project", ""),
@@ -186,6 +210,25 @@ defmodule CouncilHubUiWeb.ClusterController do
 
   defp parse_offset(val) when is_integer(val), do: max(val, 0)
   defp parse_offset(_), do: 0
+
+  # Notebook entries cap at 500 (vs 100 elsewhere) — a project timeline
+  # legitimately spans more items than a search result page.
+  defp parse_notebook_limit(val) when is_binary(val) do
+    case Integer.parse(val) do
+      {n, _} when n > 0 and n <= 500 -> n
+      {n, _} when n > 500 -> 500
+      _ -> 100
+    end
+  end
+
+  defp parse_notebook_limit(val) when is_integer(val), do: min(max(val, 1), 500)
+  defp parse_notebook_limit(_), do: 100
+
+  defp serialize_notebook_entry(entry) do
+    entry
+    |> serialize_message()
+    |> Map.put(:repo, Map.get(entry, :repo, ""))
+  end
 
   defp serialize_message_optional(nil), do: nil
   defp serialize_message_optional(msg), do: serialize_message(msg)

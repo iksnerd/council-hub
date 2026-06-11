@@ -50,6 +50,11 @@ defmodule CouncilHubUi.Council do
 
   defdelegate get_project_digest(project, since_str), to: CouncilHubUi.CouncilDigest
 
+  # -- Notebook --
+
+  defdelegate notebook_entries(params), to: CouncilHubUi.CouncilNotebook
+  defdelegate list_projects(), to: CouncilHubUi.CouncilNotebook
+
   # -- Format --
 
   defdelegate format_transcript(room, messages), to: CouncilHubUi.CouncilFormat

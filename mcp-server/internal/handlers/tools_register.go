@@ -365,6 +365,22 @@ func (r *Registry) RegisterTools() {
 	}, r.handleReadTranscript)
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
+		Name: "read_notebook",
+		Description: "Read a project's dev notebook: a chronological timeline compiled from typed messages (decision, action, synthesis by default) across every room in the project, grouped by day, with {sha:...} commit refs resolved per room. " +
+			"It is a view over the existing ledger — nothing is stored. Use it to see how a project actually unfolded (decision → action → release) without reading each room, for standups, retros, or onboarding into a project. " +
+			"Use types to widen or narrow the timeline (a ViewSpec toggle), after_id for delta reads since your last look (the JSON footer carries latest_message_id), and cluster_wide=true to weave in entries from all cluster nodes.",
+		InputSchema: schema([]string{"project"}, map[string]map[string]any{
+			"project":      prop("string", "Project whose rooms are compiled into the timeline."),
+			"types":        prop("string", "Comma-separated message types to include (default: decision,action,synthesis). E.g. 'decision' for a decision log, 'decision,action,synthesis,critique' for a wider view."),
+			"since":        prop("string", "ISO timestamp (e.g. 2026-04-01T00:00:00). Only entries at or after this time."),
+			"until":        prop("string", "ISO timestamp (e.g. 2026-04-30T23:59:59). Only entries at or before this time."),
+			"after_id":     prop("string", "Return only entries with message ID greater than this value. For delta reads — pair with the latest_message_id from the previous read's JSON footer."),
+			"limit":        prop("string", "Max entries (default 100, max 500). When truncating, the most recent entries are kept."),
+			"cluster_wide": prop("string", "Set to 'true' to compile the timeline from all cluster nodes. Default: local only."),
+		}),
+	}, r.handleReadNotebook)
+
+	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "get_concept_map",
 		Description: "Traverse the conceptual relationship graph between rooms starting from a given room. Returns a flat Markdown list grouped by depth, showing how topics relate across the project. Use this to orient yourself within a complex project topology. Set infer_from to discover rooms not yet explicitly linked.",
 		InputSchema: schema([]string{"room_id"}, map[string]map[string]any{

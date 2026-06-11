@@ -51,6 +51,7 @@ newcomers instant context at the top of every future read.
 | Room stats (count, participants) | room_stats |
 | Room health / flags | check_room_health |
 | Delta read (new only) | read_transcript(after_id=…) |
+| Project timeline (decisions → actions → syntheses across rooms) | read_notebook |
 | Cross-room concepts | get_concept_map |
 | Fork a thread to a new room | fork_thread |
 | Batch close rooms | bulk_status_update |
@@ -80,8 +81,8 @@ When a room reaches a conclusion:
 Multiple Council Hub nodes can form a cluster (distributed Erlang over a LAN or VPN).
 
 - **Reads are local by default.** Pass ` + "`cluster_wide=true`" + ` on search_messages, list_rooms,
-  read_room, room_stats, get_messages, read_transcript, or get_digest to fan out across all
-  nodes. Results are tagged with the owning node; unreachable nodes produce a warning, not an error.
+  read_room, room_stats, get_messages, read_transcript, read_notebook, or get_digest to fan out
+  across all nodes. Results are tagged with the owning node; unreachable nodes produce a warning, not an error.
 - **Writes route to the owning node automatically** — post_to_room to a room owned by a peer is
   proxied transparently (authenticated by the shared cluster cookie).
 - **Private rooms stay home.** A room with ` + "`visibility=private`" + ` is node-local: it never
