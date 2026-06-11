@@ -585,4 +585,83 @@ defmodule CouncilHubUiWeb.ClusterControllerTest do
       assert %{"error" => "room_id is required"} = json_response(conn, 400)
     end
   end
+
+  describe "POST /api/internal/cluster/read_notebook" do
+    test "returns typed entries with repo and source_node", %{conn: conn} do
+      create_room(%{id: "api-nb-a", project: "api-nb-proj", repo: "alice/widgets"})
+      create_room(%{id: "api-nb-b", project: "api-nb-proj"})
+
+      create_message(%{
+        room_id: "api-nb-a",
+        author: "claude",
+        content: "a decision",
+        message_type: "decision"
+      })
+
+      create_message(%{room_id: "api-nb-a", content: "plain chatter"})
+
+      create_message(%{
+        room_id: "api-nb-b",
+        author: "gemini",
+        content: "an action",
+        message_type: "action"
+      })
+
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> post("/api/internal/cluster/read_notebook", %{"project" => "api-nb-proj"})
+
+      assert %{"results" => results, "warnings" => []} = json_response(conn, 200)
+      assert [first, second] = results
+      assert first["content"] == "a decision"
+      assert first["repo"] == "alice/widgets"
+      assert first["source_node"] != nil
+      assert second["content"] == "an action"
+      assert second["repo"] == ""
+    end
+
+    test "excludes private rooms from the fan-out", %{conn: conn} do
+      create_room(%{id: "api-nb-priv", project: "api-nb-proj", visibility: "private"})
+
+      create_message(%{
+        room_id: "api-nb-priv",
+        content: "secret decision",
+        message_type: "decision"
+      })
+
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> post("/api/internal/cluster/read_notebook", %{"project" => "api-nb-proj"})
+
+      assert %{"results" => []} = json_response(conn, 200)
+    end
+
+    test "filters by types", %{conn: conn} do
+      create_room(%{id: "api-nb-t", project: "api-nb-proj"})
+      create_message(%{room_id: "api-nb-t", content: "a decision", message_type: "decision"})
+      create_message(%{room_id: "api-nb-t", content: "an action", message_type: "action"})
+
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> post("/api/internal/cluster/read_notebook", %{
+          "project" => "api-nb-proj",
+          "types" => "action"
+        })
+
+      assert %{"results" => [entry]} = json_response(conn, 200)
+      assert entry["message_type"] == "action"
+    end
+
+    test "returns 400 when project missing", %{conn: conn} do
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> post("/api/internal/cluster/read_notebook", %{})
+
+      assert %{"error" => "project is required"} = json_response(conn, 400)
+    end
+  end
 end

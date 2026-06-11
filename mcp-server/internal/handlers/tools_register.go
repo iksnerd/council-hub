@@ -52,7 +52,7 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "post_to_room",
-		Description: "Post a message to a council room's ledger. Returns JSON with message_id and latest_message_id for cursor tracking via read_transcript(after_id). Workflow guide — use message_type to signal intent: thought (exploring/reasoning) → draft (proposal ready for feedback) → critique (pushback/concerns) → decision (choice made, include rationale) → action (work shipped) → synthesis (compiled reference that distills a room's conclusions). Use review for feedback on others' work.",
+		Description: "Post a message to a council room's ledger. Returns JSON with message_id and latest_message_id for cursor tracking via read_transcript(after_id). Workflow guide — use message_type to signal intent: thought (exploring/reasoning) → draft (proposal ready for feedback) → critique (pushback/concerns) → decision (choice made, include rationale) → action (work shipped) → synthesis (compiled reference that distills a room's conclusions). Use review for feedback on others' work, and note for journal entries (observations worth keeping that aren't part of a deliberation — notes appear in the project notebook timeline by default).",
 		InputSchema: schema([]string{"room_id", "author", "message"}, map[string]map[string]any{
 			"room_id": prop("string", "Target room ID"),
 			"author":  prop("string", "Name of the posting agent"),
@@ -66,7 +66,7 @@ func (r *Registry) RegisterTools() {
 				"  action    — work shipped or in-flight; links a decision to a concrete outcome\n"+
 				"  review    — structured feedback on someone else's work (code, design, proposal)\n"+
 				"  code      — code snippets, diffs, or technical artifacts\n"+
-				"  synthesis — compiled knowledge article distilling the room's conclusions; write after deliberation, then pin it\n"+
+				"  synthesis — compiled knowledge article distilling the room's conclusions; write after deliberation, then pin it\n  note      — journal entry: an observation or context worth keeping, outside the deliberation lifecycle; shows in read_notebook by default\n"+
 				"Lifecycle: thought → draft → critique → decision → action → synthesis. Default: 'message'."),
 			"reply_to": prop("string", "Message ID this is a reply to (e.g. 42). Renders as 're: #42' in transcripts"),
 			"mentions": prop("string", "Comma-separated agent names to explicitly notify (e.g. 'claude,gemini-cli'). Mentioned agents can call get_mentions on startup to find threads awaiting their input."),
@@ -182,7 +182,7 @@ func (r *Registry) RegisterTools() {
 	searchProps := map[string]map[string]any{
 		"query":           prop("string", "Text to search for in message content"),
 		"author":          prop("string", "Filter by author name"),
-		"message_type":    prop("string", "Filter by type: message, thought, draft, decision, action, review, critique, code, synthesis. Use 'synthesis' to find compiled knowledge articles."),
+		"message_type":    prop("string", "Filter by type: message, thought, draft, decision, action, review, critique, code, synthesis, note. Use 'synthesis' to find compiled knowledge articles."),
 		"room_id":         prop("string", "Scope search to a specific room"),
 		"room_ids":        prop("string", "Comma-separated room IDs to search across a subset (e.g. bug-123,bug-456). Use instead of room_id for multi-room scoping."),
 		"include_related": prop("string", "Set to 'true' to automatically include the room's related_rooms in the search scope (requires room_id). Expands search to 1-level neighbours without specifying room_ids manually."),
@@ -233,7 +233,7 @@ func (r *Registry) RegisterTools() {
 		InputSchema: schema([]string{"message_id", "content"}, map[string]map[string]any{
 			"message_id":       prop("string", "ID of the message to update"),
 			"content":          prop("string", "New message content (replaces existing)"),
-			"message_type":     prop("string", "Optionally change message type: message, thought, draft, decision, action, review, critique, code, synthesis"),
+			"message_type":     prop("string", "Optionally change message type: message, thought, draft, decision, action, review, critique, code, synthesis, note"),
 			"expected_content": prop("string", "If provided, the update fails with the current content if this doesn't match — prevents lost updates when multiple agents edit the same living document."),
 		}),
 	}, r.handleUpdateMessage)
@@ -363,6 +363,41 @@ func (r *Registry) RegisterTools() {
 			"cluster_wide":    prop("string", "Set to 'true' to fetch the transcript from the remote cluster node that owns it."),
 		}),
 	}, r.handleReadTranscript)
+
+	mcp.AddTool(r.Server.MCP, &mcp.Tool{
+		Name: "read_notebook",
+		Description: "Read a project's dev notebook. Two modes: pass project for the compiled timeline — typed messages (decision, action, synthesis, note by default) from every room in the project woven chronologically, grouped by day, with {sha:...} commit refs resolved per room; or pass notebook_id for a curated outline created with edit_notebook — prose sections interleaved with transcluded ledger messages (refs resolve live; nothing is copied). " +
+			"Both are views over the existing ledger. Use the timeline to see how a project unfolded (standups, retros, onboarding); use outlines for hand-curated documents like release notes or design digests. " +
+			"Timeline options: types widens/narrows the view (a ViewSpec toggle), after_id does delta reads (the JSON footer carries latest_message_id), cluster_wide=true weaves in all cluster nodes. The timeline footer lists the project's curated notebooks. Outlines are node-local.",
+		InputSchema: schema(nil, map[string]map[string]any{
+			"project":      prop("string", "Project whose rooms are compiled into the timeline (use this OR notebook_id)."),
+			"notebook_id":  prop("string", "Curated notebook outline to read (use this OR project). Created via edit_notebook(action=create)."),
+			"types":        prop("string", "Timeline only: comma-separated message types to include (default: decision,action,synthesis,note). E.g. 'decision' for a decision log, 'decision,action,synthesis,critique' for a wider view."),
+			"since":        prop("string", "Timeline only: ISO timestamp (e.g. 2026-04-01T00:00:00). Only entries at or after this time."),
+			"until":        prop("string", "Timeline only: ISO timestamp (e.g. 2026-04-30T23:59:59). Only entries at or before this time."),
+			"after_id":     prop("string", "Timeline only: return only entries with message ID greater than this value. For delta reads — pair with the latest_message_id from the previous read's JSON footer."),
+			"limit":        prop("string", "Timeline only: max entries (default 100, max 500). When truncating, the most recent entries are kept."),
+			"cluster_wide": prop("string", "Timeline only: set to 'true' to compile the timeline from all cluster nodes. Default: local only."),
+		}),
+	}, r.handleReadNotebook)
+
+	mcp.AddTool(r.Server.MCP, &mcp.Tool{
+		Name: "edit_notebook",
+		Description: "Curate a notebook outline — the hand-assembled counterpart to read_notebook's automatic timeline. An outline is an ordered list of entries: prose sections (markdown you write) and refs (pointers to ledger messages, transcluded live at read time — never copied, so the outline can't drift from the ledger). " +
+			"Actions: create (notebook_id, project, title?) — new empty notebook; add (notebook_id, ref_id OR prose, after_entry_id? — omit to append) — add an entry; update (entry_id, prose) — rewrite a prose section; move (entry_id, after_entry_id — empty for top) — reorder; remove (entry_id) — drop an entry; delete (notebook_id) — remove the whole notebook (referenced messages are untouched). " +
+			"Entry IDs appear in read_notebook(notebook_id=...) output as *(entry #...)*. Typical flow: spot a pin-worthy timeline slice → edit_notebook(action=add, ref_id=<message_id>) → weave prose around it. Create without a project for a GLOBAL notebook (cross-project TODOs and standing lists). Work-list pattern: a global notebook of room_refs is a living 'current work' list — each entry shows the room's live status and latest decision/action, and signal_status(resolved) on the room checks it off; the list itself never needs editing. Notebooks are node-local.",
+		InputSchema: schema([]string{"action"}, map[string]map[string]any{
+			"action":         enumProp("string", "What to do: create/delete operate on notebooks; add/update/move/remove operate on entries.", []string{"create", "add", "update", "move", "remove", "delete"}),
+			"notebook_id":    prop("string", "Notebook identifier (required for create, delete, add). E.g. 'release-notes-v1'."),
+			"project":        prop("string", "Project the notebook belongs to (create only). Omit for a GLOBAL notebook — e.g. cross-project TODOs or standing checklists: it can ref messages from any room and is listed in every project's timeline footer and /notebook view."),
+			"title":          prop("string", "Human-readable title (create only)."),
+			"entry_id":       prop("string", "Target entry (update, move, remove). From the *(entry #...)* markers in read_notebook output."),
+			"kind":           enumProp("string", "Entry kind for add. ref_id implies 'ref' and prose implies 'prose'; pass kind=room_ref explicitly with ref_id=<room_id> to track a room's live state (work-list item).", []string{"ref", "room_ref", "prose"}),
+			"ref_id":         prop("string", "Message ID to transclude (add with kind=ref). Must exist on this node."),
+			"prose":          prop("string", "Markdown content (add with kind=prose, or update)."),
+			"after_entry_id": prop("string", "Position control for add and move: the entry to land after. Omit on add to append; empty on move means the top."),
+		}),
+	}, r.handleEditNotebook)
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "get_concept_map",

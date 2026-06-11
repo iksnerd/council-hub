@@ -31,7 +31,8 @@ defmodule CouncilHubUiWeb.CouncilHelpers do
     "action" => "hero-bolt",
     "critique" => "hero-exclamation-triangle",
     "error" => "hero-x-circle",
-    "synthesis" => "hero-beaker"
+    "synthesis" => "hero-beaker",
+    "note" => "hero-document-text"
   }
 
   def author_color(author) do
@@ -91,6 +92,7 @@ defmodule CouncilHubUiWeb.CouncilHelpers do
       "thought" -> "bg-[var(--ch-raised)] text-[var(--ch-text-xs)]"
       "draft" -> "bg-[var(--ch-raised)] text-[var(--ch-text-lo)]"
       "synthesis" -> "bg-purple-500/10 text-purple-300/80"
+      "note" -> "bg-sky-500/10 text-sky-300/80"
       _ -> "bg-[var(--ch-raised)] text-[var(--ch-text-xs)]"
     end
   end
@@ -263,7 +265,8 @@ defmodule CouncilHubUiWeb.CouncilHelpers do
     "synthesis" => "S",
     "critique" => "Cr",
     "message" => "M",
-    "error" => "E"
+    "error" => "E",
+    "note" => "N"
   }
 
   def format_type_counts(type_counts) when map_size(type_counts) == 0, do: nil

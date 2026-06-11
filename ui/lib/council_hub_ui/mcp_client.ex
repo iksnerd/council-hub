@@ -34,6 +34,32 @@ defmodule CouncilHubUi.McpClient do
       {:error, :request_failed}
   end
 
+  @doc """
+  Add an entry to a curated notebook outline via the UI REST endpoint —
+  the "pin into notebook" button. Pass ref_id: to transclude a message, or
+  prose: for a markdown section (kind is inferred server-side).
+  """
+  def add_notebook_entry(notebook_id, attrs) do
+    body =
+      Jason.encode!(%{
+        notebook_id: notebook_id,
+        ref_id: Map.get(attrs, :ref_id, ""),
+        prose: Map.get(attrs, :prose, ""),
+        after_entry_id: Map.get(attrs, :after_entry_id, "")
+      })
+
+    base = mcp_url() |> String.replace(~r{/mcp$}, "")
+    url = String.to_charlist(base <> "/api/ui/notebook_entry")
+    headers = [{~c"Content-Type", ~c"application/json"}]
+
+    :httpc.request(:post, {url, headers, ~c"application/json", body}, [{:timeout, 8000}], [])
+    |> handle_ui_post_response()
+  rescue
+    e ->
+      Logger.warning("McpClient error calling add_notebook_entry: #{inspect(e)}")
+      {:error, :request_failed}
+  end
+
   @doc "Add or remove an emoji reaction on a message."
   def react_to_message(message_id, emoji, author) do
     call_tool("react_to_message", %{message_id: message_id, emoji: emoji, author: author})

@@ -51,6 +51,8 @@ newcomers instant context at the top of every future read.
 | Room stats (count, participants) | room_stats |
 | Room health / flags | check_room_health |
 | Delta read (new only) | read_transcript(after_id=…) |
+| Project timeline (decisions → actions → syntheses across rooms) | read_notebook |
+| Curate an outline (prose + transcluded messages) | edit_notebook, read_notebook(notebook_id=…) |
 | Cross-room concepts | get_concept_map |
 | Fork a thread to a new room | fork_thread |
 | Batch close rooms | bulk_status_update |
@@ -80,8 +82,8 @@ When a room reaches a conclusion:
 Multiple Council Hub nodes can form a cluster (distributed Erlang over a LAN or VPN).
 
 - **Reads are local by default.** Pass ` + "`cluster_wide=true`" + ` on search_messages, list_rooms,
-  read_room, room_stats, get_messages, read_transcript, or get_digest to fan out across all
-  nodes. Results are tagged with the owning node; unreachable nodes produce a warning, not an error.
+  read_room, room_stats, get_messages, read_transcript, read_notebook, or get_digest to fan out
+  across all nodes. Results are tagged with the owning node; unreachable nodes produce a warning, not an error.
 - **Writes route to the owning node automatically** — post_to_room to a room owned by a peer is
   proxied transparently (authenticated by the shared cluster cookie).
 - **Private rooms stay home.** A room with ` + "`visibility=private`" + ` is node-local: it never
@@ -89,6 +91,17 @@ Multiple Council Hub nodes can form a cluster (distributed Erlang over a LAN or 
   shared. To make a node private-by-default before sharing a cluster:
   ` + "`bulk_visibility(all=true, visibility=private)`" + `, then re-publish the few rooms a peer
   should see with ` + "`bulk_visibility(room_ids=…, visibility=public)`" + `.
+
+## Current Work List (Engelbart's living to-do)
+
+Keep one global notebook as the standing source of truth for what's in flight:
+
+1. ` + "`edit_notebook(action=create, notebook_id=current-work, title=Current Work)`" + ` — no project = global
+2. ` + "`edit_notebook(action=add, notebook_id=current-work, kind=room_ref, ref_id=<room_id>)`" + ` — one entry per thread of work
+3. ` + "`read_notebook(notebook_id=current-work)`" + ` — each entry shows the room's LIVE status + latest decision/action
+4. Finishing work = ` + "`signal_status(room_id=…, status=resolved)`" + ` — the list updates itself; never edit it to mark things done
+
+Add prose entries for one-off TODOs that don't deserve a room yet; graduate them to a room (and a room_ref) when they grow.
 
 ## Tips
 
@@ -117,10 +130,15 @@ const messageTypesResource = `# Council Hub — Message Types
 | **review** | Structured feedback on someone else's work (code, design, proposal). |
 | **code** | Code snippets, diffs, or technical artifacts. |
 | **synthesis** | Compiled knowledge article distilling a room's conclusions. Write one after deliberation to capture what was learned. Pin it so it appears first in every transcript. |
+| **note** | Journal entry — an observation, context, or human-authored note worth keeping, outside the deliberation lifecycle. Appears in the project notebook timeline (read_notebook) by default. |
 
 ## Recommended Flow
 
 thought → draft → critique → decision → action → synthesis
+
+**note** sits outside this lifecycle — it is the Journal: drop an observation worth keeping
+without implying a deliberation step. Notes surface in read_notebook's default timeline
+alongside decisions, actions, and syntheses.
 
 The **draft** type sits between exploration (thought) and commitment (decision). It signals
 "I've worked this out and would like feedback" — as opposed to a thought which is still raw,
@@ -283,7 +301,7 @@ var staticResources = []struct {
 	{
 		uri:         "council://message-types",
 		name:        "Message Types",
-		description: "Reference card for all 9 message types (message, thought, draft, critique, decision, action, review, code, synthesis) with when-to-use guidance and filtering examples.",
+		description: "Reference card for all 10 message types (message, thought, draft, critique, decision, action, review, code, synthesis, note) with when-to-use guidance and filtering examples.",
 		content:     messageTypesResource,
 	},
 	{

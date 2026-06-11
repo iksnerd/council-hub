@@ -143,7 +143,7 @@ With the HTTP container running, add Council Hub as a Streamable HTTP MCP server
 
 **URL:** `http://localhost:3001/mcp`
 
-Warp discovers all 30 tools automatically from the MCP schema.
+Warp discovers all 32 tools automatically from the MCP schema.
 
 ### Stdio Mode (CLI agent integration)
 

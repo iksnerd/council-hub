@@ -128,6 +128,26 @@ defmodule CouncilHubUi.Cluster do
   end
 
   @doc """
+  Read a project's notebook timeline across all cluster nodes. Entries merge by
+  UUIDv7 message ID — lexicographic order is chronological even across nodes —
+  and limit keeps the most recent entries. Returns %{results: [entry_maps], warnings: [strings]}.
+  """
+  def read_notebook(params) do
+    global_limit = Map.get(params, "limit", 100)
+
+    {results, warnings} = fan_out(:notebook_entries, [params])
+
+    merged =
+      results
+      |> List.flatten()
+      |> Enum.uniq_by(& &1.id)
+      |> Enum.sort_by(& &1.id)
+      |> Enum.take(-global_limit)
+
+    %{results: merged, warnings: warnings}
+  end
+
+  @doc """
   Get project digest across all cluster nodes.
   Returns %{results: [digest_maps], warnings: [strings]}.
   """
