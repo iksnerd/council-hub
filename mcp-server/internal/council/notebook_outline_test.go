@@ -36,8 +36,9 @@ func TestCreateNotebookValidation(t *testing.T) {
 	if err := s.CreateNotebook("", "proj", "t"); err == nil {
 		t.Error("expected error for empty id")
 	}
-	if err := s.CreateNotebook("nb", "", "t"); err == nil {
-		t.Error("expected error for empty project")
+	// Empty project is valid — it makes the notebook global.
+	if err := s.CreateNotebook("nb-global", "", "t"); err != nil {
+		t.Errorf("global notebook creation failed: %v", err)
 	}
 }
 
@@ -62,6 +63,22 @@ func TestListNotebooks(t *testing.T) {
 	}
 	if len(scoped) != 1 || scoped[0].ID != "ol-nb" {
 		t.Errorf("expected only ol-nb for ol-proj, got %+v", scoped)
+	}
+
+	// Global notebooks (no project) appear in every project's listing
+	if err := s.CreateNotebook("global-todos", "", "TODOs"); err != nil {
+		t.Fatalf("CreateNotebook (global) failed: %v", err)
+	}
+	scoped, err = s.ListNotebooks("ol-proj")
+	if err != nil {
+		t.Fatalf("ListNotebooks failed: %v", err)
+	}
+	ids := map[string]bool{}
+	for _, n := range scoped {
+		ids[n.ID] = true
+	}
+	if !ids["ol-nb"] || !ids["global-todos"] || len(scoped) != 2 {
+		t.Errorf("expected ol-nb + global-todos for ol-proj, got %+v", scoped)
 	}
 }
 
@@ -153,6 +170,56 @@ func TestGetOutlineTranscludesRefs(t *testing.T) {
 	}
 	if e.RefRepo != "alice/widgets" {
 		t.Errorf("repo wrong: %q", e.RefRepo)
+	}
+}
+
+func TestRoomRefTranscludesLiveState(t *testing.T) {
+	s := setupTestServer(t)
+	seedOutline(t, s)
+	mustPostTyped(t, s, "ol-room", "claude", "shipped the thing {sha:abc1234}", "action")
+
+	if _, err := s.AddOutlineEntry("ol-nb", "room_ref", "ol-room", "", ""); err != nil {
+		t.Fatalf("AddOutlineEntry (room_ref) failed: %v", err)
+	}
+
+	_, entries, err := s.GetOutline("ol-nb")
+	if err != nil {
+		t.Fatalf("GetOutline failed: %v", err)
+	}
+	e := entries[0]
+	if !e.RefFound || e.Kind != "room_ref" {
+		t.Fatalf("room_ref should resolve: %+v", e)
+	}
+	if e.RefStatus != "active" {
+		t.Errorf("expected live status active, got %q", e.RefStatus)
+	}
+	if e.RefTopic != "Test room" {
+		t.Errorf("expected room topic, got %q", e.RefTopic)
+	}
+	// Latest decision/action transcluded as the entry content
+	if e.RefContent != "shipped the thing {sha:abc1234}" {
+		t.Errorf("expected latest action as content, got %q", e.RefContent)
+	}
+	if e.RefRepo != "alice/widgets" {
+		t.Errorf("expected room repo for {sha} resolution, got %q", e.RefRepo)
+	}
+
+	// The work-list property: resolving the room flips the entry — no edit.
+	if err := s.UpdateStatus("ol-room", "resolved"); err != nil {
+		t.Fatalf("UpdateStatus failed: %v", err)
+	}
+	_, entries, _ = s.GetOutline("ol-nb")
+	if entries[0].RefStatus != "resolved" {
+		t.Errorf("room_ref should reflect live status, got %q", entries[0].RefStatus)
+	}
+}
+
+func TestRoomRefValidation(t *testing.T) {
+	s := setupTestServer(t)
+	seedOutline(t, s)
+
+	if _, err := s.AddOutlineEntry("ol-nb", "room_ref", "no-such-room", "", ""); err == nil {
+		t.Error("expected error for unknown room")
 	}
 }
 

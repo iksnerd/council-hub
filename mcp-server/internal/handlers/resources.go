@@ -92,6 +92,17 @@ Multiple Council Hub nodes can form a cluster (distributed Erlang over a LAN or 
   ` + "`bulk_visibility(all=true, visibility=private)`" + `, then re-publish the few rooms a peer
   should see with ` + "`bulk_visibility(room_ids=…, visibility=public)`" + `.
 
+## Current Work List (Engelbart's living to-do)
+
+Keep one global notebook as the standing source of truth for what's in flight:
+
+1. ` + "`edit_notebook(action=create, notebook_id=current-work, title=Current Work)`" + ` — no project = global
+2. ` + "`edit_notebook(action=add, notebook_id=current-work, kind=room_ref, ref_id=<room_id>)`" + ` — one entry per thread of work
+3. ` + "`read_notebook(notebook_id=current-work)`" + ` — each entry shows the room's LIVE status + latest decision/action
+4. Finishing work = ` + "`signal_status(room_id=…, status=resolved)`" + ` — the list updates itself; never edit it to mark things done
+
+Add prose entries for one-off TODOs that don't deserve a room yet; graduate them to a room (and a room_ref) when they grow.
+
 ## Tips
 
 - Use **summary_only=true** in search_messages to save tokens on large result sets

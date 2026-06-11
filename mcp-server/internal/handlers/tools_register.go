@@ -385,14 +385,14 @@ func (r *Registry) RegisterTools() {
 		Name: "edit_notebook",
 		Description: "Curate a notebook outline — the hand-assembled counterpart to read_notebook's automatic timeline. An outline is an ordered list of entries: prose sections (markdown you write) and refs (pointers to ledger messages, transcluded live at read time — never copied, so the outline can't drift from the ledger). " +
 			"Actions: create (notebook_id, project, title?) — new empty notebook; add (notebook_id, ref_id OR prose, after_entry_id? — omit to append) — add an entry; update (entry_id, prose) — rewrite a prose section; move (entry_id, after_entry_id — empty for top) — reorder; remove (entry_id) — drop an entry; delete (notebook_id) — remove the whole notebook (referenced messages are untouched). " +
-			"Entry IDs appear in read_notebook(notebook_id=...) output as *(entry #...)*. Typical flow: spot a pin-worthy timeline slice → edit_notebook(action=add, ref_id=<message_id>) → weave prose around it. Notebooks are node-local.",
+			"Entry IDs appear in read_notebook(notebook_id=...) output as *(entry #...)*. Typical flow: spot a pin-worthy timeline slice → edit_notebook(action=add, ref_id=<message_id>) → weave prose around it. Create without a project for a GLOBAL notebook (cross-project TODOs and standing lists). Work-list pattern: a global notebook of room_refs is a living 'current work' list — each entry shows the room's live status and latest decision/action, and signal_status(resolved) on the room checks it off; the list itself never needs editing. Notebooks are node-local.",
 		InputSchema: schema([]string{"action"}, map[string]map[string]any{
 			"action":         enumProp("string", "What to do: create/delete operate on notebooks; add/update/move/remove operate on entries.", []string{"create", "add", "update", "move", "remove", "delete"}),
 			"notebook_id":    prop("string", "Notebook identifier (required for create, delete, add). E.g. 'release-notes-v1'."),
-			"project":        prop("string", "Project the notebook belongs to (create only). Shown in the project's timeline footer."),
+			"project":        prop("string", "Project the notebook belongs to (create only). Omit for a GLOBAL notebook — e.g. cross-project TODOs or standing checklists: it can ref messages from any room and is listed in every project's timeline footer and /notebook view."),
 			"title":          prop("string", "Human-readable title (create only)."),
 			"entry_id":       prop("string", "Target entry (update, move, remove). From the *(entry #...)* markers in read_notebook output."),
-			"kind":           enumProp("string", "Entry kind for add. Usually inferred: ref_id implies 'ref', prose implies 'prose'.", []string{"ref", "prose"}),
+			"kind":           enumProp("string", "Entry kind for add. ref_id implies 'ref' and prose implies 'prose'; pass kind=room_ref explicitly with ref_id=<room_id> to track a room's live state (work-list item).", []string{"ref", "room_ref", "prose"}),
 			"ref_id":         prop("string", "Message ID to transclude (add with kind=ref). Must exist on this node."),
 			"prose":          prop("string", "Markdown content (add with kind=prose, or update)."),
 			"after_entry_id": prop("string", "Position control for add and move: the entry to land after. Omit on add to append; empty on move means the top."),

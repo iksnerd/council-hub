@@ -19,7 +19,10 @@ defmodule CouncilHubUiWeb.NotebookLive do
       format_timestamp: 1,
       format_date: 1,
       render_markdown: 1,
-      resolve_commit_refs: 2
+      resolve_commit_refs: 2,
+      status_dot_class: 1,
+      status_badge_class: 1,
+      truncate: 2
     ]
 
   @refresh_interval 5_000

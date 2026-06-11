@@ -148,6 +148,14 @@ defmodule CouncilHubUi.CouncilNotebookTest do
       assert nb.title == "One"
       assert nb.entry_count == 2
     end
+
+    test "global notebooks (no project) appear in every project's listing" do
+      create_notebook(%{id: "nb-one", project: "nb-proj"})
+      create_notebook(%{id: "global-todos", project: "", title: "TODOs"})
+
+      ids = Council.list_notebooks("nb-proj") |> Enum.map(& &1.id) |> Enum.sort()
+      assert ids == ["global-todos", "nb-one"]
+    end
   end
 
   describe "outline_entries/1" do
@@ -180,6 +188,28 @@ defmodule CouncilHubUi.CouncilNotebookTest do
       assert ref.author == "claude"
       assert ref.content == "use SQLite"
       assert ref.repo == "alice/widgets"
+    end
+
+    test "room_ref entries transclude the room's live status, topic, and latest action" do
+      seed_project()
+      create_notebook(%{id: "nb-work", project: ""})
+
+      create_notebook_entry(%{
+        notebook_id: "nb-work",
+        position: 1,
+        kind: "room_ref",
+        ref_id: "nb-room-a"
+      })
+
+      [entry] = Council.outline_entries("nb-work")
+      assert entry.ref_found
+      assert entry.room_id == "nb-room-a"
+      assert entry.room_status == "active"
+      assert entry.room_topic == "A test room"
+      # latest decision/action in that room is the synthesis? no — decision/action only:
+      # seed posts decision then synthesis in room-a; latest decision/action = the decision
+      assert entry.content == "use SQLite"
+      assert entry.repo == "alice/widgets"
     end
 
     test "dangling refs come back with ref_found: false" do

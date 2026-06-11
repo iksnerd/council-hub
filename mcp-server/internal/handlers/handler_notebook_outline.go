@@ -126,7 +126,11 @@ func (r *Registry) renderOutline(notebookID string) (*mcp.CallToolResult, ToolOu
 		title = notebook.ID
 	}
 	fmt.Fprintf(&b, "# 📓 %s\n", title)
-	fmt.Fprintf(&b, "**Notebook:** %s | **Project:** %s | **Entries:** %d\n---\n", notebook.ID, notebook.Project, len(entries))
+	scope := notebook.Project
+	if scope == "" {
+		scope = "global (cross-project)"
+	}
+	fmt.Fprintf(&b, "**Notebook:** %s | **Project:** %s | **Entries:** %d\n---\n", notebook.ID, scope, len(entries))
 
 	if len(entries) == 0 {
 		fmt.Fprintf(&b, "\nEmpty notebook. Add entries with edit_notebook(action=add, notebook_id=%s, ref_id=<message_id> or prose=<markdown>).\n", notebook.ID)
@@ -138,7 +142,21 @@ func (r *Registry) renderOutline(notebookID string) (*mcp.CallToolResult, ToolOu
 		case e.Kind == "prose":
 			fmt.Fprintf(&b, "\n%s\n*(entry %s)*\n", e.Prose, e.ID)
 		case !e.RefFound:
-			fmt.Fprintf(&b, "\n⚠ **referenced message #%.8s not found** — deleted, or it lives on another cluster node. *(entry %s)*\n", e.RefID, e.ID)
+			fmt.Fprintf(&b, "\n⚠ **referenced %s '%.12s' not found** — deleted, or it lives on another cluster node. *(entry %s)*\n", refNoun(e.Kind), e.RefID, e.ID)
+		case e.Kind == "room_ref":
+			// Live work-list item: the room's current status + its latest
+			// decision/action. Resolving the room flips this to [resolved] —
+			// the list never needs editing to stay true.
+			fmt.Fprintf(&b, "\n**[%s] %s** — %s\n", e.RefStatus, e.RefID, e.RefTopic)
+			if e.RefContent != "" {
+				ts := e.RefTime.Format("2006-01-02 15:04")
+				excerpt := strings.ReplaceAll(e.RefContent, "\n", " ")
+				if len(excerpt) > 240 {
+					excerpt = excerpt[:240] + "..."
+				}
+				fmt.Fprintf(&b, "  latest %s [%s %s]: %s\n", e.RefType, ts, e.RefAuthor, council.ResolveCommitRefs(excerpt, e.RefRepo))
+			}
+			fmt.Fprintf(&b, "*(entry %s)*\n", e.ID)
 		default:
 			ts := e.RefTime.Format("2006-01-02 15:04")
 			pin := ""
@@ -155,6 +173,13 @@ func (r *Registry) renderOutline(notebookID string) (*mcp.CallToolResult, ToolOu
 	return msg(b.String())
 }
 
+func refNoun(kind string) string {
+	if kind == "room_ref" {
+		return "room"
+	}
+	return "message"
+}
+
 // appendNotebookList writes a footer listing a project's curated notebooks
 // under the compiled timeline, so the outline layer is discoverable from the
 // timeline view.
@@ -169,6 +194,10 @@ func (r *Registry) appendNotebookList(b *strings.Builder, project string) {
 		if title == "" {
 			title = "(untitled)"
 		}
-		fmt.Fprintf(b, "- **%s** — %s (%d entries)\n", n.ID, title, n.EntryCount)
+		scope := ""
+		if n.Project == "" {
+			scope = " [global]"
+		}
+		fmt.Fprintf(b, "- **%s**%s — %s (%d entries)\n", n.ID, scope, title, n.EntryCount)
 	}
 }

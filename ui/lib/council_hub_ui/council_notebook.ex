@@ -78,8 +78,9 @@ defmodule CouncilHubUi.CouncilNotebook do
   end
 
   @doc """
-  Curated notebooks (Phase 2 outlines), optionally scoped to a project, most
-  recently updated first, each with its entry count.
+  Curated notebooks (Phase 2 outlines), most recently updated first, each with
+  its entry count. A project query also returns global notebooks (project = "")
+  — they belong to every view. Empty project returns everything.
   """
   def list_notebooks(project \\ "") do
     base = from n in Notebook, as: :nb
@@ -87,7 +88,7 @@ defmodule CouncilHubUi.CouncilNotebook do
     base =
       if project == "",
         do: base,
-        else: from([nb: n] in base, where: n.project == ^project)
+        else: from([nb: n] in base, where: n.project == ^project or n.project == "")
 
     Repo.all(
       from [nb: n] in base,
@@ -108,10 +109,12 @@ defmodule CouncilHubUi.CouncilNotebook do
   def get_notebook(id), do: Repo.get(Notebook, id)
 
   @doc """
-  A notebook outline's entries in order, with ref entries transcluded: the
-  referenced message (and its room's repo for {sha:...} resolution) resolved
-  live. Mirrors the Go server's GetOutline — a dangling ref comes back with
-  ref_found: false instead of failing the read.
+  A notebook outline's entries in order, with refs transcluded live: message
+  refs resolve the referenced message (and its room's repo for {sha:...}
+  resolution); room refs resolve the room's status, topic, and latest
+  decision/action — a notebook of room_refs is a living work list. Mirrors the
+  Go server's GetOutline — a dangling ref comes back with ref_found: false
+  instead of failing the read.
   """
   def outline_entries(notebook_id) do
     Repo.all(
@@ -120,6 +123,8 @@ defmodule CouncilHubUi.CouncilNotebook do
         on: e.kind == "ref" and m.id == e.ref_id,
         left_join: r in Room,
         on: r.id == m.room_id,
+        left_join: rr in Room,
+        on: e.kind == "room_ref" and rr.id == e.ref_id,
         where: e.notebook_id == ^notebook_id,
         order_by: [asc: e.position],
         select: %{
@@ -128,14 +133,26 @@ defmodule CouncilHubUi.CouncilNotebook do
           kind: e.kind,
           ref_id: e.ref_id,
           prose: e.prose,
-          ref_found: not is_nil(m.id),
-          room_id: coalesce(m.room_id, ""),
+          ref_found: not is_nil(m.id) or not is_nil(rr.id),
+          room_id: coalesce(coalesce(m.room_id, rr.id), ""),
           author: coalesce(m.author, ""),
           message_type: coalesce(m.message_type, ""),
-          content: coalesce(m.content, ""),
+          content:
+            coalesce(
+              coalesce(
+                m.content,
+                fragment(
+                  "(SELECT content FROM messages WHERE room_id = ? AND message_type IN ('decision','action') ORDER BY id DESC LIMIT 1)",
+                  rr.id
+                )
+              ),
+              ""
+            ),
           pinned: coalesce(m.pinned, false),
           timestamp: m.timestamp,
-          repo: coalesce(r.repo, "")
+          repo: coalesce(coalesce(r.repo, rr.repo), ""),
+          room_status: coalesce(rr.status, ""),
+          room_topic: coalesce(rr.description, "")
         }
     )
   end

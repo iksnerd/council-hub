@@ -24,13 +24,16 @@ type Notebook struct {
 
 // OutlineEntry is one row of a notebook outline. Kind "prose" carries freeform
 // markdown authored in the notebook; kind "ref" transcludes a ledger message
-// by ID — resolved live at render time, never copied, so the outline can't
-// drift from the ledger. Ref* fields are populated by GetOutline; RefFound is
-// false when the referenced message no longer exists locally.
+// by ID; kind "room_ref" transcludes a room's live state — status, topic, and
+// its latest decision/action — which makes a notebook of room_refs a living
+// work list: resolving the room flips the entry, no list maintenance. All refs
+// resolve at render time, never copied, so the outline can't drift from the
+// ledger. Ref* fields are populated by GetOutline; RefFound is false when the
+// referenced message/room no longer exists locally.
 type OutlineEntry struct {
 	ID       string
 	Position int
-	Kind     string // "ref" | "prose"
+	Kind     string // "ref" | "room_ref" | "prose"
 	RefID    string
 	Prose    string
 
@@ -42,13 +45,20 @@ type OutlineEntry struct {
 	RefTime    time.Time
 	RefRepo    string
 	RefFound   bool
+
+	// room_ref only: the room's live status and topic.
+	RefStatus string
+	RefTopic  string
 }
 
 // validOutlineKinds gates the entry kinds accepted by AddOutlineEntry.
-var validOutlineKinds = map[string]bool{"ref": true, "prose": true}
+var validOutlineKinds = map[string]bool{"ref": true, "room_ref": true, "prose": true}
 
 // CreateNotebook creates an empty notebook outline. The ID is the stable
-// address used by edit_notebook and read_notebook(notebook_id=...).
+// address used by edit_notebook and read_notebook(notebook_id=...). An empty
+// project makes the notebook global: it can transclude messages from any room
+// and is listed alongside every project's notebooks (cross-project TODOs,
+// reading lists, standing checklists).
 func (s *Server) CreateNotebook(id, project, title string) error {
 	s.Mu.Lock()
 	defer s.Mu.Unlock()
@@ -58,9 +68,6 @@ func (s *Server) CreateNotebook(id, project, title string) error {
 		return fmt.Errorf("notebook id is required")
 	}
 	project = normalizeProject(project)
-	if project == "" {
-		return fmt.Errorf("project is required")
-	}
 
 	res, err := s.DB.Exec(
 		`INSERT OR IGNORE INTO notebooks (id, project, title) VALUES (?, ?, ?)`,
@@ -90,8 +97,9 @@ func (s *Server) GetNotebook(id string) (Notebook, error) {
 	return n, err
 }
 
-// ListNotebooks returns notebooks, optionally filtered by project, most
-// recently updated first.
+// ListNotebooks returns notebooks, most recently updated first. With a project
+// it returns that project's notebooks plus global ones (project = "") — global
+// notebooks belong to every view. With an empty project it returns everything.
 func (s *Server) ListNotebooks(project string) ([]Notebook, error) {
 	query := `
 		SELECT id, project, title, created_at, updated_at,
@@ -99,7 +107,7 @@ func (s *Server) ListNotebooks(project string) ([]Notebook, error) {
 		FROM notebooks`
 	var args []any
 	if project != "" {
-		query += ` WHERE project = ?`
+		query += ` WHERE project IN (?, '')`
 		args = append(args, normalizeProject(project))
 	}
 	query += ` ORDER BY updated_at DESC`
@@ -162,6 +170,16 @@ func (s *Server) AddOutlineEntry(notebookID, kind, refID, prose, afterEntryID st
 		}
 		if exists == 0 {
 			return "", fmt.Errorf("message '%s' not found — refs must point at an existing local message", refID)
+		}
+		prose = ""
+	case "room_ref":
+		refID = strings.TrimSpace(refID)
+		var exists int
+		if err := s.DB.QueryRow(`SELECT COUNT(*) FROM rooms WHERE id = ?`, refID).Scan(&exists); err != nil {
+			return "", err
+		}
+		if exists == 0 {
+			return "", fmt.Errorf("room '%s' not found — room_refs must point at an existing local room", refID)
 		}
 		prose = ""
 	case "prose":
@@ -337,14 +355,29 @@ func (s *Server) GetOutline(notebookID string) (Notebook, []OutlineEntry, error)
 		return n, nil, err
 	}
 
+	// Message refs resolve via m/r; room refs resolve via rr, with the room's
+	// latest decision/action pulled in as the entry's content — so a work-list
+	// entry always shows where that thread of work currently stands.
 	rows, err := s.DB.Query(`
 		SELECT e.id, e.position, e.kind, e.ref_id, e.prose,
-		       m.id IS NOT NULL,
-		       COALESCE(m.room_id, ''), COALESCE(m.author, ''), COALESCE(m.message_type, ''),
-		       COALESCE(m.content, ''), COALESCE(m.pinned, 0), m.timestamp, COALESCE(r.repo, '')
+		       (m.id IS NOT NULL OR rr.id IS NOT NULL),
+		       COALESCE(m.room_id, rr.id, ''),
+		       COALESCE(m.author, lm.author, ''),
+		       COALESCE(m.message_type, lm.message_type, ''),
+		       COALESCE(m.content, lm.content, ''),
+		       COALESCE(m.pinned, 0),
+		       COALESCE(m.timestamp, lm.timestamp),
+		       COALESCE(r.repo, rr.repo, ''),
+		       COALESCE(rr.status, ''), COALESCE(rr.description, '')
 		FROM notebook_entries e
 		LEFT JOIN messages m ON e.kind = 'ref' AND m.id = e.ref_id
 		LEFT JOIN rooms r ON r.id = m.room_id
+		LEFT JOIN rooms rr ON e.kind = 'room_ref' AND rr.id = e.ref_id
+		LEFT JOIN messages lm ON lm.id = (
+			SELECT id FROM messages
+			WHERE room_id = rr.id AND message_type IN ('decision', 'action')
+			ORDER BY id DESC LIMIT 1
+		)
 		WHERE e.notebook_id = ?
 		ORDER BY e.position ASC`, notebookID)
 	if err != nil {
@@ -355,18 +388,32 @@ func (s *Server) GetOutline(notebookID string) (Notebook, []OutlineEntry, error)
 	var entries []OutlineEntry
 	for rows.Next() {
 		var e OutlineEntry
-		var ts sql.NullTime
+		// COALESCE strips the column's datetime affinity, so the driver hands
+		// back the raw stored string — parse it instead of scanning NullTime.
+		var ts sql.NullString
 		if err := rows.Scan(&e.ID, &e.Position, &e.Kind, &e.RefID, &e.Prose,
 			&e.RefFound, &e.RefRoomID, &e.RefAuthor, &e.RefType,
-			&e.RefContent, &e.RefPinned, &ts, &e.RefRepo); err != nil {
+			&e.RefContent, &e.RefPinned, &ts, &e.RefRepo,
+			&e.RefStatus, &e.RefTopic); err != nil {
 			return n, nil, err
 		}
 		if ts.Valid {
-			e.RefTime = ts.Time
+			e.RefTime = parseStoredTime(ts.String)
 		}
 		entries = append(entries, e)
 	}
 	return n, entries, rows.Err()
+}
+
+// parseStoredTime parses a raw SQLite timestamp string in the formats the
+// driver itself accepts for DATETIME columns.
+func parseStoredTime(s string) time.Time {
+	for _, layout := range []string{"2006-01-02 15:04:05", time.RFC3339, "2006-01-02T15:04:05Z", "2006-01-02 15:04:05.999999999-07:00"} {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t
+		}
+	}
+	return time.Time{}
 }
 
 // --- internal helpers ---
