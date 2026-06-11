@@ -2,6 +2,9 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"regexp"
 	"strings"
 	"testing"
@@ -191,6 +194,64 @@ func TestHandleReadNotebookTimelineListsCuratedNotebooks(t *testing.T) {
 	text := resultText(res)
 	if !strings.Contains(text, "Curated notebooks") || !strings.Contains(text, "rel-notes") {
 		t.Errorf("timeline should list curated notebooks, got: %s", text)
+	}
+}
+
+func TestUINotebookEntryHandler(t *testing.T) {
+	reg, msgID := setupOutlineHandler(t)
+	handler := reg.UINotebookEntryHandler()
+
+	post := func(body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/api/ui/notebook_entry", strings.NewReader(body))
+		req.RemoteAddr = "127.0.0.1:54321"
+		w := httptest.NewRecorder()
+		handler(w, req)
+		return w
+	}
+
+	// Pin a message (ref kind inferred from ref_id)
+	w := post(`{"notebook_id":"rel-notes","ref_id":"` + msgID + `"}`)
+	var resp struct {
+		EntryID string `json:"entry_id"`
+		Error   string `json:"error"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.Error != "" || resp.EntryID == "" {
+		t.Fatalf("expected entry_id, got %+v", resp)
+	}
+	_, entries, _ := reg.Server.GetOutline("rel-notes")
+	if len(entries) != 1 || entries[0].Kind != "ref" || entries[0].RefID != msgID {
+		t.Errorf("pinned entry wrong: %+v", entries)
+	}
+
+	// Validation errors come back as JSON error, not HTTP error
+	w = post(`{"ref_id":"x"}`)
+	if !strings.Contains(w.Body.String(), "notebook_id is required") {
+		t.Errorf("expected notebook_id error, got: %s", w.Body.String())
+	}
+	w = post(`{"notebook_id":"rel-notes","ref_id":"ghost"}`)
+	if !strings.Contains(w.Body.String(), "not found") {
+		t.Errorf("expected ref-not-found error, got: %s", w.Body.String())
+	}
+
+	// Non-loopback rejected
+	req := httptest.NewRequest(http.MethodPost, "/api/ui/notebook_entry", strings.NewReader(`{}`))
+	req.RemoteAddr = "10.0.0.9:54321"
+	rec := httptest.NewRecorder()
+	handler(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("expected 403 for non-loopback, got %d", rec.Code)
+	}
+
+	// GET rejected
+	req = httptest.NewRequest(http.MethodGet, "/api/ui/notebook_entry", nil)
+	req.RemoteAddr = "127.0.0.1:54321"
+	rec = httptest.NewRecorder()
+	handler(rec, req)
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected 405 for GET, got %d", rec.Code)
 	}
 }
 

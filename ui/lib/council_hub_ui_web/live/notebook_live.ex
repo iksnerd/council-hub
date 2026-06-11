@@ -7,7 +7,10 @@ defmodule CouncilHubUiWeb.NotebookLive do
   """
   use CouncilHubUiWeb, :live_view
 
+  require Logger
+
   alias CouncilHubUi.Council
+  alias CouncilHubUi.McpClient
 
   import CouncilHubUiWeb.CouncilHelpers,
     only: [
@@ -31,7 +34,8 @@ defmodule CouncilHubUiWeb.NotebookLive do
      assign(socket,
        page_title: "Notebook",
        projects: Council.list_projects(),
-       all_types: @all_types
+       all_types: @all_types,
+       compose_author: ""
      )}
   end
 
@@ -68,6 +72,61 @@ defmodule CouncilHubUiWeb.NotebookLive do
     {:noreply, patch_to(socket, socket.assigns.project, types)}
   end
 
+  # Human note composer: the note is born in the dialog ledger (a typed
+  # message in a project room, posted through the Go server's localhost-only
+  # UI endpoint) — never written into the notebook tables directly. Outlines
+  # then transclude it. See the Engelbart design thought in notebook-feature.
+  @impl true
+  def handle_event(
+        "post_note",
+        %{"room_id" => room_id, "author" => author, "type" => type, "message" => message},
+        socket
+      ) do
+    message = String.trim(message)
+    author = String.trim(author)
+
+    cond do
+      message == "" or author == "" ->
+        {:noreply, put_flash(socket, :error, "Name and note are both required")}
+
+      room_id == "" ->
+        {:noreply, put_flash(socket, :error, "Pick a room — notes live in the dialog ledger")}
+
+      true ->
+        case McpClient.post_to_room(room_id, author, message, type) do
+          :ok ->
+            {:noreply,
+             socket
+             |> assign(compose_author: author)
+             |> put_flash(:info, "Posted to #{room_id} as #{type}")
+             |> load_entries()}
+
+          {:error, reason} ->
+            Logger.warning("notebook post_note failed: #{inspect(reason)}")
+
+            {:noreply,
+             put_flash(socket, :error, "Post failed — is the MCP server running in HTTP mode?")}
+        end
+    end
+  end
+
+  @impl true
+  def handle_event("pin_entry", %{"message-id" => message_id, "notebook" => notebook_id}, socket) do
+    case McpClient.add_notebook_entry(notebook_id, %{ref_id: message_id}) do
+      :ok ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "Pinned ##{String.slice(message_id, 0, 8)} into #{notebook_id}")
+         |> load_entries()}
+
+      {:error, reason} ->
+        Logger.warning("notebook pin_entry failed: #{inspect(reason)}")
+
+        {:noreply,
+         put_flash(socket, :error, "Pin failed — is the MCP server running in HTTP mode?")}
+    end
+  end
+
   @impl true
   def handle_info(:refresh, socket) do
     Process.send_after(self(), :refresh, @refresh_interval)
@@ -93,7 +152,7 @@ defmodule CouncilHubUiWeb.NotebookLive do
     case Council.get_notebook(notebook_id) do
       nil ->
         socket
-        |> assign(notebook: nil, outline: [], entries: [], entry_count: 0, days: [])
+        |> assign(notebook: nil, outline: [], entries: [], entry_count: 0, days: [], rooms: [])
         |> put_flash(:error, "Notebook '#{notebook_id}' not found")
 
       notebook ->
@@ -142,9 +201,15 @@ defmodule CouncilHubUiWeb.NotebookLive do
         })
       end
 
+    rooms =
+      if project == "",
+        do: [],
+        else: Council.list_rooms_filtered(%{"project" => project})
+
     assign(socket,
       notebook: nil,
       notebooks: Council.list_notebooks(project),
+      rooms: rooms,
       outline: [],
       entries: entries,
       entry_count: length(entries),
