@@ -8,6 +8,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 Changes on `main` not yet in a tagged release.
 
+## [0.39.0] - 2026-06-11
+
+The Engelbart release: a dev notebook over the existing ledger — compiled timelines, curated outlines with live transclusion, human notes, and self-maintaining work lists. 32 MCP tools, 10 message types. (PR [#29](https://github.com/iksnerd/council-hub/pull/29))
+
 ### Added
 - **Global notebooks + `room_ref` entries — the living work list.** Create a notebook without a project (`edit_notebook(action=create, notebook_id=current-work)`) and it becomes global: listed in every project's view (🌐), able to ref messages from any room. New entry kind `room_ref` transcludes a *room's live state* — status, topic, and its latest decision/action — so a global notebook of room_refs is a current-work list that maintains itself: `signal_status(resolved)` on the room checks the item off, and the list never gets edited to stay true. The `council://guide` resource documents the pattern.
 - **`note` message type** (10 types total) — a journal entry: an observation or context worth keeping that isn't part of a deliberation. Sits outside the thought→…→synthesis lifecycle and is included in `read_notebook`'s default timeline (`decision,action,synthesis,note`), so human notes posted from the dashboard composer are visible immediately. The `/notebook` composer defaults to it; the room composer offers it.
