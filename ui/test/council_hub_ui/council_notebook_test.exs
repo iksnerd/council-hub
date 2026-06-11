@@ -67,6 +67,22 @@ defmodule CouncilHubUi.CouncilNotebookTest do
       refute Enum.any?(entries, &(&1.room_id == "nb-other"))
     end
 
+    test "includes note entries by default (the human journal type)" do
+      seed_project()
+
+      note =
+        create_message(%{
+          room_id: "nb-room-a",
+          author: "human",
+          content: "journal observation",
+          message_type: "note"
+        })
+
+      entries = Council.notebook_entries(%{"project" => "nb-proj"})
+      assert List.last(entries).id == note.id
+      assert List.last(entries).message_type == "note"
+    end
+
     test "filters by types CSV" do
       seed_project()
 

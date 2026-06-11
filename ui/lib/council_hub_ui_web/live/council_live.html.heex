@@ -374,7 +374,7 @@
               name="type"
               class="bg-[var(--ch-raised)] border border-[var(--ch-border)] rounded text-[11px] text-[var(--ch-text-mid)] px-2 py-1 focus:outline-none focus:border-[var(--ch-focus-border)]"
             >
-              <%= for type <- ~w(message thought draft decision action review code critique synthesis) do %>
+              <%= for type <- ~w(message thought draft decision action review code critique synthesis note) do %>
                 <option value={type}>{type}</option>
               <% end %>
             </select>

@@ -155,6 +155,22 @@ defmodule CouncilHubUiWeb.NotebookLiveTest do
       # both project rooms selectable as the note's target
       assert html =~ ~s(value="nbl-room-a")
       assert html =~ ~s(value="nbl-room-b")
+      # note is the composer's first (default) type option
+      assert html =~ ~s(<option value="note")
+    end
+
+    test "note entries show in the default timeline", %{conn: conn} do
+      seed()
+
+      create_message(%{
+        room_id: "nbl-room-a",
+        author: "human",
+        content: "a journal note from a human",
+        message_type: "note"
+      })
+
+      {:ok, _view, html} = live(conn, "/notebook?project=nbl-proj")
+      assert html =~ "a journal note from a human"
     end
 
     test "pin buttons render on timeline entries when a notebook exists", %{conn: conn} do

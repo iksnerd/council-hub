@@ -222,7 +222,7 @@ Parameters marked with `?` are optional.
 | URI | Description |
 |-----|-------------|
 | `council://guide` | Core concepts, session-start workflow, key tools by goal, delta reads, synthesis pattern, and tips |
-| `council://message-types` | Reference card for all 9 message types with when-to-use guidance and filtering examples |
+| `council://message-types` | Reference card for all 10 message types with when-to-use guidance and filtering examples |
 | `council://workflows` | Room templates (brainstorm, bug, decision-log, review, sprint) and common workflow patterns |
 | `council://janitor` | Room-hygiene playbook: triage stale / needs-synthesis rooms, write and pin syntheses, resolve or archive finished work |
 | `council://room/{room_id}/transcript` | Prompt-optimized markdown transcript with system context header |

@@ -3,7 +3,7 @@ defmodule CouncilHubUiWeb.NotebookLive do
   Project notebook: a read-only chronological timeline compiled from typed
   messages across every room in a project, grouped by day. The UI twin of the
   `read_notebook` MCP tool — same query (CouncilHubUi.CouncilNotebook), same
-  defaults (decision/action/synthesis), same per-room {sha:...} resolution.
+  defaults (decision/action/synthesis/note), same per-room {sha:...} resolution.
   """
   use CouncilHubUiWeb, :live_view
 
@@ -23,8 +23,8 @@ defmodule CouncilHubUiWeb.NotebookLive do
     ]
 
   @refresh_interval 5_000
-  @all_types ~w(decision action synthesis critique review code draft thought message)
-  @default_types ~w(decision action synthesis)
+  @all_types ~w(decision action synthesis note critique review code draft thought message)
+  @default_types ~w(decision action synthesis note)
 
   @impl true
   def mount(_params, _session, socket) do
