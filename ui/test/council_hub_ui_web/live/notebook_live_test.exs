@@ -143,6 +143,30 @@ defmodule CouncilHubUiWeb.NotebookLiveTest do
       {:ok, _view, html} = live(conn, "/notebook?project=nbl-proj&notebook=ghost")
       assert html =~ "not found"
     end
+
+    test "global notebook with room_refs renders as a live work list", %{conn: conn} do
+      seed()
+      create_notebook(%{id: "current-work", project: "", title: "Current Work"})
+
+      create_notebook_entry(%{
+        notebook_id: "current-work",
+        position: 1,
+        kind: "room_ref",
+        ref_id: "nbl-room-a"
+      })
+
+      # global notebook chip visible from any project, with the 🌐 marker
+      {:ok, _view, html} = live(conn, "/notebook?project=nbl-proj")
+      assert html =~ "🌐 current-work"
+
+      {:ok, _view, html} = live(conn, "/notebook?project=nbl-proj&notebook=current-work")
+      assert html =~ "Current Work"
+      assert html =~ "🌐 global"
+      # live room state: link, status badge, latest decision/action excerpt
+      assert html =~ "/rooms/nbl-room-a"
+      assert html =~ "active"
+      assert html =~ "decided on SQLite"
+    end
   end
 
   describe "note composer + pin buttons" do

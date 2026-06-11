@@ -30,7 +30,11 @@
           </.link>
           <span class="text-[12px] font-mono text-[var(--ch-text-hi)]">📓 {@notebook.id}</span>
           <span class="text-[10px] font-mono text-[var(--ch-text-xs)]">
-            project: {@notebook.project}
+            <%= if @notebook.project == "" do %>
+              🌐 global
+            <% else %>
+              project: {@notebook.project}
+            <% end %>
           </span>
         </div>
       <% else %>
@@ -89,7 +93,7 @@
                     class="px-2 py-0.5 rounded text-[10px] font-mono border border-[var(--ch-border)] text-[var(--ch-text-lo)] hover:text-[var(--ch-text-hi)]"
                     title={nb.title}
                   >
-                    📓 {nb.id} ({nb.entry_count})
+                    {if nb.project == "", do: "🌐", else: "📓"} {nb.id} ({nb.entry_count})
                   </.link>
                 <% end %>
               </div>
@@ -174,7 +178,44 @@
                   id={"outline-#{entry.id}"}
                   class="bg-amber-500/5 border border-amber-500/20 rounded-lg p-3 text-[11px] text-amber-200/90 font-mono"
                 >
-                  ⚠ referenced message #{String.slice(entry.ref_id, 0, 8)} not found — deleted, or it lives on another cluster node
+                  ⚠ referenced {if entry.kind == "room_ref", do: "room", else: "message"} {String.slice(
+                    entry.ref_id,
+                    0,
+                    12
+                  )} not found — deleted, or it lives on another cluster node
+                </div>
+              <% entry.kind == "room_ref" -> %>
+                <div
+                  id={"outline-#{entry.id}"}
+                  class="bg-[var(--ch-surface)] border border-[var(--ch-border)] rounded-lg p-3"
+                >
+                  <div class="flex items-center gap-2 flex-wrap">
+                    <span class={[
+                      "w-1.5 h-1.5 rounded-full shrink-0",
+                      status_dot_class(entry.room_status)
+                    ]}>
+                    </span>
+                    <.link
+                      navigate={~p"/rooms/#{entry.room_id}"}
+                      class="text-[12px] font-mono text-[var(--ch-text-hi)] hover:underline"
+                    >
+                      {entry.room_id}
+                    </.link>
+                    <span class={[
+                      "px-1.5 py-px rounded text-[10px] font-mono",
+                      status_badge_class(entry.room_status)
+                    ]}>
+                      {entry.room_status}
+                    </span>
+                    <span class="text-[11px] text-[var(--ch-text-lo)] truncate">
+                      {entry.room_topic}
+                    </span>
+                  </div>
+                  <%= if entry.content != "" do %>
+                    <div class="mt-1.5 text-[11px] text-[var(--ch-text-xs)] line-clamp-2">
+                      latest: {truncate(entry.content, 200)}
+                    </div>
+                  <% end %>
                 </div>
               <% true -> %>
                 <div
