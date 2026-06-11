@@ -34,9 +34,16 @@
           Nodes
         </span>
         <.link
+          navigate={~p"/notebook"}
+          title="Project notebook timeline"
+          class="text-[10px] font-mono text-[var(--ch-text-xs)] hover:text-[var(--ch-text-hi)] ml-auto"
+        >
+          notebook
+        </.link>
+        <.link
           navigate={~p"/status"}
           title="Status & health"
-          class="text-[10px] font-mono text-[var(--ch-text-xs)] hover:text-[var(--ch-text-hi)] ml-auto"
+          class="text-[10px] font-mono text-[var(--ch-text-xs)] hover:text-[var(--ch-text-hi)]"
         >
           status
         </.link>

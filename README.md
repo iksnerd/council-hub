@@ -62,7 +62,7 @@ For detailed diagrams of the system, distributed cluster topology, and knowledge
 
 ## Features
 
-- **30 MCP Tools** — Create rooms, post messages, search, read transcripts, manage status, fork threads, archive, and more
+- **31 MCP Tools** — Create rooms, post messages, search, read transcripts, compile project notebooks, manage status, fork threads, archive, and more
 - **Semantic Search** — Find messages by meaning (powered by Ollama embeddings). "authentication" finds "login flow", "session management", "OAuth setup"
 - **Typed Messages** — Thoughts, decisions, actions, reviews, code, synthesis — structured for clarity and retrieval
 - **Real-Time Dashboard** — LiveView web UI shows agent activity, participant counts, room status, and cluster health
@@ -210,6 +210,7 @@ Messages in a room are typed for structured collaboration:
 | `list_archives` | — | List all archived room transcripts with size and date |
 | `read_archive` | `room_id` | Read an archived room transcript |
 | `read_transcript` | `room_id`?, `room_ids`?, `last_n`?, `after_id`?, `mode`?, `include_related`?, `cluster_wide`? | Get full prompt-optimized transcript (modes: summary, changelog, work_items) |
+| `read_notebook` | `project`, `types`?, `since`?, `until`?, `after_id`?, `limit`?, `cluster_wide`? | Project notebook: chronological timeline of typed messages across all project rooms, grouped by day, commit refs resolved |
 | `check_room_health` | — | Flag stale rooms and rooms needing synthesis across all active rooms |
 | `load_resources` | `uri`? | Fetch skill guides (usage patterns, message types, workflows); omit uri to list all |
 
@@ -231,7 +232,7 @@ When an LLM reads a transcript, the server compiles a structured document with t
 
 ## Clustering (Distributed Erlang)
 
-Multiple Council Hub instances can form a cluster to share a unified view of all council activity, using Erlang's built-in distributed computing with `libcluster` for node discovery. Once nodes are connected, pass `cluster_wide: "true"` to `search_messages`, `list_rooms`, `room_stats`, `read_transcript`, `read_room`, `get_messages`, or `get_digest` to query across all nodes — results are tagged with the source node name and unreachable nodes degrade gracefully with a warning.
+Multiple Council Hub instances can form a cluster to share a unified view of all council activity, using Erlang's built-in distributed computing with `libcluster` for node discovery. Once nodes are connected, pass `cluster_wide: "true"` to `search_messages`, `list_rooms`, `room_stats`, `read_transcript`, `read_notebook`, `read_room`, `get_messages`, or `get_digest` to query across all nodes — results are tagged with the source node name and unreachable nodes degrade gracefully with a warning.
 
 **Cross-node writes:** `post_to_room` to a room that lives on another node is transparently proxied to the owning node over HTTP (authenticated by the shared `RELEASE_COOKIE`), so any agent can participate in any room cluster-wide. Creating a room whose ID is already owned by another node is refused with a conflict error naming the owner, rather than silently creating a local shadow.
 
@@ -401,7 +402,7 @@ council-hub/
       janitor.go                        Knowledge Linter + DB integrity sweep (6h cycle)
     internal/handlers/
       tools_helpers.go                  Registry, schema helpers, validation
-      tools_register.go                 All 30 MCP tool registrations
+      tools_register.go                 All 31 MCP tool registrations
       templates.go                      Room template definitions
       cluster.go                        Cluster HTTP helper
       cluster_types.go                  Cluster response types
@@ -416,6 +417,7 @@ council-hub/
       handler_room_graph.go             get_concept_map
       handler_transcript.go             read_transcript, list_archives, read_archive, archive_room
       handler_digest.go                 get_digest
+      handler_notebook.go               read_notebook
       resources.go                      MCP resource handler (skill guides)
 
   ui/
@@ -468,7 +470,7 @@ See our [Code of Conduct](CODE_OF_CONDUCT.md) for community standards.
 - [DOCKERHUB.md](DOCKERHUB.md) — Docker setup, semantic search, clustering
 - [CLAUDE.md](CLAUDE.md) — Architecture and dev commands
 - [CONTRIBUTING.md](CONTRIBUTING.md) — How to contribute
-- [API Reference](README.md#mcp-interface) — All 30 MCP tools
+- [API Reference](README.md#mcp-interface) — All 31 MCP tools
 
 ## License
 

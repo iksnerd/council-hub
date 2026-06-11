@@ -33,6 +33,7 @@ defmodule CouncilHubUiWeb.Router do
     live_session :default do
       live "/", CouncilLive, :index
       live "/status", StatusLive, :index
+      live "/notebook", NotebookLive, :index
       live "/rooms/:room_id", CouncilLive, :show
     end
   end
@@ -55,6 +56,7 @@ defmodule CouncilHubUiWeb.Router do
     post "/read_transcript", ClusterController, :read_transcript
     post "/get_messages", ClusterController, :get_messages
     post "/get_digest", ClusterController, :get_digest
+    post "/read_notebook", ClusterController, :read_notebook
     post "/locate_room", ClusterController, :locate_room
   end
 end
