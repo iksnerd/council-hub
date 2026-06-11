@@ -173,6 +173,25 @@ func initSchema(db *sql.DB) error {
 		PRIMARY KEY (agent, room_id)
 	);
 
+	CREATE TABLE IF NOT EXISTS notebooks (
+		id TEXT PRIMARY KEY,
+		project TEXT DEFAULT '',
+		title TEXT DEFAULT '',
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+
+	CREATE TABLE IF NOT EXISTS notebook_entries (
+		id TEXT PRIMARY KEY,
+		notebook_id TEXT NOT NULL,
+		position INTEGER NOT NULL,
+		kind TEXT NOT NULL DEFAULT 'prose',
+		ref_id TEXT DEFAULT '',
+		prose TEXT DEFAULT '',
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY(notebook_id) REFERENCES notebooks(id)
+	);
+
 	CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
 		content,
 		author UNINDEXED,
@@ -226,6 +245,8 @@ func initSchema(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_messages_room_id_is_summary ON messages(room_id, is_summary)`,
 		`CREATE INDEX IF NOT EXISTS idx_rooms_project ON rooms(project)`,
 		`CREATE INDEX IF NOT EXISTS idx_rooms_status ON rooms(status)`,
+		`CREATE INDEX IF NOT EXISTS idx_notebook_entries_nb ON notebook_entries(notebook_id, position)`,
+		`CREATE INDEX IF NOT EXISTS idx_notebooks_project ON notebooks(project)`,
 	}
 	for _, idx := range indexes {
 		if _, err := db.Exec(idx); err != nil {

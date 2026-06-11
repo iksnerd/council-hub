@@ -9,7 +9,7 @@ defmodule CouncilHubUi.CouncilNotebook do
 
   import Ecto.Query
   alias CouncilHubUi.Repo
-  alias CouncilHubUi.Council.{Room, Message}
+  alias CouncilHubUi.Council.{Room, Message, Notebook, NotebookEntry}
 
   @default_types ~w(decision action synthesis)
   @default_limit 100
@@ -75,6 +75,69 @@ defmodule CouncilHubUi.CouncilNotebook do
       )
       |> Enum.reverse()
     end
+  end
+
+  @doc """
+  Curated notebooks (Phase 2 outlines), optionally scoped to a project, most
+  recently updated first, each with its entry count.
+  """
+  def list_notebooks(project \\ "") do
+    base = from n in Notebook, as: :nb
+
+    base =
+      if project == "",
+        do: base,
+        else: from([nb: n] in base, where: n.project == ^project)
+
+    Repo.all(
+      from [nb: n] in base,
+        left_join: e in NotebookEntry,
+        on: e.notebook_id == n.id,
+        group_by: n.id,
+        order_by: [desc: n.updated_at],
+        select: %{
+          id: n.id,
+          project: n.project,
+          title: n.title,
+          updated_at: n.updated_at,
+          entry_count: count(e.id)
+        }
+    )
+  end
+
+  def get_notebook(id), do: Repo.get(Notebook, id)
+
+  @doc """
+  A notebook outline's entries in order, with ref entries transcluded: the
+  referenced message (and its room's repo for {sha:...} resolution) resolved
+  live. Mirrors the Go server's GetOutline — a dangling ref comes back with
+  ref_found: false instead of failing the read.
+  """
+  def outline_entries(notebook_id) do
+    Repo.all(
+      from e in NotebookEntry,
+        left_join: m in Message,
+        on: e.kind == "ref" and m.id == e.ref_id,
+        left_join: r in Room,
+        on: r.id == m.room_id,
+        where: e.notebook_id == ^notebook_id,
+        order_by: [asc: e.position],
+        select: %{
+          id: e.id,
+          position: e.position,
+          kind: e.kind,
+          ref_id: e.ref_id,
+          prose: e.prose,
+          ref_found: not is_nil(m.id),
+          room_id: coalesce(m.room_id, ""),
+          author: coalesce(m.author, ""),
+          message_type: coalesce(m.message_type, ""),
+          content: coalesce(m.content, ""),
+          pinned: coalesce(m.pinned, false),
+          timestamp: m.timestamp,
+          repo: coalesce(r.repo, "")
+        }
+    )
   end
 
   @doc "Distinct non-empty project names, alphabetical. Feeds the /notebook picker."

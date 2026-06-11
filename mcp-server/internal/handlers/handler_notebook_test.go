@@ -58,7 +58,7 @@ func TestHandleReadNotebookMissingProject(t *testing.T) {
 	reg := setupHandlerTest(t)
 
 	res, _, _ := reg.handleReadNotebook(context.Background(), nil, ReadNotebookInput{})
-	if !strings.Contains(resultText(res), "project is required") {
+	if !strings.Contains(resultText(res), "project or notebook_id is required") {
 		t.Error("expected project-required error")
 	}
 }

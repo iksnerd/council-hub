@@ -64,4 +64,40 @@ defmodule CouncilHubUi.CouncilFixtures do
     import Ecto.Query
     Repo.one(from m in CouncilHubUi.Council.Message, order_by: [desc: m.id], limit: 1)
   end
+
+  def create_notebook(attrs \\ %{}) do
+    defaults = %{
+      id: "test-notebook-#{System.unique_integer([:positive])}",
+      project: "",
+      title: "",
+      created_at: NaiveDateTime.utc_now(),
+      updated_at: NaiveDateTime.utc_now()
+    }
+
+    merged = Map.merge(defaults, attrs)
+    Repo.insert_all("notebooks", [merged])
+    Repo.get(CouncilHubUi.Council.Notebook, merged.id)
+  end
+
+  def create_notebook_entry(attrs \\ %{}) do
+    counter = System.unique_integer([:positive, :monotonic]) |> rem(281_474_976_710_655)
+    last_part = counter |> Integer.to_string(16) |> String.pad_leading(12, "0")
+
+    defaults = %{
+      id: "019e0000-0000-7000-8000-#{last_part}",
+      notebook_id: "test-notebook",
+      position: counter,
+      kind: "prose",
+      ref_id: "",
+      prose: "",
+      created_at: NaiveDateTime.utc_now()
+    }
+
+    merged = Map.merge(defaults, attrs)
+    {1, nil} = Repo.insert_all("notebook_entries", [merged])
+
+    import Ecto.Query
+
+    Repo.one(from e in CouncilHubUi.Council.NotebookEntry, order_by: [desc: e.id], limit: 1)
+  end
 end

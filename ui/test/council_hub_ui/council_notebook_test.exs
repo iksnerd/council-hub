@@ -116,4 +116,69 @@ defmodule CouncilHubUi.CouncilNotebookTest do
       assert Council.list_projects() == ["nb-proj", "other-proj"]
     end
   end
+
+  describe "list_notebooks/1" do
+    test "returns notebooks with entry counts, optionally scoped to a project" do
+      create_notebook(%{id: "nb-one", project: "nb-proj", title: "One"})
+      create_notebook(%{id: "nb-two", project: "other-proj"})
+      create_notebook_entry(%{notebook_id: "nb-one", prose: "hello"})
+      create_notebook_entry(%{notebook_id: "nb-one", prose: "world"})
+
+      all = Council.list_notebooks()
+      assert length(all) == 2
+
+      [nb] = Council.list_notebooks("nb-proj")
+      assert nb.id == "nb-one"
+      assert nb.title == "One"
+      assert nb.entry_count == 2
+    end
+  end
+
+  describe "outline_entries/1" do
+    test "returns entries in position order with refs transcluded" do
+      {m1, _m2, _m3} = seed_project()
+      create_notebook(%{id: "nb-out", project: "nb-proj"})
+
+      create_notebook_entry(%{
+        notebook_id: "nb-out",
+        position: 1,
+        kind: "prose",
+        prose: "## Intro"
+      })
+
+      create_notebook_entry(%{
+        notebook_id: "nb-out",
+        position: 2,
+        kind: "ref",
+        ref_id: m1.id
+      })
+
+      [prose, ref] = Council.outline_entries("nb-out")
+
+      assert prose.kind == "prose"
+      assert prose.prose == "## Intro"
+
+      assert ref.kind == "ref"
+      assert ref.ref_found
+      assert ref.room_id == "nb-room-a"
+      assert ref.author == "claude"
+      assert ref.content == "use SQLite"
+      assert ref.repo == "alice/widgets"
+    end
+
+    test "dangling refs come back with ref_found: false" do
+      create_notebook(%{id: "nb-dangle", project: "nb-proj"})
+
+      create_notebook_entry(%{
+        notebook_id: "nb-dangle",
+        position: 1,
+        kind: "ref",
+        ref_id: "ghost-message-id"
+      })
+
+      [entry] = Council.outline_entries("nb-dangle")
+      refute entry.ref_found
+      assert entry.content == ""
+    end
+  end
 end

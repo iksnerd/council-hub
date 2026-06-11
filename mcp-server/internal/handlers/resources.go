@@ -52,6 +52,7 @@ newcomers instant context at the top of every future read.
 | Room health / flags | check_room_health |
 | Delta read (new only) | read_transcript(after_id=…) |
 | Project timeline (decisions → actions → syntheses across rooms) | read_notebook |
+| Curate an outline (prose + transcluded messages) | edit_notebook, read_notebook(notebook_id=…) |
 | Cross-room concepts | get_concept_map |
 | Fork a thread to a new room | fork_thread |
 | Batch close rooms | bulk_status_update |
