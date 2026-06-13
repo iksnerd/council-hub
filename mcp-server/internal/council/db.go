@@ -195,6 +195,16 @@ func initSchema(db *sql.DB) error {
 		FOREIGN KEY(notebook_id) REFERENCES notebooks(id)
 	);
 
+	CREATE TABLE IF NOT EXISTS message_links (
+		id TEXT PRIMARY KEY,
+		from_id TEXT NOT NULL,
+		to_id TEXT NOT NULL,
+		relation TEXT NOT NULL,
+		author TEXT DEFAULT '',
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		UNIQUE(from_id, to_id, relation)
+	);
+
 	CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
 		content,
 		author UNINDEXED,
@@ -251,6 +261,8 @@ func initSchema(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_rooms_status ON rooms(status)`,
 		`CREATE INDEX IF NOT EXISTS idx_notebook_entries_nb ON notebook_entries(notebook_id, position)`,
 		`CREATE INDEX IF NOT EXISTS idx_notebooks_project ON notebooks(project)`,
+		`CREATE INDEX IF NOT EXISTS idx_message_links_from ON message_links(from_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_message_links_to ON message_links(to_id)`,
 	}
 	for _, idx := range indexes {
 		if _, err := db.Exec(idx); err != nil {

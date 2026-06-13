@@ -54,6 +54,8 @@ newcomers instant context at the top of every future read.
 | Project timeline (decisions → actions → syntheses across rooms) | read_notebook |
 | Curate an outline (prose + transcluded messages) | edit_notebook, read_notebook(notebook_id=…) |
 | Cross-room concepts | get_concept_map |
+| Link/relate two messages | link_messages |
+| Trace a message's links + backlinks | get_links |
 | Fork a thread to a new room | fork_thread |
 | Batch close rooms | bulk_status_update |
 | Lightweight acknowledgment | react_to_message |

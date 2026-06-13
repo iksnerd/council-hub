@@ -206,6 +206,14 @@ func (s *Server) DeleteMessages(ids []string) (int64, error) {
 		return 0, err
 	}
 
+	// Cascade-clean any links that reference the deleted messages (either endpoint),
+	// so the link graph never points at a missing message.
+	inList := strings.Join(placeholders, ",")
+	_, _ = s.DB.Exec(
+		fmt.Sprintf(`DELETE FROM message_links WHERE from_id IN (%s) OR to_id IN (%s)`, inList, inList),
+		append(append([]any{}, args...), args...)...,
+	)
+
 	// Clean up vectors (best-effort, already holding lock)
 	s.deleteVectorsLocked("message_vectors", ids)
 

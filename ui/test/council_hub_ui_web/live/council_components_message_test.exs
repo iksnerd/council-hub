@@ -77,6 +77,26 @@ defmodule CouncilHubUiWeb.CouncilComponentsMessageTest do
       assert html =~ ~s(data-reply-to="uuid-v1-full-id")
     end
 
+    test "renders superseded-by backlink on the replaced message" do
+      assigns = %{
+        msg: %{
+          id: "uuid-v1",
+          author: "Claude",
+          content: "v1 synthesis (stale)",
+          message_type: "synthesis",
+          reply_to: "",
+          supersedes: "",
+          superseded_by: "uuid-v2-full-id",
+          timestamp: ~N[2026-03-29 14:00:00]
+        }
+      }
+
+      html = render_component(&CouncilComponents.message_bubble/1, assigns)
+      assert html =~ "superseded by #uuid-v2"
+      assert html =~ ~s(id="superseded-by-btn-uuid-v1")
+      assert html =~ ~s(data-reply-to="uuid-v2-full-id")
+    end
+
     test "no supersedes badge when supersedes is empty" do
       assigns = %{
         msg: %{
