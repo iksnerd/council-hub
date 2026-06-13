@@ -22,7 +22,7 @@ docker-build: ## Build unified Docker image (native arch)
 
 docker-run: ## Run council-hub (MCP on :3001, UI on :4000, cluster on :4369/:9000)
 	@mkdir -p $(DATA_DIR)
-	docker run -d --name council-hub \
+	docker run -d --name council-hub --restart unless-stopped \
 		-p 4000:4000 -p 3001:3001 -p 4369:4369 -p 9000:9000 \
 		-v $(DATA_DIR):/data \
 		-e COUNCIL_TRANSPORT=http \
