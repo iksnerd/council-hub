@@ -81,6 +81,27 @@
             </div>
           </div>
 
+          <div>
+            <label class="text-[10px] font-medium text-[var(--ch-text-lo)] uppercase tracking-[0.15em] block mb-1.5">
+              View
+            </label>
+            <.link
+              patch={
+                ~p"/notebook?#{notebook_view_params(@project, @selected_types, !@view_compact)}"
+              }
+              class={[
+                "inline-flex items-center px-2 py-0.5 rounded text-[10px] font-mono border border-[var(--ch-border)] transition-colors",
+                if(@view_compact,
+                  do: "bg-[var(--ch-active-bg)] text-[var(--ch-text-hi)]",
+                  else: "text-[var(--ch-text-lo)] hover:text-[var(--ch-text-mid)]"
+                )
+              ]}
+              title="Line-clip each entry to its first line — a compact, shareable view"
+            >
+              {if @view_compact, do: "Compact ✓", else: "Compact"}
+            </.link>
+          </div>
+
           <%= if @notebooks != [] do %>
             <div class="mt-3">
               <label class="text-[10px] font-medium text-[var(--ch-text-lo)] uppercase tracking-[0.15em] block mb-1.5">
@@ -323,7 +344,10 @@
                       </button>
                     <% end %>
                   </div>
-                  <div class="council-prose text-[12px] leading-relaxed">
+                  <div class={[
+                    "council-prose text-[12px] leading-relaxed",
+                    @view_compact && "line-clamp-1"
+                  ]}>
                     {raw(render_markdown(resolve_commit_refs(entry.content, entry.repo)))}
                   </div>
                   <%!-- Knowledge relations: supersession + typed link graph (read-only here) --%>

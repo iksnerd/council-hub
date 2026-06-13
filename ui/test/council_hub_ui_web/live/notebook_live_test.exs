@@ -77,6 +77,16 @@ defmodule CouncilHubUiWeb.NotebookLiveTest do
       assert html =~ "/rooms/nbl-room-a"
     end
 
+    test "?compact=1 line-clips entries; default does not", %{conn: conn} do
+      seed()
+
+      {:ok, _view, default_html} = live(conn, "/notebook?project=nbl-proj")
+      refute default_html =~ "line-clamp-1"
+
+      {:ok, _view, compact_html} = live(conn, "/notebook?project=nbl-proj&compact=1")
+      assert compact_html =~ "line-clamp-1"
+    end
+
     test "surfaces supersession and typed links on entries", %{conn: conn} do
       room = create_room(%{id: "nbl-rel", project: "rel-proj"})
       v1 = create_message(%{room_id: room.id, content: "v1 synthesis", message_type: "synthesis"})
