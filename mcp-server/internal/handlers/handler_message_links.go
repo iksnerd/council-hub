@@ -21,6 +21,7 @@ type LinkMessagesInput struct {
 // GetLinksInput represents the parameters for querying a message's link graph.
 type GetLinksInput struct {
 	MessageID string `json:"message_id"`
+	Depth     string `json:"depth"`
 }
 
 // UnlinkMessagesInput represents the parameters for removing a link.
@@ -63,6 +64,11 @@ func (r *Registry) handleGetLinks(ctx context.Context, req *mcp.CallToolRequest,
 		return msg("Error: message_id is required.")
 	}
 
+	// depth > 1 switches to a link-distance neighborhood walk (NLS level-clip).
+	if depth := parseDepth(args.Depth); depth > 1 {
+		return r.renderNeighborhood(args.MessageID, depth)
+	}
+
 	outgoing, incoming, err := r.Server.GetLinks(args.MessageID)
 	if err != nil {
 		return msg(fmt.Sprintf("Error: %s", err.Error()))
@@ -84,6 +90,60 @@ func (r *Registry) handleGetLinks(ctx context.Context, req *mcp.CallToolRequest,
 		b.WriteString("\n**Incoming** (backlinks — point here):\n")
 		for _, l := range incoming {
 			fmt.Fprintf(&b, "- #%.8s %s this%s\n", l.FromID, l.Relation, implicitTag(l.Implicit, l.ID))
+		}
+	}
+	return msg(b.String())
+}
+
+func parseDepth(s string) int {
+	if s == "" {
+		return 1
+	}
+	var d int
+	if _, err := fmt.Sscanf(s, "%d", &d); err != nil {
+		return 1
+	}
+	return d
+}
+
+func (r *Registry) renderNeighborhood(messageID string, depth int) (*mcp.CallToolResult, ToolOutput, error) {
+	msg := textResult
+
+	nodes, edges, err := r.Server.GetLinkNeighborhood(messageID, depth)
+	if err != nil {
+		return msg(fmt.Sprintf("Error: %s", err.Error()))
+	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "Link neighborhood of #%.8s (depth %d): %d node(s), %d edge(s)\n", messageID, depth, len(nodes), len(edges))
+
+	// Nodes grouped by hop distance from the focus.
+	maxDist := 0
+	for _, n := range nodes {
+		if n.Distance > maxDist {
+			maxDist = n.Distance
+		}
+	}
+	for d := 0; d <= maxDist; d++ {
+		var line []string
+		for _, n := range nodes {
+			if n.Distance == d {
+				typeTag := ""
+				if n.Type != "" && n.Type != "message" {
+					typeTag = " " + n.Type
+				}
+				line = append(line, fmt.Sprintf("  - #%.8s [%s%s] %s", n.ID, n.Author, typeTag, n.Excerpt))
+			}
+		}
+		if len(line) > 0 {
+			fmt.Fprintf(&b, "\n**Distance %d:**\n%s\n", d, strings.Join(line, "\n"))
+		}
+	}
+
+	if len(edges) > 0 {
+		b.WriteString("\n**Edges:**\n")
+		for _, e := range edges {
+			fmt.Fprintf(&b, "- #%.8s --%s--> #%.8s%s\n", e.FromID, e.Relation, e.ToID, implicitTag(e.Implicit, e.ID))
 		}
 	}
 	return msg(b.String())
