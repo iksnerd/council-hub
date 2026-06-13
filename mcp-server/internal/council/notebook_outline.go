@@ -33,9 +33,16 @@ type Notebook struct {
 type OutlineEntry struct {
 	ID       string
 	Position int
-	Kind     string // "ref" | "room_ref" | "prose"
+	Kind     string // "ref" | "room_ref" | "prose" | "task"
 	RefID    string
 	Prose    string
+
+	// task only: a first-class checklist item. Prose carries the label; Status is
+	// one of "open" | "doing" | "done", set with SetTaskStatus. Unlike a room_ref
+	// (which derives its state from a room's live status), a task owns its state
+	// directly — the lightweight counterpart for work that doesn't warrant its own
+	// room. Non-task entries carry the column default "open" but ignore it.
+	Status string
 
 	RefRoomID  string
 	RefAuthor  string
@@ -52,7 +59,11 @@ type OutlineEntry struct {
 }
 
 // validOutlineKinds gates the entry kinds accepted by AddOutlineEntry.
-var validOutlineKinds = map[string]bool{"ref": true, "room_ref": true, "prose": true}
+var validOutlineKinds = map[string]bool{"ref": true, "room_ref": true, "prose": true, "task": true}
+
+// validTaskStatuses gates the states a task entry can hold: open (backlog),
+// doing (actively worked), done (finished).
+var validTaskStatuses = map[string]bool{"open": true, "doing": true, "done": true}
 
 // CreateNotebook creates an empty notebook outline. The ID is the stable
 // address used by edit_notebook and read_notebook(notebook_id=...). An empty
@@ -187,6 +198,12 @@ func (s *Server) AddOutlineEntry(notebookID, kind, refID, prose, afterEntryID st
 			return "", fmt.Errorf("prose is required for a prose entry")
 		}
 		refID = ""
+	case "task":
+		// A task's label lives in prose; it starts open (done=0).
+		if strings.TrimSpace(prose) == "" {
+			return "", fmt.Errorf("prose (the task label) is required for a task entry")
+		}
+		refID = ""
 	}
 
 	ids, err := s.outlineEntryIDsLocked(notebookID)
@@ -240,11 +257,41 @@ func (s *Server) UpdateOutlineEntry(entryID, prose string) error {
 	if err != nil {
 		return err
 	}
-	if kind != "prose" {
-		return fmt.Errorf("entry '%s' is a ref — only prose entries can be edited (update the referenced message instead)", entryID)
+	if kind != "prose" && kind != "task" {
+		return fmt.Errorf("entry '%s' is a ref — only prose and task entries can be edited (update the referenced message instead)", entryID)
 	}
 
 	if _, err := s.DB.Exec(`UPDATE notebook_entries SET prose = ? WHERE id = ?`, prose, entryID); err != nil {
+		return err
+	}
+	_, err = s.DB.Exec(`UPDATE notebooks SET updated_at = CURRENT_TIMESTAMP WHERE id = ?`, notebookID)
+	return err
+}
+
+// SetTaskStatus moves a task entry between open / doing / done. Only task entries
+// own a status (a room_ref derives its state from its room, a prose/ref entry has
+// none), so setting the status of anything else is an error.
+func (s *Server) SetTaskStatus(entryID, status string) error {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+
+	if !validTaskStatuses[status] {
+		return fmt.Errorf("invalid task status '%s' (must be open, doing, or done)", status)
+	}
+
+	var kind, notebookID string
+	err := s.DB.QueryRow(`SELECT kind, notebook_id FROM notebook_entries WHERE id = ?`, entryID).Scan(&kind, &notebookID)
+	if err == sql.ErrNoRows {
+		return fmt.Errorf("entry '%s' not found", entryID)
+	}
+	if err != nil {
+		return err
+	}
+	if kind != "task" {
+		return fmt.Errorf("entry '%s' is a %s, not a task — only task entries have a status", entryID, kind)
+	}
+
+	if _, err := s.DB.Exec(`UPDATE notebook_entries SET status = ? WHERE id = ?`, status, entryID); err != nil {
 		return err
 	}
 	_, err = s.DB.Exec(`UPDATE notebooks SET updated_at = CURRENT_TIMESTAMP WHERE id = ?`, notebookID)
@@ -359,7 +406,7 @@ func (s *Server) GetOutline(notebookID string) (Notebook, []OutlineEntry, error)
 	// latest decision/action pulled in as the entry's content — so a work-list
 	// entry always shows where that thread of work currently stands.
 	rows, err := s.DB.Query(`
-		SELECT e.id, e.position, e.kind, e.ref_id, e.prose,
+		SELECT e.id, e.position, e.kind, e.ref_id, e.prose, COALESCE(e.status, 'open'),
 		       (m.id IS NOT NULL OR rr.id IS NOT NULL),
 		       COALESCE(m.room_id, rr.id, ''),
 		       COALESCE(m.author, lm.author, ''),
@@ -391,7 +438,7 @@ func (s *Server) GetOutline(notebookID string) (Notebook, []OutlineEntry, error)
 		// COALESCE strips the column's datetime affinity, so the driver hands
 		// back the raw stored string — parse it instead of scanning NullTime.
 		var ts sql.NullString
-		if err := rows.Scan(&e.ID, &e.Position, &e.Kind, &e.RefID, &e.Prose,
+		if err := rows.Scan(&e.ID, &e.Position, &e.Kind, &e.RefID, &e.Prose, &e.Status,
 			&e.RefFound, &e.RefRoomID, &e.RefAuthor, &e.RefType,
 			&e.RefContent, &e.RefPinned, &ts, &e.RefRepo,
 			&e.RefStatus, &e.RefTopic); err != nil {

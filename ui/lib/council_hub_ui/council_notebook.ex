@@ -137,6 +137,7 @@ defmodule CouncilHubUi.CouncilNotebook do
           kind: e.kind,
           ref_id: e.ref_id,
           prose: e.prose,
+          status: coalesce(e.status, "open"),
           ref_found: not is_nil(m.id) or not is_nil(rr.id),
           room_id: coalesce(coalesce(m.room_id, rr.id), ""),
           author: coalesce(m.author, ""),

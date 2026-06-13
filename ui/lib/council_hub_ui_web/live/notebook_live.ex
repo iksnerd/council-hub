@@ -41,6 +41,9 @@ defmodule CouncilHubUiWeb.NotebookLive do
        view_compact: false,
        compose_author: "",
        outline_inline: [],
+       outline_doing_tasks: [],
+       outline_open_tasks: [],
+       outline_done_tasks: [],
        outline_in_flight: [],
        outline_done: []
      )}
@@ -175,12 +178,17 @@ defmodule CouncilHubUiWeb.NotebookLive do
 
       notebook ->
         outline = Council.outline_entries(notebook_id)
-        {inline, in_flight, done} = partition_outline(outline)
+
+        {inline, doing_tasks, open_tasks, done_tasks, in_flight, done} =
+          partition_outline(outline)
 
         assign(socket,
           notebook: notebook,
           outline: outline,
           outline_inline: inline,
+          outline_doing_tasks: doing_tasks,
+          outline_open_tasks: open_tasks,
+          outline_done_tasks: done_tasks,
           outline_in_flight: in_flight,
           outline_done: done,
           project: notebook.project,
@@ -192,13 +200,18 @@ defmodule CouncilHubUiWeb.NotebookLive do
   end
 
   # Splits a curated outline into its document spine (prose + message refs, in
-  # authored order) and its work-list room_refs, regrouped by transcluded live
-  # status. A notebook of room_refs becomes a self-sorting In flight / Done
-  # list: resolving the room moves the item, the list is never hand-edited.
+  # authored order) and its self-sorting work lists: tasks regrouped by their own
+  # done state (☐ Open / ☑ Done), and room_refs regrouped by transcluded live
+  # status (🔄 In flight / ✅ Done). Both re-partition without hand-editing — a task
+  # is checked, a room is resolved, and the item moves.
   defp partition_outline(outline) do
-    {room_refs, inline} = Enum.split_with(outline, &(&1.kind == "room_ref"))
+    {tasks, rest} = Enum.split_with(outline, &(&1.kind == "task"))
+    {room_refs, inline} = Enum.split_with(rest, &(&1.kind == "room_ref"))
+    doing_tasks = Enum.filter(tasks, &(&1.status == "doing"))
+    done_tasks = Enum.filter(tasks, &(&1.status == "done"))
+    open_tasks = Enum.filter(tasks, &(&1.status not in ["doing", "done"]))
     {done, in_flight} = Enum.split_with(room_refs, &room_ref_done?/1)
-    {inline, in_flight, done}
+    {inline, doing_tasks, open_tasks, done_tasks, in_flight, done}
   end
 
   defp room_ref_done?(%{ref_found: true, room_status: status}),
@@ -253,6 +266,35 @@ defmodule CouncilHubUiWeb.NotebookLive do
     <% end %>
     """
   end
+
+  # One checklist item in a curated notebook: a first-class task with its own
+  # status (open / doing / done). Read-only here — tasks are driven from the MCP
+  # tool (edit_notebook start/check/uncheck); the browser view just reflects state.
+  attr :entry, :map, required: true
+
+  def task_card(assigns) do
+    ~H"""
+    <div
+      id={"outline-#{@entry.id}"}
+      class="flex items-start gap-2 bg-[var(--ch-surface)] border border-[var(--ch-border)] rounded-lg px-3 py-2"
+    >
+      <span class="text-[13px] leading-5 shrink-0">{task_box(@entry.status)}</span>
+      <span class={[
+        "text-[12px] leading-5",
+        if(@entry.status == "done",
+          do: "text-[var(--ch-text-lo)] line-through",
+          else: "text-[var(--ch-text-hi)]"
+        )
+      ]}>
+        {@entry.prose}
+      </span>
+    </div>
+    """
+  end
+
+  defp task_box("done"), do: "☑"
+  defp task_box("doing"), do: "🔄"
+  defp task_box(_), do: "☐"
 
   defp default_project("", [first | _]), do: first
   defp default_project(project, _projects), do: project

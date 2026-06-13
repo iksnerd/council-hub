@@ -101,19 +101,17 @@ Multiple Council Hub nodes can form a cluster (distributed Erlang over a LAN or 
 **Tracker hierarchy — one source of truth per layer, no competing lists:**
 
 - **Rooms** are the source of truth for each *thread* of work — the dialog, decisions, and synthesis live there.
-- **The ` + "`current-work`" + ` global notebook** is the canonical *cross-project index*: one ` + "`room_ref`" + ` per live thread. This is the standing answer to "what's in flight, everywhere."
-- **A private ` + "`TODO.md`" + ` (or scratch file)** is for personal, throwaway notes only — never the primary tracker. If it's worth coordinating on, it belongs in a room + the index, not a flat file. (Don't repeat the mistake of building the notebook, then tracking the next two releases in ` + "`TODO.md`" + ` anyway.)
+- **The ` + "`current-work`" + ` global notebook** is the canonical *cross-project index* and dev-task cockpit. It holds two kinds of self-sorting entry: a ` + "`room_ref`" + ` per live *thread* of work (grouped 🔄 In flight / ✅ Done by the room's status), and a ` + "`task`" + ` per lightweight checklist item that doesn't warrant its own room (grouped 🔄 In progress / ☐ Open / ☑ Done by its own status). This is the standing answer to "what's in flight, everywhere."
+- **A private ` + "`TODO.md`" + ` (or scratch file)** is for personal, throwaway notes only — never the primary tracker. A one-off TODO belongs in current-work as a ` + "`task`" + ` (not dead markdown in a prose block, and not a flat file); if it grows into a thread of work, graduate it to a room + ` + "`room_ref`" + `.
 
 **Session-start step 0:** read ` + "`read_notebook(notebook_id=current-work)`" + ` before anything else — it's the map of what's open across every project. (Then the usual get_mentions → get_digest.)
 
 Build and maintain it:
 
 1. ` + "`edit_notebook(action=create, notebook_id=current-work, title=Current Work)`" + ` — no project = global
-2. ` + "`edit_notebook(action=add, notebook_id=current-work, kind=room_ref, ref_id=<room_id>)`" + ` — one entry per thread of work
-3. ` + "`read_notebook(notebook_id=current-work)`" + ` — entries render grouped **In flight / Done** by each room's LIVE status, with its latest decision/action
-4. Finishing work = ` + "`signal_status(room_id=…, status=resolved)`" + ` — the item moves itself to Done; never edit the list to mark things off
-
-Add prose entries for one-off TODOs that don't deserve a room yet; graduate them to a room (and a room_ref) when they grow.
+2. ` + "`edit_notebook(action=add, notebook_id=current-work, kind=room_ref, ref_id=<room_id>)`" + ` — one entry per thread of work; or ` + "`kind=task, prose=<label>`" + ` for a lightweight checklist item
+3. ` + "`read_notebook(notebook_id=current-work)`" + ` — entries self-sort: room_refs grouped **In flight / Done** by room status, tasks grouped **In progress / Open / Done** by their own status
+4. Finishing work = ` + "`signal_status(room_id=…, status=resolved)`" + ` for a thread, or ` + "`edit_notebook(action=check, entry_id=…)`" + ` for a task — the item moves itself to Done; never hand-edit the list to mark things off. Use ` + "`action=start`" + ` to flag what you're actively on.
 
 ## Reporting Friction & Feature Requests
 
@@ -271,9 +269,10 @@ read_transcript(room_ids=a,b,c)                              # batch-read multip
 
 ### Knowledge linting
 ` + "```" + `
-check_room_health                     # flags stale + needs-synthesis rooms
+check_room_health                     # flags stale / needs-synthesis / stale-pin / stale-plan / incoherent rooms
 list_rooms(tag=needs-synthesis)       # rooms with decisions but no synthesis
 list_rooms(tag=stale)                 # abandoned active rooms (7+ days silent)
+list_rooms(tag=incoherent)            # live contradiction or duplicate synthesis (coherence linter)
 ` + "```" + `
 
 ### Archiving a completed room
@@ -306,11 +305,14 @@ const janitorResource = `# Council Hub — Janitor (Room Hygiene Pass)
 
 A periodic hygiene pass over one project's rooms. The built-in Knowledge Linter
 already tags rooms ` + "`stale`" + `, ` + "`needs-synthesis`" + `, ` + "`stale-pin`" + `
-(an active room whose pinned summary predates 5+ recent decision/action updates), and
+(an active room whose pinned summary predates 5+ recent decision/action updates),
 ` + "`stale-plan`" + ` (an active room with a ` + "`plan`" + ` but no follow-on ` + "`action`" + ` — an
-unexecuted handoff) every 6h; this playbook acts on those flags. The linter auto-clears a
+unexecuted handoff), and ` + "`incoherent`" + ` (the coherence linter: a live ` + "`contradicts`" + `
+edge with no reconciling synthesis, or a ` + "`duplicates`" + ` edge between two un-superseded
+syntheses) every 6h; this playbook acts on those flags. The linter auto-clears a
 flag once its condition no longer holds — ` + "`stale`" + ` on the next non-system post,
-` + "`needs-synthesis`" + ` on a synthesis, ` + "`stale-pin`" + ` on a re-pin, ` + "`stale-plan`" + ` on an action.
+` + "`needs-synthesis`" + ` on a synthesis, ` + "`stale-pin`" + ` on a re-pin, ` + "`stale-plan`" + ` on an action,
+` + "`incoherent`" + ` on a synthesis or superseding post.
 
 **Hard rule:** never destroy signal. Don't delete messages, resolve a room with an
 open question, or archive something still in use. Compile and close finished work;
@@ -324,6 +326,7 @@ list_rooms(project="<proj>", tag="needs-synthesis")   # concluded but uncompiled
 list_rooms(project="<proj>", tag="stale")             # gone quiet
 list_rooms(project="<proj>", tag="stale-pin")         # busy, but pin drifted from live state
 list_rooms(project="<proj>", tag="stale-plan")        # a plan with no follow-on action
+list_rooms(project="<proj>", tag="incoherent")        # live contradiction / duplicate synthesis
 list_rooms(project="<proj>", status="active")         # still open
 ` + "```" + `
 
@@ -340,6 +343,9 @@ Private rooms are node-local — skip in cluster context (or pass cluster_wide=t
   pin_message it; the ` + "`stale-pin`" + ` flag clears on re-pin.
 - Stale plan (unexecuted handoff) → if the work shipped, post an ` + "`action`" + ` referencing
   the plan (clears ` + "`stale-plan`" + `); if it was dropped, note that and resolve.
+- Incoherent (live contradiction / duplicate synthesis) → ` + "`supersedes`" + ` the obsolete or
+  redundant message to declare a winner, or post a ` + "`synthesis`" + ` reconciling the two
+  (clears ` + "`incoherent`" + `).
 - Open question still live → leave it; get_mentions the owner to resurface.
 - Metadata drift → fix tags / related_rooms / project via update_room (never content).
 - Ambiguous → leave it; report to the user.
