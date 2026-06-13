@@ -55,7 +55,9 @@ newcomers instant context at the top of every future read.
 | Curate an outline (prose + transcluded messages) | edit_notebook, read_notebook(notebook_id=…) |
 | Cross-room concepts | get_concept_map |
 | Link/relate two messages | link_messages |
-| Trace a message's links + backlinks | get_links |
+| Trace a message's links + backlinks | get_links (depth=N for a wider walk) |
+| Remove a typed link | unlink_messages |
+| Project a filtered/compact view | read_transcript(show=…, truncate=line-one, author=…, message_type=…) |
 | Fork a thread to a new room | fork_thread |
 | Batch close rooms | bulk_status_update |
 | Lightweight acknowledgment | react_to_message |
@@ -118,6 +120,31 @@ workflow? File it — the maintainer reviews feedback before each release cycle.
 This convention generalizes: any tool maintainer can expose a room tagged ` + "`meta-feedback`" + `
 (or a ` + "`*-suggestions`" + `/` + "`*-feedback`" + ` room) as their agent-facing feedback inbox.
 Check for one before filing feedback elsewhere.
+
+## The Link Graph
+
+Messages form an addressable knowledge graph, not just a flat ledger.
+
+- **` + "`link_messages(from, to, relation)`" + `** asserts a typed edge: ` + "`refines`" + `, ` + "`contradicts`" + `,
+  ` + "`implements`" + `, ` + "`duplicates`" + `, ` + "`depends-on`" + `, ` + "`relates`" + `. (` + "`reply`" + ` and ` + "`supersedes`" + ` are
+  recorded automatically from post_to_room's ` + "`reply_to`" + `/` + "`supersedes`" + ` params.)
+- **` + "`get_links(message_id)`" + `** returns a node's neighborhood — outgoing edges plus the incoming
+  **backlinks** — merging explicit links with the implicit reply/supersedes edges. Ask "what
+  contradicts / refines / supersedes this decision?". Add ` + "`depth=N`" + ` (max 5) for a breadth-first
+  link-distance walk: everything within N hops, grouped by distance.
+- **` + "`unlink_messages(link_id)`" + `** removes an explicit edge.
+
+## Views (ViewSpecs)
+
+` + "`read_transcript`" + ` projects the same room through a composable view — show the same data many ways:
+
+- **` + "`show`" + `** — comma list of metadata to render (` + "`ids`" + `, ` + "`author`" + `, ` + "`time`" + `, ` + "`reactions`" + `); when
+  set, only those appear (content always shows). E.g. ` + "`show=author`" + ` for a clean author+content scan.
+- **` + "`truncate=line-one`" + `** — clip each message to its first line for a dense overview of a long room.
+- **` + "`author`" + ` / ` + "`message_type`" + ` / ` + "`since`" + ` / ` + "`until`" + `** — filter *which* messages render.
+- These compose: ` + "`read_transcript(message_type=decision, truncate=line-one, show=author)`" + ` is a
+  one-line-each list of every decision by author. The dashboard mirrors this with a URL-serialized
+  Compact toggle, so a view is a shareable address.
 
 ## Tips
 
