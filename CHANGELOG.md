@@ -6,6 +6,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ## [Unreleased]
 
+Changes on `main` not yet in a tagged release.
+
+## [0.41.0] - 2026-06-13
+
+The Engelbart roadmap, batch 1: a first-class message **link graph** with backlinks (E2), **ViewSpecs** over transcripts and the dashboard/notebook (E1), and the FB6 supersession closer. The dashboard and notebook now surface the knowledge graph (links + supersession), and a *view* is a shareable URL. 35 MCP tools, 11 message types.
+
 ### Added
 - **Notebook ViewSpec: URL-serialized compact view** — the `/notebook` page gains a **Compact** toggle (line-clips each entry to its first line), carried through the URL alongside `project`/`types` so the whole notebook view is one shareable address. Mirrors the room view.
 - **The notebook surfaces the knowledge graph** — the `/notebook` project timeline now shows each entry's supersession (forward `→ supersedes` + the `⚠ superseded by` backlink) and its explicit typed links, so the integration view (the DKR) reflects how knowledge connects, not just a flat list. The supersedes/links annotators were lifted into a shared `MessageAnnotations` module used by both the room view and the notebook.
