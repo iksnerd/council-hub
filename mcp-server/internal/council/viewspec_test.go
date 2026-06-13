@@ -85,6 +85,54 @@ func TestFormatTranscriptViewTruncate(t *testing.T) {
 	}
 }
 
+func TestFilterMessages(t *testing.T) {
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "filt-room")
+	mustPostTyped(t, s, "filt-room", "Claude Code (Opus)", "a decision", "decision")
+	mustPostTyped(t, s, "filt-room", "Gemini CLI", "an action", "action")
+	mustPostTyped(t, s, "filt-room", "Claude Code (Opus)", "a thought", "thought")
+
+	msgs, _ := s.GetTranscript("filt-room")
+
+	// Empty filter → unchanged.
+	if got := FilterMessages(msgs, "", "", "", ""); len(got) != len(msgs) {
+		t.Errorf("empty filter should pass all %d, got %d", len(msgs), len(got))
+	}
+
+	// Author substring (case-insensitive).
+	byAuthor := FilterMessages(msgs, "claude", "", "", "")
+	if len(byAuthor) != 2 {
+		t.Errorf("expected 2 Claude messages, got %d", len(byAuthor))
+	}
+
+	// Type exact.
+	byType := FilterMessages(msgs, "", "action", "", "")
+	if len(byType) != 1 || byType[0].Author != "Gemini CLI" {
+		t.Errorf("expected 1 action from Gemini, got %+v", byType)
+	}
+
+	// Combined author + type.
+	combined := FilterMessages(msgs, "claude", "thought", "", "")
+	if len(combined) != 1 || combined[0].Content != "a thought" {
+		t.Errorf("expected 1 Claude thought, got %+v", combined)
+	}
+}
+
+func TestFilterMessagesByTime(t *testing.T) {
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "filt-time")
+	old := mustPost(t, s, "filt-time", "Claude", "old")
+	mustPost(t, s, "filt-time", "Claude", "new")
+	// Backdate the first message well into the past.
+	s.DB.Exec(`UPDATE messages SET timestamp = '2020-01-01 00:00:00' WHERE id = ?`, old)
+
+	msgs, _ := s.GetTranscript("filt-time")
+	recent := FilterMessages(msgs, "", "", "2021-01-01", "")
+	if len(recent) != 1 || recent[0].Content != "new" {
+		t.Errorf("since filter should keep only the recent message, got %+v", recent)
+	}
+}
+
 func TestFormatTranscriptViewHidesReactions(t *testing.T) {
 	s := setupTestServer(t)
 	mustCreateRoom(t, s, "vs-react")

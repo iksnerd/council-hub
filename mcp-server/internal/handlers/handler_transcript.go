@@ -20,6 +20,10 @@ type ReadTranscriptInput struct {
 	ClusterWide    string `json:"cluster_wide"`
 	Show           string `json:"show"`
 	Truncate       string `json:"truncate"`
+	Author         string `json:"author"`
+	MessageType    string `json:"message_type"`
+	Since          string `json:"since"`
+	Until          string `json:"until"`
 }
 
 // ArchiveRoomInput represents the parameters for archiving a room.
@@ -301,6 +305,10 @@ func (r *Registry) readSingleTranscript(args ReadTranscriptInput) (*mcp.CallTool
 		r.Server.Logger.Error("Failed to get transcript", "room_id", args.RoomID, "error", err)
 		return nil, ToolOutput{}, err
 	}
+
+	// Apply view filters (author/type/since/until) before last_n, so last_n counts
+	// the filtered set — the "which nodes" half of the ViewSpec.
+	messages = council.FilterMessages(messages, args.Author, args.MessageType, args.Since, args.Until)
 
 	// Apply last_n: keep only the last N non-summary messages (summaries always included)
 	if args.LastN != "" {

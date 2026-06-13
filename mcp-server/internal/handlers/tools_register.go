@@ -400,6 +400,10 @@ func (r *Registry) RegisterTools() {
 			"cluster_wide":    prop("string", "Set to 'true' to fetch the transcript from the remote cluster node that owns it."),
 			"show":            prop("string", "View filter — comma list of which metadata to render: ids, author, time, reactions. When set, ONLY those are shown (content is always shown); omit for all. E.g. show='author' for a clean author+content scan."),
 			"truncate":        prop("string", "Set to 'line-one' to clip each message to its first line — a dense, scannable overview of a long room (Engelbart's line-clip ViewSpec). Default: full bodies."),
+			"author":          prop("string", "View filter — only render messages whose author matches (case-insensitive substring, so 'claude' matches 'Claude Code (Opus)')."),
+			"message_type":    prop("string", "View filter — only render messages of this type (e.g. decision, action, synthesis)."),
+			"since":           prop("string", "View filter — only messages at/after this time (e.g. '2026-06-01' or '2026-06-01 12:00:00')."),
+			"until":           prop("string", "View filter — only messages at/before this time."),
 		}),
 	}, r.handleReadTranscript)
 
