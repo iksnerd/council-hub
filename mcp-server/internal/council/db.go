@@ -110,11 +110,13 @@ func NewServer(dbPath string, logger *slog.Logger) (*Server, error) {
 		Capabilities: &mcp.ServerCapabilities{},
 		Instructions: "Council Hub is a multi-LLM coordination platform. Agents share state through persistent rooms backed by SQLite.\n\n" +
 			"Session start (run in order):\n" +
+			"0. read_notebook(notebook_id=current-work) — the cross-project dev-task cockpit: what's open everywhere (room_refs grouped In flight/Done, tasks grouped In progress/Open/Done)\n" +
 			"1. get_mentions(author=<your-name>) — check for threads awaiting your input before anything else\n" +
 			"2. get_digest — see what changed in the last 24h; note latest_message_id per active room for delta reads\n" +
 			"3. load_resources(uri=council://guide) — read usage patterns on your first session in a new project\n\n" +
 			"Key conventions:\n" +
 			"- Prefer get_or_create_room over create_room — returns existing content and avoids duplicates\n" +
+			"- Track dev work in the current-work global notebook, not a throwaway TODO.md: a room_ref per thread of work (signal_status(resolved) checks it off), or a task for a lightweight checklist item (edit_notebook(action=add, kind=task, prose=…), then start/check it)\n" +
 			"- Use typed messages: thought → draft → critique → decision → plan → action → synthesis (plus note for journal entries). Avoid posting everything as 'message'\n" +
 			"- After conclusions: post a synthesis, pin it, then signal_status(resolved)\n" +
 			"- Call mark_read after each session; use get_digest(unread_only=true) on return to see only new activity\n" +

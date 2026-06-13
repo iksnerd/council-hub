@@ -128,7 +128,7 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "list_rooms",
-		Description: "List council rooms, optionally filtered by project, tag, status, or keyword search. Returns compact one-line-per-room format by default (saves ~60-80% tokens vs verbose). Set verbose=true for full metadata. Tip: filter by tag='needs-synthesis', tag='stale', tag='stale-pin', or tag='stale-plan' to find rooms flagged by the Knowledge Linter.",
+		Description: "List council rooms, optionally filtered by project, tag, status, or keyword search. Returns compact one-line-per-room format by default (saves ~60-80% tokens vs verbose). Set verbose=true for full metadata. Tip: filter by tag='needs-synthesis', tag='stale', tag='stale-pin', tag='stale-plan', or tag='incoherent' to find rooms flagged by the Knowledge Linter.",
 		InputSchema: schema(nil, map[string]map[string]any{
 			"project":        prop("string", "Filter by project name"),
 			"project_not_in": prop("string", "Comma-separated project names to EXCLUDE. Useful for triaging deprecated-project graveyards (e.g. project_not_in='active-proj-a,active-proj-b' surfaces every room whose project is anything else)."),
@@ -418,7 +418,7 @@ func (r *Registry) RegisterTools() {
 		Name: "read_notebook",
 		Description: "Read a project's dev notebook. Two modes — a derived view vs. a stored record. " +
 			"Pass project for the compiled TIMELINE (a derived view: a live query over the ledger, nothing stored) — typed messages (decision, plan, action, synthesis, note by default) from every room in the project woven chronologically, grouped by day, with {sha:...} commit refs resolved per room. " +
-			"Pass notebook_id for a curated NOTEBOOK (a stored record you assemble with edit_notebook) — prose sections interleaved with transcluded ledger messages and rooms (refs resolve live; nothing is copied). A notebook of room_refs renders as a self-sorting work list, grouped In flight / Done by each room's live status. " +
+			"Pass notebook_id for a curated NOTEBOOK (a stored record you assemble with edit_notebook) — prose sections interleaved with transcluded ledger messages and rooms (refs resolve live; nothing is copied). Its work items self-sort: room_refs grouped In flight / Done by each room's live status, and tasks (lightweight checklist items) grouped In progress / Open / Done by their own status — so a global notebook like current-work is a dev-task cockpit that stays true without hand-editing. " +
 			"Use the timeline to see how a project unfolded (standups, retros, onboarding); use a notebook for a hand-curated document (release notes, a design digest) or a standing work list (current-work). " +
 			"Timeline options: types widens/narrows the view (a ViewSpec toggle), after_id does delta reads (the JSON footer carries latest_message_id), cluster_wide=true weaves in all cluster nodes. The timeline footer lists the project's curated notebooks. Notebooks are node-local.",
 		InputSchema: schema(nil, map[string]map[string]any{
