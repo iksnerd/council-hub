@@ -21,6 +21,9 @@ defmodule CouncilHubUiWeb.CouncilHelpers do
     {"#4ade80", "border-green-500/20"}
   ]
 
+  # `code` is a retired message type (no longer offered for new posts), but its
+  # icon/color/abbrev mappings are kept here so historical `code` messages still
+  # render with their badge.
   @type_icons %{
     "message" => "hero-chat-bubble-left",
     "thought" => "hero-light-bulb",

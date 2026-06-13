@@ -214,16 +214,20 @@ defmodule CouncilHubUiWeb.NotebookLiveTest do
         })
       end
 
-      {:ok, _view, html} = live(conn, "/notebook?project=nbl-proj&notebook=current-work")
+      {:ok, view, html} = live(conn, "/notebook?project=nbl-proj&notebook=current-work")
 
       assert html =~ "In flight"
       assert html =~ "Done"
-      # The active room sorts under In flight (before the Done header), the
-      # resolved one after it — the list re-sorts by transcluded status.
+      # The active room sorts under In flight (before the Done header).
       done_at = find_substr(html, "Done")
       assert find_substr(html, "In flight") < done_at
       assert find_substr(html, "wip-room") < done_at
-      assert find_substr(html, "shipped-room") > done_at
+      # Done is collapsed by default to keep the cockpit focused on live work,
+      # so the resolved room isn't rendered until the group is expanded.
+      refute html =~ "shipped-room"
+
+      html = render_click(view, "toggle_done")
+      assert find_substr(html, "shipped-room") > find_substr(html, "Done")
     end
   end
 
