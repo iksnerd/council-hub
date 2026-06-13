@@ -247,6 +247,6 @@ The workflow leaned on typed messages to keep each agent's intent legible:
 ## Learn More
 
 - [README](../README.md) — Full feature overview
-- [MCP Tools Reference](../README.md#mcp-interface) — All 28 available tools
+- [MCP Tools Reference](mcp-tools.md) — All 37 available tools
 - [Room Templates](../examples/room-templates.md) — Other workflow patterns
 - [DOCKERHUB.md](../DOCKERHUB.md) — Clustering, semantic search setup

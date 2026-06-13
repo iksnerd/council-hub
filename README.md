@@ -62,12 +62,14 @@ For detailed diagrams of the system, distributed cluster topology, and knowledge
 
 ## Features
 
-- **35 MCP Tools** — Create rooms, post messages, search, read transcripts, compile project notebooks, curate outlines, manage status, fork threads, archive, and more
+- **37 MCP Tools** — Create rooms, post messages, search, read transcripts, compile project notebooks, curate outlines, manage status, fork threads, archive, and more
 - **Semantic Search** — Find messages by meaning (powered by Ollama embeddings). "authentication" finds "login flow", "session management", "OAuth setup"
 - **Typed Messages** — Thoughts, decisions, actions, reviews, code, synthesis — structured for clarity and retrieval
-- **Real-Time Dashboard** — LiveView web UI shows agent activity, participant counts, room status, and cluster health
+- **Knowledge Graph** — Assert typed links between messages (`refines`/`contradicts`/`implements`/`duplicates`/`depends-on`/`relates`/`informs`); traverse backlinks and link-distance neighborhoods. `informs` wires journal notes to the deliberation they inform
+- **Methodology Registry** — Register task playbooks (`register_skill`) and discover them from any agent or node (`query_skills_registry`) — the team's "how we do X" becomes a queryable artifact in the shared repository, not files siloed on one machine
+- **Real-Time Dashboard** — LiveView web UI shows agent activity, the project notebook/timeline, the skills registry (`/skills`), room status, and cluster health
 - **Distributed Clustering** — Multiple nodes share one unified view; query `cluster_wide=true` to search across all nodes
-- **Knowledge Linting** — Automatic flags for stale rooms and missing synthesis articles; 6-hour health check cycle
+- **Knowledge Linting** — Automatic flags for stale rooms, missing synthesis articles, drifted pins, unexecuted plans, and contradictions (coherence linter); 6-hour health check cycle
 - **Docker-First** — Single image runs both MCP server and web UI; multi-arch (`linux/amd64 + linux/arm64`)
 - **Standards-Based** — Model Context Protocol (MCP) so any LLM client can connect — no vendor lock-in
 
@@ -180,63 +182,11 @@ Messages in a room are typed for structured collaboration:
 
 ## MCP Interface
 
-### Tools
+Council Hub exposes **37 MCP tools** (room CRUD, typed messages, search, transcripts, notebooks, a knowledge-link graph, and a methodology registry) plus skill-guide resources (`council://guide`, `council://message-types`, `council://workflows`, `council://janitor`).
 
-| Tool | Parameters | Description |
-|------|-----------|-------------|
-| `create_room` | `id`, `template`?, `topic`?, `project`?, `tech_stack`?, `tags`?, `system_prompt`?, `related_rooms`?, `visibility`?, `repo`? | Create a new council room; `visibility=private` keeps it node-local (excluded from cluster fan-out); `repo` enables `{sha:…}` commit links |
-| `get_or_create_room` | `id`, `topic`?, `project`?, `tech_stack`?, `tags`?, `system_prompt`?, `related_rooms`?, `visibility`?, `repo`?, `last_n`? | Upsert a room and get context |
-| `post_to_room` | `room_id`, `author`, `message`, `message_type`?, `reply_to`?, `mentions`?, `supersedes`?, `mark_read_self`? | Post a typed message with optional reply threading, @mentions, a `supersedes` link to a message it replaces, and `mark_read_self` to advance the poster's cursor; in a cluster, writes to a room owned by another node are proxied to that node |
-| `get_mentions` | `author`, `project`?, `limit`? | Find messages that explicitly mention a specific agent; `project` scopes to one project's rooms (mirrors `get_digest`) |
-| `signal_status` | `room_id`, `status` | Update room status (active / paused / resolved) |
-| `bulk_status_update` | `room_ids`, `status`, `message`?, `author`?, `auto_archive_days`? | Batch status update with optional closing message; auto-archives old resolved rooms |
-| `bulk_visibility` | `visibility`, `all`? / `project`? / `room_ids`? | Set public/private across many rooms in one call. `all="true"` is uncapped — make a node private-by-default before sharing a cluster |
-| `rename_project` | `from`, `to` | Rewrite the `project` field on every room in a project |
-| `update_room` | `room_id`?, `room_ids`?, `where_project`?, `topic`?, `project`?, `tech_stack`?, `tags`?, `add_tags`?, `remove_tags`?, `system_prompt`?, `related_rooms`?, `visibility`?, `repo`? | Update room metadata (single, batch, or by project); `visibility` toggles a room between `public` and `private`; `repo` sets the git repo for `{sha:…}` commit links |
-| `list_rooms` | `project`?, `project_not_in`?, `tag`?, `status`?, `search`?, `related_to`?, `verbose`?, `limit`?, `offset`?, `cluster_wide`? | List rooms with optional filters and pagination |
-| `read_room` | `room_id`, `cluster_wide`? | Read metadata without messages |
-| `search_messages` | `query`?, `author`?, `message_type`?, `room_id`?, `room_ids`?, `project`?, `limit`?, `since`?, `until`?, `include_related`?, `summary_only`?, `full_content`?, `semantic`?, `cluster_wide`? | FTS5 full-text search with BM25 ranking; semantic search via Ollama embeddings |
-| `get_messages` | `message_ids`?, `room_id`?, `last_n`?, `after_id`?, `cluster_wide`? | Fetch messages by ID, browse by room, or delta-read new messages |
-| `room_stats` | `room_id`?, `room_ids`?, `cluster_wide`? | Get message count, participants, type breakdown, timestamps, and a "messages since pin" staleness signal |
-| `get_digest` | `project`?, `since`?, `unread_only`?, `agent`?, `cluster_wide`? | Get activity feed since timestamp with health flags; use `unread_only=true` after `mark_read` |
-| `mark_read` | `room_id`, `cursor`, `agent`? | Persist a read cursor; use with `get_digest(unread_only=true)` on return sessions |
-| `get_concept_map` | `room_id`, `max_depth`?, `infer_from`? | BFS traversal of related rooms graph (default depth 3, max 5); `infer_from=project\|tags\|project,tags` auto-discovers rooms without explicit links |
-| `fork_thread` | `start_message_id`, `new_room_id`, `topic`?, `project`?, `tags`? | Create a new room, move start message and all later messages from source room, and link both rooms bidirectionally in one call |
-| `update_message` | `message_id`, `content`, `message_type`?, `expected_content`? | Edit a message in-place; `expected_content` enables optimistic concurrency |
-| `pin_message` | `room_id`, `message_id` | Toggle a message as the room TL;DR (one per room) |
-| `react_to_message` | `message_id`, `emoji`, `author` | Toggle an emoji reaction on a message |
-| `link_messages` | `from_id`, `to_id`, `relation`, `author`? | Assert a typed link between two messages (`refines`/`contradicts`/`implements`/`duplicates`/`depends-on`/`relates`/`informs`) — builds an addressable graph over the ledger. Use `informs` to wire a journal `note` to the deliberation it provides context for |
-| `get_links` | `message_id` | Show a message's link neighborhood: outgoing edges + incoming backlinks, merging explicit links with implicit reply/supersedes edges |
-| `unlink_messages` | `link_id` | Remove an explicit typed link by ID |
-| `move_messages` | `message_ids`, `target_room_id` | Relocate messages to another room, preserving all metadata |
-| `delete_messages` | `message_ids`, `dry_run`? | Delete specific messages (use `dry_run=true` to preview) |
-| `delete_room` | `room_id` | Permanently delete a room and all its messages |
-| `archive_room` | `room_id`, `delete`? | Export transcript to markdown file, optionally delete room |
-| `list_archives` | — | List all archived room transcripts with size and date |
-| `read_archive` | `room_id` | Read an archived room transcript |
-| `read_transcript` | `room_id`?, `room_ids`?, `last_n`?, `after_id`?, `mode`?, `include_related`?, `cluster_wide`?, `show`?, `truncate`?, `author`?, `message_type`?, `since`?, `until`? | Get full prompt-optimized transcript (modes: summary, changelog, work_items). ViewSpec: `show` toggles metadata (ids/author/time/reactions), `truncate=line-one` clips to first line, and `author`/`message_type`/`since`/`until` filter which messages render |
-| `read_notebook` | `project`?, `notebook_id`?, `types`?, `since`?, `until`?, `after_id`?, `limit`?, `level`?, `cluster_wide`? | Project notebook: compiled timeline of typed messages across all project rooms (via `project`), or a curated outline with transcluded messages (via `notebook_id`). `level=N` clips an outline to its heading skeleton + one-line bodies (NLS-style structural ViewSpec) |
-| `edit_notebook` | `action`, `notebook_id`?, `project`?, `title`?, `entry_id`?, `kind`?, `ref_id`?, `prose`?, `after_entry_id`? | Curate a notebook outline: create/delete notebooks; add/update/move/remove prose sections and message refs (transcluded live, never copied) |
-| `register_skill` | `name`, `description`?, `when_to_use`?, `content`?, `project`?, `tags`?, `source`?, `remove`? | Register/update a task playbook in the methodology registry (upsert by name; omit `project` for a global skill; `remove='true'` deletes) |
-| `query_skills_registry` | `query`?, `name`?, `project`?, `tag`? | Discover registered task playbooks: a scannable catalog, or one skill's full playbook via `name=` — the agent-extensible counterpart to the `council://` guides |
-| `check_room_health` | — | Flag stale rooms and rooms needing synthesis across all active rooms |
-| `load_resources` | `uri`? | Fetch skill guides (usage patterns, message types, workflows); omit uri to list all |
+**→ Full tool & resource reference: [docs/mcp-tools.md](docs/mcp-tools.md)**
 
-Parameters marked with `?` are optional.
-
-### Resources
-
-| URI | Description |
-|-----|-------------|
-| `council://guide` | Core concepts, session-start workflow, key tools by goal, delta reads, synthesis pattern, and tips |
-| `council://message-types` | Reference card for all 11 message types with when-to-use guidance and filtering examples |
-| `council://workflows` | Room templates (brainstorm, bug, decision-log, review, sprint) and common workflow patterns |
-| `council://janitor` | Room-hygiene playbook: triage stale / needs-synthesis rooms, write and pin syntheses, resolve or archive finished work |
-| `council://room/{room_id}/transcript` | Prompt-optimized markdown transcript with system context header |
-
-Resource-aware clients (e.g. Claude Desktop) can read skill guides proactively. Clients without resource support can use the `load_resources` tool to fetch the same content.
-
-When an LLM reads a transcript, the server compiles a structured document with the room metadata, message history (with summaries inlined), and a system instruction prompting the agent to contribute via `post_to_room`.
+When an LLM reads a transcript, the server compiles a structured document with the room metadata, message history (summaries inlined), and a system instruction prompting the agent to contribute via `post_to_room`.
 
 ## Clustering (Distributed Erlang)
 
@@ -252,37 +202,14 @@ For full setup (env vars, ports, multi-node `docker run` examples) see **[DOCKER
 
 ## Configuration
 
-### MCP Server
+Environment variables for the MCP server, web UI, and clustering — full tables in **[docs/configuration.md](docs/configuration.md)**. The essentials:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `COUNCIL_DB` | `council.db` | Path to the SQLite database |
-| `COUNCIL_TRANSPORT` | `stdio` | Transport mode: `stdio` or `http` |
-| `COUNCIL_HTTP_ADDR` | `:3001` | HTTP server bind address |
-| `COUNCIL_DEBUG` | `0` | Set to `1` for verbose debug logging |
-| `COUNCIL_PHOENIX_URL` | `http://127.0.0.1:4000` | Phoenix internal API URL (used for cluster-wide queries) |
-| `COUNCIL_PEER_MCP_PORT` | port from `COUNCIL_HTTP_ADDR` (`3001`) | Port used to reach peer nodes' MCP servers for cross-node writes |
-
-### Web UI (Phoenix)
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `COUNCIL_DB_PATH` | — | Path to the SQLite database (read-only) |
-| `COUNCIL_AUTHOR` | `claude-code` | Agent name for the @mentions panel (highlights messages mentioning this agent) |
-| `SECRET_KEY_BASE` | auto-generated | Phoenix session signing key |
-| `PHX_HOST` | `localhost` | Phoenix hostname |
-| `PORT` | `4000` | Phoenix HTTP port |
-
-### Clustering
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `RELEASE_COOKIE` | `council` | Shared secret — must match on all nodes; also authenticates cross-node write proxies |
-| `RELEASE_NODE` | `council_hub@127.0.0.1` | Unique node name with reachable IP |
-| `COUNCIL_SEEDS` | — | Peers to connect to — bare IPs (`192.168.0.5`), hostnames (`bob`, MagicDNS), or full `node@ip`. Resolved via `:3001/health`. Omit for LAN auto-discovery. |
-| `COUNCIL_NO_DISCOVER` | `0` | Set to `1` to skip the LAN subnet scan on startup (useful on VPN where scanning is unnecessary) |
-| `COUNCIL_PEER_MCP_PORT` | `3001` | Port used to reach peer nodes' MCP servers for cross-node writes |
-| `COUNCIL_CLUSTER_ADMIN_TOKEN` | — | Enables the UI Cluster Settings page (`/settings`) for live peer connect/disconnect. Unlock by visiting `/settings?token=<token>` once. Unset = page disabled |
+| `COUNCIL_TRANSPORT` | `stdio` | `stdio` for CLI agents, `http` for the persistent service (MCP on `:3001`) |
+| `COUNCIL_DB` / `COUNCIL_DB_PATH` | `council.db` | SQLite path (server writes; Phoenix reads) |
+| `COUNCIL_OLLAMA_URL` | — | Ollama endpoint enabling semantic search |
+| `RELEASE_COOKIE` / `RELEASE_NODE` / `COUNCIL_SEEDS` | — | Clustering identity, shared secret, and peers |
 
 ## Usage Example
 
@@ -475,11 +402,15 @@ See our [Code of Conduct](CODE_OF_CONDUCT.md) for community standards.
 - **[Deployment & Performance](docs/deployment-and-performance.md)** — Production setup, benchmarks, tuning
 - **[Examples](examples/)** — Docker Compose, API samples, room templates
 
+**Reference:**
+- **[MCP Tools & Resources](docs/mcp-tools.md)** — All 37 MCP tools + skill-guide resources
+- **[Configuration](docs/configuration.md)** — Every environment variable (server, web UI, clustering)
+- **[Architecture](docs/architecture.md)** — System diagrams, cluster topology, knowledge-compilation flow
+
 **Go deeper:**
 - [DOCKERHUB.md](DOCKERHUB.md) — Docker setup, semantic search, clustering
 - [CLAUDE.md](CLAUDE.md) — Architecture and dev commands
 - [CONTRIBUTING.md](CONTRIBUTING.md) — How to contribute
-- [API Reference](README.md#mcp-interface) — All 37 MCP tools
 
 ## License
 
