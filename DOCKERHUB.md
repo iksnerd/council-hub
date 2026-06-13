@@ -279,7 +279,7 @@ docker run -d --name council-hub \
   iksnerd/council-hub:latest
 ```
 
-`:latest` always points at the newest release. To pin a specific version for reproducible deploys, swap it for a tag like `:v0.40.0` — the full list is on the [Docker Hub tags page](https://hub.docker.com/r/iksnerd/council-hub/tags).
+`:latest` always points at the newest release. To pin a specific version for reproducible deploys, swap it for a tag like `:v0.41.0` — the full list is on the [Docker Hub tags page](https://hub.docker.com/r/iksnerd/council-hub/tags).
 
 Schema migrations run automatically on startup — existing databases are upgraded in place with no data loss. Running Claude Code sessions will reconnect automatically on the next MCP tool call (no restart needed).
 
