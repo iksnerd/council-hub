@@ -213,19 +213,22 @@ func (s *Server) lintStaleRooms() []string {
 // cold-start agent. UUIDv7 message IDs are time-ordered, so `m.id > p.id` means
 // "posted after the pin". The `stale-pin` tag auto-clears in PinMessage on re-pin.
 func (s *Server) lintStalePins() []string {
+	// Flag an active room's pin as stale when either (a) stalePinMinUpdates+ decision/
+	// action/synthesis messages have landed since it (drift heuristic), or (b) the pin
+	// has been explicitly superseded by a newer message but never re-pinned (definitive).
 	query := `
-		SELECT r.id, COALESCE(r.tags, ''), n.cnt
-		FROM rooms r
-		JOIN messages p ON p.room_id = r.id AND p.pinned = 1
-		JOIN (
-			SELECT m.room_id, COUNT(*) AS cnt
-			FROM messages m
-			JOIN messages pin ON pin.room_id = m.room_id AND pin.pinned = 1
-			WHERE m.id > pin.id
-			  AND m.message_type IN ('decision', 'action', 'synthesis')
-			GROUP BY m.room_id
-		) n ON n.room_id = r.id
-		WHERE r.status = 'active' AND n.cnt >= ?
+		SELECT id, tags, cnt FROM (
+			SELECT r.id AS id, COALESCE(r.tags, '') AS tags,
+				(SELECT COUNT(*) FROM messages m
+				   WHERE m.room_id = r.id AND m.id > p.id
+				     AND m.message_type IN ('decision', 'action', 'synthesis')) AS cnt,
+				EXISTS (SELECT 1 FROM messages s
+				          WHERE s.room_id = r.id AND s.supersedes = p.id) AS superseded
+			FROM rooms r
+			JOIN messages p ON p.room_id = r.id AND p.pinned = 1
+			WHERE r.status = 'active'
+		)
+		WHERE cnt >= ? OR superseded = 1
 	`
 	rows, err := s.DB.Query(query, stalePinMinUpdates)
 	if err != nil {
@@ -263,8 +266,8 @@ func (s *Server) lintStalePins() []string {
 			continue
 		}
 
-		content := "### Knowledge Linter\nThe pinned summary in this room predates several recent " +
-			"`decision`/`action` updates and may no longer reflect the live state. " +
+		content := "### Knowledge Linter\nThe pinned summary in this room may no longer reflect the live " +
+			"state — newer `decision`/`action` updates have landed since it, or a superseding message exists. " +
 			"Consider posting a fresh `synthesis` and pinning it (`pin_message`)."
 		if _, err := s.PostMessage(c.id, "system", content, "message", ""); err == nil {
 			s.Logger.Info("Linter: flagged room for stale pin", "room_id", c.id, "updates_since_pin", c.cnt)

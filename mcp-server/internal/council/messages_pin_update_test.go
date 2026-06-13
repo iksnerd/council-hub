@@ -46,6 +46,53 @@ func TestPostMessageWithRefsStoresSupersedes(t *testing.T) {
 	}
 }
 
+func TestTranscriptRendersSupersededByBacklink(t *testing.T) {
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "backlink-room")
+	oldID := mustPostTyped(t, s, "backlink-room", "Claude", "v1 synthesis", "synthesis")
+	if _, err := s.PinMessage("backlink-room", oldID); err != nil {
+		t.Fatal(err)
+	}
+	newID, err := s.PostMessageWithRefs("backlink-room", "Claude", "v2 synthesis", "synthesis", "", "", oldID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	room, _ := s.GetRoom("backlink-room")
+	msgs, err := s.GetTranscript("backlink-room")
+	if err != nil {
+		t.Fatalf("GetTranscript error: %v", err)
+	}
+	tr := FormatTranscript(room, msgs)
+	// The new message shows the forward link; the old (pinned) one shows the backlink.
+	if !strings.Contains(tr, "supersedes #"+oldID[:8]) {
+		t.Errorf("expected forward 'supersedes' link to %.8s in transcript", oldID)
+	}
+	if !strings.Contains(tr, "superseded by #"+newID[:8]) {
+		t.Errorf("expected 'superseded by' backlink to %.8s in transcript:\n%s", newID, tr)
+	}
+}
+
+func TestLintStalePinsFlagsSupersededPin(t *testing.T) {
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "superseded-pin")
+	oldID := mustPostTyped(t, s, "superseded-pin", "Claude", "v1", "synthesis")
+	if _, err := s.PinMessage("superseded-pin", oldID); err != nil {
+		t.Fatal(err)
+	}
+	// One superseding synthesis — below the 5-update heuristic, but a definitive stale pin.
+	if _, err := s.PostMessageWithRefs("superseded-pin", "Claude", "v2", "synthesis", "", "", oldID); err != nil {
+		t.Fatal(err)
+	}
+
+	s.lintStalePins()
+
+	room, _ := s.GetRoom("superseded-pin")
+	if !hasTag(room.Tags, "stale-pin") {
+		t.Errorf("a superseded pin should be flagged stale-pin even below the update threshold, got '%s'", room.Tags)
+	}
+}
+
 func TestPinMessageChainsSynthesis(t *testing.T) {
 	s := setupTestServer(t)
 	mustCreateRoom(t, s, "chain-room")

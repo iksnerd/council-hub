@@ -6,7 +6,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ## [Unreleased]
 
-Changes on `main` not yet in a tagged release.
+### Added
+- **Bidirectional `supersedes` in transcripts** — a superseded message now shows `superseded by #x` (a backlink), and a *pinned* message that's been superseded shows `⚠️ superseded by #x`, so a stale pin reads as dead at a glance. The Knowledge Linter's `stale-pin` flag now also fires when the pinned message has been explicitly superseded (definitive, regardless of the update-count heuristic).
 
 ## [0.40.0] - 2026-06-13
 

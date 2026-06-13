@@ -46,13 +46,27 @@ func FormatTranscript(room Room, messages []Message) string {
 		fmt.Fprintf(&b, "*Instructions: %s*\n---\n", room.SystemPrompt)
 	}
 
+	// Reverse supersedes index: supersededBy[old.id] = new.id. Lets a superseded
+	// message show it's been replaced (the backlink), not just the replacement
+	// pointing back — so a stale pin reads as dead at a glance.
+	supersededBy := make(map[string]string)
+	for _, m := range messages {
+		if m.Supersedes != "" {
+			supersededBy[m.Supersedes] = m.ID
+		}
+	}
+
 	// Render pinned message first if one exists
 	pinnedID := ""
 	for _, m := range messages {
 		if m.Pinned {
 			pinnedID = m.ID
 			ts := m.Timestamp.Format("2006-01-02 15:04:05")
-			fmt.Fprintf(&b, "\n**PINNED [#%.8s %s] %s:**\n%s\n---\n", m.ID, ts, m.Author, ResolveCommitRefs(m.Content, room.Repo))
+			staleNote := ""
+			if by, ok := supersededBy[m.ID]; ok {
+				staleNote = fmt.Sprintf(" ⚠️ superseded by #%.8s", by)
+			}
+			fmt.Fprintf(&b, "\n**PINNED [#%.8s %s] %s%s:**\n%s\n---\n", m.ID, ts, m.Author, staleNote, ResolveCommitRefs(m.Content, room.Repo))
 			break
 		}
 	}
@@ -70,6 +84,9 @@ func FormatTranscript(room Room, messages []Message) string {
 		supersedesTag := ""
 		if m.Supersedes != "" {
 			supersedesTag = fmt.Sprintf(", supersedes #%.8s", m.Supersedes)
+		}
+		if by, ok := supersededBy[m.ID]; ok {
+			supersedesTag += fmt.Sprintf(", superseded by #%.8s", by)
 		}
 		mentionTag := ""
 		if m.Mentions != "" {
