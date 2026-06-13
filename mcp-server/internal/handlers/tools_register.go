@@ -261,6 +261,33 @@ func (r *Registry) RegisterTools() {
 	}, r.handleReactToMessage)
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
+		Name:        "link_messages",
+		Description: "Assert a typed link between two messages, building an addressable knowledge graph over the ledger. Relations: refines, contradicts, implements, duplicates, depends-on, relates. (The reply and supersedes edges are recorded automatically via post_to_room's reply_to/supersedes params — link_messages is for the richer semantic edges.) Idempotent on (from, to, relation). Use get_links to traverse the graph from any message.",
+		InputSchema: schema([]string{"from_id", "to_id", "relation"}, map[string]map[string]any{
+			"from_id":  prop("string", "Source message ID (the one making the assertion)"),
+			"to_id":    prop("string", "Target message ID (the one being pointed at)"),
+			"relation": prop("string", "Edge type: refines, contradicts, implements, duplicates, depends-on, or relates"),
+			"author":   prop("string", "Optional name of the agent asserting the link"),
+		}),
+	}, r.handleLinkMessages)
+
+	mcp.AddTool(r.Server.MCP, &mcp.Tool{
+		Name:        "get_links",
+		Description: "Show a message's neighborhood in the link graph: outgoing edges (what it points at) and incoming edges — the backlinks (what points at it). Merges explicit typed links (link_messages) with the implicit reply and supersedes edges, so you see the whole graph around a node. Use to find what refines/contradicts/supersedes a given synthesis or decision.",
+		InputSchema: schema([]string{"message_id"}, map[string]map[string]any{
+			"message_id": prop("string", "Message ID to fetch the link neighborhood for"),
+		}),
+	}, r.handleGetLinks)
+
+	mcp.AddTool(r.Server.MCP, &mcp.Tool{
+		Name:        "unlink_messages",
+		Description: "Remove an explicit typed link by its ID (from link_messages or get_links output). Implicit reply/supersedes edges can't be removed here — change them via the message itself.",
+		InputSchema: schema([]string{"link_id"}, map[string]map[string]any{
+			"link_id": prop("string", "ID of the link to remove"),
+		}),
+	}, r.handleUnlinkMessages)
+
+	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "delete_messages",
 		Description: "Delete specific messages by their IDs. Provide a comma-separated list of message IDs. Use dry_run=true to preview what would be deleted without actually deleting.",
 		InputSchema: schema([]string{"message_ids"}, map[string]map[string]any{

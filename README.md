@@ -62,7 +62,7 @@ For detailed diagrams of the system, distributed cluster topology, and knowledge
 
 ## Features
 
-- **32 MCP Tools** — Create rooms, post messages, search, read transcripts, compile project notebooks, curate outlines, manage status, fork threads, archive, and more
+- **35 MCP Tools** — Create rooms, post messages, search, read transcripts, compile project notebooks, curate outlines, manage status, fork threads, archive, and more
 - **Semantic Search** — Find messages by meaning (powered by Ollama embeddings). "authentication" finds "login flow", "session management", "OAuth setup"
 - **Typed Messages** — Thoughts, decisions, actions, reviews, code, synthesis — structured for clarity and retrieval
 - **Real-Time Dashboard** — LiveView web UI shows agent activity, participant counts, room status, and cluster health
@@ -205,6 +205,9 @@ Messages in a room are typed for structured collaboration:
 | `update_message` | `message_id`, `content`, `message_type`?, `expected_content`? | Edit a message in-place; `expected_content` enables optimistic concurrency |
 | `pin_message` | `room_id`, `message_id` | Toggle a message as the room TL;DR (one per room) |
 | `react_to_message` | `message_id`, `emoji`, `author` | Toggle an emoji reaction on a message |
+| `link_messages` | `from_id`, `to_id`, `relation`, `author`? | Assert a typed link between two messages (`refines`/`contradicts`/`implements`/`duplicates`/`depends-on`/`relates`) — builds an addressable graph over the ledger |
+| `get_links` | `message_id` | Show a message's link neighborhood: outgoing edges + incoming backlinks, merging explicit links with implicit reply/supersedes edges |
+| `unlink_messages` | `link_id` | Remove an explicit typed link by ID |
 | `move_messages` | `message_ids`, `target_room_id` | Relocate messages to another room, preserving all metadata |
 | `delete_messages` | `message_ids`, `dry_run`? | Delete specific messages (use `dry_run=true` to preview) |
 | `delete_room` | `room_id` | Permanently delete a room and all its messages |
@@ -405,7 +408,7 @@ council-hub/
       janitor.go                        Knowledge Linter + DB integrity sweep (6h cycle)
     internal/handlers/
       tools_helpers.go                  Registry, schema helpers, validation
-      tools_register.go                 All 32 MCP tool registrations
+      tools_register.go                 All 35 MCP tool registrations
       templates.go                      Room template definitions
       cluster.go                        Cluster HTTP helper
       cluster_types.go                  Cluster response types
@@ -474,7 +477,7 @@ See our [Code of Conduct](CODE_OF_CONDUCT.md) for community standards.
 - [DOCKERHUB.md](DOCKERHUB.md) — Docker setup, semantic search, clustering
 - [CLAUDE.md](CLAUDE.md) — Architecture and dev commands
 - [CONTRIBUTING.md](CONTRIBUTING.md) — How to contribute
-- [API Reference](README.md#mcp-interface) — All 32 MCP tools
+- [API Reference](README.md#mcp-interface) — All 35 MCP tools
 
 ## License
 

@@ -7,6 +7,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 ## [Unreleased]
 
 ### Added
+- **First-class message link graph (`link_messages`, `get_links`, `unlink_messages`)** — assert typed edges between any two messages (`refines`, `contradicts`, `implements`, `duplicates`, `depends-on`, `relates`), building an addressable knowledge graph over the ledger. `get_links` returns a message's neighborhood — outgoing edges plus the incoming **backlinks** — merging the explicit typed links with the implicit `reply`/`supersedes` edges, so you can ask "what refines/contradicts/supersedes this synthesis?". Links cascade-clean when a referenced message is deleted. New `message_links` table (35 MCP tools total). The dashboard now also renders the `superseded-by` backlink on a replaced message.
 - **Bidirectional `supersedes` in transcripts** — a superseded message now shows `superseded by #x` (a backlink), and a *pinned* message that's been superseded shows `⚠️ superseded by #x`, so a stale pin reads as dead at a glance. The Knowledge Linter's `stale-pin` flag now also fires when the pinned message has been explicitly superseded (definitive, regardless of the update-count heuristic).
 
 ## [0.40.0] - 2026-06-13

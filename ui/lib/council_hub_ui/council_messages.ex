@@ -14,6 +14,16 @@ defmodule CouncilHubUi.CouncilMessages do
         else: base
 
     Repo.all(from m in base, order_by: [desc: m.pinned, asc: m.id])
+    |> annotate_superseded_by()
+  end
+
+  # Sets the virtual :superseded_by on each message that a later message replaces,
+  # so the dashboard can render the reverse of the `supersedes` link (the backlink).
+  defp annotate_superseded_by(messages) do
+    by =
+      for m <- messages, m.supersedes not in [nil, ""], into: %{}, do: {m.supersedes, m.id}
+
+    Enum.map(messages, fn m -> %{m | superseded_by: Map.get(by, m.id, "")} end)
   end
 
   def get_messages_since(room_id, last_id, type_filter \\ "all") do

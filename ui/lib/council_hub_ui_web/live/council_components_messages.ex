@@ -67,6 +67,17 @@ defmodule CouncilHubUiWeb.MessageComponents do
             >
               supersedes #{String.slice(Map.get(@msg, :supersedes, ""), 0, 8)}
             </button>
+            <button
+              :if={Map.get(@msg, :superseded_by, "") != ""}
+              id={"superseded-by-btn-#{@msg.id}"}
+              phx-hook="ScrollToMessage"
+              data-reply-to={Map.get(@msg, :superseded_by, "")}
+              type="button"
+              title="Replaced by a later message — this version is stale"
+              class="text-[9px] font-mono text-amber-400/70 hover:text-amber-300 transition-colors cursor-pointer"
+            >
+              ⚠ superseded by #{String.slice(Map.get(@msg, :superseded_by, ""), 0, 8)}
+            </button>
             <span class="text-[10px] text-[var(--ch-text-xs)] font-mono tabular-nums">
               {format_timestamp(@msg.timestamp)}
             </span>
