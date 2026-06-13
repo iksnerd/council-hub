@@ -3,7 +3,8 @@ defmodule CouncilHubUi.CouncilMessages do
 
   import Ecto.Query
   alias CouncilHubUi.Repo
-  alias CouncilHubUi.Council.{Room, Message, MessageLink}
+  alias CouncilHubUi.Council.{Room, Message}
+  alias CouncilHubUi.MessageAnnotations
 
   def list_messages_for_room(room_id, type_filter \\ "all") do
     base = from m in Message, where: m.room_id == ^room_id
@@ -14,43 +15,8 @@ defmodule CouncilHubUi.CouncilMessages do
         else: base
 
     Repo.all(from m in base, order_by: [desc: m.pinned, asc: m.id])
-    |> annotate_superseded_by()
-    |> annotate_links()
-  end
-
-  # Sets the virtual :superseded_by on each message that a later message replaces,
-  # so the dashboard can render the reverse of the `supersedes` link (the backlink).
-  defp annotate_superseded_by(messages) do
-    by =
-      for m <- messages, m.supersedes not in [nil, ""], into: %{}, do: {m.supersedes, m.id}
-
-    Enum.map(messages, fn m -> %{m | superseded_by: Map.get(by, m.id, "")} end)
-  end
-
-  # Sets the virtual :links on each message from the explicit message_links table —
-  # one batched query for the whole set — so the dashboard surfaces E2's typed graph.
-  defp annotate_links([]), do: []
-
-  defp annotate_links(messages) do
-    ids = Enum.map(messages, & &1.id)
-
-    links =
-      Repo.all(from l in MessageLink, where: l.from_id in ^ids or l.to_id in ^ids)
-
-    out_by = Enum.group_by(links, & &1.from_id)
-    in_by = Enum.group_by(links, & &1.to_id)
-
-    Enum.map(messages, fn m ->
-      edges =
-        Enum.map(Map.get(out_by, m.id, []), fn l ->
-          %{relation: l.relation, other_id: l.to_id, direction: :out}
-        end) ++
-          Enum.map(Map.get(in_by, m.id, []), fn l ->
-            %{relation: l.relation, other_id: l.from_id, direction: :in}
-          end)
-
-      %{m | links: edges}
-    end)
+    |> MessageAnnotations.annotate_superseded_by()
+    |> MessageAnnotations.annotate_links()
   end
 
   def get_messages_since(room_id, last_id, type_filter \\ "all") do

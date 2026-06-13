@@ -76,6 +76,28 @@ defmodule CouncilHubUiWeb.NotebookLiveTest do
       {:ok, _view, html} = live(conn, "/notebook?project=nbl-proj")
       assert html =~ "/rooms/nbl-room-a"
     end
+
+    test "surfaces supersession and typed links on entries", %{conn: conn} do
+      room = create_room(%{id: "nbl-rel", project: "rel-proj"})
+      v1 = create_message(%{room_id: room.id, content: "v1 synthesis", message_type: "synthesis"})
+
+      v2 =
+        create_message(%{
+          room_id: room.id,
+          content: "v2 synthesis",
+          message_type: "synthesis",
+          supersedes: v1.id
+        })
+
+      create_message_link(%{from_id: v2.id, to_id: v1.id, relation: "refines"})
+
+      {:ok, _view, html} = live(conn, "/notebook?project=rel-proj")
+
+      # v1 shows it was superseded; v2 shows the forward supersedes + the typed link.
+      assert html =~ "⚠ superseded by ##{String.slice(v2.id, 0, 8)}"
+      assert html =~ "→ supersedes ##{String.slice(v1.id, 0, 8)}"
+      assert html =~ "refines"
+    end
   end
 
   describe "outline mode" do

@@ -175,6 +175,31 @@ defmodule CouncilHubUiWeb.NotebookLive do
   defp default_project("", [first | _]), do: first
   defp default_project(project, _projects), do: project
 
+  # Builds the read-only relationship chips shown under a notebook entry: its
+  # supersession (forward + backlink) and explicit typed links. Display-only —
+  # the notebook is cross-room, so these don't scroll/navigate.
+  def notebook_relations(entry) do
+    supersedes =
+      case Map.get(entry, :supersedes, "") do
+        s when s in [nil, ""] -> []
+        s -> [%{label: "→ supersedes ##{String.slice(s, 0, 8)}", warn: false}]
+      end
+
+    superseded =
+      case Map.get(entry, :superseded_by, "") do
+        s when s in [nil, ""] -> []
+        s -> [%{label: "⚠ superseded by ##{String.slice(s, 0, 8)}", warn: true}]
+      end
+
+    links =
+      for e <- Map.get(entry, :links, []) do
+        arrow = if e.direction == :out, do: "→", else: "←"
+        %{label: "#{arrow} #{e.relation} ##{String.slice(e.other_id, 0, 8)}", warn: false}
+      end
+
+    supersedes ++ superseded ++ links
+  end
+
   defp parse_types(""), do: @default_types
 
   defp parse_types(csv) do

@@ -10,6 +10,7 @@ defmodule CouncilHubUi.CouncilNotebook do
   import Ecto.Query
   alias CouncilHubUi.Repo
   alias CouncilHubUi.Council.{Room, Message, Notebook, NotebookEntry}
+  alias CouncilHubUi.MessageAnnotations
 
   @default_types ~w(decision plan action synthesis note)
   @default_limit 100
@@ -68,12 +69,15 @@ defmodule CouncilHubUi.CouncilNotebook do
             message_type: m.message_type,
             is_summary: m.is_summary,
             reply_to: m.reply_to,
+            supersedes: m.supersedes,
             pinned: m.pinned,
             timestamp: m.timestamp,
             repo: r.repo
           }
       )
       |> Enum.reverse()
+      |> MessageAnnotations.annotate_superseded_by()
+      |> MessageAnnotations.annotate_links()
     end
   end
 

@@ -326,6 +326,25 @@
                   <div class="council-prose text-[12px] leading-relaxed">
                     {raw(render_markdown(resolve_commit_refs(entry.content, entry.repo)))}
                   </div>
+                  <%!-- Knowledge relations: supersession + typed link graph (read-only here) --%>
+                  <div
+                    :if={notebook_relations(entry) != []}
+                    class="flex items-center gap-1 mt-1.5 flex-wrap"
+                  >
+                    <span
+                      :for={chip <- notebook_relations(entry)}
+                      class={[
+                        "inline-flex items-center px-1.5 py-px rounded text-[9px] font-mono border",
+                        if(chip.warn,
+                          do: "border-amber-500/30 text-amber-400/70",
+                          else: "border-[var(--ch-border)] text-[var(--ch-text-lo)]"
+                        )
+                      ]}
+                      title={chip.label}
+                    >
+                      {chip.label}
+                    </span>
+                  </div>
                 </div>
               <% end %>
             </div>
