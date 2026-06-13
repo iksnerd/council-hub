@@ -398,6 +398,8 @@ func (r *Registry) RegisterTools() {
 			"mode":            enumProp("string", "summary — pinned + latest per type (best for orientation); changelog — decisions + actions chronologically; work_items — structured export for sprint retros, release notes, ADO/GitHub Issues, or cross-room project status.", []string{"summary", "changelog", "work_items"}),
 			"include_related": prop("string", "Set to 'true' to append a summary of each related room after the main transcript. Resolves related_rooms automatically."),
 			"cluster_wide":    prop("string", "Set to 'true' to fetch the transcript from the remote cluster node that owns it."),
+			"show":            prop("string", "View filter — comma list of which metadata to render: ids, author, time, reactions. When set, ONLY those are shown (content is always shown); omit for all. E.g. show='author' for a clean author+content scan."),
+			"truncate":        prop("string", "Set to 'line-one' to clip each message to its first line — a dense, scannable overview of a long room (Engelbart's line-clip ViewSpec). Default: full bodies."),
 		}),
 	}, r.handleReadTranscript)
 

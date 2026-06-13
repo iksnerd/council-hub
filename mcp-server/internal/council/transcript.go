@@ -22,7 +22,36 @@ func formatReactions(reactionsJSON string) string {
 	return strings.Join(parts, "  ")
 }
 
+// headerPrefix builds the "[#id ts] author" lead-in for a message, honoring the
+// view's metadata toggles. Returns "" when all three are hidden.
+func headerPrefix(m Message, v ViewSpec, includeID bool) string {
+	var br []string
+	if v.ShowIDs && includeID {
+		br = append(br, fmt.Sprintf("#%.8s", m.ID))
+	}
+	if v.ShowTimestamps {
+		br = append(br, m.Timestamp.Format("2006-01-02 15:04:05"))
+	}
+	prefix := ""
+	if len(br) > 0 {
+		prefix = "[" + strings.Join(br, " ") + "]"
+	}
+	if v.ShowAuthor {
+		if prefix != "" {
+			prefix += " "
+		}
+		prefix += m.Author
+	}
+	return prefix
+}
+
+// FormatTranscript renders a room with the default view (everything shown, full bodies).
 func FormatTranscript(room Room, messages []Message) string {
+	return FormatTranscriptView(room, messages, DefaultViewSpec())
+}
+
+// FormatTranscriptView renders a room projected through a ViewSpec.
+func FormatTranscriptView(room Room, messages []Message, v ViewSpec) string {
 	var b strings.Builder
 
 	fmt.Fprintf(&b, "# COUNCIL ROOM: %s\n", room.ID)
@@ -56,17 +85,28 @@ func FormatTranscript(room Room, messages []Message) string {
 		}
 	}
 
+	projectBody := func(raw string) string {
+		c := ResolveCommitRefs(raw, room.Repo)
+		if v.TruncateLineOne {
+			c = firstLine(c)
+		}
+		return c
+	}
+
 	// Render pinned message first if one exists
 	pinnedID := ""
 	for _, m := range messages {
 		if m.Pinned {
 			pinnedID = m.ID
-			ts := m.Timestamp.Format("2006-01-02 15:04:05")
 			staleNote := ""
 			if by, ok := supersededBy[m.ID]; ok {
 				staleNote = fmt.Sprintf(" ⚠️ superseded by #%.8s", by)
 			}
-			fmt.Fprintf(&b, "\n**PINNED [#%.8s %s] %s%s:**\n%s\n---\n", m.ID, ts, m.Author, staleNote, ResolveCommitRefs(m.Content, room.Repo))
+			prefix := headerPrefix(m, v, true)
+			if prefix != "" {
+				prefix = " " + prefix
+			}
+			fmt.Fprintf(&b, "\n**PINNED%s%s:**\n%s\n---\n", prefix, staleNote, projectBody(m.Content))
 			break
 		}
 	}
@@ -75,8 +115,7 @@ func FormatTranscript(room Room, messages []Message) string {
 		if m.ID == pinnedID {
 			continue // already rendered above
 		}
-		ts := m.Timestamp.Format("2006-01-02 15:04:05")
-		content := ResolveCommitRefs(m.Content, room.Repo)
+		content := projectBody(m.Content)
 		replyTag := ""
 		if m.ReplyTo != "" {
 			replyTag = fmt.Sprintf(", re: #%.8s", m.ReplyTo)
@@ -102,16 +141,28 @@ func FormatTranscript(room Room, messages []Message) string {
 			}
 		}
 		if m.IsSummary {
-			fmt.Fprintf(&b, "\n**[%s] SUMMARY:**\n%s\n", ts, content)
-		} else if m.MessageType != "" && m.MessageType != "message" {
-			fmt.Fprintf(&b, "\n**[#%.8s %s] %s (%s%s%s)%s:**\n%s\n", m.ID, ts, m.Author, m.MessageType, replyTag, supersedesTag, mentionTag, content)
-		} else if m.ReplyTo != "" {
-			fmt.Fprintf(&b, "\n**[#%.8s %s] %s (re: #%.8s%s)%s:**\n%s\n", m.ID, ts, m.Author, m.ReplyTo, supersedesTag, mentionTag, content)
+			bracket := ""
+			if v.ShowTimestamps {
+				bracket = "[" + m.Timestamp.Format("2006-01-02 15:04:05") + "] "
+			}
+			fmt.Fprintf(&b, "\n**%sSUMMARY:**\n%s\n", bracket, content)
 		} else {
-			fmt.Fprintf(&b, "\n**[#%.8s %s] %s%s%s:**\n%s\n", m.ID, ts, m.Author, supersedesTag, mentionTag, content)
+			prefix := headerPrefix(m, v, true)
+			var annot string
+			if m.MessageType != "" && m.MessageType != "message" {
+				annot = " (" + m.MessageType + replyTag + supersedesTag + ")"
+			} else if m.ReplyTo != "" {
+				annot = fmt.Sprintf(" (re: #%.8s%s)", m.ReplyTo, supersedesTag)
+			} else {
+				annot = supersedesTag // bare, no parens (matches the plain-message form)
+			}
+			header := strings.TrimLeft(prefix+annot+mentionTag, " ")
+			fmt.Fprintf(&b, "\n**%s:**\n%s\n", header, content)
 		}
-		if r := formatReactions(m.Reactions); r != "" {
-			fmt.Fprintf(&b, "  Reactions: %s\n", r)
+		if v.ShowReactions {
+			if r := formatReactions(m.Reactions); r != "" {
+				fmt.Fprintf(&b, "  Reactions: %s\n", r)
+			}
 		}
 	}
 

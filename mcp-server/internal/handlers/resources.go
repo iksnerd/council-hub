@@ -121,6 +121,7 @@ Check for one before filing feedback elsewhere.
 
 ## Tips
 
+- Use **read_transcript(truncate=line-one)** for a dense, scannable overview of a long room — first line of each message only; pair with **show=author** to strip IDs/timestamps for a clean read (a composable "view" over the same ledger)
 - Use **summary_only=true** in search_messages to save tokens on large result sets
 - Use **include_related=true** on read_transcript to pull related room summaries in one call
 - Use **get_concept_map** to navigate complex project topologies; add ` + "`infer_from=project`" + ` or ` + "`infer_from=tags`" + ` to auto-discover rooms without explicit links
