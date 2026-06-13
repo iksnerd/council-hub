@@ -18,6 +18,8 @@ type ReadTranscriptInput struct {
 	Mode           string `json:"mode"`
 	IncludeRelated string `json:"include_related"`
 	ClusterWide    string `json:"cluster_wide"`
+	Show           string `json:"show"`
+	Truncate       string `json:"truncate"`
 }
 
 // ArchiveRoomInput represents the parameters for archiving a room.
@@ -319,7 +321,7 @@ func (r *Registry) readSingleTranscript(args ReadTranscriptInput) (*mcp.CallTool
 		}
 	}
 
-	transcript := council.FormatTranscript(room, messages)
+	transcript := council.FormatTranscriptView(room, messages, council.ParseViewSpec(args.Show, args.Truncate))
 	return msg(transcript)
 }
 
