@@ -47,6 +47,13 @@ defmodule CouncilHubUiWeb.RoomComponents do
             S
           </span>
           <span
+            :if={Map.get(@room, :visibility) == "private"}
+            class="text-[9px] text-amber-300/80"
+            title="Private (visibility) — node-local, excluded from cluster sharing. Separate from locality: where the room lives."
+          >
+            🔒
+          </span>
+          <span
             class={["w-1.5 h-1.5 rounded-full shrink-0", status_dot_class(@room.status)]}
             title={@room.status}
           >
@@ -104,6 +111,7 @@ defmodule CouncilHubUiWeb.RoomComponents do
         <span
           :if={present?(@source_node)}
           class="text-[10px] text-[var(--ch-text-xs)] font-mono"
+          title={"Lives on node #{short_node(@source_node)} (locality — a remote room from another node). Separate from visibility."}
         >
           {short_node(@source_node)}
         </span>
@@ -175,8 +183,19 @@ defmodule CouncilHubUiWeb.RoomComponents do
           >
             {format_type_counts(@type_counts)}
           </span>
-          <span :if={present?(Map.get(@room, :source_node))} class="text-[var(--ch-text-xs)]">
+          <span
+            :if={present?(Map.get(@room, :source_node))}
+            class="text-[var(--ch-text-xs)]"
+            title="Locality: this room lives on another node (remote). Separate from visibility (public/private)."
+          >
             {Map.get(@room, :source_node)}
+          </span>
+          <span
+            :if={Map.get(@room, :visibility) == "private"}
+            class="text-amber-300/80"
+            title="Private (visibility) — node-local, excluded from cluster sharing."
+          >
+            🔒 private
           </span>
           <a
             :if={@repo_link != ""}

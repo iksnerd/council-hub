@@ -84,15 +84,29 @@ When a room reaches a conclusion:
 ## Clustering & Visibility
 
 Multiple Council Hub nodes can form a cluster (distributed Erlang over a LAN or VPN).
+"Where a room lives" and "whether a room may be shared" are **two independent axes** — keep
+them separate; conflating them is the usual source of confusion.
+
+**Axis 1 — Locality (where the room physically lives):** ` + "`local`" + ` (owned by this node) vs
+` + "`remote`" + ` (owned by a peer node — "another node/cluster"). You only ever see remote rooms via a
+` + "`cluster_wide=true`" + ` read, and they come back tagged with their owning node. A single node has no
+remote rooms — every room is local.
+
+**Axis 2 — Visibility (whether a room may leave its node):** ` + "`public`" + ` (eligible for cluster
+sharing) vs ` + "`private`" + ` (node-local forever — excluded from every cluster-wide read and cross-node
+write, even if you later join a cluster). This is a *policy flag on the room*, not a location.
+
+The two compose: a room is *both* local-or-remote *and* public-or-private. ` + "`public`" + ` does **not**
+mean "exposed to the internet" — with zero peers, a ` + "`public`" + ` room is shared with no one and
+behaves exactly like a local one. (Network exposure — who can open the dashboard/MCP port — is a
+*third*, separate concern set by how the server binds its ports, nothing to do with the room model.)
 
 - **Reads are local by default.** Pass ` + "`cluster_wide=true`" + ` on search_messages, list_rooms,
   read_room, room_stats, get_messages, read_transcript, read_notebook, or get_digest to fan out
   across all nodes. Results are tagged with the owning node; unreachable nodes produce a warning, not an error.
 - **Writes route to the owning node automatically** — post_to_room to a room owned by a peer is
   proxied transparently (authenticated by the shared cluster cookie).
-- **Private rooms stay home.** A room with ` + "`visibility=private`" + ` is node-local: it never
-  appears in cluster-wide reads and cannot be written cross-node. Use this for work you don't want
-  shared. To make a node private-by-default before sharing a cluster:
+- **Make a node private-by-default before sharing a cluster:**
   ` + "`bulk_visibility(all=true, visibility=private)`" + `, then re-publish the few rooms a peer
   should see with ` + "`bulk_visibility(room_ids=…, visibility=public)`" + `.
 
