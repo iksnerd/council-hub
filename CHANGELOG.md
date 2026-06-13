@@ -8,6 +8,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 Changes on `main` not yet in a tagged release.
 
+### Changed
+- **MCP description sync for the v0.43.0 task cockpit.** The always-injected server `Instructions` now lead with **session-start step 0** — `read_notebook(notebook_id=current-work)` — and a tracker convention (a `room_ref` per thread, a `task` per checklist item; not a throwaway `TODO.md`), so an agent learns the cockpit even if it never reads `council://guide`. `read_notebook`'s description now covers task self-sorting (In progress / Open / Done), not just room_refs; `list_rooms`' linter-tag tip includes `incoherent`. (Ships on the next release — descriptions live in the binary.)
+
 ## [0.43.0] - 2026-06-13
 
 The notebook becomes a dev-task cockpit, and the Knowledge Linter grows two checks. `current-work` gains first-class, self-sorting **tasks** (open → doing → done) so a one-off TODO is a real toggleable item, not dead markdown — closing the gap the v0.42.0 tracker-hierarchy convention left. The linter adds a **coherence** check over the v0.41.0 link graph (Engelbart E4) and a **no-notebook nudge**. 35 MCP tools, 11 message types.
