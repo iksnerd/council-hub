@@ -134,7 +134,7 @@ func (r *Registry) handleReadNotebookCluster(args ReadNotebookInput) (*mcp.CallT
 			day = d
 			fmt.Fprintf(&b, "\n## %s\n", day)
 		}
-		writeNotebookEntry(&b, e, res.SourceNode)
+		writeNotebookEntry(&b, e, res.SourceNode, nil)
 	}
 
 	latest := results[len(results)-1].ID

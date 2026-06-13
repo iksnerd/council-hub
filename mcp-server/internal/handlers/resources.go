@@ -132,8 +132,12 @@ Check for one before filing feedback elsewhere.
 Messages form an addressable knowledge graph, not just a flat ledger.
 
 - **` + "`link_messages(from, to, relation)`" + `** asserts a typed edge: ` + "`refines`" + `, ` + "`contradicts`" + `,
-  ` + "`implements`" + `, ` + "`duplicates`" + `, ` + "`depends-on`" + `, ` + "`relates`" + `. (` + "`reply`" + ` and ` + "`supersedes`" + ` are
+  ` + "`implements`" + `, ` + "`duplicates`" + `, ` + "`depends-on`" + `, ` + "`relates`" + `, ` + "`informs`" + `. (` + "`reply`" + ` and ` + "`supersedes`" + ` are
   recorded automatically from post_to_room's ` + "`reply_to`" + `/` + "`supersedes`" + ` params.)
+- **Notes as connective tissue.** A ` + "`note`" + ` is journal context, not a dead-end entry — wire it to the
+  deliberation it informs with ` + "`link_messages(from=<note>, to=<decision>, relation=informs)`" + `. The
+  notebook timeline then renders the note's ` + "`↳ informs`" + ` connections inline, and ` + "`get_links`" + ` on the
+  decision surfaces the notes that inform it (backlinks).
 - **` + "`get_links(message_id)`" + `** returns a node's neighborhood — outgoing edges plus the incoming
   **backlinks** — merging explicit links with the implicit reply/supersedes edges. Ask "what
   contradicts / refines / supersedes this decision?". Add ` + "`depth=N`" + ` (max 5) for a breadth-first
@@ -151,6 +155,20 @@ Messages form an addressable knowledge graph, not just a flat ledger.
 - These compose: ` + "`read_transcript(message_type=decision, truncate=line-one, show=author)`" + ` is a
   one-line-each list of every decision by author. The dashboard mirrors this with a URL-serialized
   Compact toggle, so a view is a shareable address.
+
+## Skills Registry (Methodology in the DKR)
+
+The skills registry holds task playbooks — the standing "how we do X" — as queryable DKR
+artifacts, so methodology is discoverable from any agent or node instead of siloed on one
+machine's disk (Engelbart's Methodology/Training leg).
+
+- **` + "`query_skills_registry`" + `** lists the catalog (name → description, when-to-use, tags, source);
+  filter with ` + "`query`" + ` / ` + "`project`" + ` / ` + "`tag`" + `, or pass ` + "`name=<skill>`" + ` for one skill's full playbook.
+- **` + "`register_skill(name, description, when_to_use, …)`" + `** upserts a playbook by name. Omit ` + "`project`" + `
+  for a global skill (listed in every project's view); add ` + "`content`" + ` for inline steps; ` + "`remove='true'`" + ` deletes.
+
+This is the agent-extensible counterpart to the fixed ` + "`council://`" + ` guides above (which document
+council-hub itself, via load_resources). Registry entries are node-local.
 
 ## Tips
 

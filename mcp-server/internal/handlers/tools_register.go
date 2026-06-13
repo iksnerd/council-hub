@@ -262,11 +262,11 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "link_messages",
-		Description: "Assert a typed link between two messages, building an addressable knowledge graph over the ledger. Relations: refines, contradicts, implements, duplicates, depends-on, relates. (The reply and supersedes edges are recorded automatically via post_to_room's reply_to/supersedes params — link_messages is for the richer semantic edges.) Idempotent on (from, to, relation). Use get_links to traverse the graph from any message.",
+		Description: "Assert a typed link between two messages, building an addressable knowledge graph over the ledger. Relations: refines, contradicts, implements, duplicates, depends-on, relates, informs. Use informs to wire a journal note to the deliberation it provides context for (note → decision/action) — the notebook timeline then weaves the note's `↳ informs` connections in, and get_links on the decision surfaces the notes that inform it, so journal context becomes connective tissue rather than a dead-end entry. (The reply and supersedes edges are recorded automatically via post_to_room's reply_to/supersedes params — link_messages is for the richer semantic edges.) Idempotent on (from, to, relation). Use get_links to traverse the graph from any message.",
 		InputSchema: schema([]string{"from_id", "to_id", "relation"}, map[string]map[string]any{
 			"from_id":  prop("string", "Source message ID (the one making the assertion)"),
 			"to_id":    prop("string", "Target message ID (the one being pointed at)"),
-			"relation": prop("string", "Edge type: refines, contradicts, implements, duplicates, depends-on, or relates"),
+			"relation": prop("string", "Edge type: refines, contradicts, implements, duplicates, depends-on, relates, or informs (a note → the decision/action it provides context for)"),
 			"author":   prop("string", "Optional name of the agent asserting the link"),
 		}),
 	}, r.handleLinkMessages)
@@ -429,6 +429,7 @@ func (r *Registry) RegisterTools() {
 			"until":        prop("string", "Timeline only: ISO timestamp (e.g. 2026-04-30T23:59:59). Only entries at or before this time."),
 			"after_id":     prop("string", "Timeline only: return only entries with message ID greater than this value. For delta reads — pair with the latest_message_id from the previous read's JSON footer."),
 			"limit":        prop("string", "Timeline only: max entries (default 100, max 500). When truncating, the most recent entries are kept."),
+			"level":        prop("string", "Notebook (notebook_id) only: NLS-style structural level-clip. An integer N collapses each prose entry to its markdown headings down to depth N (a table of contents) and clips transcluded message bodies to their first line; tasks and room_refs always render. Omit or 0 for the full outline. The structural counterpart to read_transcript's truncate=line-one."),
 			"cluster_wide": prop("string", "Timeline only: set to 'true' to compile the timeline from all cluster nodes. Default: local only."),
 		}),
 	}, r.handleReadNotebook)
@@ -503,4 +504,34 @@ func (r *Registry) RegisterTools() {
 			"cluster_wide": prop("string", "Set to 'true' to fetch the digest from all cluster nodes. Default: local only."),
 		}),
 	}, r.handleGetDigest)
+
+	mcp.AddTool(r.Server.MCP, &mcp.Tool{
+		Name: "register_skill",
+		Description: "Register (or update) a task playbook in the methodology registry — the H-LAM/T Methodology/Training leg made queryable from inside the DKR. Where rooms hold dialog and notebooks hold compiled knowledge, the skills registry holds standing \"how we do X\" know-how that any agent can discover from any node, even without the skill files on its local disk. " +
+			"Upserts by name — registering the same name again updates it in place. Provide a one-line description and when_to_use (the discovery card an agent scans), an optional content body (the fuller playbook), project (omit for a global skill listed in every project), tags, and source (where the canonical version lives — a skill directory or URL). " +
+			"Set remove='true' to delete a skill. Discover entries with query_skills_registry. Node-local in v1.",
+		InputSchema: schema([]string{"name"}, map[string]map[string]any{
+			"name":        prop("string", "Skill identifier — the stable address. Registering an existing name updates it in place (e.g. 'release', 'bug-investigation')."),
+			"description": prop("string", "One-line summary of what the skill does — the discovery hook agents scan."),
+			"when_to_use": prop("string", "Trigger conditions — when an agent should reach for this playbook (e.g. 'shipping a new version vX.Y.Z')."),
+			"content":     prop("string", "Optional fuller playbook body (markdown). The registry is discovery-first; this carries the steps when you want them inline, returned by query_skills_registry(name=…)."),
+			"project":     prop("string", "Project scope. Omit for a GLOBAL skill — listed in every project's registry view (cross-project methodology)."),
+			"tags":        prop("string", "Comma-separated labels for filtering (e.g. 'release,ci,docker')."),
+			"source":      prop("string", "Pointer to where the canonical skill lives — a skill directory path or URL."),
+			"remove":      prop("string", "Set to 'true' to delete the named skill from the registry."),
+		}),
+	}, r.handleRegisterSkill)
+
+	mcp.AddTool(r.Server.MCP, &mcp.Tool{
+		Name: "query_skills_registry",
+		Description: "Discover task playbooks registered in the DKR — Engelbart's Methodology/Training leg, queryable like everything else. Returns the registry as a scannable catalog (name → description, when-to-use, tags, source); pass name=<skill> to fetch one skill's full playbook (content body included). " +
+			"Filter with query (case-insensitive substring across name/description/when-to-use/content), project (returns the project's skills plus global ones), or tag. Use this to answer \"what's the playbook for X?\" from any agent or node. " +
+			"This is the agent-extensible counterpart to the fixed council:// usage guides (load_resources): those document council-hub itself; the registry holds project-specific know-how that agents contribute. Node-local in v1.",
+		InputSchema: schema(nil, map[string]map[string]any{
+			"query":   prop("string", "Case-insensitive substring matched across skill name, description, when-to-use, and content. Omit to list everything."),
+			"name":    prop("string", "Fetch a single skill by exact name, rendering its full playbook (content body included)."),
+			"project": prop("string", "Scope to a project's skills. Global skills (no project) are always included, like global notebooks."),
+			"tag":     prop("string", "Filter to skills carrying this tag (whole-token match)."),
+		}),
+	}, r.handleQuerySkillsRegistry)
 }

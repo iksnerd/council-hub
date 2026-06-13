@@ -18,6 +18,30 @@ var ValidLinkRelations = map[string]bool{
 	"duplicates":  true,
 	"depends-on":  true,
 	"relates":     true,
+	"informs":     true,
+}
+
+// connectiveRelations are the edges that turn a journal note into context for
+// deliberation: a note informs / relates-to / refines a decision or action.
+// The notebook timeline weaves these in beneath each note so the journal links
+// to the work it informed instead of being a dead-end entry.
+var connectiveRelations = map[string]bool{"informs": true, "relates": true, "refines": true}
+
+// NoteConnections returns a message's outgoing connective links — the
+// deliberation a journal note is wired into (informs / relates / refines).
+// Empty for messages with no such edges.
+func (s *Server) NoteConnections(messageID string) ([]MessageLink, error) {
+	outgoing, _, err := s.GetLinks(messageID)
+	if err != nil {
+		return nil, err
+	}
+	var conns []MessageLink
+	for _, l := range outgoing {
+		if connectiveRelations[l.Relation] {
+			conns = append(conns, l)
+		}
+	}
+	return conns, nil
 }
 
 // MessageLink is one edge in the message link graph. Implicit edges (reply,
