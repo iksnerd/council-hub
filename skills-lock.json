@@ -7,6 +7,18 @@
       "skillPath": "skills/elixir-code-style/SKILL.md",
       "computedHash": "7d7a635d3d393b7a4ad0e768dd7d8b3590684defc23aa2c865ff6936095cd854"
     },
+    "elixir-otp-genserver": {
+      "source": "iksnerd/skills",
+      "sourceType": "github",
+      "skillPath": "elixir-otp-genserver/SKILL.md",
+      "computedHash": "c22a6672ffcbbdf24182393d995387c3372fe4cdcb7f6277d59b881d73c85456"
+    },
+    "elixir-task-concurrency": {
+      "source": "iksnerd/skills",
+      "sourceType": "github",
+      "skillPath": "elixir-task-concurrency/SKILL.md",
+      "computedHash": "80bb6af1019878e8c533b120b92c2a371d1d6d419cc8e163996849c61ca8fd8c"
+    },
     "elixir-testing": {
       "source": "iksnerd/agents-library",
       "sourceType": "github",
@@ -19,11 +31,23 @@
       "skillPath": "skills/golang-concurrency/SKILL.md",
       "computedHash": "08cc0797979db9faf1b204004e73ef2e596726c3a88013837498637873a45043"
     },
+    "golang-context": {
+      "source": "iksnerd/skills",
+      "sourceType": "github",
+      "skillPath": "golang-context/SKILL.md",
+      "computedHash": "70a6d882b2b55415b2b23dd5abfcbe70be0b910357f5f53f399ea571955dfb55"
+    },
     "golang-database": {
       "source": "iksnerd/agents-library",
       "sourceType": "github",
       "skillPath": "skills/golang-database/SKILL.md",
       "computedHash": "4b6cad08b328cdf111a031725c807ffea55330d891d5424682f332599921475a"
+    },
+    "golang-error-handling": {
+      "source": "iksnerd/skills",
+      "sourceType": "github",
+      "skillPath": "golang-error-handling/SKILL.md",
+      "computedHash": "30f575b18286250eab1418417a84e7d6ecb08a9881d124df888c94fbee3f3eac"
     },
     "golang-security": {
       "source": "iksnerd/agents-library",

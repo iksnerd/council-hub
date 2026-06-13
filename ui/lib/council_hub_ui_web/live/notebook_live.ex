@@ -39,7 +39,10 @@ defmodule CouncilHubUiWeb.NotebookLive do
        projects: Council.list_projects(),
        all_types: @all_types,
        view_compact: false,
-       compose_author: ""
+       compose_author: "",
+       outline_inline: [],
+       outline_in_flight: [],
+       outline_done: []
      )}
   end
 
@@ -172,16 +175,83 @@ defmodule CouncilHubUiWeb.NotebookLive do
 
       notebook ->
         outline = Council.outline_entries(notebook_id)
+        {inline, in_flight, done} = partition_outline(outline)
 
         assign(socket,
           notebook: notebook,
           outline: outline,
+          outline_inline: inline,
+          outline_in_flight: in_flight,
+          outline_done: done,
           project: notebook.project,
           entries: [],
           entry_count: length(outline),
           days: []
         )
     end
+  end
+
+  # Splits a curated outline into its document spine (prose + message refs, in
+  # authored order) and its work-list room_refs, regrouped by transcluded live
+  # status. A notebook of room_refs becomes a self-sorting In flight / Done
+  # list: resolving the room moves the item, the list is never hand-edited.
+  defp partition_outline(outline) do
+    {room_refs, inline} = Enum.split_with(outline, &(&1.kind == "room_ref"))
+    {done, in_flight} = Enum.split_with(room_refs, &room_ref_done?/1)
+    {inline, in_flight, done}
+  end
+
+  defp room_ref_done?(%{ref_found: true, room_status: status}),
+    do: status in ["resolved", "archived"]
+
+  defp room_ref_done?(_), do: false
+
+  # One work-list item in a curated notebook: a room transcluded by its live
+  # status, topic, and latest decision/action. A dangling ref (room deleted or
+  # node-local elsewhere) renders as a warning in place.
+  attr :entry, :map, required: true
+
+  def room_ref_card(assigns) do
+    ~H"""
+    <%= if @entry.ref_found do %>
+      <div
+        id={"outline-#{@entry.id}"}
+        class="bg-[var(--ch-surface)] border border-[var(--ch-border)] rounded-lg p-3"
+      >
+        <div class="flex items-center gap-2 flex-wrap">
+          <span class={["w-1.5 h-1.5 rounded-full shrink-0", status_dot_class(@entry.room_status)]}>
+          </span>
+          <.link
+            navigate={~p"/rooms/#{@entry.room_id}"}
+            class="text-[12px] font-mono text-[var(--ch-text-hi)] hover:underline"
+          >
+            {@entry.room_id}
+          </.link>
+          <span class={[
+            "px-1.5 py-px rounded text-[10px] font-mono",
+            status_badge_class(@entry.room_status)
+          ]}>
+            {@entry.room_status}
+          </span>
+          <span class="text-[11px] text-[var(--ch-text-lo)] truncate">
+            {@entry.room_topic}
+          </span>
+        </div>
+        <%= if @entry.content != "" do %>
+          <div class="mt-1.5 text-[11px] text-[var(--ch-text-xs)] line-clamp-2">
+            latest: {truncate(@entry.content, 200)}
+          </div>
+        <% end %>
+      </div>
+    <% else %>
+      <div
+        id={"outline-#{@entry.id}"}
+        class="bg-amber-500/5 border border-amber-500/20 rounded-lg p-3 text-[11px] text-amber-200/90 font-mono"
+      >
+        ⚠ referenced room {String.slice(@entry.ref_id, 0, 12)} not found — deleted, or it lives on another cluster node
+      </div>
+    <% end %>
+    """
   end
 
   defp default_project("", [first | _]), do: first

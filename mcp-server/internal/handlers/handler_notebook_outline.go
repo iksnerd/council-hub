@@ -137,26 +137,24 @@ func (r *Registry) renderOutline(notebookID string) (*mcp.CallToolResult, ToolOu
 		return msg(b.String())
 	}
 
+	// room_ref entries are pulled out and regrouped by their transcluded live
+	// status: a notebook of room_refs is a self-sorting work list — In flight
+	// vs Done re-partitions because the truth lives in the rooms, never by
+	// editing the list. prose and message refs keep their authored positions
+	// and render inline (the document spine); the work-list groups follow.
+	var inFlight, done []council.OutlineEntry
 	for _, e := range entries {
 		switch {
+		case e.Kind == "room_ref":
+			if roomRefDone(e) {
+				done = append(done, e)
+			} else {
+				inFlight = append(inFlight, e)
+			}
 		case e.Kind == "prose":
 			fmt.Fprintf(&b, "\n%s\n*(entry %s)*\n", e.Prose, e.ID)
 		case !e.RefFound:
 			fmt.Fprintf(&b, "\n⚠ **referenced %s '%.12s' not found** — deleted, or it lives on another cluster node. *(entry %s)*\n", refNoun(e.Kind), e.RefID, e.ID)
-		case e.Kind == "room_ref":
-			// Live work-list item: the room's current status + its latest
-			// decision/action. Resolving the room flips this to [resolved] —
-			// the list never needs editing to stay true.
-			fmt.Fprintf(&b, "\n**[%s] %s** — %s\n", e.RefStatus, e.RefID, e.RefTopic)
-			if e.RefContent != "" {
-				ts := e.RefTime.Format("2006-01-02 15:04")
-				excerpt := strings.ReplaceAll(e.RefContent, "\n", " ")
-				if len(excerpt) > 240 {
-					excerpt = excerpt[:240] + "..."
-				}
-				fmt.Fprintf(&b, "  latest %s [%s %s]: %s\n", e.RefType, ts, e.RefAuthor, council.ResolveCommitRefs(excerpt, e.RefRepo))
-			}
-			fmt.Fprintf(&b, "*(entry %s)*\n", e.ID)
 		default:
 			ts := e.RefTime.Format("2006-01-02 15:04")
 			pin := ""
@@ -170,7 +168,46 @@ func (r *Registry) renderOutline(notebookID string) (*mcp.CallToolResult, ToolOu
 		}
 	}
 
+	if len(inFlight) > 0 {
+		fmt.Fprintf(&b, "\n## 🔄 In flight (%d)\n", len(inFlight))
+		for _, e := range inFlight {
+			renderRoomRef(&b, e)
+		}
+	}
+	if len(done) > 0 {
+		fmt.Fprintf(&b, "\n## ✅ Done (%d)\n", len(done))
+		for _, e := range done {
+			renderRoomRef(&b, e)
+		}
+	}
+
 	return msg(b.String())
+}
+
+// roomRefDone reports whether a transcluded room_ref counts as finished work.
+// A resolved/archived room is Done; everything else (active, paused, or a
+// dangling ref that needs attention) is still In flight.
+func roomRefDone(e council.OutlineEntry) bool {
+	return e.RefFound && (e.RefStatus == "resolved" || e.RefStatus == "archived")
+}
+
+// renderRoomRef writes one work-list item: the room's live status, topic, and
+// latest decision/action. A dangling room_ref renders as a warning in place.
+func renderRoomRef(b *strings.Builder, e council.OutlineEntry) {
+	if !e.RefFound {
+		fmt.Fprintf(b, "\n⚠ **referenced room '%.12s' not found** — deleted, or it lives on another cluster node. *(entry %s)*\n", e.RefID, e.ID)
+		return
+	}
+	fmt.Fprintf(b, "\n**[%s] %s** — %s\n", e.RefStatus, e.RefID, e.RefTopic)
+	if e.RefContent != "" {
+		ts := e.RefTime.Format("2006-01-02 15:04")
+		excerpt := strings.ReplaceAll(e.RefContent, "\n", " ")
+		if len(excerpt) > 240 {
+			excerpt = excerpt[:240] + "..."
+		}
+		fmt.Fprintf(b, "  latest %s [%s %s]: %s\n", e.RefType, ts, e.RefAuthor, council.ResolveCommitRefs(excerpt, e.RefRepo))
+	}
+	fmt.Fprintf(b, "*(entry %s)*\n", e.ID)
 }
 
 func refNoun(kind string) string {

@@ -51,8 +51,8 @@ newcomers instant context at the top of every future read.
 | Room stats (count, participants) | room_stats |
 | Room health / flags | check_room_health |
 | Delta read (new only) | read_transcript(after_id=…) |
-| Project timeline (decisions → actions → syntheses across rooms) | read_notebook |
-| Curate an outline (prose + transcluded messages) | edit_notebook, read_notebook(notebook_id=…) |
+| Project **timeline** — a derived view (decisions → actions → syntheses woven across rooms; nothing stored) | read_notebook(project=…) |
+| Curate a **notebook** — a stored record (prose + transcluded messages/rooms) | edit_notebook, read_notebook(notebook_id=…) |
 | Cross-room concepts | get_concept_map |
 | Link/relate two messages | link_messages |
 | Trace a message's links + backlinks | get_links (depth=N for a wider walk) |
@@ -98,12 +98,20 @@ Multiple Council Hub nodes can form a cluster (distributed Erlang over a LAN or 
 
 ## Current Work List (Engelbart's living to-do)
 
-Keep one global notebook as the standing source of truth for what's in flight:
+**Tracker hierarchy — one source of truth per layer, no competing lists:**
+
+- **Rooms** are the source of truth for each *thread* of work — the dialog, decisions, and synthesis live there.
+- **The ` + "`current-work`" + ` global notebook** is the canonical *cross-project index*: one ` + "`room_ref`" + ` per live thread. This is the standing answer to "what's in flight, everywhere."
+- **A private ` + "`TODO.md`" + ` (or scratch file)** is for personal, throwaway notes only — never the primary tracker. If it's worth coordinating on, it belongs in a room + the index, not a flat file. (Don't repeat the mistake of building the notebook, then tracking the next two releases in ` + "`TODO.md`" + ` anyway.)
+
+**Session-start step 0:** read ` + "`read_notebook(notebook_id=current-work)`" + ` before anything else — it's the map of what's open across every project. (Then the usual get_mentions → get_digest.)
+
+Build and maintain it:
 
 1. ` + "`edit_notebook(action=create, notebook_id=current-work, title=Current Work)`" + ` — no project = global
 2. ` + "`edit_notebook(action=add, notebook_id=current-work, kind=room_ref, ref_id=<room_id>)`" + ` — one entry per thread of work
-3. ` + "`read_notebook(notebook_id=current-work)`" + ` — each entry shows the room's LIVE status + latest decision/action
-4. Finishing work = ` + "`signal_status(room_id=…, status=resolved)`" + ` — the list updates itself; never edit it to mark things done
+3. ` + "`read_notebook(notebook_id=current-work)`" + ` — entries render grouped **In flight / Done** by each room's LIVE status, with its latest decision/action
+4. Finishing work = ` + "`signal_status(room_id=…, status=resolved)`" + ` — the item moves itself to Done; never edit the list to mark things off
 
 Add prose entries for one-off TODOs that don't deserve a room yet; graduate them to a room (and a room_ref) when they grow.
 

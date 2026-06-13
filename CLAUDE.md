@@ -105,6 +105,15 @@ Project-specific skills live in `.claude/skills/` (gitignored — local only):
 
 Use `/release` for all version bumps — it enforces the gofmt preflight that prevents CI failures from struct alignment drift (lesson from v0.26.4).
 
+### Language skill packs (`npx skills`)
+
+Reference skills for the project's two stacks are installed from [`iksnerd/skills`](https://github.com/iksnerd/skills) into `.agents/skills/` (gitignored — local only). They carry idioms and gotchas for the Go server and the Phoenix UI, and load automatically when a task matches.
+
+- **Go (`mcp-server/`):** `golang-concurrency`, `golang-database`, `golang-security`, `golang-testing`, `golang-error-handling`, `golang-context`
+- **Elixir/Phoenix (`ui/`):** `phoenix-liveview`, `elixir-code-style`, `elixir-testing`, `elixir-otp-genserver`, `elixir-task-concurrency`
+
+Add more with `npx skills add iksnerd/skills --skill <name> --agent '*' --yes` (list available with `--list`). Review a skill before relying on it — they run with full agent permissions.
+
 ## Capturing learnings
 
 After a non-trivial task, fold what you learned back into the place that surfaces it next time — don't let it die with the session:
