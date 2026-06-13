@@ -12,8 +12,6 @@ Changes on `main` not yet in a tagged release.
 
 Agent-feedback batch from the `council-hub-mcp-feedback` room (items FB1–FB8): a `plan` message type, four Knowledge-Linter upgrades that keep the shared knowledge repository honest, a synthesis-supersession link, and session-loop ergonomics. 32 MCP tools, 11 message types.
 
-> Released via the local arm64 fallback (`make docker-push`) because GitHub Actions minutes were exhausted — the multi-arch (amd64) image follows when CI quota resets. Tests were run locally for both suites.
-
 ### Added
 - **`plan` message type** (11 types total) — the handoff slot in the lifecycle (`decision → plan → action`): "specified work awaiting execution; an executor replies with an `action` referencing it." Makes handoffs queryable with `search_messages(message_type=plan)` and is included in `read_notebook`'s default timeline. Rendered with a teal badge, clipboard icon, and a "Plans" filter in the dashboard.
 - **`supersedes` link on messages** — `post_to_room(supersedes=<message_id>)` records that a message replaces an earlier one (e.g. a prior synthesis); it renders as `supersedes #x` in transcripts and as a click-to-scroll badge in the dashboard, so superseded versions stay addressable instead of being lost. Pinning a new synthesis over a previously pinned synthesis sets the link automatically. New `supersedes` column (Go + Phoenix migrations); forwarded on cross-node writes.
