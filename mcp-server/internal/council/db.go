@@ -41,16 +41,17 @@ type Message struct {
 	Pinned      bool
 	Reactions   string // JSON: {"emoji": ["author1", "author2"], ...}
 	Mentions    string // CSV of mentioned agent names, e.g. "claude,gemini-cli"
+	Supersedes  string // UUID of a message this one replaces (e.g. a prior synthesis), or ""
 	Timestamp   time.Time
 }
 
 // messageColumns is the canonical column list for SELECT queries on messages.
-const messageColumns = `id, room_id, author, content, message_type, is_summary, reply_to, pinned, reactions, mentions, timestamp`
+const messageColumns = `id, room_id, author, content, message_type, is_summary, reply_to, pinned, reactions, mentions, supersedes, timestamp`
 
 // scanMessage scans a single row into a Message struct. Use with messageColumns.
 func scanMessage(scanner interface{ Scan(...any) error }) (Message, error) {
 	var m Message
-	err := scanner.Scan(&m.ID, &m.RoomID, &m.Author, &m.Content, &m.MessageType, &m.IsSummary, &m.ReplyTo, &m.Pinned, &m.Reactions, &m.Mentions, &m.Timestamp)
+	err := scanner.Scan(&m.ID, &m.RoomID, &m.Author, &m.Content, &m.MessageType, &m.IsSummary, &m.ReplyTo, &m.Pinned, &m.Reactions, &m.Mentions, &m.Supersedes, &m.Timestamp)
 	return m, err
 }
 
@@ -114,11 +115,12 @@ func NewServer(dbPath string, logger *slog.Logger) (*Server, error) {
 			"3. load_resources(uri=council://guide) — read usage patterns on your first session in a new project\n\n" +
 			"Key conventions:\n" +
 			"- Prefer get_or_create_room over create_room — returns existing content and avoids duplicates\n" +
-			"- Use typed messages: thought → draft → critique → decision → action → synthesis (plus note for journal entries). Avoid posting everything as 'message'\n" +
+			"- Use typed messages: thought → draft → critique → decision → plan → action → synthesis (plus note for journal entries). Avoid posting everything as 'message'\n" +
 			"- After conclusions: post a synthesis, pin it, then signal_status(resolved)\n" +
 			"- Call mark_read after each session; use get_digest(unread_only=true) on return to see only new activity\n" +
 			"- Use search_messages for cross-room queries or filtered lookups; use read_transcript for full sequential context\n" +
-			"- Reads are local by default; pass cluster_wide=true to fan out across cluster nodes. Private rooms (visibility=private) are node-local — never shared across the cluster",
+			"- Reads are local by default; pass cluster_wide=true to fan out across cluster nodes. Private rooms (visibility=private) are node-local — never shared across the cluster\n" +
+			"- Hit a confusing tool, unhelpful error, missing param, or token-wasting workflow? Post it to the room tagged meta-feedback (thought for observations, draft for proposals; name the tool, expected vs actual). The maintainer reviews it before each release. See council://guide for the convention",
 	})
 
 	s := &Server{
@@ -161,6 +163,7 @@ func initSchema(db *sql.DB) error {
 		reply_to TEXT DEFAULT '',
 		pinned BOOLEAN DEFAULT 0,
 		reactions TEXT DEFAULT '{}',
+		supersedes TEXT DEFAULT '',
 		timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
 		FOREIGN KEY(room_id) REFERENCES rooms(id)
 	);
@@ -232,6 +235,7 @@ func initSchema(db *sql.DB) error {
 		`ALTER TABLE messages ADD COLUMN mentions TEXT DEFAULT ''`,
 		`ALTER TABLE rooms ADD COLUMN visibility TEXT DEFAULT 'public'`,
 		`ALTER TABLE rooms ADD COLUMN repo TEXT DEFAULT ''`,
+		`ALTER TABLE messages ADD COLUMN supersedes TEXT DEFAULT ''`,
 	}
 	for _, m := range migrations {
 		_, _ = db.Exec(m) // Ignore "duplicate column" errors for already-migrated DBs

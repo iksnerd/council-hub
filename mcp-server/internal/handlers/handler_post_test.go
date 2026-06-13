@@ -99,6 +99,58 @@ func TestHandlePostToRoomWithReplyTo(t *testing.T) {
 	}
 }
 
+func TestHandlePostToRoomSupersedes(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-sup")
+	oldID := mustPost(t, reg.Server, "h-sup", "Claude", "v1")
+
+	reg.handlePostToRoom(context.Background(), nil, PostToRoomInput{
+		RoomID: "h-sup", Author: "Claude", Message: "v2", MessageType: "synthesis",
+		Supersedes: oldID,
+	})
+
+	msgs, _ := reg.Server.GetRecentMessages("h-sup", 2)
+	found := false
+	for _, m := range msgs {
+		if m.Content == "v2" && m.Supersedes == oldID {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("supersedes not preserved through handler")
+	}
+}
+
+func TestHandlePostToRoomMarkReadSelf(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-mrs")
+
+	// Without mark_read_self: cursor stays empty.
+	reg.handlePostToRoom(context.Background(), nil, PostToRoomInput{
+		RoomID: "h-mrs", Author: "Claude", Message: "first", MessageType: "thought",
+	})
+	if cur, _ := reg.Server.GetCursor("Claude", "h-mrs"); cur != "" {
+		t.Errorf("expected empty cursor without mark_read_self, got '%s'", cur)
+	}
+
+	// With mark_read_self=true: cursor advances to the new message.
+	reg.handlePostToRoom(context.Background(), nil, PostToRoomInput{
+		RoomID: "h-mrs", Author: "Claude", Message: "done", MessageType: "action",
+		MarkReadSelf: "true",
+	})
+	cur, err := reg.Server.GetCursor("Claude", "h-mrs")
+	if err != nil {
+		t.Fatalf("GetCursor error: %v", err)
+	}
+	if cur == "" {
+		t.Error("expected cursor advanced by mark_read_self")
+	}
+	latest, _ := reg.Server.GetRoomStats("h-mrs")
+	if cur != latest.LatestMessageID {
+		t.Errorf("cursor %q should equal latest message ID %q", cur, latest.LatestMessageID)
+	}
+}
+
 func TestHandlePostToRoomAnyReplyToAccepted(t *testing.T) {
 	reg := setupHandlerTest(t)
 	mustCreateRoom(t, reg.Server, "h-reply-any")

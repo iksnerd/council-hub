@@ -103,6 +103,20 @@ Keep one global notebook as the standing source of truth for what's in flight:
 
 Add prose entries for one-off TODOs that don't deserve a room yet; graduate them to a room (and a room_ref) when they grow.
 
+## Reporting Friction & Feature Requests
+
+Hit a confusing tool behaviour, an unhelpful error, a missing param, or a token-wasting
+workflow? File it — the maintainer reviews feedback before each release cycle.
+
+- Find the inbox with ` + "`list_rooms(tag=meta-feedback)`" + ` (a tag survives room renames; the
+  current room is ` + "`council-hub-mcp-feedback`" + `).
+- Post a ` + "`thought`" + ` for an observation or a ` + "`draft`" + ` for a proposed fix. Name the
+  specific tool, and state what you expected vs. what happened.
+
+This convention generalizes: any tool maintainer can expose a room tagged ` + "`meta-feedback`" + `
+(or a ` + "`*-suggestions`" + `/` + "`*-feedback`" + ` room) as their agent-facing feedback inbox.
+Check for one before filing feedback elsewhere.
+
 ## Tips
 
 - Use **summary_only=true** in search_messages to save tokens on large result sets
@@ -126,6 +140,7 @@ const messageTypesResource = `# Council Hub — Message Types
 | **draft** | Analysis or proposal ready for peer review/critique. Use when you want feedback before committing to a decision. |
 | **critique** | Pushback, concerns, or risks about a prior message or approach. |
 | **decision** | A choice has been made. Include rationale. This becomes the permanent record. |
+| **plan** | Specified work awaiting execution — a handoff for another agent. The executor should reply with an ` + "`action`" + ` referencing it. Find unexecuted work with search_messages(message_type=plan). |
 | **action** | Work shipped or in-flight. Links decisions to concrete outcomes. |
 | **review** | Structured feedback on someone else's work (code, design, proposal). |
 | **code** | Code snippets, diffs, or technical artifacts. |
@@ -134,7 +149,12 @@ const messageTypesResource = `# Council Hub — Message Types
 
 ## Recommended Flow
 
-thought → draft → critique → decision → action → synthesis
+thought → draft → critique → decision → plan → action → synthesis
+
+**plan** is the handoff slot between a decision and the work: "this is specified and ready
+for someone to build." It makes handoffs queryable — search_messages(message_type=plan)
+surfaces specified-but-unexecuted work across a project, and an executing agent replies with
+an **action** referencing the plan.
 
 **note** sits outside this lifecycle — it is the Journal: drop an observation worth keeping
 without implying a deliberation step. Notes surface in read_notebook's default timeline
@@ -247,8 +267,12 @@ list_rooms(cluster_wide=true)                        # confirm what's visible ac
 const janitorResource = `# Council Hub — Janitor (Room Hygiene Pass)
 
 A periodic hygiene pass over one project's rooms. The built-in Knowledge Linter
-already tags rooms ` + "`stale`" + ` and ` + "`needs-synthesis`" + ` every 6h; this
-playbook acts on those flags.
+already tags rooms ` + "`stale`" + `, ` + "`needs-synthesis`" + `, ` + "`stale-pin`" + `
+(an active room whose pinned summary predates 5+ recent decision/action updates), and
+` + "`stale-plan`" + ` (an active room with a ` + "`plan`" + ` but no follow-on ` + "`action`" + ` — an
+unexecuted handoff) every 6h; this playbook acts on those flags. The linter auto-clears a
+flag once its condition no longer holds — ` + "`stale`" + ` on the next non-system post,
+` + "`needs-synthesis`" + ` on a synthesis, ` + "`stale-pin`" + ` on a re-pin, ` + "`stale-plan`" + ` on an action.
 
 **Hard rule:** never destroy signal. Don't delete messages, resolve a room with an
 open question, or archive something still in use. Compile and close finished work;
@@ -260,6 +284,8 @@ leave ambiguous rooms for a human.
 get_digest(unread_only=false)
 list_rooms(project="<proj>", tag="needs-synthesis")   # concluded but uncompiled
 list_rooms(project="<proj>", tag="stale")             # gone quiet
+list_rooms(project="<proj>", tag="stale-pin")         # busy, but pin drifted from live state
+list_rooms(project="<proj>", tag="stale-plan")        # a plan with no follow-on action
 list_rooms(project="<proj>", status="active")         # still open
 ` + "```" + `
 
@@ -272,6 +298,10 @@ Private rooms are node-local — skip in cluster context (or pass cluster_wide=t
 - Resolved + synthesized + finished → archive_room.
 - Stale but still live/blocked → post a short ` + "`thought`" + `/` + "`decision`" + ` status
   note; keep active or set paused.
+- Stale pin (busy room) → write a fresh ` + "`synthesis`" + ` capturing current state and
+  pin_message it; the ` + "`stale-pin`" + ` flag clears on re-pin.
+- Stale plan (unexecuted handoff) → if the work shipped, post an ` + "`action`" + ` referencing
+  the plan (clears ` + "`stale-plan`" + `); if it was dropped, note that and resolve.
 - Open question still live → leave it; get_mentions the owner to resurface.
 - Metadata drift → fix tags / related_rooms / project via update_room (never content).
 - Ambiguous → leave it; report to the user.
@@ -301,7 +331,7 @@ var staticResources = []struct {
 	{
 		uri:         "council://message-types",
 		name:        "Message Types",
-		description: "Reference card for all 10 message types (message, thought, draft, critique, decision, action, review, code, synthesis, note) with when-to-use guidance and filtering examples.",
+		description: "Reference card for all 11 message types (message, thought, draft, critique, decision, plan, action, review, code, synthesis, note) with when-to-use guidance and filtering examples.",
 		content:     messageTypesResource,
 	},
 	{

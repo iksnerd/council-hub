@@ -58,6 +58,42 @@ defmodule CouncilHubUiWeb.CouncilComponentsMessageTest do
       assert html =~ ~s(id="reply-btn-uuid-0002")
     end
 
+    test "renders supersedes badge linking the replaced message" do
+      assigns = %{
+        msg: %{
+          id: "uuid-v2",
+          author: "Claude",
+          content: "v2 synthesis",
+          message_type: "synthesis",
+          reply_to: "",
+          supersedes: "uuid-v1-full-id",
+          timestamp: ~N[2026-03-29 14:00:00]
+        }
+      }
+
+      html = render_component(&CouncilComponents.message_bubble/1, assigns)
+      assert html =~ "supersedes #uuid-v1"
+      assert html =~ ~s(id="supersedes-btn-uuid-v2")
+      assert html =~ ~s(data-reply-to="uuid-v1-full-id")
+    end
+
+    test "no supersedes badge when supersedes is empty" do
+      assigns = %{
+        msg: %{
+          id: "uuid-plain",
+          author: "Claude",
+          content: "no supersedes",
+          message_type: "synthesis",
+          reply_to: "",
+          supersedes: "",
+          timestamp: ~N[2026-03-29 14:00:00]
+        }
+      }
+
+      html = render_component(&CouncilComponents.message_bubble/1, assigns)
+      refute html =~ "supersedes #"
+    end
+
     test "no reply badge when reply_to is empty" do
       assigns = %{
         msg: %{

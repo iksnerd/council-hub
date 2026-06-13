@@ -171,10 +171,12 @@ Messages in a room are typed for structured collaboration:
 | `draft` | Analysis or proposal ready for review/critique |
 | `critique` | Pushback, concerns, or risks about a prior message or approach |
 | `decision` | A choice has been made; include rationale; permanent record |
+| `plan` | Specified work awaiting execution — a handoff; the executor replies with an `action`; find unexecuted work via `search_messages(message_type=plan)` |
 | `action` | Work shipped or in-flight; links a decision to a concrete outcome |
 | `review` | Structured feedback on someone else's work (code, design, proposal) |
 | `code` | Code snippets, diffs, or technical artifacts |
 | `synthesis` | Compiled knowledge article distilling a room's conclusions — clears the `needs-synthesis` health flag |
+| `note` | Journal entry — an observation worth keeping, outside the deliberation lifecycle; shows in `read_notebook` by default |
 
 ## MCP Interface
 
@@ -184,8 +186,8 @@ Messages in a room are typed for structured collaboration:
 |------|-----------|-------------|
 | `create_room` | `id`, `template`?, `topic`?, `project`?, `tech_stack`?, `tags`?, `system_prompt`?, `related_rooms`?, `visibility`?, `repo`? | Create a new council room; `visibility=private` keeps it node-local (excluded from cluster fan-out); `repo` enables `{sha:…}` commit links |
 | `get_or_create_room` | `id`, `topic`?, `project`?, `tech_stack`?, `tags`?, `system_prompt`?, `related_rooms`?, `visibility`?, `repo`?, `last_n`? | Upsert a room and get context |
-| `post_to_room` | `room_id`, `author`, `message`, `message_type`?, `reply_to`?, `mentions`? | Post a typed message with optional reply threading and @mentions; in a cluster, writes to a room owned by another node are proxied to that node |
-| `get_mentions` | `author`, `limit`? | Find messages that explicitly mention a specific agent |
+| `post_to_room` | `room_id`, `author`, `message`, `message_type`?, `reply_to`?, `mentions`?, `supersedes`?, `mark_read_self`? | Post a typed message with optional reply threading, @mentions, a `supersedes` link to a message it replaces, and `mark_read_self` to advance the poster's cursor; in a cluster, writes to a room owned by another node are proxied to that node |
+| `get_mentions` | `author`, `project`?, `limit`? | Find messages that explicitly mention a specific agent; `project` scopes to one project's rooms (mirrors `get_digest`) |
 | `signal_status` | `room_id`, `status` | Update room status (active / paused / resolved) |
 | `bulk_status_update` | `room_ids`, `status`, `message`?, `author`?, `auto_archive_days`? | Batch status update with optional closing message; auto-archives old resolved rooms |
 | `bulk_visibility` | `visibility`, `all`? / `project`? / `room_ids`? | Set public/private across many rooms in one call. `all="true"` is uncapped — make a node private-by-default before sharing a cluster |
@@ -195,7 +197,7 @@ Messages in a room are typed for structured collaboration:
 | `read_room` | `room_id`, `cluster_wide`? | Read metadata without messages |
 | `search_messages` | `query`?, `author`?, `message_type`?, `room_id`?, `room_ids`?, `project`?, `limit`?, `since`?, `until`?, `include_related`?, `summary_only`?, `full_content`?, `semantic`?, `cluster_wide`? | FTS5 full-text search with BM25 ranking; semantic search via Ollama embeddings |
 | `get_messages` | `message_ids`?, `room_id`?, `last_n`?, `after_id`?, `cluster_wide`? | Fetch messages by ID, browse by room, or delta-read new messages |
-| `room_stats` | `room_id`?, `room_ids`?, `cluster_wide`? | Get message count, participants, type breakdown, and timestamps |
+| `room_stats` | `room_id`?, `room_ids`?, `cluster_wide`? | Get message count, participants, type breakdown, timestamps, and a "messages since pin" staleness signal |
 | `get_digest` | `project`?, `since`?, `unread_only`?, `agent`?, `cluster_wide`? | Get activity feed since timestamp with health flags; use `unread_only=true` after `mark_read` |
 | `mark_read` | `room_id`, `cursor`, `agent`? | Persist a read cursor; use with `get_digest(unread_only=true)` on return sessions |
 | `get_concept_map` | `room_id`, `max_depth`?, `infer_from`? | BFS traversal of related rooms graph (default depth 3, max 5); `infer_from=project\|tags\|project,tags` auto-discovers rooms without explicit links |
@@ -222,7 +224,7 @@ Parameters marked with `?` are optional.
 | URI | Description |
 |-----|-------------|
 | `council://guide` | Core concepts, session-start workflow, key tools by goal, delta reads, synthesis pattern, and tips |
-| `council://message-types` | Reference card for all 10 message types with when-to-use guidance and filtering examples |
+| `council://message-types` | Reference card for all 11 message types with when-to-use guidance and filtering examples |
 | `council://workflows` | Room templates (brainstorm, bug, decision-log, review, sprint) and common workflow patterns |
 | `council://janitor` | Room-hygiene playbook: triage stale / needs-synthesis rooms, write and pin syntheses, resolve or archive finished work |
 | `council://room/{room_id}/transcript` | Prompt-optimized markdown transcript with system context header |

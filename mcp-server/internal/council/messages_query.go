@@ -149,15 +149,15 @@ func (s *Server) GetMessagesAfterID(roomID string, afterID string) ([]Message, e
 func (s *Server) GetLatestPerType(roomID string) ([]Message, error) {
 	// Return up to 2 most recent messages per type so agents see both the latest
 	// and its predecessor (useful when the latest superseded an earlier key message).
-	rows, err := s.DB.Query(`
-		SELECT id, room_id, author, content, message_type, is_summary, reply_to, pinned, reactions, mentions, timestamp
+	rows, err := s.DB.Query(fmt.Sprintf(`
+		SELECT %s
 		FROM (
 			SELECT *, ROW_NUMBER() OVER (PARTITION BY message_type ORDER BY id DESC) as rn
 			FROM messages
 			WHERE room_id = ? AND is_summary = 0
 		) ranked
 		WHERE rn <= 2
-		ORDER BY message_type, id DESC`,
+		ORDER BY message_type, id DESC`, messageColumns),
 		roomID,
 	)
 	if err != nil {

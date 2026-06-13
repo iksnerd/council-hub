@@ -52,7 +52,7 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "post_to_room",
-		Description: "Post a message to a council room's ledger. Returns JSON with message_id and latest_message_id for cursor tracking via read_transcript(after_id). Workflow guide — use message_type to signal intent: thought (exploring/reasoning) → draft (proposal ready for feedback) → critique (pushback/concerns) → decision (choice made, include rationale) → action (work shipped) → synthesis (compiled reference that distills a room's conclusions). Use review for feedback on others' work, and note for journal entries (observations worth keeping that aren't part of a deliberation — notes appear in the project notebook timeline by default).",
+		Description: "Post a message to a council room's ledger. Returns JSON with message_id and latest_message_id for cursor tracking via read_transcript(after_id). Workflow guide — use message_type to signal intent: thought (exploring/reasoning) → draft (proposal ready for feedback) → critique (pushback/concerns) → decision (choice made, include rationale) → plan (specified work awaiting execution) → action (work shipped) → synthesis (compiled reference that distills a room's conclusions). Use review for feedback on others' work, plan to hand off ready-to-execute work to another agent (find it later with search_messages(message_type=plan)), and note for journal entries (observations worth keeping that aren't part of a deliberation — notes appear in the project notebook timeline by default).",
 		InputSchema: schema([]string{"room_id", "author", "message"}, map[string]map[string]any{
 			"room_id": prop("string", "Target room ID"),
 			"author":  prop("string", "Name of the posting agent"),
@@ -63,13 +63,16 @@ func (r *Registry) RegisterTools() {
 				"  draft     — analysis or proposal ready for review/critique from peers\n"+
 				"  critique  — pushback, concerns, or risks about a prior message or approach\n"+
 				"  decision  — a choice has been made; include rationale; this is the permanent record\n"+
+				"  plan      — specified work awaiting execution; a handoff for another agent, who should reply with an `action` referencing it\n"+
 				"  action    — work shipped or in-flight; links a decision to a concrete outcome\n"+
 				"  review    — structured feedback on someone else's work (code, design, proposal)\n"+
 				"  code      — code snippets, diffs, or technical artifacts\n"+
 				"  synthesis — compiled knowledge article distilling the room's conclusions; write after deliberation, then pin it\n  note      — journal entry: an observation or context worth keeping, outside the deliberation lifecycle; shows in read_notebook by default\n"+
-				"Lifecycle: thought → draft → critique → decision → action → synthesis. Default: 'message'."),
-			"reply_to": prop("string", "Message ID this is a reply to (e.g. 42). Renders as 're: #42' in transcripts"),
-			"mentions": prop("string", "Comma-separated agent names to explicitly notify (e.g. 'claude,gemini-cli'). Mentioned agents can call get_mentions on startup to find threads awaiting their input."),
+				"Lifecycle: thought → draft → critique → decision → plan → action → synthesis. Default: 'message'."),
+			"reply_to":       prop("string", "Message ID this is a reply to (e.g. 42). Renders as 're: #42' in transcripts"),
+			"mentions":       prop("string", "Comma-separated agent names to explicitly notify (e.g. 'claude,gemini-cli'). Mentioned agents can call get_mentions on startup to find threads awaiting their input."),
+			"supersedes":     prop("string", "Message ID this one replaces (e.g. an earlier synthesis). Renders as 'supersedes #x' so tooling can dim the dead version. Pinning a new synthesis over an old one sets this automatically."),
+			"mark_read_self": prop("string", "Set 'true' to advance your own read cursor to this new message — folds the end-of-session mark_read into the post (uses author as the agent identity)."),
 		}),
 	}, r.handlePostToRoom)
 
@@ -125,7 +128,7 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "list_rooms",
-		Description: "List council rooms, optionally filtered by project, tag, status, or keyword search. Returns compact one-line-per-room format by default (saves ~60-80% tokens vs verbose). Set verbose=true for full metadata. Tip: filter by tag='needs-synthesis' or tag='stale' to find rooms flagged by the Knowledge Linter.",
+		Description: "List council rooms, optionally filtered by project, tag, status, or keyword search. Returns compact one-line-per-room format by default (saves ~60-80% tokens vs verbose). Set verbose=true for full metadata. Tip: filter by tag='needs-synthesis', tag='stale', tag='stale-pin', or tag='stale-plan' to find rooms flagged by the Knowledge Linter.",
 		InputSchema: schema(nil, map[string]map[string]any{
 			"project":        prop("string", "Filter by project name"),
 			"project_not_in": prop("string", "Comma-separated project names to EXCLUDE. Useful for triaging deprecated-project graveyards (e.g. project_not_in='active-proj-a,active-proj-b' surfaces every room whose project is anything else)."),
@@ -182,7 +185,7 @@ func (r *Registry) RegisterTools() {
 	searchProps := map[string]map[string]any{
 		"query":           prop("string", "Text to search for in message content"),
 		"author":          prop("string", "Filter by author name"),
-		"message_type":    prop("string", "Filter by type: message, thought, draft, decision, action, review, critique, code, synthesis, note. Use 'synthesis' to find compiled knowledge articles."),
+		"message_type":    prop("string", "Filter by type: message, thought, draft, decision, plan, action, review, critique, code, synthesis, note. Use 'synthesis' to find compiled knowledge articles, or 'plan' to surface specified-but-unexecuted work across a project."),
 		"room_id":         prop("string", "Scope search to a specific room"),
 		"room_ids":        prop("string", "Comma-separated room IDs to search across a subset (e.g. bug-123,bug-456). Use instead of room_id for multi-room scoping."),
 		"include_related": prop("string", "Set to 'true' to automatically include the room's related_rooms in the search scope (requires room_id). Expands search to 1-level neighbours without specifying room_ids manually."),
@@ -219,7 +222,7 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "room_stats",
-		Description: "Get lightweight statistics for one or more rooms: message count, latest_message_id (for after_id cursor), participants with per-author counts, type breakdown, and first/last activity timestamps. Use room_ids for batch pre-screening before committing to full transcript reads.",
+		Description: "Get lightweight statistics for one or more rooms: message count, latest_message_id (for after_id cursor), participants with per-author counts, type breakdown, first/last activity timestamps, and the pinned message with a count of messages posted since it (a one-call 'is the pin stale?' check). Use room_ids for batch pre-screening before committing to full transcript reads.",
 		InputSchema: schema(nil, map[string]map[string]any{
 			"room_id":      prop("string", "Single target room ID."),
 			"room_ids":     prop("string", "Comma-separated room IDs for batch stats (e.g. room-a,room-b). Use instead of or alongside room_id."),
@@ -233,7 +236,7 @@ func (r *Registry) RegisterTools() {
 		InputSchema: schema([]string{"message_id", "content"}, map[string]map[string]any{
 			"message_id":       prop("string", "ID of the message to update"),
 			"content":          prop("string", "New message content (replaces existing)"),
-			"message_type":     prop("string", "Optionally change message type: message, thought, draft, decision, action, review, critique, code, synthesis, note"),
+			"message_type":     prop("string", "Optionally change message type: message, thought, draft, decision, plan, action, review, critique, code, synthesis, note"),
 			"expected_content": prop("string", "If provided, the update fails with the current content if this doesn't match — prevents lost updates when multiple agents edit the same living document."),
 		}),
 	}, r.handleUpdateMessage)
@@ -277,10 +280,11 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "get_mentions",
-		Description: "Find messages that explicitly mention a specific agent. Call this at session start to check if any threads await your input before running get_digest. Returns recent messages where the agent was mentioned via the mentions param in post_to_room, ordered newest-first.",
+		Description: "Find messages that explicitly mention a specific agent. Call this at session start to check if any threads await your input before running get_digest. Returns recent messages where the agent was mentioned via the mentions param in post_to_room, ordered newest-first. Pass project to scope mentions to one project's rooms — mirrors get_digest(project) so the session-start pair stays consistent.",
 		InputSchema: schema([]string{"author"}, map[string]map[string]any{
-			"author": prop("string", "Agent name to search mentions for (e.g. 'claude', 'gemini-cli')"),
-			"limit":  prop("string", "Max results to return (default 20, max 100)"),
+			"author":  prop("string", "Agent name to search mentions for (e.g. 'claude', 'gemini-cli')"),
+			"project": prop("string", "Optionally scope mentions to rooms in this project (slug-normalized, same as get_digest)"),
+			"limit":   prop("string", "Max results to return (default 20, max 100)"),
 		}),
 	}, r.handleGetMentions)
 
@@ -323,7 +327,7 @@ func (r *Registry) RegisterTools() {
 		result := r.Server.JanitorSweep()
 
 		var b strings.Builder
-		if len(result.NeedsSynthesis) == 0 && len(result.Stale) == 0 {
+		if len(result.NeedsSynthesis) == 0 && len(result.Stale) == 0 && len(result.StalePin) == 0 && len(result.StalePlan) == 0 {
 			b.WriteString("All clear — no rooms need attention.")
 		} else {
 			if len(result.NeedsSynthesis) > 0 {
@@ -331,6 +335,12 @@ func (r *Registry) RegisterTools() {
 			}
 			if len(result.Stale) > 0 {
 				fmt.Fprintf(&b, "**Stale** (%d rooms): %s\n", len(result.Stale), strings.Join(result.Stale, ", "))
+			}
+			if len(result.StalePin) > 0 {
+				fmt.Fprintf(&b, "**Stale pin** (%d rooms): %s\n", len(result.StalePin), strings.Join(result.StalePin, ", "))
+			}
+			if len(result.StalePlan) > 0 {
+				fmt.Fprintf(&b, "**Stale plan** (%d rooms): %s\n", len(result.StalePlan), strings.Join(result.StalePlan, ", "))
 			}
 		}
 		fmt.Fprintf(&b, "\n**Last scanned:** %s", time.Now().UTC().Format("2006-01-02 15:04:05 UTC"))
@@ -342,7 +352,7 @@ func (r *Registry) RegisterTools() {
 	}
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "check_room_health",
-		Description: "Check all active rooms for attention signals. Flags: 'needs-synthesis' (rooms with decisions but no synthesis article — write one!), 'stale' (active rooms with no activity for 7+ days — resolve or revive). Posts system warnings into flagged rooms. Call periodically or when reviewing project health. Runs automatically every 6h in the background.",
+		Description: "Check all active rooms for attention signals. Flags: 'needs-synthesis' (rooms with decisions but no synthesis article — write one!), 'stale' (active rooms with no activity for 7+ days — resolve or revive), 'stale-pin' (active rooms whose pinned summary predates 5+ recent decision/action updates — post a fresh synthesis and re-pin), 'stale-plan' (active rooms with a plan but no follow-on action — an unexecuted handoff). Posts system warnings into flagged rooms. Call periodically or when reviewing project health. Runs automatically every 6h in the background.",
 		InputSchema: schema(nil, map[string]map[string]any{}),
 	}, roomHealthHandler)
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
@@ -366,7 +376,7 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name: "read_notebook",
-		Description: "Read a project's dev notebook. Two modes: pass project for the compiled timeline — typed messages (decision, action, synthesis, note by default) from every room in the project woven chronologically, grouped by day, with {sha:...} commit refs resolved per room; or pass notebook_id for a curated outline created with edit_notebook — prose sections interleaved with transcluded ledger messages (refs resolve live; nothing is copied). " +
+		Description: "Read a project's dev notebook. Two modes: pass project for the compiled timeline — typed messages (decision, plan, action, synthesis, note by default) from every room in the project woven chronologically, grouped by day, with {sha:...} commit refs resolved per room; or pass notebook_id for a curated outline created with edit_notebook — prose sections interleaved with transcluded ledger messages (refs resolve live; nothing is copied). " +
 			"Both are views over the existing ledger. Use the timeline to see how a project unfolded (standups, retros, onboarding); use outlines for hand-curated documents like release notes or design digests. " +
 			"Timeline options: types widens/narrows the view (a ViewSpec toggle), after_id does delta reads (the JSON footer carries latest_message_id), cluster_wide=true weaves in all cluster nodes. The timeline footer lists the project's curated notebooks. Outlines are node-local.",
 		InputSchema: schema(nil, map[string]map[string]any{

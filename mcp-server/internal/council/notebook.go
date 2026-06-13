@@ -15,9 +15,9 @@ type NotebookEntry struct {
 }
 
 // DefaultNotebookTypes are the message types compiled into a notebook when the
-// caller doesn't specify any: the decision → action → synthesis spine of a
+// caller doesn't specify any: the decision → plan → action → synthesis spine of a
 // project plus note (human journal entries), skipping exploratory chatter.
-var DefaultNotebookTypes = []string{"decision", "action", "synthesis", "note"}
+var DefaultNotebookTypes = []string{"decision", "plan", "action", "synthesis", "note"}
 
 const (
 	defaultNotebookLimit = 100
@@ -89,7 +89,7 @@ func (s *Server) GetNotebookEntries(project string, types []string, since, until
 	var entries []NotebookEntry
 	for rows.Next() {
 		var e NotebookEntry
-		if err := rows.Scan(&e.ID, &e.RoomID, &e.Author, &e.Content, &e.MessageType, &e.IsSummary, &e.ReplyTo, &e.Pinned, &e.Reactions, &e.Mentions, &e.Timestamp, &e.Repo); err != nil {
+		if err := rows.Scan(&e.ID, &e.RoomID, &e.Author, &e.Content, &e.MessageType, &e.IsSummary, &e.ReplyTo, &e.Pinned, &e.Reactions, &e.Mentions, &e.Supersedes, &e.Timestamp, &e.Repo); err != nil {
 			return nil, err
 		}
 		entries = append(entries, e)

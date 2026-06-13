@@ -188,6 +188,11 @@ func (r *Registry) handleRoomStats(ctx context.Context, req *mcp.CallToolRequest
 		if stats.LatestMessageID != "" {
 			fmt.Fprintf(&b, "**Latest message ID:** %.8s\n", stats.LatestMessageID)
 		}
+		if stats.PinnedMessageID != "" {
+			fmt.Fprintf(&b, "**Pinned:** #%.8s — %d message(s) since pin%s\n",
+				stats.PinnedMessageID, stats.MessagesSincePin,
+				map[bool]string{true: " ⚠️ pin may be stale", false: ""}[stats.MessagesSincePin >= 5])
+		}
 
 		if len(stats.Participants) > 0 {
 			var parts []string

@@ -56,6 +56,17 @@ defmodule CouncilHubUiWeb.MessageComponents do
             >
               re: #{String.slice(Map.get(@msg, :reply_to, ""), 0, 8)}
             </button>
+            <button
+              :if={Map.get(@msg, :supersedes, "") != ""}
+              id={"supersedes-btn-#{@msg.id}"}
+              phx-hook="ScrollToMessage"
+              data-reply-to={Map.get(@msg, :supersedes, "")}
+              type="button"
+              title="Replaces an earlier message"
+              class="text-[9px] font-mono text-[var(--ch-text-lo)] hover:text-[var(--ch-text-mid)] transition-colors cursor-pointer"
+            >
+              supersedes #{String.slice(Map.get(@msg, :supersedes, ""), 0, 8)}
+            </button>
             <span class="text-[10px] text-[var(--ch-text-xs)] font-mono tabular-nums">
               {format_timestamp(@msg.timestamp)}
             </span>

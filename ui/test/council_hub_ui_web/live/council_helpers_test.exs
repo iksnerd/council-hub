@@ -376,6 +376,20 @@ defmodule CouncilHubUiWeb.CouncilHelpersTest do
     assert flags.needs_synthesis
   end
 
+  test "room_health_flags detects stale-pin without matching stale" do
+    flags = CouncilHelpers.room_health_flags(%{tags: "stale-pin,auth"})
+    assert flags.stale_pin
+    refute flags.stale
+    refute flags.needs_synthesis
+  end
+
+  test "room_health_flags detects stale-plan" do
+    flags = CouncilHelpers.room_health_flags(%{tags: "stale-plan,auth"})
+    assert flags.stale_plan
+    refute flags.stale
+    refute flags.stale_pin
+  end
+
   test "room_health_flags detects both flags" do
     flags = CouncilHelpers.room_health_flags(%{tags: "stale,needs-synthesis"})
     assert flags.stale

@@ -297,6 +297,210 @@ func TestLintStaleSkipsRecentRooms(t *testing.T) {
 	}
 }
 
+func TestLintStalePins(t *testing.T) {
+	cs := setupTestServer(t)
+	mustCreateRoom(t, cs, "lint-pin")
+	pinID := mustPostTyped(t, cs, "lint-pin", "Claude", "Old TL;DR", "synthesis")
+	if _, err := cs.PinMessage("lint-pin", pinID); err != nil {
+		t.Fatal(err)
+	}
+	// 5 decision/action messages land after the pin.
+	for i := 0; i < 5; i++ {
+		mustPostTyped(t, cs, "lint-pin", "Claude", "Update", "decision")
+	}
+
+	cs.lintStalePins()
+
+	room, _ := cs.GetRoom("lint-pin")
+	if !hasTag(room.Tags, "stale-pin") {
+		t.Errorf("expected 'stale-pin' tag, got '%s'", room.Tags)
+	}
+
+	// A system note should have been posted.
+	msgs, _ := cs.GetRecentMessages("lint-pin", 10)
+	found := false
+	for _, m := range msgs {
+		if m.Author == "system" && strings.Contains(m.Content, "pinned summary") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected stale-pin linter system message in room")
+	}
+}
+
+func TestLintStalePinsSkipsFreshPin(t *testing.T) {
+	cs := setupTestServer(t)
+	mustCreateRoom(t, cs, "lint-fresh-pin")
+	// Updates land first, then the pin — nothing qualifying is newer than the pin.
+	for i := 0; i < 5; i++ {
+		mustPostTyped(t, cs, "lint-fresh-pin", "Claude", "Update", "decision")
+	}
+	pinID := mustPostTyped(t, cs, "lint-fresh-pin", "Claude", "Fresh TL;DR", "synthesis")
+	if _, err := cs.PinMessage("lint-fresh-pin", pinID); err != nil {
+		t.Fatal(err)
+	}
+
+	cs.lintStalePins()
+
+	room, _ := cs.GetRoom("lint-fresh-pin")
+	if hasTag(room.Tags, "stale-pin") {
+		t.Errorf("fresh pin should not be flagged, got '%s'", room.Tags)
+	}
+}
+
+func TestLintStalePinsBelowThreshold(t *testing.T) {
+	cs := setupTestServer(t)
+	mustCreateRoom(t, cs, "lint-pin-few")
+	pinID := mustPostTyped(t, cs, "lint-pin-few", "Claude", "TL;DR", "synthesis")
+	if _, err := cs.PinMessage("lint-pin-few", pinID); err != nil {
+		t.Fatal(err)
+	}
+	// Only 4 updates after the pin — under the threshold of 5.
+	for i := 0; i < 4; i++ {
+		mustPostTyped(t, cs, "lint-pin-few", "Claude", "Update", "decision")
+	}
+
+	cs.lintStalePins()
+
+	room, _ := cs.GetRoom("lint-pin-few")
+	if hasTag(room.Tags, "stale-pin") {
+		t.Errorf("below-threshold room should not be flagged, got '%s'", room.Tags)
+	}
+}
+
+func TestLintStalePinsIdempotent(t *testing.T) {
+	cs := setupTestServer(t)
+	mustCreateRoom(t, cs, "lint-pin-idem")
+	pinID := mustPostTyped(t, cs, "lint-pin-idem", "Claude", "TL;DR", "synthesis")
+	if _, err := cs.PinMessage("lint-pin-idem", pinID); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 5; i++ {
+		mustPostTyped(t, cs, "lint-pin-idem", "Claude", "Update", "action")
+	}
+
+	cs.lintStalePins()
+	cs.lintStalePins() // run twice
+
+	room, _ := cs.GetRoom("lint-pin-idem")
+	count := 0
+	for _, tag := range strings.Split(room.Tags, ",") {
+		if strings.TrimSpace(tag) == "stale-pin" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("expected exactly 1 'stale-pin' tag, got %d in '%s'", count, room.Tags)
+	}
+}
+
+func TestLintStalePlans(t *testing.T) {
+	cs := setupTestServer(t)
+	mustCreateRoom(t, cs, "lint-plan")
+	mustPostTyped(t, cs, "lint-plan", "Claude", "Here's the plan to execute", "plan")
+
+	cs.lintStalePlans()
+
+	room, _ := cs.GetRoom("lint-plan")
+	if !hasTag(room.Tags, "stale-plan") {
+		t.Errorf("expected 'stale-plan' tag, got '%s'", room.Tags)
+	}
+	msgs, _ := cs.GetRecentMessages("lint-plan", 5)
+	found := false
+	for _, m := range msgs {
+		if m.Author == "system" && strings.Contains(m.Content, "no") && strings.Contains(m.Content, "action") {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected stale-plan linter system message in room")
+	}
+}
+
+func TestLintStalePlansSkipsWhenActionFollows(t *testing.T) {
+	cs := setupTestServer(t)
+	mustCreateRoom(t, cs, "lint-plan-done")
+	mustPostTyped(t, cs, "lint-plan-done", "Claude", "the plan", "plan")
+	mustPostTyped(t, cs, "lint-plan-done", "Gemini", "shipped it", "action")
+
+	cs.lintStalePlans()
+
+	room, _ := cs.GetRoom("lint-plan-done")
+	if hasTag(room.Tags, "stale-plan") {
+		t.Errorf("a plan with a following action should not be flagged, got '%s'", room.Tags)
+	}
+}
+
+func TestLintStalePlansReopensOnNewerPlan(t *testing.T) {
+	cs := setupTestServer(t)
+	mustCreateRoom(t, cs, "lint-plan-reopen")
+	mustPostTyped(t, cs, "lint-plan-reopen", "Claude", "plan v1", "plan")
+	mustPostTyped(t, cs, "lint-plan-reopen", "Gemini", "did v1", "action")
+	// A newer plan with no action after it — the latest handoff is unexecuted.
+	mustPostTyped(t, cs, "lint-plan-reopen", "Claude", "plan v2", "plan")
+
+	cs.lintStalePlans()
+
+	room, _ := cs.GetRoom("lint-plan-reopen")
+	if !hasTag(room.Tags, "stale-plan") {
+		t.Errorf("a newer plan with no following action should re-flag, got '%s'", room.Tags)
+	}
+}
+
+func TestPostActionClearsStalePlan(t *testing.T) {
+	cs := setupTestServer(t)
+	mustCreateRoom(t, cs, "plan-clear", withTags("stale-plan,important"))
+	mustPostTyped(t, cs, "plan-clear", "Claude", "shipped", "action")
+
+	room, _ := cs.GetRoom("plan-clear")
+	if hasTag(room.Tags, "stale-plan") {
+		t.Errorf("posting an action should clear 'stale-plan', got '%s'", room.Tags)
+	}
+	if !hasTag(room.Tags, "important") {
+		t.Errorf("non-linter tags should survive, got '%s'", room.Tags)
+	}
+}
+
+func TestLintStalePlansIdempotent(t *testing.T) {
+	cs := setupTestServer(t)
+	mustCreateRoom(t, cs, "lint-plan-idem")
+	mustPostTyped(t, cs, "lint-plan-idem", "Claude", "the plan", "plan")
+
+	cs.lintStalePlans()
+	cs.lintStalePlans()
+
+	room, _ := cs.GetRoom("lint-plan-idem")
+	count := 0
+	for _, tag := range strings.Split(room.Tags, ",") {
+		if strings.TrimSpace(tag) == "stale-plan" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("expected exactly 1 'stale-plan' tag, got %d in '%s'", count, room.Tags)
+	}
+}
+
+func TestPinMessageClearsStalePin(t *testing.T) {
+	cs := setupTestServer(t)
+	mustCreateRoom(t, cs, "repin-room", withTags("stale-pin,important"))
+	freshID := mustPostTyped(t, cs, "repin-room", "Claude", "New TL;DR", "synthesis")
+
+	if _, err := cs.PinMessage("repin-room", freshID); err != nil {
+		t.Fatal(err)
+	}
+
+	room, _ := cs.GetRoom("repin-room")
+	if hasTag(room.Tags, "stale-pin") {
+		t.Errorf("re-pin should clear 'stale-pin', got '%s'", room.Tags)
+	}
+	if !hasTag(room.Tags, "important") {
+		t.Errorf("non-linter tags should survive re-pin, got '%s'", room.Tags)
+	}
+}
+
 func TestJanitorSweepRunsBothLinters(t *testing.T) {
 	cs := setupTestServer(t)
 

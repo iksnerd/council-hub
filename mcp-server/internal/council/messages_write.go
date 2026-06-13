@@ -9,17 +9,24 @@ import (
 
 // PostMessage posts a message to a room. Existing callers use this signature.
 func (s *Server) PostMessage(roomID, author, content, messageType string, replyTo string) (string, error) {
-	return s.postMessageCore(roomID, author, content, messageType, replyTo, "")
+	return s.postMessageCore(roomID, author, content, messageType, replyTo, "", "")
 }
 
 // PostMessageWithMentions posts a message that explicitly mentions other agents.
 // mentions is a CSV of agent names (e.g. "claude,gemini-cli"). Agents can query
 // get_mentions on startup to find messages addressed to them.
 func (s *Server) PostMessageWithMentions(roomID, author, content, messageType, replyTo, mentions string) (string, error) {
-	return s.postMessageCore(roomID, author, content, messageType, replyTo, mentions)
+	return s.postMessageCore(roomID, author, content, messageType, replyTo, mentions, "")
 }
 
-func (s *Server) postMessageCore(roomID, author, content, messageType, replyTo, mentions string) (string, error) {
+// PostMessageWithRefs is the full post path: like PostMessageWithMentions plus an
+// optional supersedes link (the ID of a message this one replaces, e.g. an earlier
+// synthesis). Renders as "supersedes #x" so tooling can dim the dead version.
+func (s *Server) PostMessageWithRefs(roomID, author, content, messageType, replyTo, mentions, supersedes string) (string, error) {
+	return s.postMessageCore(roomID, author, content, messageType, replyTo, mentions, supersedes)
+}
+
+func (s *Server) postMessageCore(roomID, author, content, messageType, replyTo, mentions, supersedes string) (string, error) {
 	s.Mu.Lock()
 	defer s.Mu.Unlock()
 
@@ -29,27 +36,35 @@ func (s *Server) postMessageCore(roomID, author, content, messageType, replyTo, 
 
 	id := uuid.Must(uuid.NewV7()).String()
 	_, err := s.DB.Exec(
-		`INSERT INTO messages (id, room_id, author, content, message_type, reply_to, mentions) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		id, roomID, author, content, messageType, replyTo, mentions,
+		`INSERT INTO messages (id, room_id, author, content, message_type, reply_to, mentions, supersedes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		id, roomID, author, content, messageType, replyTo, mentions, supersedes,
 	)
 	if err != nil {
 		return "", err
 	}
 
-	// Automatic tag clearing for synthesis messages
-	if messageType == "synthesis" {
+	// Auto-clear linter status tags the moment the condition that set them no longer holds:
+	//   - a synthesis post clears `needs-synthesis`
+	//   - an action post clears `stale-plan` (its id is newer than every plan, so the
+	//     latest plan now has a following action — the handoff was picked up)
+	//   - any genuine (non-system) activity clears `stale` — the room is live again.
+	// The linter posts as author "system", so its own flag messages must not self-clear.
+	if messageType == "synthesis" || messageType == "action" || author != "system" {
 		var tags string
-		err := s.DB.QueryRow(`SELECT COALESCE(tags, '') FROM rooms WHERE id = ?`, roomID).Scan(&tags)
-		if err == nil && strings.Contains(tags, "needs-synthesis") {
-			parts := strings.Split(tags, ",")
-			var newParts []string
-			for _, p := range parts {
-				if p != "needs-synthesis" && p != "" {
-					newParts = append(newParts, p)
-				}
+		if err := s.DB.QueryRow(`SELECT COALESCE(tags, '') FROM rooms WHERE id = ?`, roomID).Scan(&tags); err == nil {
+			newTags := tags
+			if messageType == "synthesis" {
+				newTags = removeTag(newTags, "needs-synthesis")
 			}
-			newTags := strings.Join(newParts, ",")
-			_, _ = s.DB.Exec(`UPDATE rooms SET tags = ? WHERE id = ?`, newTags, roomID)
+			if messageType == "action" {
+				newTags = removeTag(newTags, "stale-plan")
+			}
+			if author != "system" {
+				newTags = removeTag(newTags, "stale")
+			}
+			if newTags != tags {
+				_, _ = s.DB.Exec(`UPDATE rooms SET tags = ? WHERE id = ?`, newTags, roomID)
+			}
 		}
 	}
 

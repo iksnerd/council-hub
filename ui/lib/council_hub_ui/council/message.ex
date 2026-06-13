@@ -14,6 +14,7 @@ defmodule CouncilHubUi.Council.Message do
     field :pinned, :boolean, default: false
     field :reactions, :string, default: "{}"
     field :mentions, :string, default: ""
+    field :supersedes, :string, default: ""
     field :timestamp, :naive_datetime
   end
 end

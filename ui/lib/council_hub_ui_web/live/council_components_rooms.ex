@@ -27,14 +27,7 @@ defmodule CouncilHubUiWeb.RoomComponents do
           do: "bg-[var(--ch-active-bg)] border-[var(--ch-active-border)]",
           else: "border-transparent hover:bg-[var(--ch-hover-bg)] hover:border-[var(--ch-border)]"
         ),
-        if(room_health_flags(@room).stale,
-          do: "border-l-2 border-l-red-500/50",
-          else:
-            if(room_health_flags(@room).needs_synthesis,
-              do: "border-l-2 border-l-amber-500/50",
-              else: nil
-            )
-        )
+        health_flag_border(room_health_flags(@room))
       ]}
     >
       <%!-- Row 1: room ID + indicators --%>
@@ -102,7 +95,7 @@ defmodule CouncilHubUiWeb.RoomComponents do
           {Map.get(@room, :tech_stack)}
         </span>
         <%!-- Tags (up to 3, skip noise tags) --%>
-        <%= for tag <- parse_tags(Map.get(@room, :tags)) |> Enum.reject(&(&1 in ~w(stale needs-synthesis))) |> Enum.take(3) do %>
+        <%= for tag <- parse_tags(Map.get(@room, :tags)) |> Enum.reject(&(&1 in ~w(stale needs-synthesis stale-pin stale-plan))) |> Enum.take(3) do %>
           <span class="text-[9px] text-[var(--ch-text-xs)] font-mono bg-[var(--ch-raised)] px-1 rounded border border-[var(--ch-border)]">
             {tag}
           </span>
@@ -321,4 +314,12 @@ defmodule CouncilHubUiWeb.RoomComponents do
     </header>
     """
   end
+
+  # Left-border accent for a room card, by linter health flag (most-urgent wins):
+  # stale (red) > needs-synthesis (amber) > stale-pin (orange).
+  defp health_flag_border(%{stale: true}), do: "border-l-2 border-l-red-500/50"
+  defp health_flag_border(%{needs_synthesis: true}), do: "border-l-2 border-l-amber-500/50"
+  defp health_flag_border(%{stale_pin: true}), do: "border-l-2 border-l-orange-500/50"
+  defp health_flag_border(%{stale_plan: true}), do: "border-l-2 border-l-teal-500/50"
+  defp health_flag_border(_), do: nil
 end

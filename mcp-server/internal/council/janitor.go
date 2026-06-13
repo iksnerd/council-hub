@@ -12,12 +12,17 @@ const (
 	synthesisMinDecisions = 3
 	synthesisMinMessages  = 20
 	graceperiod           = 24 * time.Hour
+	// stalePinMinUpdates is how many decision/action/synthesis messages must land
+	// after the pinned message before its room is flagged `stale-pin`.
+	stalePinMinUpdates = 5
 )
 
 // LintResult holds the outcome of a linter sweep.
 type LintResult struct {
 	NeedsSynthesis []string
 	Stale          []string
+	StalePin       []string
+	StalePlan      []string
 }
 
 func (s *Server) RunJanitor(ctx context.Context) {
@@ -40,6 +45,8 @@ func (s *Server) RunJanitor(ctx context.Context) {
 func (s *Server) JanitorSweep() LintResult {
 	ns := s.lintNeedsSynthesis()
 	st := s.lintStaleRooms()
+	sp := s.lintStalePins()
+	spl := s.lintStalePlans()
 	healed, err := healIndexes(s.DB, s.Logger)
 	if err != nil {
 		s.Logger.Error("Janitor: integrity check failed", "error", err)
@@ -52,7 +59,7 @@ func (s *Server) JanitorSweep() LintResult {
 	s.LastJanitorScan = now
 	s.LastIntegrityCheck = now
 	s.Mu.Unlock()
-	return LintResult{NeedsSynthesis: ns, Stale: st}
+	return LintResult{NeedsSynthesis: ns, Stale: st, StalePin: sp, StalePlan: spl}
 }
 
 // hasTag checks whether a comma-separated tag string contains an exact tag.
@@ -193,6 +200,139 @@ func (s *Server) lintStaleRooms() []string {
 			"Please review the context and either update the `status` to `paused`/`resolved`, or post an update to resume work."
 		if _, err := s.PostMessage(c.id, "system", content, "message", ""); err == nil {
 			s.Logger.Info("Linter: flagged room as stale", "room_id", c.id)
+		}
+		flagged = append(flagged, c.id)
+	}
+	return flagged
+}
+
+// lintStalePins flags active rooms whose pinned message has fallen behind the live
+// state: stalePinMinUpdates or more decision/action/synthesis messages have landed
+// since the pin was set. Inactivity (lintStaleRooms) catches abandoned rooms; this
+// catches the more dangerous case — a busy room whose pinned TL;DR now misleads a
+// cold-start agent. UUIDv7 message IDs are time-ordered, so `m.id > p.id` means
+// "posted after the pin". The `stale-pin` tag auto-clears in PinMessage on re-pin.
+func (s *Server) lintStalePins() []string {
+	query := `
+		SELECT r.id, COALESCE(r.tags, ''), n.cnt
+		FROM rooms r
+		JOIN messages p ON p.room_id = r.id AND p.pinned = 1
+		JOIN (
+			SELECT m.room_id, COUNT(*) AS cnt
+			FROM messages m
+			JOIN messages pin ON pin.room_id = m.room_id AND pin.pinned = 1
+			WHERE m.id > pin.id
+			  AND m.message_type IN ('decision', 'action', 'synthesis')
+			GROUP BY m.room_id
+		) n ON n.room_id = r.id
+		WHERE r.status = 'active' AND n.cnt >= ?
+	`
+	rows, err := s.DB.Query(query, stalePinMinUpdates)
+	if err != nil {
+		s.Logger.Error("Linter: failed to query stale-pin rooms", "error", err)
+		return nil
+	}
+	defer func() { _ = rows.Close() }()
+
+	type candidate struct {
+		id   string
+		tags string
+		cnt  int
+	}
+	var candidates []candidate
+
+	for rows.Next() {
+		var id, tags string
+		var cnt int
+		if err := rows.Scan(&id, &tags, &cnt); err != nil {
+			continue
+		}
+		if !hasTag(tags, "stale-pin") {
+			candidates = append(candidates, candidate{id, tags, cnt})
+		}
+	}
+
+	var flagged []string
+	for _, c := range candidates {
+		newTags := appendTag(c.tags, "stale-pin")
+		s.Mu.Lock()
+		_, err := s.DB.Exec(`UPDATE rooms SET tags = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, newTags, c.id)
+		s.Mu.Unlock()
+		if err != nil {
+			s.Logger.Error("Linter: failed to update stale-pin tags", "room_id", c.id, "error", err)
+			continue
+		}
+
+		content := "### Knowledge Linter\nThe pinned summary in this room predates several recent " +
+			"`decision`/`action` updates and may no longer reflect the live state. " +
+			"Consider posting a fresh `synthesis` and pinning it (`pin_message`)."
+		if _, err := s.PostMessage(c.id, "system", content, "message", ""); err == nil {
+			s.Logger.Info("Linter: flagged room for stale pin", "room_id", c.id, "updates_since_pin", c.cnt)
+		}
+		flagged = append(flagged, c.id)
+	}
+	return flagged
+}
+
+// lintStalePlans flags active rooms holding an unexecuted handoff: the most recent
+// `plan` message has no `action` posted after it. A plan is "specified work awaiting
+// execution", so a plan with no following action is work that was handed off and never
+// picked up. The `stale-plan` tag auto-clears in postMessageCore when an `action` lands
+// (whose UUIDv7 id is necessarily newer than every existing plan).
+func (s *Server) lintStalePlans() []string {
+	query := `
+		SELECT r.id, COALESCE(r.tags, '')
+		FROM rooms r
+		JOIN (
+			SELECT room_id, MAX(id) AS plan_id
+			FROM messages WHERE message_type = 'plan'
+			GROUP BY room_id
+		) p ON p.room_id = r.id
+		WHERE r.status = 'active'
+		  AND NOT EXISTS (
+		    SELECT 1 FROM messages a
+		    WHERE a.room_id = r.id AND a.message_type = 'action' AND a.id > p.plan_id
+		  )
+	`
+	rows, err := s.DB.Query(query)
+	if err != nil {
+		s.Logger.Error("Linter: failed to query stale-plan rooms", "error", err)
+		return nil
+	}
+	defer func() { _ = rows.Close() }()
+
+	type candidate struct {
+		id   string
+		tags string
+	}
+	var candidates []candidate
+
+	for rows.Next() {
+		var id, tags string
+		if err := rows.Scan(&id, &tags); err != nil {
+			continue
+		}
+		if !hasTag(tags, "stale-plan") {
+			candidates = append(candidates, candidate{id, tags})
+		}
+	}
+
+	var flagged []string
+	for _, c := range candidates {
+		newTags := appendTag(c.tags, "stale-plan")
+		s.Mu.Lock()
+		_, err := s.DB.Exec(`UPDATE rooms SET tags = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, newTags, c.id)
+		s.Mu.Unlock()
+		if err != nil {
+			s.Logger.Error("Linter: failed to update stale-plan tags", "room_id", c.id, "error", err)
+			continue
+		}
+
+		content := "### Knowledge Linter\nThis room has a `plan` (specified work awaiting execution) with no " +
+			"follow-on `action`. If the work is done, post an `action` referencing it; if it's been dropped, " +
+			"note that and resolve the room."
+		if _, err := s.PostMessage(c.id, "system", content, "message", ""); err == nil {
+			s.Logger.Info("Linter: flagged room for stale plan", "room_id", c.id)
 		}
 		flagged = append(flagged, c.id)
 	}

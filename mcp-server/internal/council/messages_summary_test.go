@@ -167,6 +167,43 @@ func TestPostMessageAutoClearSynthesis(t *testing.T) {
 	}
 }
 
+func TestPostMessageClearsStaleTagOnActivity(t *testing.T) {
+	s := setupTestServer(t)
+	if err := s.CreateRoom("revived-room", "", "", "", "foo,stale,bar", "", ""); err != nil {
+		t.Fatal(err)
+	}
+
+	// A genuine (non-system) post means the room is live again — `stale` should clear.
+	if _, err := s.PostMessage("revived-room", "Claude", "Back to work", "thought", ""); err != nil {
+		t.Fatal(err)
+	}
+
+	room, _ := s.GetRoom("revived-room")
+	if hasTag(room.Tags, "stale") {
+		t.Errorf("expected 'stale' cleared on activity, got '%s'", room.Tags)
+	}
+	if !hasTag(room.Tags, "foo") || !hasTag(room.Tags, "bar") {
+		t.Errorf("non-linter tags should survive, got '%s'", room.Tags)
+	}
+}
+
+func TestSystemPostDoesNotClearStaleTag(t *testing.T) {
+	s := setupTestServer(t)
+	if err := s.CreateRoom("flagged-room", "", "", "", "stale", "", ""); err != nil {
+		t.Fatal(err)
+	}
+
+	// The linter posts its own flag message as "system" — that must not self-clear `stale`.
+	if _, err := s.PostMessage("flagged-room", "system", "### Knowledge Linter\nstale", "message", ""); err != nil {
+		t.Fatal(err)
+	}
+
+	room, _ := s.GetRoom("flagged-room")
+	if !hasTag(room.Tags, "stale") {
+		t.Errorf("system post should not clear 'stale', got '%s'", room.Tags)
+	}
+}
+
 // ========== GetUnsummarizedMessages ==========
 
 func TestGetUnsummarizedMessages(t *testing.T) {
