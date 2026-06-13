@@ -69,6 +69,27 @@ defmodule CouncilHubUiWeb.CouncilLiveMessagesTest do
     end
   end
 
+  describe "compact viewspec" do
+    test "?compact=1 line-clips message bodies; default does not", %{conn: conn} do
+      room = create_room(%{id: "compact-room"})
+      create_message(%{room_id: room.id, author: "Claude", content: "first\nsecond"})
+
+      {:ok, _view, default_html} = live(conn, "/rooms/compact-room")
+      refute default_html =~ "line-clamp-1"
+
+      {:ok, _view, compact_html} = live(conn, "/rooms/compact-room?compact=1")
+      assert compact_html =~ "line-clamp-1"
+    end
+
+    test "compact toggle link points to the serialized view URL", %{conn: conn} do
+      create_room(%{id: "compact-toggle"})
+
+      {:ok, _view, html} = live(conn, "/rooms/compact-toggle")
+      # Off → link offers to turn it on via the URL (shareable view).
+      assert html =~ "/rooms/compact-toggle?compact=1"
+    end
+  end
+
   describe "toggle_summary" do
     test "toggles summary collapsed state", %{conn: conn} do
       room = create_room(%{id: "toggle-room"})

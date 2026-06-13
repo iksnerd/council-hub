@@ -49,6 +49,7 @@ defmodule CouncilHubUiWeb.CouncilLive do
        room_filter: "",
        last_room_update: nil,
        has_messages: false,
+       view_compact: false,
        type_filter: "all",
        message_search: "",
        searching: false,
@@ -72,7 +73,7 @@ defmodule CouncilHubUiWeb.CouncilLive do
   end
 
   @impl true
-  def handle_params(%{"room_id" => room_id}, _uri, socket) do
+  def handle_params(%{"room_id" => room_id} = params, _uri, socket) do
     case Council.get_room(room_id) do
       nil ->
         {:noreply,
@@ -81,7 +82,11 @@ defmodule CouncilHubUiWeb.CouncilLive do
          |> push_navigate(to: ~p"/")}
 
       room ->
-        messages = Council.list_messages_for_room(room_id)
+        # A patch to the same room (e.g. toggling the compact ViewSpec via the URL)
+        # preserves the active type filter rather than resetting it.
+        same_room = match?(%{id: ^room_id}, socket.assigns[:active_room])
+        type_filter = if same_room, do: socket.assigns.type_filter, else: "all"
+        messages = Council.list_messages_for_room(room_id, type_filter)
         last_id = Polling.last_message_id(messages)
         participants = Polling.safe_room_participants(room_id, socket.assigns.db_connected)
 
@@ -94,7 +99,8 @@ defmodule CouncilHubUiWeb.CouncilLive do
            show_system_prompt: false,
            page_title: "Council Hub · #{room.id}",
            has_messages: messages != [],
-           type_filter: "all",
+           view_compact: params["compact"] == "1",
+           type_filter: type_filter,
            message_search: "",
            searching: false,
            show_search_filters: false,

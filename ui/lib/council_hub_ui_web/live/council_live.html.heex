@@ -272,6 +272,25 @@
                 {label}
               </button>
             <% end %>
+            <%!-- ViewSpec: line-clip toggle, serialized to the URL (shareable view) --%>
+            <.link
+              patch={
+                if @view_compact,
+                  do: ~p"/rooms/#{@active_room.id}",
+                  else: ~p"/rooms/#{@active_room.id}?compact=1"
+              }
+              class={[
+                "inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium transition-colors cursor-pointer ml-1 border border-[var(--ch-border)]",
+                if(@view_compact,
+                  do: "bg-[var(--ch-active-bg)] text-[var(--ch-text-hi)]",
+                  else:
+                    "text-[var(--ch-text-lo)] hover:text-[var(--ch-text-mid)] hover:bg-[var(--ch-hover-bg)]"
+                )
+              ]}
+              title="Line-clip each message to its first line — a compact, scannable view you can share by URL"
+            >
+              {if @view_compact, do: "Compact ✓", else: "Compact"}
+            </.link>
           </div>
         </div>
         <%!-- Advanced filter panel --%>
@@ -335,7 +354,11 @@
               repo={Map.get(@active_room, :repo, "")}
             />
           <% else %>
-            <.message_bubble msg={msg} repo={Map.get(@active_room, :repo, "")} />
+            <.message_bubble
+              msg={msg}
+              repo={Map.get(@active_room, :repo, "")}
+              compact={@view_compact}
+            />
           <% end %>
         </div>
       </div>
