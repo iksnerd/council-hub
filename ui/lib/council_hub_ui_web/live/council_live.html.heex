@@ -256,7 +256,7 @@
             <span class="hero-adjustments-horizontal w-3.5 h-3.5"></span>
           </button>
           <div class="flex items-center gap-0.5 flex-wrap">
-            <%= for {label, value} <- [{"All", "all"}, {"Decisions", "decision"}, {"Actions", "action"}, {"Drafts", "draft"}, {"Code", "code"}, {"Reviews", "review"}, {"Thoughts", "thought"}, {"Synthesis", "synthesis"}, {"Critique", "critique"}] do %>
+            <%= for {label, value} <- [{"All", "all"}, {"Decisions", "decision"}, {"Plans", "plan"}, {"Actions", "action"}, {"Drafts", "draft"}, {"Code", "code"}, {"Reviews", "review"}, {"Thoughts", "thought"}, {"Synthesis", "synthesis"}, {"Critique", "critique"}] do %>
               <button
                 phx-click="filter_type"
                 phx-value-type={value}

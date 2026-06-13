@@ -8,6 +8,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 Changes on `main` not yet in a tagged release.
 
+## [0.40.0] - 2026-06-13
+
+Agent-feedback batch from the `council-hub-mcp-feedback` room (items FB1–FB8): a `plan` message type, four Knowledge-Linter upgrades that keep the shared knowledge repository honest, a synthesis-supersession link, and session-loop ergonomics. 32 MCP tools, 11 message types.
+
+> Released via the local arm64 fallback (`make docker-push`) because GitHub Actions minutes were exhausted — the multi-arch (amd64) image follows when CI quota resets. Tests were run locally for both suites.
+
+### Added
+- **`plan` message type** (11 types total) — the handoff slot in the lifecycle (`decision → plan → action`): "specified work awaiting execution; an executor replies with an `action` referencing it." Makes handoffs queryable with `search_messages(message_type=plan)` and is included in `read_notebook`'s default timeline. Rendered with a teal badge, clipboard icon, and a "Plans" filter in the dashboard.
+- **`supersedes` link on messages** — `post_to_room(supersedes=<message_id>)` records that a message replaces an earlier one (e.g. a prior synthesis); it renders as `supersedes #x` in transcripts and as a click-to-scroll badge in the dashboard, so superseded versions stay addressable instead of being lost. Pinning a new synthesis over a previously pinned synthesis sets the link automatically. New `supersedes` column (Go + Phoenix migrations); forwarded on cross-node writes.
+- **Stale-pin linter flag** — the Knowledge Linter now flags an *active* room whose pinned summary predates 5+ recent `decision`/`action` updates (`stale-pin`) — the dangerous case the inactivity check misses. Clears automatically when the room is re-pinned. Surfaced in `check_room_health`, `list_rooms`, the digest, the `council://janitor` resource, and an orange dashboard card border.
+- **Stale-plan linter flag** — flags an active room holding a `plan` with no follow-on `action` (`stale-plan`) — an unexecuted handoff. Clears automatically when an `action` is posted. Surfaced alongside the other linter flags with a teal card border.
+- **`get_mentions(project=…)`** — scope mentions to one project's rooms, making the session-start `get_digest(project)` / `get_mentions(project)` pair symmetric.
+- **`room_stats` pin-staleness signal** — returns the pinned message ID and a count of messages posted since the pin (a one-call "is the pin stale?" check), flagging ⚠️ at 5+.
+- **`post_to_room(mark_read_self=true)`** — advances the poster's own read cursor to the new message, folding the end-of-session `mark_read` into the write.
+- **Feedback channel documented** — `council://guide` and the MCP server instructions now point agents at the rename-proof `meta-feedback` tag for reporting friction, and document the general `*-suggestions`/`*-feedback` inbox convention.
+
+### Changed
+- **Linter status tags auto-clear on resumed activity** — a `stale` tag now clears on the next non-system post (the room is live again), `needs-synthesis` on a synthesis, `stale-pin` on a re-pin, and `stale-plan` on an action — so an active room no longer carries a flag whose condition has passed. Previously these were only stripped on `signal_status(resolved)`.
+
 ## [0.39.0] - 2026-06-11
 
 The Engelbart release: a dev notebook over the existing ledger — compiled timelines, curated outlines with live transclusion, human notes, and self-maintaining work lists. 32 MCP tools, 10 message types. (PR [#29](https://github.com/iksnerd/council-hub/pull/29))

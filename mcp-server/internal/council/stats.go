@@ -9,14 +9,16 @@ import (
 
 // RoomStats holds aggregate statistics for a room.
 type RoomStats struct {
-	RoomID          string
-	Status          string
-	MessageCount    int
-	LatestMessageID string
-	Participants    map[string]int // author -> message count
-	TypeCounts      map[string]int // message_type -> count
-	FirstMessage    time.Time
-	LastMessage     time.Time
+	RoomID           string
+	Status           string
+	MessageCount     int
+	LatestMessageID  string
+	Participants     map[string]int // author -> message count
+	TypeCounts       map[string]int // message_type -> count
+	FirstMessage     time.Time
+	LastMessage      time.Time
+	PinnedMessageID  string // ID of the pinned message, or "" if none
+	MessagesSincePin int    // messages posted after the pin — a one-call "is the pin stale?" check
 }
 
 func (s *Server) GetRoomStats(roomID string) (RoomStats, error) {
@@ -48,6 +50,17 @@ func (s *Server) GetRoomStats(roomID string) (RoomStats, error) {
 	}
 	if latestID.Valid {
 		stats.LatestMessageID = latestID.String
+	}
+
+	// Pin staleness signal: how many messages have landed since the pinned message.
+	// A one-call "is the pin stale?" check that pairs with the stale-pin linter flag.
+	// QueryRow holds no connection open, so this is safe before the per-author rows.
+	var pinnedID sql.NullString
+	_ = s.DB.QueryRow(`SELECT id FROM messages WHERE room_id = ? AND pinned = 1 LIMIT 1`, roomID).Scan(&pinnedID)
+	if pinnedID.Valid && pinnedID.String != "" {
+		stats.PinnedMessageID = pinnedID.String
+		_ = s.DB.QueryRow(`SELECT COUNT(*) FROM messages WHERE room_id = ? AND id > ?`, roomID, pinnedID.String).
+			Scan(&stats.MessagesSincePin)
 	}
 
 	// Get per-author counts

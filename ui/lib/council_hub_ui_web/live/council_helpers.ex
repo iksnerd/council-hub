@@ -32,7 +32,8 @@ defmodule CouncilHubUiWeb.CouncilHelpers do
     "critique" => "hero-exclamation-triangle",
     "error" => "hero-x-circle",
     "synthesis" => "hero-beaker",
-    "note" => "hero-document-text"
+    "note" => "hero-document-text",
+    "plan" => "hero-clipboard-document-list"
   }
 
   def author_color(author) do
@@ -93,6 +94,7 @@ defmodule CouncilHubUiWeb.CouncilHelpers do
       "draft" -> "bg-[var(--ch-raised)] text-[var(--ch-text-lo)]"
       "synthesis" -> "bg-purple-500/10 text-purple-300/80"
       "note" -> "bg-sky-500/10 text-sky-300/80"
+      "plan" -> "bg-teal-500/10 text-teal-300/80"
       _ -> "bg-[var(--ch-raised)] text-[var(--ch-text-xs)]"
     end
   end
@@ -266,7 +268,8 @@ defmodule CouncilHubUiWeb.CouncilHelpers do
     "critique" => "Cr",
     "message" => "M",
     "error" => "E",
-    "note" => "N"
+    "note" => "N",
+    "plan" => "Pl"
   }
 
   def format_type_counts(type_counts) when map_size(type_counts) == 0, do: nil
@@ -304,7 +307,9 @@ defmodule CouncilHubUiWeb.CouncilHelpers do
 
     %{
       stale: "stale" in tags,
-      needs_synthesis: "needs-synthesis" in tags
+      needs_synthesis: "needs-synthesis" in tags,
+      stale_pin: "stale-pin" in tags,
+      stale_plan: "stale-plan" in tags
     }
   end
 

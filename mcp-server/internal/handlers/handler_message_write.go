@@ -12,12 +12,14 @@ import (
 
 // PostToRoomInput represents the parameters for posting a message.
 type PostToRoomInput struct {
-	RoomID      string `json:"room_id"`
-	Author      string `json:"author"`
-	Message     string `json:"message"`
-	MessageType string `json:"message_type"`
-	ReplyTo     string `json:"reply_to"`
-	Mentions    string `json:"mentions"`
+	RoomID       string `json:"room_id"`
+	Author       string `json:"author"`
+	Message      string `json:"message"`
+	MessageType  string `json:"message_type"`
+	ReplyTo      string `json:"reply_to"`
+	Mentions     string `json:"mentions"`
+	Supersedes   string `json:"supersedes"`
+	MarkReadSelf string `json:"mark_read_self"`
 }
 
 // UpdateMessageInput represents the parameters for editing a message in-place.
@@ -69,7 +71,7 @@ func (r *Registry) handlePostToRoom(ctx context.Context, req *mcp.CallToolReques
 		args.MessageType = "message"
 	}
 	if !validMessageTypes[args.MessageType] {
-		return msg(fmt.Sprintf("Error: Invalid message_type '%s'. Must be one of: message, thought, draft, decision, code, review, action, critique, synthesis.", args.MessageType))
+		return msg(fmt.Sprintf("Error: Invalid message_type '%s'. Must be one of: message, thought, draft, decision, plan, code, review, action, critique, synthesis, note.", args.MessageType))
 	}
 
 	// Verify room exists locally. If it doesn't and we're clustered, the room may
@@ -87,10 +89,18 @@ func (r *Registry) handlePostToRoom(ctx context.Context, req *mcp.CallToolReques
 		return msg(fmt.Sprintf("Error: Room '%s' not found. Create it first with create_room.", args.RoomID))
 	}
 
-	msgID, err := r.Server.PostMessageWithMentions(args.RoomID, args.Author, args.Message, args.MessageType, args.ReplyTo, args.Mentions)
+	msgID, err := r.Server.PostMessageWithRefs(args.RoomID, args.Author, args.Message, args.MessageType, args.ReplyTo, args.Mentions, args.Supersedes)
 	if err != nil {
 		r.Server.Logger.Error("Failed to post message", "room_id", args.RoomID, "error", err)
 		return nil, ToolOutput{}, err
+	}
+
+	// mark_read_self folds the end-of-session mark_read round-trip into the write:
+	// the poster just authored this message, so advance their own cursor to it.
+	if args.MarkReadSelf == "true" {
+		if err := r.Server.MarkRead(args.Author, args.RoomID, msgID); err != nil {
+			r.Server.Logger.Warn("mark_read_self failed", "room_id", args.RoomID, "author", args.Author, "error", err)
+		}
 	}
 
 	r.Server.Logger.Info("Message posted", "room_id", args.RoomID, "author", args.Author, "type", args.MessageType, "msg_id", msgID)
@@ -111,7 +121,7 @@ func (r *Registry) handleUpdateMessage(ctx context.Context, req *mcp.CallToolReq
 	}
 
 	if args.MessageType != "" && !validMessageTypes[args.MessageType] {
-		return msg(fmt.Sprintf("Error: invalid message_type '%s'. Valid types: message, thought, draft, decision, code, review, action, critique, synthesis.", args.MessageType))
+		return msg(fmt.Sprintf("Error: invalid message_type '%s'. Valid types: message, thought, draft, decision, plan, code, review, action, critique, synthesis, note.", args.MessageType))
 	}
 
 	m, err := r.Server.UpdateMessageWithExpected(args.MessageID, args.Content, args.MessageType, args.ExpectedContent)

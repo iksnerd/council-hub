@@ -67,6 +67,10 @@ func FormatTranscript(room Room, messages []Message) string {
 		if m.ReplyTo != "" {
 			replyTag = fmt.Sprintf(", re: #%.8s", m.ReplyTo)
 		}
+		supersedesTag := ""
+		if m.Supersedes != "" {
+			supersedesTag = fmt.Sprintf(", supersedes #%.8s", m.Supersedes)
+		}
 		mentionTag := ""
 		if m.Mentions != "" {
 			var atNames []string
@@ -83,11 +87,11 @@ func FormatTranscript(room Room, messages []Message) string {
 		if m.IsSummary {
 			fmt.Fprintf(&b, "\n**[%s] SUMMARY:**\n%s\n", ts, content)
 		} else if m.MessageType != "" && m.MessageType != "message" {
-			fmt.Fprintf(&b, "\n**[#%.8s %s] %s (%s%s)%s:**\n%s\n", m.ID, ts, m.Author, m.MessageType, replyTag, mentionTag, content)
+			fmt.Fprintf(&b, "\n**[#%.8s %s] %s (%s%s%s)%s:**\n%s\n", m.ID, ts, m.Author, m.MessageType, replyTag, supersedesTag, mentionTag, content)
 		} else if m.ReplyTo != "" {
-			fmt.Fprintf(&b, "\n**[#%.8s %s] %s (re: #%.8s)%s:**\n%s\n", m.ID, ts, m.Author, m.ReplyTo, mentionTag, content)
+			fmt.Fprintf(&b, "\n**[#%.8s %s] %s (re: #%.8s%s)%s:**\n%s\n", m.ID, ts, m.Author, m.ReplyTo, supersedesTag, mentionTag, content)
 		} else {
-			fmt.Fprintf(&b, "\n**[#%.8s %s] %s%s:**\n%s\n", m.ID, ts, m.Author, mentionTag, content)
+			fmt.Fprintf(&b, "\n**[#%.8s %s] %s%s%s:**\n%s\n", m.ID, ts, m.Author, supersedesTag, mentionTag, content)
 		}
 		if r := formatReactions(m.Reactions); r != "" {
 			fmt.Fprintf(&b, "  Reactions: %s\n", r)

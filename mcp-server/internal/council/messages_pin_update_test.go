@@ -27,6 +27,96 @@ func TestPinMessageDB(t *testing.T) {
 	}
 }
 
+func TestPostMessageWithRefsStoresSupersedes(t *testing.T) {
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "sup-room")
+	oldID := mustPostTyped(t, s, "sup-room", "Claude", "v1 synthesis", "synthesis")
+
+	newID, err := s.PostMessageWithRefs("sup-room", "Claude", "v2 synthesis", "synthesis", "", "", oldID)
+	if err != nil {
+		t.Fatalf("PostMessageWithRefs error: %v", err)
+	}
+
+	m, err := s.GetMessageByID(newID)
+	if err != nil {
+		t.Fatalf("GetMessageByID error: %v", err)
+	}
+	if m.Supersedes != oldID {
+		t.Errorf("expected supersedes=%s, got '%s'", oldID, m.Supersedes)
+	}
+}
+
+func TestPinMessageChainsSynthesis(t *testing.T) {
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "chain-room")
+	v1 := mustPostTyped(t, s, "chain-room", "Claude", "v1", "synthesis")
+	if _, err := s.PinMessage("chain-room", v1); err != nil {
+		t.Fatal(err)
+	}
+	v2 := mustPostTyped(t, s, "chain-room", "Claude", "v2", "synthesis")
+	if _, err := s.PinMessage("chain-room", v2); err != nil {
+		t.Fatal(err)
+	}
+
+	m, _ := s.GetMessageByID(v2)
+	if m.Supersedes != v1 {
+		t.Errorf("pinning v2 synthesis over v1 should set supersedes=%s, got '%s'", v1, m.Supersedes)
+	}
+}
+
+func TestPinMessageNoChainForNonSynthesis(t *testing.T) {
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "nochain-room")
+	v1 := mustPostTyped(t, s, "nochain-room", "Claude", "v1", "synthesis")
+	if _, err := s.PinMessage("nochain-room", v1); err != nil {
+		t.Fatal(err)
+	}
+	// Pinning a decision (not a synthesis) over a synthesis must not auto-link.
+	dec := mustPostTyped(t, s, "nochain-room", "Claude", "a decision", "decision")
+	if _, err := s.PinMessage("nochain-room", dec); err != nil {
+		t.Fatal(err)
+	}
+
+	m, _ := s.GetMessageByID(dec)
+	if m.Supersedes != "" {
+		t.Errorf("non-synthesis pin should not set supersedes, got '%s'", m.Supersedes)
+	}
+}
+
+func TestRoomStatsMessagesSincePin(t *testing.T) {
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "since-pin")
+	pin := mustPostTyped(t, s, "since-pin", "Claude", "TL;DR", "synthesis")
+	if _, err := s.PinMessage("since-pin", pin); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 3; i++ {
+		mustPostTyped(t, s, "since-pin", "Claude", "update", "decision")
+	}
+
+	stats, err := s.GetRoomStats("since-pin")
+	if err != nil {
+		t.Fatalf("GetRoomStats error: %v", err)
+	}
+	if stats.PinnedMessageID != pin {
+		t.Errorf("expected PinnedMessageID=%s, got '%s'", pin, stats.PinnedMessageID)
+	}
+	if stats.MessagesSincePin != 3 {
+		t.Errorf("expected MessagesSincePin=3, got %d", stats.MessagesSincePin)
+	}
+}
+
+func TestRoomStatsNoPinZeroSincePin(t *testing.T) {
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "no-pin-stats")
+	mustPost(t, s, "no-pin-stats", "Claude", "hello")
+
+	stats, _ := s.GetRoomStats("no-pin-stats")
+	if stats.PinnedMessageID != "" || stats.MessagesSincePin != 0 {
+		t.Errorf("expected no pin / 0 since-pin, got id='%s' n=%d", stats.PinnedMessageID, stats.MessagesSincePin)
+	}
+}
+
 func TestGetPinnedMessageNone(t *testing.T) {
 	s := setupTestServer(t)
 	mustCreateRoom(t, s, "no-pin")

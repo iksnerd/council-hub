@@ -23,6 +23,7 @@ type internalPostRequest struct {
 	MessageType string `json:"message_type"`
 	ReplyTo     string `json:"reply_to"`
 	Mentions    string `json:"mentions"`
+	Supersedes  string `json:"supersedes"`
 }
 
 // internalPostResponse is the peer node's reply after writing the message locally.
@@ -95,7 +96,15 @@ func (r *Registry) proxyPostToRoom(owner string, args PostToRoomInput) (string, 
 		return "", err
 	}
 
-	reqBody, err := json.Marshal(internalPostRequest(args))
+	reqBody, err := json.Marshal(internalPostRequest{
+		RoomID:      args.RoomID,
+		Author:      args.Author,
+		Message:     args.Message,
+		MessageType: args.MessageType,
+		ReplyTo:     args.ReplyTo,
+		Mentions:    args.Mentions,
+		Supersedes:  args.Supersedes,
+	})
 	if err != nil {
 		return "", err
 	}
@@ -173,7 +182,7 @@ func (r *Registry) InternalPostHandler() http.HandlerFunc {
 			msgType = "message"
 		}
 
-		msgID, err := r.Server.PostMessageWithMentions(in.RoomID, in.Author, in.Message, msgType, in.ReplyTo, in.Mentions)
+		msgID, err := r.Server.PostMessageWithRefs(in.RoomID, in.Author, in.Message, msgType, in.ReplyTo, in.Mentions, in.Supersedes)
 		if err != nil {
 			r.Server.Logger.Error("Cross-node write failed", "room_id", in.RoomID, "error", err)
 			writeJSON(internalPostResponse{Error: err.Error()})
@@ -235,7 +244,7 @@ func (r *Registry) UIPostHandler() http.HandlerFunc {
 			msgType = "message"
 		}
 
-		msgID, err := r.Server.PostMessageWithMentions(in.RoomID, in.Author, in.Message, msgType, in.ReplyTo, in.Mentions)
+		msgID, err := r.Server.PostMessageWithRefs(in.RoomID, in.Author, in.Message, msgType, in.ReplyTo, in.Mentions, in.Supersedes)
 		if err != nil {
 			r.Server.Logger.Error("UI post failed", "room_id", in.RoomID, "error", err)
 			writeJSON(internalPostResponse{Error: err.Error()})

@@ -115,7 +115,7 @@ func TestGetMentions(t *testing.T) {
 	// Post without mentions — should not appear
 	s.PostMessage("mention-room", "gemini-cli", "No mentions here", "message", "")
 
-	msgs, err := s.GetMentions("claude", 20)
+	msgs, err := s.GetMentions("claude", "", 20)
 	if err != nil {
 		t.Fatalf("GetMentions failed: %v", err)
 	}
@@ -129,7 +129,7 @@ func TestGetMentionsNotFound(t *testing.T) {
 	s.CreateRoom("mention-empty", "Empty mention room", "", "", "", "", "")
 	s.PostMessage("mention-empty", "gemini-cli", "No mentions here", "message", "")
 
-	msgs, err := s.GetMentions("claude", 20)
+	msgs, err := s.GetMentions("claude", "", 20)
 	if err != nil {
 		t.Fatalf("GetMentions failed: %v", err)
 	}
@@ -147,12 +147,40 @@ func TestGetMentionsBoundary(t *testing.T) {
 	s.PostMessageWithMentions("boundary-room", "system", "For claude-sonnet only", "message", "", "claude-sonnet")
 	s.PostMessageWithMentions("boundary-room", "system", "For claude only", "message", "", "claude")
 
-	msgs, err := s.GetMentions("claude", 20)
+	msgs, err := s.GetMentions("claude", "", 20)
 	if err != nil {
 		t.Fatalf("GetMentions failed: %v", err)
 	}
 	if len(msgs) != 2 {
 		t.Errorf("expected 2 fuzzy matches for 'claude' (claude + claude-sonnet), got %d", len(msgs))
+	}
+}
+
+func TestGetMentionsProjectFilter(t *testing.T) {
+	s := setupTestServer(t)
+	s.CreateRoom("proj-a-room", "Project A", "alpha", "", "", "", "")
+	s.CreateRoom("proj-b-room", "Project B", "beta", "", "", "", "")
+
+	s.PostMessageWithMentions("proj-a-room", "bot", "@claude in alpha", "message", "", "claude")
+	s.PostMessageWithMentions("proj-b-room", "bot", "@claude in beta", "message", "", "claude")
+
+	all, err := s.GetMentions("claude", "", 20)
+	if err != nil {
+		t.Fatalf("GetMentions failed: %v", err)
+	}
+	if len(all) != 2 {
+		t.Errorf("expected 2 mentions across all projects, got %d", len(all))
+	}
+
+	scoped, err := s.GetMentions("claude", "alpha", 20)
+	if err != nil {
+		t.Fatalf("GetMentions(project) failed: %v", err)
+	}
+	if len(scoped) != 1 {
+		t.Fatalf("expected 1 mention scoped to 'alpha', got %d", len(scoped))
+	}
+	if scoped[0].RoomID != "proj-a-room" {
+		t.Errorf("expected mention from 'proj-a-room', got '%s'", scoped[0].RoomID)
 	}
 }
 
@@ -164,7 +192,7 @@ func TestGetMentionsLimit(t *testing.T) {
 		s.PostMessageWithMentions("mention-limit", "bot", "ping", "message", "", "claude")
 	}
 
-	msgs, err := s.GetMentions("claude", 3)
+	msgs, err := s.GetMentions("claude", "", 3)
 	if err != nil {
 		t.Fatalf("GetMentions failed: %v", err)
 	}

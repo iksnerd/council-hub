@@ -4,17 +4,26 @@ import "database/sql"
 
 // GetMentions returns recent messages that explicitly mention the given author.
 // Uses case-insensitive substring matching so partial names like "claude" match
-// "Claude Code (Opus)", "claude-code", etc.
-func (s *Server) GetMentions(author string, limit int) ([]Message, error) {
+// "Claude Code (Opus)", "claude-code", etc. When project is non-empty, mentions are
+// scoped to rooms in that project — making the session-start get_digest(project)/
+// get_mentions(project) pair symmetric.
+func (s *Server) GetMentions(author, project string, limit int) ([]Message, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 20
 	}
-	rows, err := s.DB.Query(
-		`SELECT `+messageColumns+` FROM messages
-		WHERE LOWER(mentions) LIKE '%'||LOWER(?)||'%'
-		ORDER BY timestamp DESC LIMIT ?`,
-		author, limit,
-	)
+	project = normalizeProject(project)
+
+	query := `SELECT ` + messageColumns + ` FROM messages
+		WHERE LOWER(mentions) LIKE '%'||LOWER(?)||'%'`
+	args := []any{author}
+	if project != "" {
+		query += ` AND room_id IN (SELECT id FROM rooms WHERE project = ?)`
+		args = append(args, project)
+	}
+	query += ` ORDER BY timestamp DESC LIMIT ?`
+	args = append(args, limit)
+
+	rows, err := s.DB.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}

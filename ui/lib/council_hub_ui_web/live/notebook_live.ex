@@ -26,8 +26,8 @@ defmodule CouncilHubUiWeb.NotebookLive do
     ]
 
   @refresh_interval 5_000
-  @all_types ~w(decision action synthesis note critique review code draft thought message)
-  @default_types ~w(decision action synthesis note)
+  @all_types ~w(decision plan action synthesis note critique review code draft thought message)
+  @default_types ~w(decision plan action synthesis note)
 
   @impl true
   def mount(_params, _session, socket) do
