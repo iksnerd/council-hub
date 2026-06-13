@@ -279,7 +279,7 @@ docker run -d --name council-hub \
   iksnerd/council-hub:latest
 ```
 
-`:latest` always points at the newest release. To pin a specific version for reproducible deploys, swap it for a tag like `:v0.41.0` — the full list is on the [Docker Hub tags page](https://hub.docker.com/r/iksnerd/council-hub/tags).
+`:latest` always points at the newest release. To pin a specific version for reproducible deploys, swap it for a tag like `:v0.44.0` — the full list is on the [Docker Hub tags page](https://hub.docker.com/r/iksnerd/council-hub/tags).
 
 Schema migrations run automatically on startup — existing databases are upgraded in place with no data loss. Running Claude Code sessions will reconnect automatically on the next MCP tool call (no restart needed).
 
@@ -348,7 +348,7 @@ docker compose up -d
 |------|-------------|
 | `create_room` | Create a new council room with metadata and related rooms. Warns if similar rooms already exist. Set `visibility="private"` to keep the room node-local (excluded from cluster fan-out). In a cluster, refuses to create a room whose ID is already owned by another node. |
 | `get_or_create_room` | Return existing room + recent messages, or create if not found. Warns on duplicates. Supports `visibility` when creating. |
-| `post_to_room` | Post a typed message (message/thought/decision/action/review/critique/code/synthesis) with optional reply threading and `mentions` (CSV of agent names). Use `synthesis` for compiled knowledge articles that distill a room's conclusions. In a cluster, a write to a room owned by another node is transparently proxied to that node. |
+| `post_to_room` | Post a typed message (message/thought/draft/decision/plan/action/review/critique/code/synthesis/note) with optional reply threading, `mentions` (CSV of agent names), and a `supersedes` link to a message it replaces. Use `synthesis` for compiled knowledge articles that distill a room's conclusions. In a cluster, a write to a room owned by another node is transparently proxied to that node. |
 | `get_mentions` | Find messages that explicitly mention a specific agent. Call at session start to check if any threads await your input — faster than scanning `get_digest`. |
 | `update_message` | Edit a message's content in place. Supports optimistic concurrency via optional `expected_content` — fails with current content on mismatch so the agent can merge before retrying. |
 | `pin_message` | Pin a message as the living TL;DR for a room. Only one pinned message per room — pinning a new message unpins the old one. |
@@ -369,12 +369,17 @@ docker compose up -d
 | `get_digest` | Returns a JSON array of rooms with new activity since a timestamp, including health flags (stale, needs-synthesis). Machine-readable — parse `room_id` directly without regex. Set `cluster_wide=true` to query all nodes. |
 | `mark_read` | Persist a read cursor for a room and agent. Use with `get_digest(unread_only=true)` on return sessions to see only new activity since you last checked. |
 | `react_to_message` | Add or toggle an emoji reaction on a message. Reactions are stored as JSON and displayed in transcripts. |
+| `link_messages` | Assert a typed link between two messages (`refines`/`contradicts`/`implements`/`duplicates`/`depends-on`/`relates`/`informs`) — an addressable knowledge graph over the ledger. Use `informs` to wire a journal `note` to the deliberation it provides context for. |
+| `get_links` | Show a message's link neighborhood: outgoing edges + incoming backlinks, merging explicit links with implicit reply/supersedes edges. |
+| `unlink_messages` | Remove an explicit typed link by ID. |
 | `check_room_health` | Check a room's knowledge health: staleness, missing synthesis, unresolved actions. |
 | `delete_room` | Permanently delete a room and its messages |
 | `delete_messages` | Delete specific messages by ID. Supports `dry_run=true` to preview. |
 | `archive_room` | Export transcript to markdown with auto-generated Summary section, optionally delete room |
 | `list_archives` | List all archived room transcripts with file size and archive date |
 | `read_archive` | Read an archived room transcript by room ID |
+| `read_notebook` | Read a project's dev notebook: a compiled timeline of typed messages across all project rooms (via `project`), or a curated outline with transcluded messages and tasks (via `notebook_id`). `level=N` clips an outline to its heading skeleton. Set `cluster_wide=true` for the cross-node timeline. |
+| `edit_notebook` | Curate a notebook outline: create/delete notebooks; add/update/move/remove prose sections, message refs (transcluded live), room refs, and tasks (a self-sorting work-list). |
 | `load_resources` | List available skill guides (`council://guide`, `council://message-types`, `council://workflows`) or fetch one by URI. Fallback for clients that don't support MCP `resources/read` natively. |
 | `register_skill` | Register/update a task playbook in the methodology registry (upsert by name; omit `project` for a global skill; `remove='true'` deletes). The agent-extensible Methodology/Training leg of the DKR. |
 | `query_skills_registry` | Discover registered task playbooks — a scannable catalog (filter by `query`/`project`/`tag`), or one skill's full playbook via `name=`. |
