@@ -9,6 +9,7 @@ defmodule CouncilHubUiWeb.MessageComponents do
 
   attr :msg, :map, required: true
   attr :repo, :string, default: ""
+  attr :compact, :boolean, default: false
 
   def message_bubble(assigns) do
     ~H"""
@@ -114,7 +115,10 @@ defmodule CouncilHubUiWeb.MessageComponents do
           </div>
 
           <%!-- Message content --%>
-          <div class={"council-prose text-[var(--ch-text-mid)] border-l border-[var(--ch-border-mid)] pl-2.5 #{author_prose_class(@msg.author)}"}>
+          <div class={[
+            "council-prose text-[var(--ch-text-mid)] border-l border-[var(--ch-border-mid)] pl-2.5 #{author_prose_class(@msg.author)}",
+            @compact && "line-clamp-1"
+          ]}>
             {raw(render_markdown(resolve_commit_refs(@msg.content, @repo)))}
           </div>
 
