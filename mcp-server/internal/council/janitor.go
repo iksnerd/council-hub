@@ -15,6 +15,10 @@ const (
 	// stalePinMinUpdates is how many decision/action/synthesis messages must land
 	// after the pinned message before its room is flagged `stale-pin`.
 	stalePinMinUpdates = 5
+	// notebookNudgeMinDecisions is how many decision/action messages a project must
+	// accumulate (across all its rooms) before the linter nudges it to compile a
+	// curated notebook — enough deliberation that an integration view would help.
+	notebookNudgeMinDecisions = 8
 )
 
 // LintResult holds the outcome of a linter sweep.
@@ -23,6 +27,8 @@ type LintResult struct {
 	Stale          []string
 	StalePin       []string
 	StalePlan      []string
+	Incoherent     []string
+	NeedsNotebook  []string // projects with lots of decided work but no curated notebook
 }
 
 func (s *Server) RunJanitor(ctx context.Context) {
@@ -47,6 +53,8 @@ func (s *Server) JanitorSweep() LintResult {
 	st := s.lintStaleRooms()
 	sp := s.lintStalePins()
 	spl := s.lintStalePlans()
+	inc := s.lintIncoherent()
+	nn := s.lintProjectsNeedingNotebook()
 	healed, err := healIndexes(s.DB, s.Logger)
 	if err != nil {
 		s.Logger.Error("Janitor: integrity check failed", "error", err)
@@ -59,7 +67,7 @@ func (s *Server) JanitorSweep() LintResult {
 	s.LastJanitorScan = now
 	s.LastIntegrityCheck = now
 	s.Mu.Unlock()
-	return LintResult{NeedsSynthesis: ns, Stale: st, StalePin: sp, StalePlan: spl}
+	return LintResult{NeedsSynthesis: ns, Stale: st, StalePin: sp, StalePlan: spl, Incoherent: inc, NeedsNotebook: nn}
 }
 
 // hasTag checks whether a comma-separated tag string contains an exact tag.
@@ -340,4 +348,199 @@ func (s *Server) lintStalePlans() []string {
 		flagged = append(flagged, c.id)
 	}
 	return flagged
+}
+
+// lintIncoherent is the Coherence linter (Engelbart's CoDIAK Integration leg): it
+// flags active rooms holding an unresolved coherence problem in the link graph. It
+// reads the explicit typed edges added in v0.41.0 (E2) and gives the inert
+// `contradicts`/`duplicates` relations teeth. Two signals, both purely structural
+// (no embedder required):
+//
+//   - a live `contradicts` edge between two same-room messages where neither side has
+//     been superseded and no `synthesis` has been posted since the newer of the two —
+//     the room asserts two conflicting statements and has never reconciled them.
+//   - a `duplicates` edge between two `synthesis` messages where neither has been
+//     superseded — the same article compiled twice (often across rooms), the
+//     fragmentation the shared DKR exists to prevent. Both endpoint rooms are flagged.
+//
+// The fix in either case: supersede the losing message (declares a winner) or post a
+// reconciling synthesis. The `incoherent` tag auto-clears in postMessageCore on a
+// synthesis or superseding post, and the next sweep re-adds it if the conflict stands
+// (same self-healing contract as the other flags — no permanent false positives).
+func (s *Server) lintIncoherent() []string {
+	// room_id -> the reason phrase rendered in the system note. A room flagged for a
+	// contradiction keeps that reason even if it also has a duplicate edge — the
+	// contradiction is the sharper signal, so it's reported first.
+	reasons := map[string]string{}
+
+	scanRooms := func(query, reason string, overwrite bool) {
+		rows, err := s.DB.Query(query)
+		if err != nil {
+			s.Logger.Error("Linter: failed to query incoherent rooms", "error", err)
+			return
+		}
+		defer func() { _ = rows.Close() }()
+		for rows.Next() {
+			var id string
+			if err := rows.Scan(&id); err != nil {
+				continue
+			}
+			if _, seen := reasons[id]; seen && !overwrite {
+				continue
+			}
+			reasons[id] = reason
+		}
+	}
+
+	// 1. Live, un-reconciled contradiction within a single room. UUIDv7 ids are
+	// time-ordered, so MAX(m.id, m2.id) is the newer endpoint and `syn.id > …` means
+	// "a synthesis posted after the contradiction stood".
+	contradictionQ := `
+		SELECT DISTINCT m.room_id
+		FROM message_links l
+		JOIN messages m  ON m.id = l.from_id
+		JOIN messages m2 ON m2.id = l.to_id
+		JOIN rooms r ON r.id = m.room_id
+		WHERE l.relation = 'contradicts'
+		  AND m.room_id = m2.room_id
+		  AND r.status = 'active'
+		  AND NOT EXISTS (SELECT 1 FROM messages x WHERE x.supersedes = m.id)
+		  AND NOT EXISTS (SELECT 1 FROM messages x WHERE x.supersedes = m2.id)
+		  AND NOT EXISTS (
+		    SELECT 1 FROM messages syn
+		    WHERE syn.room_id = m.room_id
+		      AND syn.message_type = 'synthesis'
+		      AND syn.id > MAX(m.id, m2.id)
+		  )
+	`
+	scanRooms(contradictionQ,
+		"two messages here are linked `contradicts`, but neither has been superseded and no later `synthesis` reconciles them. "+
+			"Resolve the conflict: `supersedes` the obsolete message, or post (and pin) a `synthesis` that reconciles the two.",
+		true)
+
+	// 2. Duplicate syntheses (either room of the `duplicates` edge). Cross-room dupes
+	// are the headline case — the same knowledge compiled twice in separate rooms.
+	duplicateQ := `
+		SELECT DISTINCT room_id FROM (
+			SELECT m.room_id AS room_id
+			FROM message_links l
+			JOIN messages m  ON m.id = l.from_id
+			JOIN messages m2 ON m2.id = l.to_id
+			JOIN rooms r ON r.id = m.room_id
+			WHERE l.relation = 'duplicates'
+			  AND m.message_type = 'synthesis' AND m2.message_type = 'synthesis'
+			  AND r.status = 'active'
+			  AND NOT EXISTS (SELECT 1 FROM messages x WHERE x.supersedes = m.id)
+			  AND NOT EXISTS (SELECT 1 FROM messages x WHERE x.supersedes = m2.id)
+			UNION
+			SELECT m2.room_id AS room_id
+			FROM message_links l
+			JOIN messages m  ON m.id = l.from_id
+			JOIN messages m2 ON m2.id = l.to_id
+			JOIN rooms r ON r.id = m2.room_id
+			WHERE l.relation = 'duplicates'
+			  AND m.message_type = 'synthesis' AND m2.message_type = 'synthesis'
+			  AND r.status = 'active'
+			  AND NOT EXISTS (SELECT 1 FROM messages x WHERE x.supersedes = m.id)
+			  AND NOT EXISTS (SELECT 1 FROM messages x WHERE x.supersedes = m2.id)
+		)
+	`
+	scanRooms(duplicateQ,
+		"a `synthesis` here is linked `duplicates` to another synthesis that hasn't been superseded — the same article compiled twice. "+
+			"Consolidate: keep one canonical synthesis and `supersedes` the duplicate (or merge them and supersede both).",
+		false)
+
+	var flagged []string
+	for id, reason := range reasons {
+		var tags string
+		if err := s.DB.QueryRow(`SELECT COALESCE(tags, '') FROM rooms WHERE id = ?`, id).Scan(&tags); err != nil {
+			continue
+		}
+		if hasTag(tags, "incoherent") {
+			continue
+		}
+		newTags := appendTag(tags, "incoherent")
+		s.Mu.Lock()
+		_, err := s.DB.Exec(`UPDATE rooms SET tags = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, newTags, id)
+		s.Mu.Unlock()
+		if err != nil {
+			s.Logger.Error("Linter: failed to update incoherent tags", "room_id", id, "error", err)
+			continue
+		}
+
+		content := "### Knowledge Linter\nThis room has an unresolved coherence problem: " + reason
+		if _, err := s.PostMessage(id, "system", content, "message", ""); err == nil {
+			s.Logger.Info("Linter: flagged room as incoherent", "room_id", id)
+		}
+		flagged = append(flagged, id)
+	}
+
+	// Self-correct: clear `incoherent` from any active room that still carries the tag
+	// but no longer qualifies. A coherence conflict can be resolved in a different room
+	// than the one whose flag persists (a cross-room duplicate is fixed by superseding
+	// one synthesis), so the event-driven clear in postMessageCore can't catch every
+	// case — the sweep reconciles the rest, keeping the flag free of stale positives.
+	clearRows, err := s.DB.Query(`SELECT id, COALESCE(tags, '') FROM rooms WHERE status = 'active' AND tags LIKE '%incoherent%'`)
+	if err == nil {
+		type stale struct{ id, tags string }
+		var toClear []stale
+		for clearRows.Next() {
+			var id, tags string
+			if err := clearRows.Scan(&id, &tags); err != nil {
+				continue
+			}
+			if _, stillFlagged := reasons[id]; !stillFlagged && hasTag(tags, "incoherent") {
+				toClear = append(toClear, stale{id, tags})
+			}
+		}
+		_ = clearRows.Close()
+		for _, c := range toClear {
+			s.Mu.Lock()
+			_, _ = s.DB.Exec(`UPDATE rooms SET tags = ? WHERE id = ?`, removeTag(c.tags, "incoherent"), c.id)
+			s.Mu.Unlock()
+		}
+	}
+
+	return flagged
+}
+
+// lintProjectsNeedingNotebook nudges projects that have accumulated real
+// deliberation (notebookNudgeMinDecisions+ decision/action messages across their
+// rooms) but have no curated notebook to integrate it. Unlike the other linters,
+// this flags a *project*, not a room — projects have no inbox to post into and no
+// tags to set — so it's report-only: it surfaces in check_room_health (and the
+// janitor playbook) as a prompt to run edit_notebook(action=create, project=…) and
+// compile the scattered decisions into one addressable view. Global notebooks
+// (project = ”) don't count as a project's notebook.
+func (s *Server) lintProjectsNeedingNotebook() []string {
+	query := `
+		SELECT r.project
+		FROM messages m
+		JOIN rooms r ON r.id = m.room_id
+		WHERE r.project != ''
+		  AND m.message_type IN ('decision', 'action')
+		  AND NOT EXISTS (SELECT 1 FROM notebooks n WHERE n.project = r.project)
+		GROUP BY r.project
+		HAVING COUNT(*) >= ?
+		ORDER BY r.project
+	`
+	rows, err := s.DB.Query(query, notebookNudgeMinDecisions)
+	if err != nil {
+		s.Logger.Error("Linter: failed to query projects needing a notebook", "error", err)
+		return nil
+	}
+	defer func() { _ = rows.Close() }()
+
+	var projects []string
+	for rows.Next() {
+		var p string
+		if err := rows.Scan(&p); err != nil {
+			continue
+		}
+		projects = append(projects, p)
+	}
+	if len(projects) > 0 {
+		s.Logger.Info("Linter: projects with decided work but no notebook", "projects", projects)
+	}
+	return projects
 }

@@ -288,6 +288,41 @@ func TestHandleReadNotebookOutlineStatusGrouping(t *testing.T) {
 	}
 }
 
+func TestHandleReadNotebookTaskGrouping(t *testing.T) {
+	reg, _ := setupOutlineHandler(t)
+	editNotebook(t, reg, EditNotebookInput{Action: "create", NotebookID: "current-work", Title: "Current Work"})
+
+	doing := mustAddEntry(t, reg, EditNotebookInput{NotebookID: "current-work", Kind: "task", Prose: "actively shipping this"})
+	mustAddEntry(t, reg, EditNotebookInput{NotebookID: "current-work", Kind: "task", Prose: "still in the backlog"})
+	finished := mustAddEntry(t, reg, EditNotebookInput{NotebookID: "current-work", Kind: "task", Prose: "already finished"})
+
+	editNotebook(t, reg, EditNotebookInput{Action: "start", EntryID: doing})
+	editNotebook(t, reg, EditNotebookInput{Action: "check", EntryID: finished})
+
+	res, _, _ := reg.handleReadNotebook(context.Background(), nil, ReadNotebookInput{NotebookID: "current-work"})
+	text := resultText(res)
+
+	inProgress := strings.Index(text, "🔄 In progress")
+	openAt := strings.Index(text, "☐ Open")
+	doneAt := strings.Index(text, "☑ Done")
+	if inProgress < 0 || openAt < 0 || doneAt < 0 {
+		t.Fatalf("expected In progress + Open + Done task headers, got: %s", text)
+	}
+	if !(inProgress < openAt && openAt < doneAt) {
+		t.Errorf("task groups should render In progress → Open → Done, got: %s", text)
+	}
+	// The started task renders with a [~] box, the checked one with [x].
+	if !strings.Contains(text, "[~] actively shipping this") {
+		t.Errorf("started task should render with [~], got: %s", text)
+	}
+	if !strings.Contains(text, "[x] already finished") {
+		t.Errorf("checked task should render with [x], got: %s", text)
+	}
+	if !strings.Contains(text, "[ ] still in the backlog") {
+		t.Errorf("open task should render with [ ], got: %s", text)
+	}
+}
+
 func TestHandleEditNotebookDelete(t *testing.T) {
 	reg, msgID := setupOutlineHandler(t)
 

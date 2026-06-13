@@ -252,6 +252,33 @@
           </div>
         <% end %>
 
+        <%!-- Task list: first-class checklist items regrouped by their own status.
+             Driven from the MCP tool (edit_notebook start/check); read-only here. --%>
+        <%= if @outline_doing_tasks != [] do %>
+          <h2 class="text-[11px] font-medium text-[var(--ch-text-lo)] uppercase tracking-[0.15em] mt-6 mb-2">
+            🔄 In progress ({length(@outline_doing_tasks)})
+          </h2>
+          <div class="flex flex-col gap-2">
+            <.task_card :for={entry <- @outline_doing_tasks} entry={entry} />
+          </div>
+        <% end %>
+        <%= if @outline_open_tasks != [] do %>
+          <h2 class="text-[11px] font-medium text-[var(--ch-text-lo)] uppercase tracking-[0.15em] mt-6 mb-2">
+            ☐ Open ({length(@outline_open_tasks)})
+          </h2>
+          <div class="flex flex-col gap-2">
+            <.task_card :for={entry <- @outline_open_tasks} entry={entry} />
+          </div>
+        <% end %>
+        <%= if @outline_done_tasks != [] do %>
+          <h2 class="text-[11px] font-medium text-[var(--ch-text-lo)] uppercase tracking-[0.15em] mt-6 mb-2">
+            ☑ Done ({length(@outline_done_tasks)})
+          </h2>
+          <div class="flex flex-col gap-2 opacity-60">
+            <.task_card :for={entry <- @outline_done_tasks} entry={entry} />
+          </div>
+        <% end %>
+
         <%!-- Work list: room_refs regrouped by transcluded live status, so the
              list re-sorts itself as rooms resolve — never hand-edited. --%>
         <%= if @outline_in_flight != [] do %>

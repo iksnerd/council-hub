@@ -191,6 +191,7 @@ func initSchema(db *sql.DB) error {
 		kind TEXT NOT NULL DEFAULT 'prose',
 		ref_id TEXT DEFAULT '',
 		prose TEXT DEFAULT '',
+		status TEXT DEFAULT 'open',
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		FOREIGN KEY(notebook_id) REFERENCES notebooks(id)
 	);
@@ -246,6 +247,7 @@ func initSchema(db *sql.DB) error {
 		`ALTER TABLE rooms ADD COLUMN visibility TEXT DEFAULT 'public'`,
 		`ALTER TABLE rooms ADD COLUMN repo TEXT DEFAULT ''`,
 		`ALTER TABLE messages ADD COLUMN supersedes TEXT DEFAULT ''`,
+		`ALTER TABLE notebook_entries ADD COLUMN status TEXT DEFAULT 'open'`,
 	}
 	for _, m := range migrations {
 		_, _ = db.Exec(m) // Ignore "duplicate column" errors for already-migrated DBs

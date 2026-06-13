@@ -51,7 +51,7 @@ func (s *Server) UpdateStatus(roomID, status string) error {
 	if status == "resolved" {
 		var currentTags string
 		if err := s.DB.QueryRow(`SELECT COALESCE(tags, '') FROM rooms WHERE id = ?`, roomID).Scan(&currentTags); err == nil {
-			newTags := removeTag(removeTag(removeTag(removeTag(currentTags, "needs-synthesis"), "stale"), "stale-pin"), "stale-plan")
+			newTags := removeTag(removeTag(removeTag(removeTag(removeTag(currentTags, "needs-synthesis"), "stale"), "stale-pin"), "stale-plan"), "incoherent")
 			if newTags != currentTags {
 				_, _ = s.DB.Exec(`UPDATE rooms SET tags = ? WHERE id = ?`, newTags, roomID)
 			}

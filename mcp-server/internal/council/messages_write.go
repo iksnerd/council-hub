@@ -47,9 +47,12 @@ func (s *Server) postMessageCore(roomID, author, content, messageType, replyTo, 
 	//   - a synthesis post clears `needs-synthesis`
 	//   - an action post clears `stale-plan` (its id is newer than every plan, so the
 	//     latest plan now has a following action — the handoff was picked up)
+	//   - a synthesis or superseding post clears `incoherent` — a synthesis reconciles a
+	//     contradiction, and superseding declares a winner over a contradiction/duplicate;
+	//     the next sweep re-adds the flag if a conflict still stands.
 	//   - any genuine (non-system) activity clears `stale` — the room is live again.
 	// The linter posts as author "system", so its own flag messages must not self-clear.
-	if messageType == "synthesis" || messageType == "action" || author != "system" {
+	if messageType == "synthesis" || messageType == "action" || supersedes != "" || author != "system" {
 		var tags string
 		if err := s.DB.QueryRow(`SELECT COALESCE(tags, '') FROM rooms WHERE id = ?`, roomID).Scan(&tags); err == nil {
 			newTags := tags
@@ -58,6 +61,9 @@ func (s *Server) postMessageCore(roomID, author, content, messageType, replyTo, 
 			}
 			if messageType == "action" {
 				newTags = removeTag(newTags, "stale-plan")
+			}
+			if messageType == "synthesis" || supersedes != "" {
+				newTags = removeTag(newTags, "incoherent")
 			}
 			if author != "system" {
 				newTags = removeTag(newTags, "stale")

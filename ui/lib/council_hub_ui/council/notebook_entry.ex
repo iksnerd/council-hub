@@ -8,6 +8,7 @@ defmodule CouncilHubUi.Council.NotebookEntry do
     field :kind, :string, default: "prose"
     field :ref_id, :string, default: ""
     field :prose, :string, default: ""
+    field :status, :string, default: "open"
     field :created_at, :naive_datetime
   end
 end

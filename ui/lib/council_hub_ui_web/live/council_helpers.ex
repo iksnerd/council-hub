@@ -309,7 +309,8 @@ defmodule CouncilHubUiWeb.CouncilHelpers do
       stale: "stale" in tags,
       needs_synthesis: "needs-synthesis" in tags,
       stale_pin: "stale-pin" in tags,
-      stale_plan: "stale-plan" in tags
+      stale_plan: "stale-plan" in tags,
+      incoherent: "incoherent" in tags
     }
   end
 

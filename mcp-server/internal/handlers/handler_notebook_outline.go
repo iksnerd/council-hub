@@ -83,6 +83,17 @@ func (r *Registry) handleEditNotebook(ctx context.Context, req *mcp.CallToolRequ
 		}
 		return msg(fmt.Sprintf("Entry %s updated.", args.EntryID))
 
+	case "start", "check", "uncheck":
+		if args.EntryID == "" {
+			return msg("Error: entry_id is required.")
+		}
+		status := map[string]string{"start": "doing", "check": "done", "uncheck": "open"}[args.Action]
+		if err := r.Server.SetTaskStatus(args.EntryID, status); err != nil {
+			return msg(fmt.Sprintf("Error: %s", err.Error()))
+		}
+		label := map[string]string{"doing": "in progress 🔄", "done": "done ☑", "open": "open ☐"}[status]
+		return msg(fmt.Sprintf("Task %s marked %s.", args.EntryID, label))
+
 	case "remove":
 		if args.EntryID == "" {
 			return msg("Error: entry_id is required.")
@@ -105,7 +116,7 @@ func (r *Registry) handleEditNotebook(ctx context.Context, req *mcp.CallToolRequ
 		return msg(fmt.Sprintf("Entry %s moved after %s.", args.EntryID, args.AfterEntryID))
 
 	default:
-		return msg(fmt.Sprintf("Error: unknown action '%s'. Valid actions: create, add, update, remove, move, delete.", args.Action))
+		return msg(fmt.Sprintf("Error: unknown action '%s'. Valid actions: create, add, update, check, uncheck, remove, move, delete.", args.Action))
 	}
 }
 
@@ -137,17 +148,26 @@ func (r *Registry) renderOutline(notebookID string) (*mcp.CallToolResult, ToolOu
 		return msg(b.String())
 	}
 
-	// room_ref entries are pulled out and regrouped by their transcluded live
-	// status: a notebook of room_refs is a self-sorting work list — In flight
-	// vs Done re-partitions because the truth lives in the rooms, never by
-	// editing the list. prose and message refs keep their authored positions
-	// and render inline (the document spine); the work-list groups follow.
-	var inFlight, done []council.OutlineEntry
+	// Self-sorting entries are pulled out and regrouped so the notebook stays true
+	// without hand-editing: tasks by their own done state (☐ Open / ☑ Done), and
+	// room_refs by their transcluded live status (🔄 In flight / ✅ Done — the truth
+	// lives in the rooms). prose and message refs keep their authored positions and
+	// render inline (the document spine); the work-list groups follow.
+	var doingTasks, openTasks, doneTasks, inFlight, doneRooms []council.OutlineEntry
 	for _, e := range entries {
 		switch {
+		case e.Kind == "task":
+			switch e.Status {
+			case "done":
+				doneTasks = append(doneTasks, e)
+			case "doing":
+				doingTasks = append(doingTasks, e)
+			default:
+				openTasks = append(openTasks, e)
+			}
 		case e.Kind == "room_ref":
 			if roomRefDone(e) {
-				done = append(done, e)
+				doneRooms = append(doneRooms, e)
 			} else {
 				inFlight = append(inFlight, e)
 			}
@@ -168,15 +188,33 @@ func (r *Registry) renderOutline(notebookID string) (*mcp.CallToolResult, ToolOu
 		}
 	}
 
+	if len(doingTasks) > 0 {
+		fmt.Fprintf(&b, "\n## 🔄 In progress (%d)\n", len(doingTasks))
+		for _, e := range doingTasks {
+			renderTask(&b, e)
+		}
+	}
+	if len(openTasks) > 0 {
+		fmt.Fprintf(&b, "\n## ☐ Open (%d)\n", len(openTasks))
+		for _, e := range openTasks {
+			renderTask(&b, e)
+		}
+	}
+	if len(doneTasks) > 0 {
+		fmt.Fprintf(&b, "\n## ☑ Done (%d)\n", len(doneTasks))
+		for _, e := range doneTasks {
+			renderTask(&b, e)
+		}
+	}
 	if len(inFlight) > 0 {
 		fmt.Fprintf(&b, "\n## 🔄 In flight (%d)\n", len(inFlight))
 		for _, e := range inFlight {
 			renderRoomRef(&b, e)
 		}
 	}
-	if len(done) > 0 {
-		fmt.Fprintf(&b, "\n## ✅ Done (%d)\n", len(done))
-		for _, e := range done {
+	if len(doneRooms) > 0 {
+		fmt.Fprintf(&b, "\n## ✅ Done (%d)\n", len(doneRooms))
+		for _, e := range doneRooms {
 			renderRoomRef(&b, e)
 		}
 	}
@@ -208,6 +246,21 @@ func renderRoomRef(b *strings.Builder, e council.OutlineEntry) {
 		fmt.Fprintf(b, "  latest %s [%s %s]: %s\n", e.RefType, ts, e.RefAuthor, council.ResolveCommitRefs(excerpt, e.RefRepo))
 	}
 	fmt.Fprintf(b, "*(entry %s)*\n", e.ID)
+}
+
+// renderTask writes one checklist item — a markdown checkbox carrying the task
+// label and its addressable entry ID (so it can be started, checked, or edited).
+// The box reflects status: [ ] open, [~] doing, [x] done.
+func renderTask(b *strings.Builder, e council.OutlineEntry) {
+	box := "[ ]"
+	switch e.Status {
+	case "done":
+		box = "[x]"
+	case "doing":
+		box = "[~]"
+	}
+	label := strings.ReplaceAll(strings.TrimSpace(e.Prose), "\n", " ")
+	fmt.Fprintf(b, "- %s %s *(entry %s)*\n", box, label, e.ID)
 }
 
 func refNoun(kind string) string {

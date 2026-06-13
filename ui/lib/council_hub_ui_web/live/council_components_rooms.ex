@@ -95,7 +95,7 @@ defmodule CouncilHubUiWeb.RoomComponents do
           {Map.get(@room, :tech_stack)}
         </span>
         <%!-- Tags (up to 3, skip noise tags) --%>
-        <%= for tag <- parse_tags(Map.get(@room, :tags)) |> Enum.reject(&(&1 in ~w(stale needs-synthesis stale-pin stale-plan))) |> Enum.take(3) do %>
+        <%= for tag <- parse_tags(Map.get(@room, :tags)) |> Enum.reject(&(&1 in ~w(stale needs-synthesis stale-pin stale-plan incoherent))) |> Enum.take(3) do %>
           <span class="text-[9px] text-[var(--ch-text-xs)] font-mono bg-[var(--ch-raised)] px-1 rounded border border-[var(--ch-border)]">
             {tag}
           </span>
@@ -316,7 +316,9 @@ defmodule CouncilHubUiWeb.RoomComponents do
   end
 
   # Left-border accent for a room card, by linter health flag (most-urgent wins):
-  # stale (red) > needs-synthesis (amber) > stale-pin (orange).
+  # incoherent (fuchsia, a correctness problem) > stale (red) > needs-synthesis (amber)
+  # > stale-pin (orange) > stale-plan (teal).
+  defp health_flag_border(%{incoherent: true}), do: "border-l-2 border-l-fuchsia-500/50"
   defp health_flag_border(%{stale: true}), do: "border-l-2 border-l-red-500/50"
   defp health_flag_border(%{needs_synthesis: true}), do: "border-l-2 border-l-amber-500/50"
   defp health_flag_border(%{stale_pin: true}), do: "border-l-2 border-l-orange-500/50"

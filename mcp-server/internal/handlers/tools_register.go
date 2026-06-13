@@ -355,7 +355,7 @@ func (r *Registry) RegisterTools() {
 		result := r.Server.JanitorSweep()
 
 		var b strings.Builder
-		if len(result.NeedsSynthesis) == 0 && len(result.Stale) == 0 && len(result.StalePin) == 0 && len(result.StalePlan) == 0 {
+		if len(result.NeedsSynthesis) == 0 && len(result.Stale) == 0 && len(result.StalePin) == 0 && len(result.StalePlan) == 0 && len(result.Incoherent) == 0 && len(result.NeedsNotebook) == 0 {
 			b.WriteString("All clear — no rooms need attention.")
 		} else {
 			if len(result.NeedsSynthesis) > 0 {
@@ -370,6 +370,12 @@ func (r *Registry) RegisterTools() {
 			if len(result.StalePlan) > 0 {
 				fmt.Fprintf(&b, "**Stale plan** (%d rooms): %s\n", len(result.StalePlan), strings.Join(result.StalePlan, ", "))
 			}
+			if len(result.Incoherent) > 0 {
+				fmt.Fprintf(&b, "**Incoherent** (%d rooms): %s\n", len(result.Incoherent), strings.Join(result.Incoherent, ", "))
+			}
+			if len(result.NeedsNotebook) > 0 {
+				fmt.Fprintf(&b, "**No notebook** (%d projects with decided work but no curated notebook — compile one with edit_notebook(action=create, project=…)): %s\n", len(result.NeedsNotebook), strings.Join(result.NeedsNotebook, ", "))
+			}
 		}
 		fmt.Fprintf(&b, "\n**Last scanned:** %s", time.Now().UTC().Format("2006-01-02 15:04:05 UTC"))
 
@@ -380,7 +386,7 @@ func (r *Registry) RegisterTools() {
 	}
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "check_room_health",
-		Description: "Check all active rooms for attention signals. Flags: 'needs-synthesis' (rooms with decisions but no synthesis article — write one!), 'stale' (active rooms with no activity for 7+ days — resolve or revive), 'stale-pin' (active rooms whose pinned summary predates 5+ recent decision/action updates — post a fresh synthesis and re-pin), 'stale-plan' (active rooms with a plan but no follow-on action — an unexecuted handoff). Posts system warnings into flagged rooms. Call periodically or when reviewing project health. Runs automatically every 6h in the background.",
+		Description: "Check all active rooms for attention signals. Flags: 'needs-synthesis' (rooms with decisions but no synthesis article — write one!), 'stale' (active rooms with no activity for 7+ days — resolve or revive), 'stale-pin' (active rooms whose pinned summary predates 5+ recent decision/action updates — post a fresh synthesis and re-pin), 'stale-plan' (active rooms with a plan but no follow-on action — an unexecuted handoff), 'incoherent' (the coherence linter: a live `contradicts` edge with no reconciling synthesis, or a `duplicates` edge between two un-superseded syntheses — supersede the loser or post a reconciling synthesis). Also reports projects with lots of decided work but no curated notebook (a nudge to compile one). Posts system warnings into flagged rooms. Call periodically or when reviewing project health. Runs automatically every 6h in the background.",
 		InputSchema: schema(nil, map[string]map[string]any{}),
 	}, roomHealthHandler)
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
@@ -429,18 +435,19 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name: "edit_notebook",
-		Description: "Curate a notebook outline — the hand-assembled counterpart to read_notebook's automatic timeline. An outline is an ordered list of entries: prose sections (markdown you write) and refs (pointers to ledger messages, transcluded live at read time — never copied, so the outline can't drift from the ledger). " +
-			"Actions: create (notebook_id, project, title?) — new empty notebook; add (notebook_id, ref_id OR prose, after_entry_id? — omit to append) — add an entry; update (entry_id, prose) — rewrite a prose section; move (entry_id, after_entry_id — empty for top) — reorder; remove (entry_id) — drop an entry; delete (notebook_id) — remove the whole notebook (referenced messages are untouched). " +
-			"Entry IDs appear in read_notebook(notebook_id=...) output as *(entry #...)*. Typical flow: spot a pin-worthy timeline slice → edit_notebook(action=add, ref_id=<message_id>) → weave prose around it. Create without a project for a GLOBAL notebook (cross-project TODOs and standing lists). Work-list pattern: a global notebook of room_refs is a living 'current work' list — each entry shows the room's live status and latest decision/action, and signal_status(resolved) on the room checks it off; the list itself never needs editing. Notebooks are node-local.",
+		Description: "Curate a notebook outline — the hand-assembled counterpart to read_notebook's automatic timeline. An outline is an ordered list of entries: prose sections (markdown you write), refs (pointers to ledger messages, transcluded live at read time — never copied, so the outline can't drift from the ledger), room_refs (a room's live status, the self-sorting work list), and tasks (first-class checklist items with their own done state). " +
+			"Actions: create (notebook_id, project, title?) — new empty notebook; add (notebook_id, ref_id OR prose, kind?, after_entry_id? — omit to append) — add an entry; update (entry_id, prose) — rewrite a prose section or a task's label; start / check / uncheck (entry_id) — move a task to in-progress / done / open; move (entry_id, after_entry_id — empty for top) — reorder; remove (entry_id) — drop an entry; delete (notebook_id) — remove the whole notebook (referenced messages are untouched). " +
+			"Entry IDs appear in read_notebook(notebook_id=...) output as *(entry #...)*. Typical flow: spot a pin-worthy timeline slice → edit_notebook(action=add, ref_id=<message_id>) → weave prose around it. Create without a project for a GLOBAL notebook (cross-project TODOs and standing lists). " +
+			"Two ways to track work, both self-sorting: a room_ref tracks a whole thread of work (signal_status(resolved) on the room checks it off — never hand-edited); a task is a lightweight checklist item for work that doesn't warrant its own room (edit_notebook(action=add, kind=task, prose='…'), then start/check it). The 'current-work' global notebook is the canonical place to drive dev tasks from — tasks render grouped 🔄 In progress / ☐ Open / ☑ Done, room_refs grouped 🔄 In flight / ✅ Done, prose/refs keep their authored positions. Notebooks are node-local.",
 		InputSchema: schema([]string{"action"}, map[string]map[string]any{
-			"action":         enumProp("string", "What to do: create/delete operate on notebooks; add/update/move/remove operate on entries.", []string{"create", "add", "update", "move", "remove", "delete"}),
+			"action":         enumProp("string", "What to do: create/delete operate on notebooks; add/update/start/check/uncheck/move/remove operate on entries.", []string{"create", "add", "update", "start", "check", "uncheck", "move", "remove", "delete"}),
 			"notebook_id":    prop("string", "Notebook identifier (required for create, delete, add). E.g. 'release-notes-v1'."),
 			"project":        prop("string", "Project the notebook belongs to (create only). Omit for a GLOBAL notebook — e.g. cross-project TODOs or standing checklists: it can ref messages from any room and is listed in every project's timeline footer and /notebook view."),
 			"title":          prop("string", "Human-readable title (create only)."),
-			"entry_id":       prop("string", "Target entry (update, move, remove). From the *(entry #...)* markers in read_notebook output."),
-			"kind":           enumProp("string", "Entry kind for add. ref_id implies 'ref' and prose implies 'prose'; pass kind=room_ref explicitly with ref_id=<room_id> to track a room's live state (work-list item).", []string{"ref", "room_ref", "prose"}),
+			"entry_id":       prop("string", "Target entry (update, start, check, uncheck, move, remove). From the *(entry #...)* markers in read_notebook output."),
+			"kind":           enumProp("string", "Entry kind for add. ref_id implies 'ref' and prose implies 'prose'; pass kind=room_ref explicitly with ref_id=<room_id> to track a room's live state, or kind=task with prose=<label> for a first-class checklist item you check/uncheck.", []string{"ref", "room_ref", "prose", "task"}),
 			"ref_id":         prop("string", "Message ID to transclude (add with kind=ref). Must exist on this node."),
-			"prose":          prop("string", "Markdown content (add with kind=prose, or update)."),
+			"prose":          prop("string", "Markdown content (add with kind=prose, or update) — also the task label (add with kind=task)."),
 			"after_entry_id": prop("string", "Position control for add and move: the entry to land after. Omit on add to append; empty on move means the top."),
 		}),
 	}, r.handleEditNotebook)
@@ -485,7 +492,7 @@ func (r *Registry) RegisterTools() {
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name: "get_digest",
 		Description: "Get a project activity and knowledge health digest as a JSON array. Each entry has room_id, new_messages, latest_message_id, latest_excerpt, tags, decision_count, synthesis_count. " +
-			"Rooms flagged by check_room_health (stale, needs-synthesis) are included. Call second at session start (after get_mentions) to see what changed and what needs attention. " +
+			"Rooms flagged by check_room_health (stale, needs-synthesis, incoherent) are included. Call second at session start (after get_mentions) to see what changed and what needs attention. " +
 			"Machine-readable — parse room_id and latest_message_id directly for delta reads. " +
 			"Set unread_only=true (with agent=<your-name>) to show only rooms with messages newer than your stored cursor — ideal for returning sessions after using mark_read.",
 		InputSchema: schema(nil, map[string]map[string]any{
