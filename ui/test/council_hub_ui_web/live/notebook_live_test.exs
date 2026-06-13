@@ -199,6 +199,39 @@ defmodule CouncilHubUiWeb.NotebookLiveTest do
       assert html =~ "active"
       assert html =~ "decided on SQLite"
     end
+
+    test "room_refs regroup into In flight / Done by live status", %{conn: conn} do
+      create_room(%{id: "wip-room", project: "nbl-proj", status: "active"})
+      create_room(%{id: "shipped-room", project: "nbl-proj", status: "resolved"})
+      create_notebook(%{id: "current-work", project: "", title: "Current Work"})
+
+      for {room, pos} <- [{"wip-room", 1}, {"shipped-room", 2}] do
+        create_notebook_entry(%{
+          notebook_id: "current-work",
+          position: pos,
+          kind: "room_ref",
+          ref_id: room
+        })
+      end
+
+      {:ok, _view, html} = live(conn, "/notebook?project=nbl-proj&notebook=current-work")
+
+      assert html =~ "In flight"
+      assert html =~ "Done"
+      # The active room sorts under In flight (before the Done header), the
+      # resolved one after it — the list re-sorts by transcluded status.
+      done_at = find_substr(html, "Done")
+      assert find_substr(html, "In flight") < done_at
+      assert find_substr(html, "wip-room") < done_at
+      assert find_substr(html, "shipped-room") > done_at
+    end
+  end
+
+  defp find_substr(haystack, needle) do
+    case :binary.match(haystack, needle) do
+      {start, _} -> start
+      :nomatch -> -1
+    end
   end
 
   describe "note composer + pin buttons" do

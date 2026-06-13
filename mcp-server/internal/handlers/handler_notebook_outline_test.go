@@ -255,6 +255,39 @@ func TestUINotebookEntryHandler(t *testing.T) {
 	}
 }
 
+func TestHandleReadNotebookOutlineStatusGrouping(t *testing.T) {
+	reg, _ := setupOutlineHandler(t)
+
+	// Two work-list rooms in one global notebook: one live, one resolved.
+	mustCreateRoom(t, reg.Server, "wip-room", withProject("ol-proj"))
+	mustCreateRoom(t, reg.Server, "shipped-room", withProject("ol-proj"))
+	if err := reg.Server.UpdateStatus("shipped-room", "resolved"); err != nil {
+		t.Fatalf("UpdateStatus failed: %v", err)
+	}
+	editNotebook(t, reg, EditNotebookInput{Action: "create", NotebookID: "current-work", Title: "Current Work"})
+	mustAddEntry(t, reg, EditNotebookInput{NotebookID: "current-work", Kind: "room_ref", RefID: "wip-room"})
+	mustAddEntry(t, reg, EditNotebookInput{NotebookID: "current-work", Kind: "room_ref", RefID: "shipped-room"})
+
+	res, _, _ := reg.handleReadNotebook(context.Background(), nil, ReadNotebookInput{NotebookID: "current-work"})
+	text := resultText(res)
+
+	inFlight := strings.Index(text, "🔄 In flight")
+	doneAt := strings.Index(text, "✅ Done")
+	if inFlight < 0 || doneAt < 0 {
+		t.Fatalf("expected In flight + Done group headers, got: %s", text)
+	}
+	if inFlight > doneAt {
+		t.Errorf("In flight group should render before Done, got: %s", text)
+	}
+	// The live room sorts under In flight, the resolved one under Done.
+	if strings.Index(text, "wip-room") > doneAt {
+		t.Errorf("active room should land in the In flight group, got: %s", text)
+	}
+	if shipped := strings.Index(text, "shipped-room"); shipped < doneAt {
+		t.Errorf("resolved room should land in the Done group, got: %s", text)
+	}
+}
+
 func TestHandleEditNotebookDelete(t *testing.T) {
 	reg, msgID := setupOutlineHandler(t)
 

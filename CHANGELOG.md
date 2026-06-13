@@ -8,6 +8,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 Changes on `main` not yet in a tagged release.
 
+## [0.42.0] - 2026-06-13
+
+The notebook becomes a first-class work-list. The "notebook" name was overloaded — it meant both a *derived view* (the per-project timeline, a query) and a *stored record* (curated outlines + the global `current-work`). This release draws the line and makes the stored thing self-maintaining. 35 MCP tools, 11 message types.
+
+### Added
+- **Self-sorting work list — room_refs grouped In flight / Done.** A curated notebook of `room_ref` entries (the `current-work` pattern) now renders its rooms regrouped by their transcluded *live* status: **🔄 In flight** (active/paused) and **✅ Done** (resolved/archived). The list re-sorts itself because the truth lives in the rooms — `signal_status(room_id=…, status=resolved)` moves an item to Done, and the list is never hand-edited to stay true. Both `read_notebook(notebook_id=…)` and the `/notebook` outline view group the same way; prose and message refs keep their authored positions as the document spine, with the work-list groups below. A notebook with no room_refs renders exactly as before.
+
+### Changed
+- **Naming split: "timeline" (a derived view) vs "notebook" (a stored record).** `read_notebook`'s description, the `council://guide` quick-reference, and the `/notebook` page header now distinguish the project **timeline** — a live query over the ledger, nothing stored — from a curated **notebook**, a record you assemble with `edit_notebook`. The page header reads *Timeline / derived view* for the project compilation and *Notebook / stored record* for an outline.
+- **Tracker-hierarchy convention in `council://guide`.** Documented the one-source-of-truth-per-layer rule: **rooms** own each thread of work, the **`current-work` global notebook** is the canonical cross-project index (one `room_ref` per live thread), and a private **`TODO.md`** is throwaway scratch only — never the primary tracker. Added **session-start step 0**: read `read_notebook(notebook_id=current-work)` before `get_mentions`/`get_digest`.
+
 ## [0.41.0] - 2026-06-13
 
 The Engelbart roadmap, batch 1: a first-class message **link graph** with backlinks (E2), **ViewSpecs** over transcripts and the dashboard/notebook (E1), and the FB6 supersession closer. The dashboard and notebook now surface the knowledge graph (links + supersession), and a *view* is a shareable URL. 35 MCP tools, 11 message types.

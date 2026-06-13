@@ -11,8 +11,11 @@
         ← dashboard
       </.link>
       <h1 class="text-[13px] font-semibold text-[var(--ch-text-hi)] tracking-widest uppercase">
-        Notebook
+        {if @notebook, do: "Notebook", else: "Timeline"}
       </h1>
+      <span class="text-[10px] font-mono text-[var(--ch-text-xs)] hidden sm:inline">
+        {if @notebook, do: "stored record", else: "derived view"}
+      </span>
       <span class="text-[10px] font-mono text-[var(--ch-text-xs)] ml-auto">
         {@entry_count} entries · refreshes 5s
       </span>
@@ -187,98 +190,86 @@
           Empty notebook — agents add entries with <span class="font-mono">edit_notebook(action=add, notebook_id={@notebook.id}, ...)</span>.
         </p>
       <% else %>
-        <div class="flex flex-col gap-3">
-          <%= for entry <- @outline do %>
-            <%= cond do %>
-              <% entry.kind == "prose" -> %>
-                <div id={"outline-#{entry.id}"} class="council-prose text-[13px] leading-relaxed">
-                  {raw(render_markdown(entry.prose))}
-                </div>
-              <% not entry.ref_found -> %>
-                <div
-                  id={"outline-#{entry.id}"}
-                  class="bg-amber-500/5 border border-amber-500/20 rounded-lg p-3 text-[11px] text-amber-200/90 font-mono"
-                >
-                  ⚠ referenced {if entry.kind == "room_ref", do: "room", else: "message"} {String.slice(
-                    entry.ref_id,
-                    0,
-                    12
-                  )} not found — deleted, or it lives on another cluster node
-                </div>
-              <% entry.kind == "room_ref" -> %>
-                <div
-                  id={"outline-#{entry.id}"}
-                  class="bg-[var(--ch-surface)] border border-[var(--ch-border)] rounded-lg p-3"
-                >
-                  <div class="flex items-center gap-2 flex-wrap">
-                    <span class={[
-                      "w-1.5 h-1.5 rounded-full shrink-0",
-                      status_dot_class(entry.room_status)
-                    ]}>
-                    </span>
-                    <.link
-                      navigate={~p"/rooms/#{entry.room_id}"}
-                      class="text-[12px] font-mono text-[var(--ch-text-hi)] hover:underline"
-                    >
-                      {entry.room_id}
-                    </.link>
-                    <span class={[
-                      "px-1.5 py-px rounded text-[10px] font-mono",
-                      status_badge_class(entry.room_status)
-                    ]}>
-                      {entry.room_status}
-                    </span>
-                    <span class="text-[11px] text-[var(--ch-text-lo)] truncate">
-                      {entry.room_topic}
-                    </span>
+        <%!-- Document spine: prose + transcluded message refs, in authored order. --%>
+        <%= if @outline_inline != [] do %>
+          <div class="flex flex-col gap-3">
+            <%= for entry <- @outline_inline do %>
+              <%= cond do %>
+                <% entry.kind == "prose" -> %>
+                  <div
+                    id={"outline-#{entry.id}"}
+                    class="council-prose text-[13px] leading-relaxed"
+                  >
+                    {raw(render_markdown(entry.prose))}
                   </div>
-                  <%= if entry.content != "" do %>
-                    <div class="mt-1.5 text-[11px] text-[var(--ch-text-xs)] line-clamp-2">
-                      latest: {truncate(entry.content, 200)}
+                <% not entry.ref_found -> %>
+                  <div
+                    id={"outline-#{entry.id}"}
+                    class="bg-amber-500/5 border border-amber-500/20 rounded-lg p-3 text-[11px] text-amber-200/90 font-mono"
+                  >
+                    ⚠ referenced message {String.slice(entry.ref_id, 0, 12)} not found — deleted, or it lives on another cluster node
+                  </div>
+                <% true -> %>
+                  <div
+                    id={"outline-#{entry.id}"}
+                    class="bg-[var(--ch-surface)] border-l-2 border border-[var(--ch-border)] rounded-lg p-3"
+                  >
+                    <div class="flex items-center gap-2 mb-1.5 flex-wrap">
+                      <span class="text-[10px] font-mono text-[var(--ch-text-xs)]">
+                        {format_date(entry.timestamp)}
+                      </span>
+                      <.link
+                        navigate={~p"/rooms/#{entry.room_id}"}
+                        class="text-[10px] font-mono text-[var(--ch-text-lo)] hover:text-[var(--ch-text-hi)] underline decoration-dotted"
+                      >
+                        {entry.room_id}
+                      </.link>
+                      <span
+                        class="text-[11px] font-medium"
+                        style={"color: #{author_hex(entry.author)}"}
+                      >
+                        {entry.author}
+                      </span>
+                      <span class={[
+                        "px-1.5 py-px rounded text-[10px] font-mono",
+                        type_color(entry.message_type)
+                      ]}>
+                        {entry.message_type}
+                      </span>
+                      <%= if entry.pinned do %>
+                        <span title="Pinned">📌</span>
+                      <% end %>
+                      <span class="text-[9px] font-mono text-[var(--ch-text-xs)] ml-auto">
+                        #{String.slice(entry.ref_id, 0, 8)}
+                      </span>
                     </div>
-                  <% end %>
-                </div>
-              <% true -> %>
-                <div
-                  id={"outline-#{entry.id}"}
-                  class="bg-[var(--ch-surface)] border-l-2 border border-[var(--ch-border)] rounded-lg p-3"
-                >
-                  <div class="flex items-center gap-2 mb-1.5 flex-wrap">
-                    <span class="text-[10px] font-mono text-[var(--ch-text-xs)]">
-                      {format_date(entry.timestamp)}
-                    </span>
-                    <.link
-                      navigate={~p"/rooms/#{entry.room_id}"}
-                      class="text-[10px] font-mono text-[var(--ch-text-lo)] hover:text-[var(--ch-text-hi)] underline decoration-dotted"
-                    >
-                      {entry.room_id}
-                    </.link>
-                    <span
-                      class="text-[11px] font-medium"
-                      style={"color: #{author_hex(entry.author)}"}
-                    >
-                      {entry.author}
-                    </span>
-                    <span class={[
-                      "px-1.5 py-px rounded text-[10px] font-mono",
-                      type_color(entry.message_type)
-                    ]}>
-                      {entry.message_type}
-                    </span>
-                    <%= if entry.pinned do %>
-                      <span title="Pinned">📌</span>
-                    <% end %>
-                    <span class="text-[9px] font-mono text-[var(--ch-text-xs)] ml-auto">
-                      #{String.slice(entry.ref_id, 0, 8)}
-                    </span>
+                    <div class="council-prose text-[12px] leading-relaxed">
+                      {raw(render_markdown(resolve_commit_refs(entry.content, entry.repo)))}
+                    </div>
                   </div>
-                  <div class="council-prose text-[12px] leading-relaxed">
-                    {raw(render_markdown(resolve_commit_refs(entry.content, entry.repo)))}
-                  </div>
-                </div>
+              <% end %>
             <% end %>
-          <% end %>
-        </div>
+          </div>
+        <% end %>
+
+        <%!-- Work list: room_refs regrouped by transcluded live status, so the
+             list re-sorts itself as rooms resolve — never hand-edited. --%>
+        <%= if @outline_in_flight != [] do %>
+          <h2 class="text-[11px] font-medium text-[var(--ch-text-lo)] uppercase tracking-[0.15em] mt-6 mb-2">
+            🔄 In flight ({length(@outline_in_flight)})
+          </h2>
+          <div class="flex flex-col gap-3">
+            <.room_ref_card :for={entry <- @outline_in_flight} entry={entry} />
+          </div>
+        <% end %>
+        <%= if @outline_done != [] do %>
+          <h2 class="text-[11px] font-medium text-[var(--ch-text-lo)] uppercase tracking-[0.15em] mt-6 mb-2">
+            ✅ Done ({length(@outline_done)})
+          </h2>
+          <div class="flex flex-col gap-3 opacity-60">
+            <.room_ref_card :for={entry <- @outline_done} entry={entry} />
+          </div>
+        <% end %>
       <% end %>
     <% else %>
       <%!-- Timeline --%>
