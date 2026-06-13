@@ -38,6 +38,7 @@ defmodule CouncilHubUiWeb.NotebookLive do
        page_title: "Notebook",
        projects: Council.list_projects(),
        all_types: @all_types,
+       view_compact: false,
        compose_author: ""
      )}
   end
@@ -50,7 +51,12 @@ defmodule CouncilHubUiWeb.NotebookLive do
 
     {:noreply,
      socket
-     |> assign(project: project, selected_types: types, notebook_id: notebook_id)
+     |> assign(
+       project: project,
+       selected_types: types,
+       notebook_id: notebook_id,
+       view_compact: Map.get(params, "compact", "") == "1"
+     )
      |> load_entries()}
   end
 
@@ -144,8 +150,14 @@ defmodule CouncilHubUiWeb.NotebookLive do
 
   defp patch_to(socket, project, types) do
     push_patch(socket,
-      to: ~p"/notebook?#{%{project: project, types: Enum.join(types, ",")}}"
+      to: ~p"/notebook?#{notebook_view_params(project, types, socket.assigns[:view_compact])}"
     )
+  end
+
+  @doc "Builds the /notebook query params, carrying the compact ViewSpec flag through the URL."
+  def notebook_view_params(project, types, compact) do
+    base = %{project: project, types: Enum.join(types, ",")}
+    if compact, do: Map.put(base, :compact, "1"), else: base
   end
 
   # Outline mode: ?notebook=<id> shows a curated outline instead of the

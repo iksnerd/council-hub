@@ -7,6 +7,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 ## [Unreleased]
 
 ### Added
+- **Notebook ViewSpec: URL-serialized compact view** — the `/notebook` page gains a **Compact** toggle (line-clips each entry to its first line), carried through the URL alongside `project`/`types` so the whole notebook view is one shareable address. Mirrors the room view.
 - **The notebook surfaces the knowledge graph** — the `/notebook` project timeline now shows each entry's supersession (forward `→ supersedes` + the `⚠ superseded by` backlink) and its explicit typed links, so the integration view (the DKR) reflects how knowledge connects, not just a flat list. The supersedes/links annotators were lifted into a shared `MessageAnnotations` module used by both the room view and the notebook.
 - **Dashboard surfaces the typed link graph** — each message now shows its explicit `link_messages` edges (e.g. `→ refines #abc`, `← contradicts #def`) as click-to-scroll chips below the body, so E2's graph is visible in the UI, not just via the MCP tools. Read-only mirror (`message_links` Ecto schema + migration); one batched query per room load.
 - **Dashboard ViewSpec: a URL-serialized compact view** — the room view gains a **Compact** toggle that line-clips every message to its first line; the state lives in the URL (`/rooms/<id>?compact=1`), so a *view* is now a shareable address — the first step of Engelbart's "a link points at a document view, not just a document." Toggling it preserves the active type filter.
