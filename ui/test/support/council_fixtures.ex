@@ -65,6 +65,21 @@ defmodule CouncilHubUi.CouncilFixtures do
     Repo.one(from m in CouncilHubUi.Council.Message, order_by: [desc: m.id], limit: 1)
   end
 
+  def create_message_link(attrs \\ %{}) do
+    defaults = %{
+      id: "link-#{System.unique_integer([:positive])}",
+      from_id: "",
+      to_id: "",
+      relation: "relates",
+      author: "",
+      created_at: NaiveDateTime.utc_now()
+    }
+
+    merged = Map.merge(defaults, attrs)
+    {1, nil} = Repo.insert_all("message_links", [merged])
+    merged
+  end
+
   def create_notebook(attrs \\ %{}) do
     defaults = %{
       id: "test-notebook-#{System.unique_integer([:positive])}",

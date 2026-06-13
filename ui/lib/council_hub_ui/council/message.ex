@@ -19,5 +19,8 @@ defmodule CouncilHubUi.Council.Message do
     # Derived (not a column): the ID of a later message that supersedes this one,
     # computed over the loaded set so a superseded message shows its backlink.
     field :superseded_by, :string, virtual: true, default: ""
+    # Derived: explicit typed links touching this message (from message_links).
+    # Each entry is %{relation: ..., other_id: ..., direction: :out | :in}.
+    field :links, {:array, :map}, virtual: true, default: []
   end
 end

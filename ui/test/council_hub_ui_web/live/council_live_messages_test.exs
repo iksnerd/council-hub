@@ -90,6 +90,21 @@ defmodule CouncilHubUiWeb.CouncilLiveMessagesTest do
     end
   end
 
+  describe "typed link graph" do
+    test "renders explicit links on a message", %{conn: conn} do
+      room = create_room(%{id: "links-room"})
+      a = create_message(%{room_id: room.id, author: "Claude", content: "design A"})
+      b = create_message(%{room_id: room.id, author: "Gemini", content: "design B"})
+      create_message_link(%{from_id: b.id, to_id: a.id, relation: "refines"})
+
+      {:ok, _view, html} = live(conn, "/rooms/links-room")
+      # B shows an outgoing "refines" edge; A shows the incoming backlink.
+      assert html =~ "refines"
+      assert html =~ "→ refines ##{String.slice(a.id, 0, 8)}"
+      assert html =~ "← refines ##{String.slice(b.id, 0, 8)}"
+    end
+  end
+
   describe "toggle_summary" do
     test "toggles summary collapsed state", %{conn: conn} do
       room = create_room(%{id: "toggle-room"})

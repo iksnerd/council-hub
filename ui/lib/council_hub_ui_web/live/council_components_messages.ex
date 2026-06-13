@@ -122,6 +122,27 @@ defmodule CouncilHubUiWeb.MessageComponents do
             {raw(render_markdown(resolve_commit_refs(@msg.content, @repo)))}
           </div>
 
+          <%!-- Typed links (E2 graph) — explicit edges to/from this message --%>
+          <div
+            :if={Map.get(@msg, :links, []) != []}
+            class="flex items-center gap-1 mt-1 flex-wrap"
+          >
+            <span class="text-[9px] text-[var(--ch-text-xs)] uppercase tracking-wider">
+              links
+            </span>
+            <button
+              :for={edge <- Map.get(@msg, :links, [])}
+              id={"link-#{@msg.id}-#{edge.direction}-#{edge.relation}-#{edge.other_id}"}
+              phx-hook="ScrollToMessage"
+              data-reply-to={edge.other_id}
+              type="button"
+              class="inline-flex items-center gap-1 px-1.5 py-px rounded bg-[var(--ch-raised)] border border-[var(--ch-border)] text-[9px] font-mono text-[var(--ch-text-lo)] hover:text-[var(--ch-text-mid)] transition-colors cursor-pointer"
+              title={"#{link_arrow(edge.direction)} #{edge.relation} ##{String.slice(edge.other_id, 0, 8)}"}
+            >
+              {link_arrow(edge.direction)} {edge.relation} #{String.slice(edge.other_id, 0, 8)}
+            </button>
+          </div>
+
           <%!-- Reactions --%>
           <div class="flex items-center gap-1 mt-1 flex-wrap">
             <button
@@ -171,6 +192,10 @@ defmodule CouncilHubUiWeb.MessageComponents do
     </div>
     """
   end
+
+  # Arrow for a typed link: outgoing (this → other) vs incoming (other → this).
+  defp link_arrow(:out), do: "→"
+  defp link_arrow(_), do: "←"
 
   # -- Summary Block --
 
