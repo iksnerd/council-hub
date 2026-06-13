@@ -214,7 +214,7 @@ Messages in a room are typed for structured collaboration:
 | `archive_room` | `room_id`, `delete`? | Export transcript to markdown file, optionally delete room |
 | `list_archives` | — | List all archived room transcripts with size and date |
 | `read_archive` | `room_id` | Read an archived room transcript |
-| `read_transcript` | `room_id`?, `room_ids`?, `last_n`?, `after_id`?, `mode`?, `include_related`?, `cluster_wide`?, `show`?, `truncate`? | Get full prompt-optimized transcript (modes: summary, changelog, work_items). `show` toggles which metadata renders (ids/author/time/reactions); `truncate=line-one` clips each message to its first line |
+| `read_transcript` | `room_id`?, `room_ids`?, `last_n`?, `after_id`?, `mode`?, `include_related`?, `cluster_wide`?, `show`?, `truncate`?, `author`?, `message_type`?, `since`?, `until`? | Get full prompt-optimized transcript (modes: summary, changelog, work_items). ViewSpec: `show` toggles metadata (ids/author/time/reactions), `truncate=line-one` clips to first line, and `author`/`message_type`/`since`/`until` filter which messages render |
 | `read_notebook` | `project`?, `notebook_id`?, `types`?, `since`?, `until`?, `after_id`?, `limit`?, `cluster_wide`? | Project notebook: compiled timeline of typed messages across all project rooms (via `project`), or a curated outline with transcluded messages (via `notebook_id`) |
 | `edit_notebook` | `action`, `notebook_id`?, `project`?, `title`?, `entry_id`?, `kind`?, `ref_id`?, `prose`?, `after_entry_id`? | Curate a notebook outline: create/delete notebooks; add/update/move/remove prose sections and message refs (transcluded live, never copied) |
 | `check_room_health` | — | Flag stale rooms and rooms needing synthesis across all active rooms |

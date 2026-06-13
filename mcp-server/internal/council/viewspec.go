@@ -1,6 +1,9 @@
 package council
 
-import "strings"
+import (
+	"strings"
+	"time"
+)
 
 // ViewSpec is a composable specification for how a transcript is projected before
 // rendering — Council Hub's take on Engelbart's NLS ViewSpecs. The default shows
@@ -61,4 +64,51 @@ func firstLine(s string) string {
 		return strings.TrimRight(s[:i], " \t") + " …"
 	}
 	return s
+}
+
+// parseFilterTime accepts "2026-06-01", "2026-06-01 12:30:00", or the ISO "T" form.
+func parseFilterTime(s string) (time.Time, bool) {
+	s = strings.TrimSpace(strings.ReplaceAll(s, "T", " "))
+	if s == "" {
+		return time.Time{}, false
+	}
+	for _, layout := range []string{"2006-01-02 15:04:05", "2006-01-02 15:04", "2006-01-02"} {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t, true
+		}
+	}
+	return time.Time{}, false
+}
+
+// FilterMessages narrows a transcript to messages matching the given criteria — the
+// "which nodes" half of a ViewSpec (the rendering half is ViewSpec itself). Author is
+// matched case-insensitively as a substring (so "claude" matches "Claude Code (Opus)");
+// type is exact; since/until bound the timestamp. Empty criteria pass everything through.
+func FilterMessages(msgs []Message, author, msgType, since, until string) []Message {
+	author = strings.ToLower(strings.TrimSpace(author))
+	msgType = strings.TrimSpace(msgType)
+	sinceT, hasSince := parseFilterTime(since)
+	untilT, hasUntil := parseFilterTime(until)
+
+	if author == "" && msgType == "" && !hasSince && !hasUntil {
+		return msgs
+	}
+
+	var out []Message
+	for _, m := range msgs {
+		if author != "" && !strings.Contains(strings.ToLower(m.Author), author) {
+			continue
+		}
+		if msgType != "" && m.MessageType != msgType {
+			continue
+		}
+		if hasSince && m.Timestamp.Before(sinceT) {
+			continue
+		}
+		if hasUntil && m.Timestamp.After(untilT) {
+			continue
+		}
+		out = append(out, m)
+	}
+	return out
 }
