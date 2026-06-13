@@ -145,3 +145,26 @@ func TestHandleReadNotebookClusterNotConfigured(t *testing.T) {
 		t.Errorf("expected cluster error when Phoenix is not configured, got: %s", resultText(res))
 	}
 }
+
+func TestHandleReadNotebookNoteConnectiveTissue(t *testing.T) {
+	reg := setupHandlerTest(t)
+	ids := seedNotebookRooms(t, reg)
+	decisionID := ids[0]
+
+	// A journal note that informs the decision.
+	noteID := mustPostTyped(t, reg.Server, "nb-a", "claude", "benchmarks favored SQLite", "note")
+	if _, err := reg.Server.CreateLink(noteID, decisionID, "informs", "claude"); err != nil {
+		t.Fatalf("CreateLink failed: %v", err)
+	}
+
+	res, _, err := reg.handleReadNotebook(context.Background(), nil, ReadNotebookInput{Project: "nb-proj"})
+	if err != nil {
+		t.Fatalf("handleReadNotebook failed: %v", err)
+	}
+	text := resultText(res)
+
+	// The note's connective link is woven into the timeline beneath it.
+	if !strings.Contains(text, "↳ informs #"+decisionID[:8]) {
+		t.Errorf("expected the note's ↳ informs connection in the timeline, got:\n%s", text)
+	}
+}

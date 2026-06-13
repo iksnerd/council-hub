@@ -336,3 +336,35 @@ func TestHandleEditNotebookDelete(t *testing.T) {
 		t.Errorf("referenced message should survive: %v", err)
 	}
 }
+
+func TestRenderOutlineLevelClip(t *testing.T) {
+	reg, msgID := setupOutlineHandler(t)
+
+	mustAddEntry(t, reg, EditNotebookInput{NotebookID: "rel-notes", Prose: "# Title\nbody line\n## Sub\nmore body"})
+	mustAddEntry(t, reg, EditNotebookInput{NotebookID: "rel-notes", RefID: msgID})
+
+	// level=1: keep only the top heading; drop body + deeper headings.
+	res, _, _ := reg.handleReadNotebook(context.Background(), nil, ReadNotebookInput{NotebookID: "rel-notes", Level: "1"})
+	text := resultText(res)
+	if !strings.Contains(text, "# Title") {
+		t.Errorf("level=1 should keep the top heading, got: %s", text)
+	}
+	if strings.Contains(text, "## Sub") || strings.Contains(text, "more body") || strings.Contains(text, "body line") {
+		t.Errorf("level=1 should drop body and deeper headings, got: %s", text)
+	}
+	if !strings.Contains(text, "…") {
+		t.Errorf("level=1 should mark elision with an ellipsis, got: %s", text)
+	}
+
+	// level=2 keeps the deeper heading too.
+	res, _, _ = reg.handleReadNotebook(context.Background(), nil, ReadNotebookInput{NotebookID: "rel-notes", Level: "2"})
+	if text := resultText(res); !strings.Contains(text, "## Sub") {
+		t.Errorf("level=2 should keep the level-2 heading, got: %s", text)
+	}
+
+	// level=0 (default) renders the full prose body.
+	res, _, _ = reg.handleReadNotebook(context.Background(), nil, ReadNotebookInput{NotebookID: "rel-notes"})
+	if text := resultText(res); !strings.Contains(text, "body line") {
+		t.Errorf("level=0 should render the full body, got: %s", text)
+	}
+}

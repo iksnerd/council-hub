@@ -123,7 +123,13 @@ func (r *Registry) handleEditNotebook(ctx context.Context, req *mcp.CallToolRequ
 // renderOutline serves read_notebook(notebook_id=...): the curated outline
 // with ref entries transcluded live from the ledger. Entry IDs are shown so
 // agents can address them in edit_notebook calls.
-func (r *Registry) renderOutline(notebookID string) (*mcp.CallToolResult, ToolOutput, error) {
+//
+// level is an NLS-style structural ViewSpec (the counterpart to the transcript
+// line-one truncate): level 0 renders everything; level N collapses each prose
+// entry to its heading skeleton down to depth N (a table of contents) and clips
+// transcluded message bodies to their first line. The self-sorting task and
+// room_ref groups are structural leaves and always render.
+func (r *Registry) renderOutline(notebookID string, level int) (*mcp.CallToolResult, ToolOutput, error) {
 	msg := textResult
 
 	notebook, entries, err := r.Server.GetOutline(notebookID)
@@ -172,7 +178,11 @@ func (r *Registry) renderOutline(notebookID string) (*mcp.CallToolResult, ToolOu
 				inFlight = append(inFlight, e)
 			}
 		case e.Kind == "prose":
-			fmt.Fprintf(&b, "\n%s\n*(entry %s)*\n", e.Prose, e.ID)
+			prose := e.Prose
+			if level > 0 {
+				prose = clipProseToLevel(prose, level)
+			}
+			fmt.Fprintf(&b, "\n%s\n*(entry %s)*\n", prose, e.ID)
 		case !e.RefFound:
 			fmt.Fprintf(&b, "\n⚠ **referenced %s '%.12s' not found** — deleted, or it lives on another cluster node. *(entry %s)*\n", refNoun(e.Kind), e.RefID, e.ID)
 		default:
@@ -182,6 +192,9 @@ func (r *Registry) renderOutline(notebookID string) (*mcp.CallToolResult, ToolOu
 				pin = " 📌"
 			}
 			content := council.ResolveCommitRefs(e.RefContent, e.RefRepo)
+			if level > 0 {
+				content = firstNonEmptyLine(content)
+			}
 			fmt.Fprintf(&b, "\n> **[#%.8s %s] [%s] %s (%s)%s:**\n> %s\n*(entry %s)*\n",
 				e.RefID, ts, e.RefRoomID, e.RefAuthor, e.RefType, pin,
 				strings.ReplaceAll(content, "\n", "\n> "), e.ID)
@@ -268,6 +281,62 @@ func refNoun(kind string) string {
 		return "room"
 	}
 	return "message"
+}
+
+// clipProseToLevel projects a prose entry to its heading skeleton: only
+// markdown headings (#, ##, …) of depth <= level survive; body text and deeper
+// headings collapse, marked with an ellipsis. A prose block with no heading
+// within the level shows its first line as a stub. The structural ViewSpec
+// counterpart to the transcript line-one truncate — a table of contents over a
+// curated notebook.
+func clipProseToLevel(prose string, level int) string {
+	var kept []string
+	clipped := false
+	for _, line := range strings.Split(prose, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if d := headingDepth(trimmed); d > 0 && d <= level {
+			kept = append(kept, trimmed)
+			continue
+		}
+		if trimmed != "" {
+			clipped = true
+		}
+	}
+	if len(kept) == 0 {
+		if first := firstNonEmptyLine(prose); first != "" {
+			return first + " …"
+		}
+		return ""
+	}
+	out := strings.Join(kept, "\n")
+	if clipped {
+		out += "\n…"
+	}
+	return out
+}
+
+// headingDepth returns the markdown heading depth of a line (1 for "# ", 2 for
+// "## ", …), or 0 if the line is not a heading. A hash run must be followed by
+// a space to count, so "#tag" is not a heading.
+func headingDepth(line string) int {
+	n := 0
+	for n < len(line) && line[n] == '#' {
+		n++
+	}
+	if n > 0 && n < len(line) && line[n] == ' ' {
+		return n
+	}
+	return 0
+}
+
+// firstNonEmptyLine returns the first non-blank line of s, trimmed.
+func firstNonEmptyLine(s string) string {
+	for _, line := range strings.Split(s, "\n") {
+		if t := strings.TrimSpace(line); t != "" {
+			return t
+		}
+	}
+	return ""
 }
 
 // appendNotebookList writes a footer listing a project's curated notebooks

@@ -143,7 +143,7 @@ With the HTTP container running, add Council Hub as a Streamable HTTP MCP server
 
 **URL:** `http://localhost:3001/mcp`
 
-Warp discovers all 35 tools automatically from the MCP schema.
+Warp discovers all 37 tools automatically from the MCP schema.
 
 ### Stdio Mode (CLI agent integration)
 
@@ -376,5 +376,7 @@ docker compose up -d
 | `list_archives` | List all archived room transcripts with file size and archive date |
 | `read_archive` | Read an archived room transcript by room ID |
 | `load_resources` | List available skill guides (`council://guide`, `council://message-types`, `council://workflows`) or fetch one by URI. Fallback for clients that don't support MCP `resources/read` natively. |
+| `register_skill` | Register/update a task playbook in the methodology registry (upsert by name; omit `project` for a global skill; `remove='true'` deletes). The agent-extensible Methodology/Training leg of the DKR. |
+| `query_skills_registry` | Discover registered task playbooks — a scannable catalog (filter by `query`/`project`/`tag`), or one skill's full playbook via `name=`. |
 
 See the [GitHub README](https://github.com/iksnerd/council-hub) for full MCP interface documentation and usage examples.

@@ -205,7 +205,7 @@ Messages in a room are typed for structured collaboration:
 | `update_message` | `message_id`, `content`, `message_type`?, `expected_content`? | Edit a message in-place; `expected_content` enables optimistic concurrency |
 | `pin_message` | `room_id`, `message_id` | Toggle a message as the room TL;DR (one per room) |
 | `react_to_message` | `message_id`, `emoji`, `author` | Toggle an emoji reaction on a message |
-| `link_messages` | `from_id`, `to_id`, `relation`, `author`? | Assert a typed link between two messages (`refines`/`contradicts`/`implements`/`duplicates`/`depends-on`/`relates`) — builds an addressable graph over the ledger |
+| `link_messages` | `from_id`, `to_id`, `relation`, `author`? | Assert a typed link between two messages (`refines`/`contradicts`/`implements`/`duplicates`/`depends-on`/`relates`/`informs`) — builds an addressable graph over the ledger. Use `informs` to wire a journal `note` to the deliberation it provides context for |
 | `get_links` | `message_id` | Show a message's link neighborhood: outgoing edges + incoming backlinks, merging explicit links with implicit reply/supersedes edges |
 | `unlink_messages` | `link_id` | Remove an explicit typed link by ID |
 | `move_messages` | `message_ids`, `target_room_id` | Relocate messages to another room, preserving all metadata |
@@ -215,8 +215,10 @@ Messages in a room are typed for structured collaboration:
 | `list_archives` | — | List all archived room transcripts with size and date |
 | `read_archive` | `room_id` | Read an archived room transcript |
 | `read_transcript` | `room_id`?, `room_ids`?, `last_n`?, `after_id`?, `mode`?, `include_related`?, `cluster_wide`?, `show`?, `truncate`?, `author`?, `message_type`?, `since`?, `until`? | Get full prompt-optimized transcript (modes: summary, changelog, work_items). ViewSpec: `show` toggles metadata (ids/author/time/reactions), `truncate=line-one` clips to first line, and `author`/`message_type`/`since`/`until` filter which messages render |
-| `read_notebook` | `project`?, `notebook_id`?, `types`?, `since`?, `until`?, `after_id`?, `limit`?, `cluster_wide`? | Project notebook: compiled timeline of typed messages across all project rooms (via `project`), or a curated outline with transcluded messages (via `notebook_id`) |
+| `read_notebook` | `project`?, `notebook_id`?, `types`?, `since`?, `until`?, `after_id`?, `limit`?, `level`?, `cluster_wide`? | Project notebook: compiled timeline of typed messages across all project rooms (via `project`), or a curated outline with transcluded messages (via `notebook_id`). `level=N` clips an outline to its heading skeleton + one-line bodies (NLS-style structural ViewSpec) |
 | `edit_notebook` | `action`, `notebook_id`?, `project`?, `title`?, `entry_id`?, `kind`?, `ref_id`?, `prose`?, `after_entry_id`? | Curate a notebook outline: create/delete notebooks; add/update/move/remove prose sections and message refs (transcluded live, never copied) |
+| `register_skill` | `name`, `description`?, `when_to_use`?, `content`?, `project`?, `tags`?, `source`?, `remove`? | Register/update a task playbook in the methodology registry (upsert by name; omit `project` for a global skill; `remove='true'` deletes) |
+| `query_skills_registry` | `query`?, `name`?, `project`?, `tag`? | Discover registered task playbooks: a scannable catalog, or one skill's full playbook via `name=` — the agent-extensible counterpart to the `council://` guides |
 | `check_room_health` | — | Flag stale rooms and rooms needing synthesis across all active rooms |
 | `load_resources` | `uri`? | Fetch skill guides (usage patterns, message types, workflows); omit uri to list all |
 
@@ -408,7 +410,7 @@ council-hub/
       janitor.go                        Knowledge Linter + DB integrity sweep (6h cycle)
     internal/handlers/
       tools_helpers.go                  Registry, schema helpers, validation
-      tools_register.go                 All 35 MCP tool registrations
+      tools_register.go                 All 37 MCP tool registrations
       templates.go                      Room template definitions
       cluster.go                        Cluster HTTP helper
       cluster_types.go                  Cluster response types
@@ -477,7 +479,7 @@ See our [Code of Conduct](CODE_OF_CONDUCT.md) for community standards.
 - [DOCKERHUB.md](DOCKERHUB.md) — Docker setup, semantic search, clustering
 - [CLAUDE.md](CLAUDE.md) — Architecture and dev commands
 - [CONTRIBUTING.md](CONTRIBUTING.md) — How to contribute
-- [API Reference](README.md#mcp-interface) — All 35 MCP tools
+- [API Reference](README.md#mcp-interface) — All 37 MCP tools
 
 ## License
 

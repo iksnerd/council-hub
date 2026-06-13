@@ -191,3 +191,28 @@ func TestDeleteMessagesCascadesLinks(t *testing.T) {
 		t.Errorf("expected links to %s cleaned up after delete, got %+v", b, out)
 	}
 }
+
+func TestNoteConnections(t *testing.T) {
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "note-room")
+	decision := mustPostTyped(t, s, "note-room", "Claude", "go with SQLite", "decision")
+	note := mustPostTyped(t, s, "note-room", "Claude", "benchmarks favored SQLite", "note")
+	other := mustPostTyped(t, s, "note-room", "Claude", "unrelated", "decision")
+
+	// informs is a valid relation.
+	if _, err := s.CreateLink(note, decision, "informs", "Claude"); err != nil {
+		t.Fatalf("CreateLink(informs) error: %v", err)
+	}
+	// a contradicts edge is NOT connective and must not appear.
+	if _, err := s.CreateLink(note, other, "contradicts", "Claude"); err != nil {
+		t.Fatalf("CreateLink(contradicts) error: %v", err)
+	}
+
+	conns, err := s.NoteConnections(note)
+	if err != nil {
+		t.Fatalf("NoteConnections error: %v", err)
+	}
+	if len(conns) != 1 || conns[0].ToID != decision || conns[0].Relation != "informs" {
+		t.Errorf("expected one informs edge note->decision, got %+v", conns)
+	}
+}

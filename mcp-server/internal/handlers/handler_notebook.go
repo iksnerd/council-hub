@@ -19,6 +19,7 @@ type ReadNotebookInput struct {
 	Until       string `json:"until"`
 	AfterID     string `json:"after_id"`
 	Limit       string `json:"limit"`
+	Level       string `json:"level"`
 	ClusterWide string `json:"cluster_wide"`
 }
 
@@ -50,7 +51,11 @@ func (r *Registry) handleReadNotebook(ctx context.Context, req *mcp.CallToolRequ
 		if args.ClusterWide == "true" {
 			return msg("Error: notebook outlines are node-local — read them without cluster_wide.")
 		}
-		return r.renderOutline(args.NotebookID)
+		level := 0
+		if args.Level != "" {
+			_, _ = fmt.Sscanf(args.Level, "%d", &level)
+		}
+		return r.renderOutline(args.NotebookID, level)
 	}
 
 	if args.Project == "" {
@@ -92,7 +97,7 @@ func (r *Registry) handleReadNotebook(ctx context.Context, req *mcp.CallToolRequ
 		fmt.Fprintf(&b, " | **Window:** %s → %s", orStr(args.Since, "…"), orStr(args.Until, "…"))
 	}
 	b.WriteString("\n---\n")
-	writeNotebookEntries(&b, entries)
+	writeNotebookEntries(&b, entries, r.noteConnections(entries))
 
 	// Structured JSON footer for machine-parseable cursor tracking (same shape
 	// as read_transcript's after_id mode).
@@ -104,10 +109,28 @@ func (r *Registry) handleReadNotebook(ctx context.Context, req *mcp.CallToolRequ
 	return msg(b.String())
 }
 
+// noteConnections gathers, per note entry, its outgoing connective links
+// (informs / relates / refines) so the timeline can weave the journal into the
+// deliberation it informs. Only note entries are queried, keeping the work
+// bounded to the journal subset of a (capped) timeline.
+func (r *Registry) noteConnections(entries []council.NotebookEntry) map[string][]council.MessageLink {
+	conns := make(map[string][]council.MessageLink)
+	for _, e := range entries {
+		if e.MessageType != "note" {
+			continue
+		}
+		if links, err := r.Server.NoteConnections(e.ID); err == nil && len(links) > 0 {
+			conns[e.ID] = links
+		}
+	}
+	return conns
+}
+
 // writeNotebookEntries renders entries chronologically, grouped under one
 // heading per day. Each entry resolves {sha:...} refs against its own room's
-// repo and carries a 📌 marker when pinned.
-func writeNotebookEntries(b *strings.Builder, entries []council.NotebookEntry) {
+// repo and carries a 📌 marker when pinned. conns maps an entry ID to its
+// connective links (notes only); pass nil to skip the weave.
+func writeNotebookEntries(b *strings.Builder, entries []council.NotebookEntry, conns map[string][]council.MessageLink) {
 	day := ""
 	for _, e := range entries {
 		d := e.Timestamp.Format("2006-01-02")
@@ -115,13 +138,15 @@ func writeNotebookEntries(b *strings.Builder, entries []council.NotebookEntry) {
 			day = d
 			fmt.Fprintf(b, "\n## %s\n", day)
 		}
-		writeNotebookEntry(b, e, "")
+		writeNotebookEntry(b, e, "", conns[e.ID])
 	}
 }
 
 // writeNotebookEntry renders one timeline entry. nodeTag, when non-empty, is
-// prefixed in cluster-wide output to show which node the entry came from.
-func writeNotebookEntry(b *strings.Builder, e council.NotebookEntry, nodeTag string) {
+// prefixed in cluster-wide output to show which node the entry came from. conns
+// are the entry's connective links (notes wired to deliberation), rendered as
+// ↳ lines beneath the entry.
+func writeNotebookEntry(b *strings.Builder, e council.NotebookEntry, nodeTag string, conns []council.MessageLink) {
 	ts := e.Timestamp.Format("15:04")
 	pin := ""
 	if e.Pinned {
@@ -133,6 +158,9 @@ func writeNotebookEntry(b *strings.Builder, e council.NotebookEntry, nodeTag str
 	}
 	content := council.ResolveCommitRefs(e.Content, e.Repo)
 	fmt.Fprintf(b, "\n**[#%.8s %s] %s[%s] %s (%s)%s:**\n%s\n", e.ID, ts, node, e.RoomID, e.Author, e.MessageType, pin, content)
+	for _, l := range conns {
+		fmt.Fprintf(b, "↳ %s #%.8s\n", l.Relation, l.ToID)
+	}
 }
 
 func describeNotebookTypes(types []string) string {

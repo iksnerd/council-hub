@@ -34,6 +34,7 @@ defmodule CouncilHubUiWeb.Router do
       live "/", CouncilLive, :index
       live "/status", StatusLive, :index
       live "/notebook", NotebookLive, :index
+      live "/skills", SkillsLive, :index
       live "/rooms/:room_id", CouncilLive, :show
     end
   end

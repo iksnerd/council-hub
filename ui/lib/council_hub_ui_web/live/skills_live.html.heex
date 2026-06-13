@@ -1,0 +1,118 @@
+<div class="min-h-screen bg-[var(--ch-bg)] text-[var(--ch-text-mid)] px-6 py-8">
+  <CouncilHubUiWeb.Layouts.flash_group flash={@flash} />
+
+  <div class="max-w-3xl mx-auto">
+    <%!-- Header --%>
+    <div class="flex items-center gap-3 mb-4">
+      <.link
+        navigate={~p"/"}
+        class="text-[11px] font-mono text-[var(--ch-text-lo)] hover:text-[var(--ch-text-hi)] border border-[var(--ch-border)] rounded px-2 py-1"
+      >
+        ← dashboard
+      </.link>
+      <h1 class="text-[13px] font-semibold text-[var(--ch-text-hi)] tracking-widest uppercase">
+        Skills Registry
+      </h1>
+      <span class="text-[10px] font-mono text-[var(--ch-text-xs)] ml-auto">
+        {length(@skills)} skill(s) · refreshes 5s
+      </span>
+    </div>
+
+    <p class="text-[12px] text-[var(--ch-text-lo)] mb-5 leading-relaxed">
+      Task playbooks registered in the DKR — Engelbart's Methodology/Training leg, queryable from
+      any agent or node instead of siloed on one machine's disk. Read-only here; agents write with
+      the <code class="font-mono text-[var(--ch-text-mid)]">register_skill</code> MCP tool.
+    </p>
+
+    <%!-- Filters --%>
+    <form phx-change="filter" class="flex flex-wrap items-center gap-2 mb-5">
+      <select
+        name="project"
+        class="bg-[var(--ch-surface)] border border-[var(--ch-border)] rounded px-2 py-1 text-[12px] text-[var(--ch-text-mid)]"
+      >
+        <option value="" selected={@project == ""}>all projects + global</option>
+        <%= for p <- @projects do %>
+          <option value={p} selected={@project == p}>{p}</option>
+        <% end %>
+      </select>
+      <input
+        type="text"
+        name="query"
+        value={@query}
+        placeholder="search name / description / steps…"
+        phx-debounce="300"
+        class="flex-1 min-w-[12rem] bg-[var(--ch-surface)] border border-[var(--ch-border)] rounded px-2 py-1 text-[12px] text-[var(--ch-text-mid)]"
+      />
+      <input
+        type="text"
+        name="tag"
+        value={@tag}
+        placeholder="tag"
+        phx-debounce="300"
+        class="w-24 bg-[var(--ch-surface)] border border-[var(--ch-border)] rounded px-2 py-1 text-[12px] text-[var(--ch-text-mid)]"
+      />
+    </form>
+
+    <%= if @skills == [] do %>
+      <div class="text-[12px] text-[var(--ch-text-lo)] border border-dashed border-[var(--ch-border)] rounded-lg p-6 text-center">
+        No skills registered yet. Agents add playbooks with the
+        <code class="font-mono">register_skill</code>
+        MCP tool.
+      </div>
+    <% else %>
+      <div class="flex flex-col gap-3">
+        <%= for s <- @skills do %>
+          <div class="bg-[var(--ch-surface)] border border-[var(--ch-border)] rounded-lg p-4">
+            <div class="flex flex-wrap items-center gap-2 mb-1.5">
+              <span class="text-[13px] font-semibold text-[var(--ch-text-hi)]">🛠 {s.name}</span>
+              <span class={[
+                "text-[10px] font-mono px-1.5 py-0.5 rounded border",
+                if(s.project == "",
+                  do: "border-sky-500/30 text-sky-300/90",
+                  else: "border-[var(--ch-border)] text-[var(--ch-text-lo)]"
+                )
+              ]}>
+                {scope_label(s.project)}
+              </span>
+              <%= for tag <- String.split(s.tags || "", ",", trim: true) do %>
+                <span class="text-[10px] font-mono text-[var(--ch-text-xs)] px-1 py-0.5 rounded bg-[var(--ch-bg)]">
+                  {String.trim(tag)}
+                </span>
+              <% end %>
+            </div>
+
+            <%= if s.description not in [nil, ""] do %>
+              <p class="text-[12px] text-[var(--ch-text-mid)] mb-1.5">{s.description}</p>
+            <% end %>
+
+            <%= if s.when_to_use not in [nil, ""] do %>
+              <p class="text-[11px] text-[var(--ch-text-lo)] mb-1.5">
+                <span class="font-medium text-[var(--ch-text-mid)]">When:</span> {s.when_to_use}
+              </p>
+            <% end %>
+
+            <%= if String.trim(s.content || "") != "" do %>
+              <details class="mt-2">
+                <summary class="text-[11px] font-mono text-[var(--ch-text-lo)] hover:text-[var(--ch-text-hi)] cursor-pointer">
+                  full playbook
+                </summary>
+                <div class="prose-ch text-[12px] text-[var(--ch-text-mid)] mt-2 pl-2 border-l border-[var(--ch-border)]">
+                  {render_markdown(s.content)}
+                </div>
+              </details>
+            <% end %>
+
+            <div class="flex items-center gap-3 mt-2 text-[10px] font-mono text-[var(--ch-text-xs)]">
+              <%= if s.source not in [nil, ""] do %>
+                <span>source: {s.source}</span>
+              <% end %>
+              <%= if s.updated_at do %>
+                <span class="ml-auto">updated {format_timestamp(s.updated_at)}</span>
+              <% end %>
+            </div>
+          </div>
+        <% end %>
+      </div>
+    <% end %>
+  </div>
+</div>

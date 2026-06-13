@@ -115,4 +115,22 @@ defmodule CouncilHubUi.CouncilFixtures do
 
     Repo.one(from e in CouncilHubUi.Council.NotebookEntry, order_by: [desc: e.id], limit: 1)
   end
+
+  def create_skill(attrs \\ %{}) do
+    defaults = %{
+      name: "test-skill-#{System.unique_integer([:positive])}",
+      description: "",
+      when_to_use: "",
+      content: "",
+      project: "",
+      tags: "",
+      source: "",
+      created_at: NaiveDateTime.utc_now(),
+      updated_at: NaiveDateTime.utc_now()
+    }
+
+    merged = Map.merge(defaults, attrs)
+    Repo.insert_all("skills", [merged])
+    Repo.get(CouncilHubUi.Council.Skill, merged.name)
+  end
 end

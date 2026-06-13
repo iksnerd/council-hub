@@ -60,6 +60,12 @@ defmodule CouncilHubUi.Council do
   defdelegate get_notebook(id), to: CouncilHubUi.CouncilNotebook
   defdelegate outline_entries(notebook_id), to: CouncilHubUi.CouncilNotebook
 
+  # -- Skills registry (E3) --
+
+  defdelegate list_skills(opts), to: CouncilHubUi.CouncilSkills
+  defdelegate get_skill(name), to: CouncilHubUi.CouncilSkills
+  defdelegate list_skill_projects(), to: CouncilHubUi.CouncilSkills
+
   # -- Format --
 
   defdelegate format_transcript(room, messages), to: CouncilHubUi.CouncilFormat
