@@ -33,11 +33,16 @@ defmodule CouncilHubUi.HealthStats do
 
   defp coverage_pct(_embedded, _total), do: nil
 
-  # message_vectors is a sqlite-vec virtual table owned by the Go server. The
-  # Phoenix read connection may not have the vec0 module loaded (it's registered
-  # by the Go driver), so a SELECT can fail — treat any failure as "unavailable".
+  # message_vectors is a sqlite-vec *virtual* table (vec0) owned by the Go server.
+  # The Phoenix read connection has no vec0 module loaded (the Go cgo driver
+  # statically links sqlite-vec; ecto_sqlite3 doesn't), so `SELECT FROM
+  # message_vectors` errors and the count looks unavailable even when semantic
+  # search is fully enabled and populated. Read the vec0 shadow table
+  # `message_vectors_rowids` instead — a plain table (one row per stored vector)
+  # that any connection can read, so the count is accurate without the extension.
+  # A genuine failure (table absent → semantic search not enabled) still → nil.
   defp embedded_count do
-    case Ecto.Adapters.SQL.query(Repo, "SELECT count(*) FROM message_vectors", []) do
+    case Ecto.Adapters.SQL.query(Repo, "SELECT count(*) FROM message_vectors_rowids", []) do
       {:ok, %{rows: [[n]]}} -> n
       _ -> nil
     end
