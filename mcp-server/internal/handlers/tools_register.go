@@ -273,9 +273,10 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "get_links",
-		Description: "Show a message's neighborhood in the link graph: outgoing edges (what it points at) and incoming edges — the backlinks (what points at it). Merges explicit typed links (link_messages) with the implicit reply and supersedes edges, so you see the whole graph around a node. Use to find what refines/contradicts/supersedes a given synthesis or decision.",
+		Description: "Show a message's neighborhood in the link graph: outgoing edges (what it points at) and incoming edges — the backlinks (what points at it). Merges explicit typed links (link_messages) with the implicit reply and supersedes edges, so you see the whole graph around a node. Use to find what refines/contradicts/supersedes a given synthesis or decision. Pass depth>1 (max 5) for a link-distance view — a breadth-first walk of everything within N hops, grouped by distance.",
 		InputSchema: schema([]string{"message_id"}, map[string]map[string]any{
 			"message_id": prop("string", "Message ID to fetch the link neighborhood for"),
+			"depth":      prop("string", "Hops to traverse (default 1 = immediate links; max 5). depth>1 returns a link-distance neighborhood grouped by distance."),
 		}),
 	}, r.handleGetLinks)
 

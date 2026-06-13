@@ -87,6 +87,91 @@ func (s *Server) DeleteLink(linkID string) error {
 	return nil
 }
 
+// LinkNode is one message in a link neighborhood, tagged with its hop-distance
+// from the focus message.
+type LinkNode struct {
+	ID       string `json:"id"`
+	Author   string `json:"author"`
+	Type     string `json:"type"`
+	Excerpt  string `json:"excerpt"`
+	Distance int    `json:"distance"`
+}
+
+// GetLinkNeighborhood does a breadth-first walk of the link graph out to `depth`
+// hops from the focus message, following both explicit and implicit edges in either
+// direction. This is the link-distance view — Engelbart's level-clip applied to the
+// graph: "this message and everything within N hops." Returns nodes (with min hop
+// distance) in discovery order plus the de-duplicated edges traversed.
+func (s *Server) GetLinkNeighborhood(messageID string, depth int) ([]LinkNode, []MessageLink, error) {
+	if depth < 1 {
+		depth = 1
+	}
+	if depth > 5 {
+		depth = 5
+	}
+	if _, err := s.GetMessageByID(messageID); err != nil {
+		return nil, nil, fmt.Errorf("message %.8s not found", messageID)
+	}
+
+	dist := map[string]int{messageID: 0}
+	order := []string{messageID}
+	seenEdge := map[string]bool{}
+	var edges []MessageLink
+	frontier := []string{messageID}
+
+	for d := 0; d < depth && len(frontier) > 0; d++ {
+		var next []string
+		for _, node := range frontier {
+			out, in, err := s.GetLinks(node)
+			if err != nil {
+				continue
+			}
+			for _, l := range append(out, in...) {
+				key := l.FromID + "|" + l.ToID + "|" + l.Relation
+				if !seenEdge[key] {
+					seenEdge[key] = true
+					edges = append(edges, l)
+				}
+				other := l.ToID
+				if other == node {
+					other = l.FromID
+				}
+				if _, ok := dist[other]; !ok {
+					dist[other] = d + 1
+					order = append(order, other)
+					next = append(next, other)
+				}
+			}
+		}
+		frontier = next
+	}
+
+	nodes := make([]LinkNode, 0, len(order))
+	for _, id := range order {
+		m, err := s.GetMessageByID(id)
+		if err != nil {
+			continue
+		}
+		nodes = append(nodes, LinkNode{
+			ID:       id,
+			Author:   m.Author,
+			Type:     m.MessageType,
+			Excerpt:  linkExcerpt(m.Content, 80),
+			Distance: dist[id],
+		})
+	}
+	return nodes, edges, nil
+}
+
+// linkExcerpt collapses a message body to a single short line for graph display.
+func linkExcerpt(s string, max int) string {
+	s = strings.TrimSpace(strings.ReplaceAll(s, "\n", " "))
+	if len(s) > max {
+		s = strings.TrimRight(s[:max], " ") + "…"
+	}
+	return s
+}
+
 // GetLinks returns a message's neighborhood in the link graph: outgoing edges (this
 // message points at others) and incoming edges (others point here — the backlinks).
 // Explicit typed links are merged with the implicit reply_to/supersedes edges so a
