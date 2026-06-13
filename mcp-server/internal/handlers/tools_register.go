@@ -58,17 +58,17 @@ func (r *Registry) RegisterTools() {
 			"author":  prop("string", "Name of the posting agent"),
 			"message": prop("string", "Message content (markdown supported)"),
 			"message_type": prop("string", "Type of message — pick the one that matches your intent:\n"+
-				"  message   — default catch-all when no specific type fits\n"+
 				"  thought   — internal reasoning, exploratory, not ready for peer feedback\n"+
 				"  draft     — analysis or proposal ready for review/critique from peers\n"+
 				"  critique  — pushback, concerns, or risks about a prior message or approach\n"+
 				"  decision  — a choice has been made; include rationale; this is the permanent record\n"+
 				"  plan      — specified work awaiting execution; a handoff for another agent, who should reply with an `action` referencing it\n"+
 				"  action    — work shipped or in-flight; links a decision to a concrete outcome\n"+
-				"  review    — structured feedback on someone else's work (code, design, proposal)\n"+
-				"  code      — code snippets, diffs, or technical artifacts\n"+
-				"  synthesis — compiled knowledge article distilling the room's conclusions; write after deliberation, then pin it\n  note      — journal entry: an observation or context worth keeping, outside the deliberation lifecycle; shows in read_notebook by default\n"+
-				"Lifecycle: thought → draft → critique → decision → plan → action → synthesis. Default: 'message'."),
+				"  review    — structured feedback on someone else's work (a design, proposal, document, or change)\n"+
+				"  synthesis — compiled knowledge article distilling the room's conclusions; write after deliberation, then pin it\n"+
+				"  note      — journal entry: an observation or context worth keeping, outside the deliberation lifecycle; shows in read_notebook by default\n"+
+				"  message   — last-resort catch-all; avoid it. Almost every post is really a thought, draft, decision, action, or note\n"+
+				"Lifecycle: thought → draft → critique → decision → plan → action → synthesis. If you set no type it defaults to 'message' — but typed reads (read_notebook, search_messages(message_type=…), read_transcript(mode=changelog)) skip 'message', so an untyped post goes uncounted in the project notebook and decision log. Pick the real type."),
 			"reply_to":       prop("string", "Message ID this is a reply to (e.g. 42). Renders as 're: #42' in transcripts"),
 			"mentions":       prop("string", "Comma-separated agent names to explicitly notify (e.g. 'claude,gemini-cli'). Mentioned agents can call get_mentions on startup to find threads awaiting their input."),
 			"supersedes":     prop("string", "Message ID this one replaces (e.g. an earlier synthesis). Renders as 'supersedes #x' so tooling can dim the dead version. Pinning a new synthesis over an old one sets this automatically."),
@@ -185,7 +185,7 @@ func (r *Registry) RegisterTools() {
 	searchProps := map[string]map[string]any{
 		"query":           prop("string", "Text to search for in message content"),
 		"author":          prop("string", "Filter by author name"),
-		"message_type":    prop("string", "Filter by type: message, thought, draft, decision, plan, action, review, critique, code, synthesis, note. Use 'synthesis' to find compiled knowledge articles, or 'plan' to surface specified-but-unexecuted work across a project."),
+		"message_type":    prop("string", "Filter by type: message, thought, draft, decision, plan, action, review, critique, synthesis, note. Use 'synthesis' to find compiled knowledge articles, or 'plan' to surface specified-but-unexecuted work across a project."),
 		"room_id":         prop("string", "Scope search to a specific room"),
 		"room_ids":        prop("string", "Comma-separated room IDs to search across a subset (e.g. bug-123,bug-456). Use instead of room_id for multi-room scoping."),
 		"include_related": prop("string", "Set to 'true' to automatically include the room's related_rooms in the search scope (requires room_id). Expands search to 1-level neighbours without specifying room_ids manually."),
@@ -236,7 +236,7 @@ func (r *Registry) RegisterTools() {
 		InputSchema: schema([]string{"message_id", "content"}, map[string]map[string]any{
 			"message_id":       prop("string", "ID of the message to update"),
 			"content":          prop("string", "New message content (replaces existing)"),
-			"message_type":     prop("string", "Optionally change message type: message, thought, draft, decision, plan, action, review, critique, code, synthesis, note"),
+			"message_type":     prop("string", "Optionally change message type: message, thought, draft, decision, plan, action, review, critique, synthesis, note"),
 			"expected_content": prop("string", "If provided, the update fails with the current content if this doesn't match — prevents lost updates when multiple agents edit the same living document."),
 		}),
 	}, r.handleUpdateMessage)
@@ -266,7 +266,7 @@ func (r *Registry) RegisterTools() {
 		InputSchema: schema([]string{"from_id", "to_id", "relation"}, map[string]map[string]any{
 			"from_id":  prop("string", "Source message ID (the one making the assertion)"),
 			"to_id":    prop("string", "Target message ID (the one being pointed at)"),
-			"relation": prop("string", "Edge type: refines, contradicts, implements, duplicates, depends-on, relates, or informs (a note → the decision/action it provides context for)"),
+			"relation": prop("string", "Edge type: refines, contradicts, implements, duplicates, depends-on, relates, or informs (a note → the decision/action it provides context for). Behaviour varies: contradicts/duplicates feed the coherence linter (incoherent flag); informs/relates/refines weave a note into the notebook timeline; implements/depends-on are descriptive — they render as chips and show in get_links, but trigger nothing."),
 			"author":   prop("string", "Optional name of the agent asserting the link"),
 		}),
 	}, r.handleLinkMessages)

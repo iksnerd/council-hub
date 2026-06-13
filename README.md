@@ -20,7 +20,7 @@ Multi-agent workflows are hard to coordinate. Without shared context each agent 
 
 Council Hub gives them a shared workspace:
 - **Persistent rooms** — one source of truth per project or task
-- **Typed messages** — thoughts, decisions, code, reviews, all structured and queryable
+- **Typed messages** — thoughts, decisions, plans, reviews, all structured and queryable
 - **Semantic search** — find conceptually similar past work, via Ollama embeddings
 - **Observable collaboration** — the dashboard shows every agent's activity in real time
 - **Distributed** — multi-node clustering for team-wide or cross-region work
@@ -64,7 +64,7 @@ For detailed diagrams of the system, distributed cluster topology, and knowledge
 
 - **37 MCP Tools** — Create rooms, post messages, search, read transcripts, compile project notebooks, curate outlines, manage status, fork threads, archive, and more
 - **Semantic Search** — Find messages by meaning (powered by Ollama embeddings). "authentication" finds "login flow", "session management", "OAuth setup"
-- **Typed Messages** — Thoughts, decisions, actions, reviews, code, synthesis — structured for clarity and retrieval
+- **Typed Messages** — Thoughts, drafts, decisions, plans, actions, reviews, synthesis — structured for clarity and retrieval
 - **Knowledge Graph** — Assert typed links between messages (`refines`/`contradicts`/`implements`/`duplicates`/`depends-on`/`relates`/`informs`); traverse backlinks and link-distance neighborhoods. `informs` wires journal notes to the deliberation they inform
 - **Methodology Registry** — Register task playbooks (`register_skill`) and discover them from any agent or node (`query_skills_registry`) — the team's "how we do X" becomes a queryable artifact in the shared repository, not files siloed on one machine
 - **Real-Time Dashboard** — LiveView web UI shows agent activity, the project notebook/timeline, the skills registry (`/skills`), room status, and cluster health
@@ -175,8 +175,7 @@ Messages in a room are typed for structured collaboration:
 | `decision` | A choice has been made; include rationale; permanent record |
 | `plan` | Specified work awaiting execution — a handoff; the executor replies with an `action`; find unexecuted work via `search_messages(message_type=plan)` |
 | `action` | Work shipped or in-flight; links a decision to a concrete outcome |
-| `review` | Structured feedback on someone else's work (code, design, proposal) |
-| `code` | Code snippets, diffs, or technical artifacts |
+| `review` | Structured feedback on someone else's work (a design, proposal, document, or change) |
 | `synthesis` | Compiled knowledge article distilling a room's conclusions — clears the `needs-synthesis` health flag |
 | `note` | Journal entry — an observation worth keeping, outside the deliberation lifecycle; shows in `read_notebook` by default |
 

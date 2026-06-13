@@ -271,10 +271,14 @@
           </div>
         <% end %>
         <%= if @outline_done_tasks != [] do %>
-          <h2 class="text-[11px] font-medium text-[var(--ch-text-lo)] uppercase tracking-[0.15em] mt-6 mb-2">
+          <button
+            phx-click="toggle_done"
+            class="flex items-center gap-1.5 text-[11px] font-medium text-[var(--ch-text-lo)] hover:text-[var(--ch-text-hi)] uppercase tracking-[0.15em] mt-6 mb-2"
+          >
+            <span class="font-mono text-[9px]">{if @show_done, do: "▾", else: "▸"}</span>
             ☑ Done ({length(@outline_done_tasks)})
-          </h2>
-          <div class="flex flex-col gap-2 opacity-60">
+          </button>
+          <div :if={@show_done} class="flex flex-col gap-2 opacity-60">
             <.task_card :for={entry <- @outline_done_tasks} entry={entry} />
           </div>
         <% end %>
@@ -290,10 +294,14 @@
           </div>
         <% end %>
         <%= if @outline_done != [] do %>
-          <h2 class="text-[11px] font-medium text-[var(--ch-text-lo)] uppercase tracking-[0.15em] mt-6 mb-2">
+          <button
+            phx-click="toggle_done"
+            class="flex items-center gap-1.5 text-[11px] font-medium text-[var(--ch-text-lo)] hover:text-[var(--ch-text-hi)] uppercase tracking-[0.15em] mt-6 mb-2"
+          >
+            <span class="font-mono text-[9px]">{if @show_done, do: "▾", else: "▸"}</span>
             ✅ Done ({length(@outline_done)})
-          </h2>
-          <div class="flex flex-col gap-3 opacity-60">
+          </button>
+          <div :if={@show_done} class="flex flex-col gap-3 opacity-60">
             <.room_ref_card :for={entry <- @outline_done} entry={entry} />
           </div>
         <% end %>

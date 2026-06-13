@@ -26,7 +26,7 @@ defmodule CouncilHubUiWeb.NotebookLive do
     ]
 
   @refresh_interval 5_000
-  @all_types ~w(decision plan action synthesis note critique review code draft thought message)
+  @all_types ~w(decision plan action synthesis note critique review draft thought message)
   @default_types ~w(decision plan action synthesis note)
 
   @impl true
@@ -39,6 +39,7 @@ defmodule CouncilHubUiWeb.NotebookLive do
        projects: Council.list_projects(),
        all_types: @all_types,
        view_compact: false,
+       show_done: false,
        compose_author: "",
        outline_inline: [],
        outline_doing_tasks: [],
@@ -69,6 +70,11 @@ defmodule CouncilHubUiWeb.NotebookLive do
   @impl true
   def handle_event("select_project", %{"project" => project}, socket) do
     {:noreply, patch_to(socket, project, socket.assigns.selected_types)}
+  end
+
+  @impl true
+  def handle_event("toggle_done", _params, socket) do
+    {:noreply, assign(socket, show_done: !socket.assigns.show_done)}
   end
 
   @impl true

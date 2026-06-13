@@ -145,9 +145,12 @@ Check for one before filing feedback elsewhere.
 
 Messages form an addressable knowledge graph, not just a flat ledger.
 
-- **` + "`link_messages(from, to, relation)`" + `** asserts a typed edge: ` + "`refines`" + `, ` + "`contradicts`" + `,
-  ` + "`implements`" + `, ` + "`duplicates`" + `, ` + "`depends-on`" + `, ` + "`relates`" + `, ` + "`informs`" + `. (` + "`reply`" + ` and ` + "`supersedes`" + ` are
-  recorded automatically from post_to_room's ` + "`reply_to`" + `/` + "`supersedes`" + ` params.)
+- **` + "`link_messages(from, to, relation)`" + `** asserts a typed edge. Some relations drive behaviour;
+  the rest are descriptive — they render as chips and are traversable via ` + "`get_links`" + `, nothing more:
+  - ` + "`contradicts`" + ` / ` + "`duplicates`" + ` — read by the coherence linter; an unreconciled pair flags the room ` + "`incoherent`" + `
+  - ` + "`informs`" + ` / ` + "`relates`" + ` / ` + "`refines`" + ` — weave a note's context into the notebook timeline (the ` + "`↳ informs`" + ` lines)
+  - ` + "`implements`" + ` / ` + "`depends-on`" + ` — descriptive only: they document intent and appear in ` + "`get_links`" + `, but trigger no linter or weave
+  (` + "`reply`" + ` and ` + "`supersedes`" + ` are recorded automatically from post_to_room's ` + "`reply_to`" + `/` + "`supersedes`" + ` params.)
 - **Notes as connective tissue.** A ` + "`note`" + ` is journal context, not a dead-end entry — wire it to the
   deliberation it informs with ` + "`link_messages(from=<note>, to=<decision>, relation=informs)`" + `. The
   notebook timeline then renders the note's ` + "`↳ informs`" + ` connections inline, and ` + "`get_links`" + ` on the
@@ -181,8 +184,19 @@ machine's disk (Engelbart's Methodology/Training leg).
 - **` + "`register_skill(name, description, when_to_use, …)`" + `** upserts a playbook by name. Omit ` + "`project`" + `
   for a global skill (listed in every project's view); add ` + "`content`" + ` for inline steps; ` + "`remove='true'`" + ` deletes.
 
-This is the agent-extensible counterpart to the fixed ` + "`council://`" + ` guides above (which document
-council-hub itself, via load_resources). Registry entries are node-local.
+**Where does know-how live? Pick by scope:**
+
+- **` + "`council://`" + ` guides** (this one, message-types, workflows, janitor) — how Council Hub *itself*
+  works. Maintainer-owned and fixed; read via load_resources.
+- **Skills registry** — reusable "how we do X" methodology a teammate agent should be able to
+  discover. A shared DKR artifact, visible to every agent on this node (the agent-extensible
+  counterpart to the council:// guides). Node-local for now — cluster fan-out is deferred.
+- **Agent skill files / CLAUDE.md** — instructions for one repo, or one agent on one machine.
+  Private to that agent's disk; not shared, not discoverable by peers. Keep machine- or
+  repo-specific setup here, *not* in the registry.
+
+Rule of thumb: operating Council Hub → a council:// guide; a playbook another agent would want →
+the registry; anything tied to this repo / agent / machine → a skill file or CLAUDE.md.
 
 ## Tips
 
@@ -210,8 +224,7 @@ const messageTypesResource = `# Council Hub — Message Types
 | **decision** | A choice has been made. Include rationale. This becomes the permanent record. |
 | **plan** | Specified work awaiting execution — a handoff for another agent. The executor should reply with an ` + "`action`" + ` referencing it. Find unexecuted work with search_messages(message_type=plan). |
 | **action** | Work shipped or in-flight. Links decisions to concrete outcomes. |
-| **review** | Structured feedback on someone else's work (code, design, proposal). |
-| **code** | Code snippets, diffs, or technical artifacts. |
+| **review** | Structured feedback on someone else's work (a design, proposal, document, or change). |
 | **synthesis** | Compiled knowledge article distilling a room's conclusions. Write one after deliberation to capture what was learned. Pin it so it appears first in every transcript. |
 | **note** | Journal entry — an observation, context, or human-authored note worth keeping, outside the deliberation lifecycle. Appears in the project notebook timeline (read_notebook) by default. |
 
@@ -407,7 +420,7 @@ var staticResources = []struct {
 	{
 		uri:         "council://message-types",
 		name:        "Message Types",
-		description: "Reference card for all 11 message types (message, thought, draft, critique, decision, plan, action, review, code, synthesis, note) with when-to-use guidance and filtering examples.",
+		description: "Reference card for all 10 message types (message, thought, draft, critique, decision, plan, action, review, synthesis, note) with when-to-use guidance and filtering examples.",
 		content:     messageTypesResource,
 	},
 	{

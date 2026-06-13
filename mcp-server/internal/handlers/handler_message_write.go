@@ -71,7 +71,7 @@ func (r *Registry) handlePostToRoom(ctx context.Context, req *mcp.CallToolReques
 		args.MessageType = "message"
 	}
 	if !validMessageTypes[args.MessageType] {
-		return msg(fmt.Sprintf("Error: Invalid message_type '%s'. Must be one of: message, thought, draft, decision, plan, code, review, action, critique, synthesis, note.", args.MessageType))
+		return msg(fmt.Sprintf("Error: Invalid message_type '%s'. Must be one of: message, thought, draft, decision, plan, review, action, critique, synthesis, note.", args.MessageType))
 	}
 
 	// Verify room exists locally. If it doesn't and we're clustered, the room may
@@ -121,7 +121,7 @@ func (r *Registry) handleUpdateMessage(ctx context.Context, req *mcp.CallToolReq
 	}
 
 	if args.MessageType != "" && !validMessageTypes[args.MessageType] {
-		return msg(fmt.Sprintf("Error: invalid message_type '%s'. Valid types: message, thought, draft, decision, plan, code, review, action, critique, synthesis, note.", args.MessageType))
+		return msg(fmt.Sprintf("Error: invalid message_type '%s'. Valid types: message, thought, draft, decision, plan, review, action, critique, synthesis, note.", args.MessageType))
 	}
 
 	m, err := r.Server.UpdateMessageWithExpected(args.MessageID, args.Content, args.MessageType, args.ExpectedContent)

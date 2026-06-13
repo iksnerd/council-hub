@@ -34,9 +34,16 @@
           Nodes
         </span>
         <.link
+          navigate={~p"/notebook?#{%{notebook: "current-work"}}"}
+          title="Cockpit — the current-work cross-project dev-task list"
+          class="text-[10px] font-mono text-[var(--ch-text-lo)] hover:text-[var(--ch-text-hi)] ml-auto"
+        >
+          cockpit
+        </.link>
+        <.link
           navigate={~p"/notebook"}
           title="Project notebook timeline"
-          class="text-[10px] font-mono text-[var(--ch-text-xs)] hover:text-[var(--ch-text-hi)] ml-auto"
+          class="text-[10px] font-mono text-[var(--ch-text-xs)] hover:text-[var(--ch-text-hi)]"
         >
           notebook
         </.link>
@@ -263,7 +270,7 @@
             <span class="hero-adjustments-horizontal w-3.5 h-3.5"></span>
           </button>
           <div class="flex items-center gap-0.5 flex-wrap">
-            <%= for {label, value} <- [{"All", "all"}, {"Decisions", "decision"}, {"Plans", "plan"}, {"Actions", "action"}, {"Drafts", "draft"}, {"Code", "code"}, {"Reviews", "review"}, {"Thoughts", "thought"}, {"Synthesis", "synthesis"}, {"Critique", "critique"}] do %>
+            <%= for {label, value} <- [{"All", "all"}, {"Decisions", "decision"}, {"Plans", "plan"}, {"Actions", "action"}, {"Drafts", "draft"}, {"Reviews", "review"}, {"Thoughts", "thought"}, {"Synthesis", "synthesis"}, {"Critique", "critique"}, {"Notes", "note"}] do %>
               <button
                 phx-click="filter_type"
                 phx-value-type={value}
@@ -404,7 +411,7 @@
               name="type"
               class="bg-[var(--ch-raised)] border border-[var(--ch-border)] rounded text-[11px] text-[var(--ch-text-mid)] px-2 py-1 focus:outline-none focus:border-[var(--ch-focus-border)]"
             >
-              <%= for type <- ~w(message thought draft decision action review code critique synthesis note) do %>
+              <%= for type <- ~w(message thought draft decision action review critique synthesis note) do %>
                 <option value={type}>{type}</option>
               <% end %>
             </select>

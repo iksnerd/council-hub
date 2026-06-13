@@ -93,7 +93,6 @@ var validMessageTypes = map[string]bool{
 	"thought":   true,
 	"draft":     true,
 	"decision":  true,
-	"code":      true,
 	"review":    true,
 	"action":    true,
 	"critique":  true,
