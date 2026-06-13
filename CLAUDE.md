@@ -129,9 +129,11 @@ Code is organized into `internal/council` (data layer) and `internal/handlers` (
 - `internal/council/notebook.go` — `GetNotebookEntries`: cross-room project timeline of typed messages, ordered by UUIDv7 ID (chronological weave + `after_id` delta cursor), each entry carrying its room's `repo` for `{sha:...}` resolution.
 - `internal/council/notebook_outline.go` — Curated notebook outlines (Phase 2): `notebooks` + `notebook_entries` CRUD, position renumbering per mutation, `GetOutline` resolves `ref` (message) and `room_ref` (live room status/topic/latest decision-action) entries at render time (transclusion — dangling refs return `RefFound=false`). Empty project = global notebook (listed in every project's view; the `current-work` work-list pattern).
 - `internal/council/summary.go` — `GetTranscript`, `GetUnsummarizedMessages`, `InsertSummary`, `ArchiveRoom`.
-- `internal/council/transcript.go` — Transcript formatting helpers.
+- `internal/council/transcript.go` — Transcript formatting helpers; `FormatTranscriptView(room, msgs, ViewSpec)` projects the transcript through a ViewSpec (metadata toggles + line-clip), renders supersedes/superseded-by backlinks.
+- `internal/council/viewspec.go` — `ViewSpec` (NLS-style view control: `show` metadata toggles, `truncate` line-clip) + `ParseViewSpec` + `FilterMessages` (author/type/since/until — the "which nodes" half of a view).
+- `internal/council/links.go` — Message link graph: `CreateLink`/`DeleteLink`/`GetLinks` (typed edges refines/contradicts/implements/duplicates/depends-on/relates, merged with implicit reply/supersedes), `GetLinkNeighborhood` (BFS link-distance walk).
 - `internal/handlers/tools_helpers.go` — `Registry` struct (holds Server + HTTPClient + PhoenixURL), schema/prop helpers, validation utilities, `ToolOutput` type, `validMessageTypes` map.
-- `internal/handlers/tools_register.go` — All 32 MCP tool registrations wired to their handlers.
+- `internal/handlers/tools_register.go` — All 35 MCP tool registrations wired to their handlers.
 - `internal/handlers/templates.go` — Room template definitions (brainstorm, bug, decision-log, review, sprint).
 - `internal/handlers/cluster.go` — `clusterCall` HTTP helper (POST to Phoenix internal API).
 - `internal/handlers/cluster_writes.go` — Cross-node writes: `locateRoomOwner` (queries Phoenix `locate_room`), `proxyPostToRoom` (forwards a write to the owning node), and `InternalPostHandler` (receives proxied writes, authenticated by the shared `RELEASE_COOKIE`).
@@ -140,6 +142,7 @@ Code is organized into `internal/council` (data layer) and `internal/handlers` (
 - `internal/handlers/handler_message_query.go` — `search_messages` (FTS5 + optional semantic, branches on `cluster_wide=true`), `get_messages`, `get_mentions`.
 - `internal/handlers/handler_message_write.go` — `post_to_room`, `update_message`, `delete_messages`, `move_messages`, `fork_thread`.
 - `internal/handlers/handler_message_annotate.go` — `pin_message`, `react_to_message`.
+- `internal/handlers/handler_message_links.go` — `link_messages`, `get_links` (with `depth` link-distance walk), `unlink_messages`.
 - `internal/handlers/handler_message_sync.go` — `mark_read`.
 - `internal/handlers/handler_room_crud.go` — `create_room`, `get_or_create_room`, `update_room`, `read_room`, `delete_room`.
 - `internal/handlers/handler_room_lifecycle.go` — `signal_status`, `bulk_status_update`, `rename_project`.
@@ -161,6 +164,8 @@ Code is organized into `internal/council` (data layer) and `internal/handlers` (
 - `lib/council_hub_ui_web/live/council_components.ex` — Reusable function components for room cards, message rendering, headers.
 - `lib/council_hub_ui_web/live/council_helpers.ex` — Color assignment per author (deterministic hex from name hash), relative timestamps, markdown rendering via Earmark.
 - `lib/council_hub_ui/council.ex` — Ecto context module with query functions. Read-only against Go server's SQLite. Includes `search_messages/1`, `list_rooms_filtered/1`, `room_stats/1` for cluster fan-out.
+- `lib/council_hub_ui/message_annotations.ex` — Shared derived-field annotators (`superseded_by` backlink + explicit `links`) used by both the room view (`CouncilMessages`) and the notebook (`CouncilNotebook`), so both surface the knowledge graph consistently.
+- `lib/council_hub_ui/council/message_link.ex` — Read-only Ecto mirror of the Go `message_links` table (typed edges; Go owns writes).
 - `lib/council_hub_ui/cluster.ex` — Cluster-wide query fan-out using `:erpc.multicall/5` (5s timeout). Tags results with `source_node`, handles partial failures as warnings.
 - `lib/council_hub_ui_web/controllers/cluster_controller.ex` — Internal JSON API for cluster queries (`/api/internal/cluster/*`). Called by Go MCP server when `cluster_wide=true`.
 - `lib/council_hub_ui_web/plugs/restrict_localhost.ex` — Plug restricting internal API to localhost only (127.0.0.1/::1).
