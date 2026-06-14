@@ -61,7 +61,7 @@ func (s *Server) GetNotebookEntries(project string, types []string, since, until
 		SELECT %s, COALESCE(r.repo, '')
 		FROM messages m
 		JOIN rooms r ON m.room_id = r.id
-		WHERE r.project = ? AND m.is_summary = 0 AND m.message_type IN (%s)`,
+		WHERE r.project = ? AND m.is_summary = 0 AND `+liveClause("m")+` AND m.message_type IN (%s)`,
 		prefixed, strings.Join(typePlaceholders, ","))
 
 	if since != "" {
@@ -89,7 +89,10 @@ func (s *Server) GetNotebookEntries(project string, types []string, since, until
 	var entries []NotebookEntry
 	for rows.Next() {
 		var e NotebookEntry
-		if err := rows.Scan(&e.ID, &e.RoomID, &e.Author, &e.Content, &e.MessageType, &e.IsSummary, &e.ReplyTo, &e.Pinned, &e.Reactions, &e.Mentions, &e.Supersedes, &e.Timestamp, &e.Repo); err != nil {
+		// Reuse the canonical message scan dests, then the extra trailing repo column —
+		// so messageColumns' order lives in exactly one place (messageScanDests).
+		dests := append(messageScanDests(&e.Message), &e.Repo)
+		if err := rows.Scan(dests...); err != nil {
 			return nil, err
 		}
 		entries = append(entries, e)

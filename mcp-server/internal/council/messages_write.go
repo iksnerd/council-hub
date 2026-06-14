@@ -1,6 +1,7 @@
 package council
 
 import (
+	"database/sql"
 	"fmt"
 	"strings"
 
@@ -93,65 +94,114 @@ func (e *ErrContentChanged) Error() string {
 	return "content changed since last read — re-read before updating"
 }
 
-func (s *Server) UpdateMessage(messageID string, newContent, newMessageType string) (*Message, error) {
-	return s.UpdateMessageWithExpected(messageID, newContent, newMessageType, "")
+// ErrAlreadyRevised is returned when a caller tries to edit a node that a newer
+// revision has already superseded. Edits must target the head of the chain so we
+// never fork it; HeadID points the caller at the current version to edit instead.
+type ErrAlreadyRevised struct {
+	HeadID string
 }
 
-// UpdateMessageWithExpected updates a message, optionally checking that the
-// current content matches expectedContent before writing (optimistic locking).
-// If expectedContent is "" the check is skipped (same as UpdateMessage).
-// If the content has changed, returns *ErrContentChanged with the current content.
-func (s *Server) UpdateMessageWithExpected(messageID, newContent, newMessageType, expectedContent string) (*Message, error) {
+func (e *ErrAlreadyRevised) Error() string {
+	return fmt.Sprintf("message already revised — edit the current version #%.8s instead", e.HeadID)
+}
+
+func (s *Server) UpdateMessage(messageID string, newContent, newMessageType string) (*Message, error) {
+	return s.UpdateMessageWithExpected(messageID, newContent, newMessageType, "", "")
+}
+
+// UpdateMessageWithExpected edits a message by appending a new revision rather than
+// overwriting in place: the prior version is preserved as an immutable node, and
+// the new node points back at it via `revises` (the NLS Journal property — nothing
+// is destroyed, every version stays addressable). The old node is flagged
+// revised = 1 so reads collapse to the head; the new node inherits the old one's
+// structural role (reply_to, mentions, supersedes, and the pin, which follows the
+// head). Returns the new head message.
+//
+// If expectedContent is non-empty it must match the current content (optimistic
+// locking) or *ErrContentChanged is returned. Editing an already-superseded node
+// returns *ErrAlreadyRevised. author attributes the edit; "" inherits the original
+// author.
+func (s *Server) UpdateMessageWithExpected(messageID, newContent, newMessageType, expectedContent, author string) (*Message, error) {
 	s.Mu.Lock()
 	defer s.Mu.Unlock()
 
-	// Optimistic concurrency check: read current content before writing.
-	if expectedContent != "" {
-		var current string
-		err := s.DB.QueryRow(`SELECT content FROM messages WHERE id = ?`, messageID).Scan(&current)
-		if err != nil {
-			return nil, err
-		}
-		if current != expectedContent {
-			return nil, &ErrContentChanged{CurrentContent: current}
-		}
+	// Read the node being edited. It must exist, be the head (not already revised),
+	// and not be retracted.
+	var (
+		roomID, origAuthor, curContent, curType string
+		curReplyTo, curMentions, curSupersedes  string
+		curPinned, revised                      bool
+		retractedAt                             sql.NullTime
+	)
+	err := s.DB.QueryRow(
+		`SELECT room_id, author, content, message_type, reply_to, mentions, supersedes, pinned, revised, retracted_at FROM messages WHERE id = ?`,
+		messageID,
+	).Scan(&roomID, &origAuthor, &curContent, &curType, &curReplyTo, &curMentions, &curSupersedes, &curPinned, &revised, &retractedAt)
+	if err != nil {
+		return nil, err
+	}
+	if revised {
+		head := s.headOfRevisionChain(messageID)
+		return nil, &ErrAlreadyRevised{HeadID: head}
+	}
+	if retractedAt.Valid {
+		return nil, fmt.Errorf("message #%.8s is retracted; restore it before editing", messageID)
+	}
+	if expectedContent != "" && curContent != expectedContent {
+		return nil, &ErrContentChanged{CurrentContent: curContent}
 	}
 
+	newType := curType
 	if newMessageType != "" {
-		_, err := s.DB.Exec(
-			`UPDATE messages SET content = ?, message_type = ? WHERE id = ?`,
-			newContent, newMessageType, messageID,
-		)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		_, err := s.DB.Exec(
-			`UPDATE messages SET content = ? WHERE id = ?`,
-			newContent, messageID,
-		)
-		if err != nil {
-			return nil, err
-		}
+		newType = newMessageType
+	}
+	if author == "" {
+		author = origAuthor
+	}
+
+	// Append the new revision as a fresh immutable node pointing back at the old one.
+	newID := uuid.Must(uuid.NewV7()).String()
+	if _, err := s.DB.Exec(
+		`INSERT INTO messages (id, room_id, author, content, message_type, reply_to, mentions, supersedes, revises, pinned) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		newID, roomID, author, newContent, newType, curReplyTo, curMentions, curSupersedes, messageID, curPinned,
+	); err != nil {
+		return nil, err
+	}
+
+	// Flag the old node as a superseded revision and move the pin to the head, so
+	// reads (which filter revised = 0) surface exactly one current version.
+	if _, err := s.DB.Exec(`UPDATE messages SET revised = 1, pinned = 0 WHERE id = ?`, messageID); err != nil {
+		return nil, err
 	}
 
 	m, err := scanMessage(s.DB.QueryRow(
 		fmt.Sprintf(`SELECT %s FROM messages WHERE id = ?`, messageColumns),
-		messageID,
+		newID,
 	))
 	if err != nil {
 		return nil, err
 	}
 
-	// Update room's updated_at
-	_, _ = s.DB.Exec(`UPDATE rooms SET updated_at = CURRENT_TIMESTAMP WHERE id = ?`, m.RoomID)
-
-	// Re-embed if content changed (non-fatal)
-	if newContent != "" {
-		s.EmbedAsync("message_vectors", messageID, newContent)
-	}
+	_, _ = s.DB.Exec(`UPDATE rooms SET updated_at = CURRENT_TIMESTAMP WHERE id = ?`, roomID)
+	s.EmbedAsync("message_vectors", newID, newContent)
 
 	return &m, nil
+}
+
+// headOfRevisionChain walks revises pointers forward from a (possibly old) node to
+// the current head — the newest version that nothing else revises. Used to point a
+// caller who edited a stale node at the version they should edit instead.
+func (s *Server) headOfRevisionChain(messageID string) string {
+	id := messageID
+	for i := 0; i < 1000; i++ { // bound the walk against any accidental cycle
+		var next string
+		err := s.DB.QueryRow(`SELECT id FROM messages WHERE revises = ?`, id).Scan(&next)
+		if err != nil || next == "" {
+			return id
+		}
+		id = next
+	}
+	return id
 }
 
 func (s *Server) MoveMessages(ids []string, targetRoomID string) (int, error) {
@@ -191,7 +241,72 @@ func (s *Server) MoveMessages(ids []string, targetRoomID string) (int, error) {
 	return int(moved), nil
 }
 
-func (s *Server) DeleteMessages(ids []string) (int64, error) {
+// RetractMessages tombstones messages instead of destroying them: it sets
+// retracted_at/retracted_by but leaves the rows, their content, and their links
+// intact. Retracted nodes still render (as "[retracted]") and their graph edges
+// stay valid — the immutable counterpart to deletion. Already-retracted messages
+// are skipped. Returns the number newly retracted.
+func (s *Server) RetractMessages(ids []string, retractedBy string) (int64, error) {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+
+	if len(ids) == 0 {
+		return 0, nil
+	}
+
+	placeholders := make([]string, len(ids))
+	args := []any{retractedBy}
+	for i, id := range ids {
+		placeholders[i] = "?"
+		args = append(args, id)
+	}
+
+	q := fmt.Sprintf(
+		`UPDATE messages SET retracted_at = CURRENT_TIMESTAMP, retracted_by = ? WHERE id IN (%s) AND retracted_at IS NULL`,
+		strings.Join(placeholders, ","),
+	)
+	res, err := s.DB.Exec(q, args...)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
+// RestoreMessages reverses a retraction: it clears retracted_at/retracted_by so the
+// tombstoned node renders normally again. Retraction is meant to be reversible —
+// only PurgeMessages is final. Returns the number of messages newly restored.
+func (s *Server) RestoreMessages(ids []string) (int64, error) {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+
+	if len(ids) == 0 {
+		return 0, nil
+	}
+
+	placeholders := make([]string, len(ids))
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+
+	q := fmt.Sprintf(
+		`UPDATE messages SET retracted_at = NULL, retracted_by = '' WHERE id IN (%s) AND retracted_at IS NOT NULL`,
+		strings.Join(placeholders, ","),
+	)
+	res, err := s.DB.Exec(q, args...)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
+// PurgeMessages permanently destroys messages — the deliberate escape hatch from
+// immutability, for content that must not persist (a leaked secret, PII). Unlike
+// RetractMessages it hard-deletes the rows, cascade-cleans their links so the graph
+// never dangles, and drops their vectors. Prefer RetractMessages for everything
+// else.
+func (s *Server) PurgeMessages(ids []string) (int64, error) {
 	s.Mu.Lock()
 	defer s.Mu.Unlock()
 
@@ -212,7 +327,7 @@ func (s *Server) DeleteMessages(ids []string) (int64, error) {
 		return 0, err
 	}
 
-	// Cascade-clean any links that reference the deleted messages (either endpoint),
+	// Cascade-clean any links that reference the purged messages (either endpoint),
 	// so the link graph never points at a missing message.
 	inList := strings.Join(placeholders, ",")
 	_, _ = s.DB.Exec(

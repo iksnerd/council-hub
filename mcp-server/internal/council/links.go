@@ -230,19 +230,23 @@ func (s *Server) GetLinks(messageID string) (outgoing, incoming []MessageLink, e
 		return nil, nil, err
 	}
 
-	// Implicit outgoing: this message's own reply_to / supersedes columns.
-	var replyTo, supersedes string
-	_ = s.DB.QueryRow(`SELECT COALESCE(reply_to, ''), COALESCE(supersedes, '') FROM messages WHERE id = ?`, messageID).
-		Scan(&replyTo, &supersedes)
+	// Implicit outgoing: this message's own reply_to / supersedes / revises columns.
+	var replyTo, supersedes, revises string
+	_ = s.DB.QueryRow(`SELECT COALESCE(reply_to, ''), COALESCE(supersedes, ''), COALESCE(revises, '') FROM messages WHERE id = ?`, messageID).
+		Scan(&replyTo, &supersedes, &revises)
 	if replyTo != "" {
 		outgoing = append(outgoing, MessageLink{FromID: messageID, ToID: replyTo, Relation: "reply", Implicit: true})
 	}
 	if supersedes != "" {
 		outgoing = append(outgoing, MessageLink{FromID: messageID, ToID: supersedes, Relation: "supersedes", Implicit: true})
 	}
+	if revises != "" {
+		outgoing = append(outgoing, MessageLink{FromID: messageID, ToID: revises, Relation: "revises", Implicit: true})
+	}
 
-	// Implicit incoming: messages that reply to / supersede this one (the backlinks
-	// we already render in the transcript, now queryable).
+	// Implicit incoming: messages that reply to / supersede / revise this one (the
+	// backlinks we already render in the transcript, now queryable). A "revised_by"
+	// edge makes the version history walkable from any node in the chain.
 	implicitIn := func(column, relation string) error {
 		rows, qerr := s.DB.Query(fmt.Sprintf(`SELECT id FROM messages WHERE %s = ? ORDER BY id`, column), messageID)
 		if qerr != nil {
@@ -262,6 +266,9 @@ func (s *Server) GetLinks(messageID string) (outgoing, incoming []MessageLink, e
 		return nil, nil, err
 	}
 	if err = implicitIn("supersedes", "supersedes"); err != nil {
+		return nil, nil, err
+	}
+	if err = implicitIn("revises", "revised_by"); err != nil {
 		return nil, nil, err
 	}
 

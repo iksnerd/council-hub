@@ -2,12 +2,14 @@ defmodule CouncilHubUi.CouncilMessages do
   @moduledoc "Read-only message queries. Called via CouncilHubUi.Council facade."
 
   import Ecto.Query
+  import CouncilHubUi.MessageFilters
   alias CouncilHubUi.Repo
   alias CouncilHubUi.Council.{Room, Message}
   alias CouncilHubUi.MessageAnnotations
 
   def list_messages_for_room(room_id, type_filter \\ "all") do
-    base = from m in Message, where: m.room_id == ^room_id
+    # Collapse to head revisions; retracted nodes stay (rendered as tombstones).
+    base = from(m in Message, where: m.room_id == ^room_id) |> head_revisions()
 
     base =
       if type_filter != "all",
@@ -20,7 +22,8 @@ defmodule CouncilHubUi.CouncilMessages do
   end
 
   def get_messages_since(room_id, last_id, type_filter \\ "all") do
-    base = from m in Message, where: m.room_id == ^room_id and m.id > ^last_id
+    base =
+      from(m in Message, where: m.room_id == ^room_id and m.id > ^last_id) |> head_revisions()
 
     base =
       if type_filter != "all",
@@ -38,10 +41,10 @@ defmodule CouncilHubUi.CouncilMessages do
     q = "%#{String.downcase(query)}%"
 
     base =
-      from m in Message,
-        where:
-          m.room_id == ^room_id and
-            fragment("lower(?) LIKE ?", m.content, ^q)
+      from(m in Message,
+        where: m.room_id == ^room_id and fragment("lower(?) LIKE ?", m.content, ^q)
+      )
+      |> live_messages()
 
     base =
       if type_filter != "all",
@@ -58,7 +61,8 @@ defmodule CouncilHubUi.CouncilMessages do
   def search_messages(params) when is_map(params) do
     limit = Map.get(params, "limit", 20)
 
-    base = from(m in Message, as: :msg)
+    # Surface only current, live nodes: head revisions, never retracted tombstones.
+    base = from(m in Message, as: :msg) |> live_messages()
 
     base =
       case Map.get(params, "query") do
@@ -153,11 +157,31 @@ defmodule CouncilHubUi.CouncilMessages do
     Repo.all(from m in Message, where: m.id in ^ids, order_by: [asc: m.timestamp])
   end
 
+  @doc """
+  Prior versions of an edited message, oldest → newest (excluding the head).
+  Walks the append-only `revises` chain backward so the UI can expand an edited
+  message's history. Returns [] for a message that was never edited.
+  """
+  def revision_history(head_id) do
+    case Repo.get(Message, head_id) do
+      nil -> []
+      head -> collect_prior_versions(head.revises, [])
+    end
+  end
+
+  defp collect_prior_versions(id, acc) when id in [nil, ""], do: acc
+
+  defp collect_prior_versions(id, acc) do
+    case Repo.get(Message, id) do
+      nil -> acc
+      m -> collect_prior_versions(m.revises, [m | acc])
+    end
+  end
+
   @doc "Fetch recent messages for a room with a limit"
   def get_recent_messages(room_id, limit) do
-    Repo.all(
-      from m in Message, where: m.room_id == ^room_id, order_by: [desc: m.id], limit: ^limit
-    )
+    base = from(m in Message, where: m.room_id == ^room_id) |> head_revisions()
+    Repo.all(from m in base, order_by: [desc: m.id], limit: ^limit)
   end
 
   def get_mentions(author, limit \\ 20) do

@@ -130,14 +130,19 @@ func TestHandleUpdateMessage(t *testing.T) {
 		t.Fatalf("handleUpdateMessage error: %v", err)
 	}
 	text := resultText(res)
-	if !strings.Contains(text, "updated") {
+	if !strings.Contains(text, "edited") {
 		t.Errorf("expected success message, got: %s", text)
 	}
 
-	// Verify in DB
-	msgs, _ := reg.Server.GetMessagesByIDs([]string{id})
-	if len(msgs) == 0 || msgs[0].Content != "New content" {
-		t.Errorf("expected content update, got: %v", msgs)
+	// Append-only: the original is preserved unchanged; the new content lives on the
+	// head revision, which is what reads surface.
+	orig, _ := reg.Server.GetMessagesByIDs([]string{id})
+	if len(orig) == 0 || orig[0].Content != "Old content" || !orig[0].Revised {
+		t.Errorf("expected original preserved and flagged revised, got: %v", orig)
+	}
+	head, _ := reg.Server.GetRecentMessages("h-upd-msg", 10)
+	if len(head) != 1 || head[0].Content != "New content" || head[0].Revises != id {
+		t.Errorf("expected single head with new content revising original, got: %v", head)
 	}
 }
 
@@ -152,9 +157,9 @@ func TestHandleUpdateMessageWithType(t *testing.T) {
 		MessageType: "decision",
 	})
 
-	msgs, _ := reg.Server.GetMessagesByIDs([]string{id})
-	if len(msgs) == 0 || msgs[0].MessageType != "decision" {
-		t.Errorf("expected type update, got: %v", msgs)
+	msgs, _ := reg.Server.GetRecentMessages("h-upd-type", 10)
+	if len(msgs) != 1 || msgs[0].MessageType != "decision" {
+		t.Errorf("expected head revision retyped to decision, got: %v", msgs)
 	}
 }
 
@@ -260,8 +265,29 @@ func TestHandleDeleteMessages(t *testing.T) {
 
 	res, _, _ := reg.handleDeleteMessages(context.Background(), nil, DeleteMessagesInput{MessageIDs: id})
 	text := resultText(res)
-	if !strings.Contains(text, "Deleted 1") {
-		t.Errorf("expected 1 deleted, got: %s", text)
+	if !strings.Contains(text, "Retracted 1") {
+		t.Errorf("expected 1 retracted, got: %s", text)
+	}
+	// Retract preserves the node — it survives, tombstoned.
+	msgs, _ := reg.Server.GetMessagesByIDs([]string{id})
+	if len(msgs) != 1 || !msgs[0].RetractedAt.Valid {
+		t.Errorf("expected message to survive as a tombstone, got: %v", msgs)
+	}
+}
+
+func TestHandleDeleteMessagesPurge(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-purgemsg")
+	id := mustPost(t, reg.Server, "h-purgemsg", "Claude", "Destroy me")
+
+	res, _, _ := reg.handleDeleteMessages(context.Background(), nil, DeleteMessagesInput{MessageIDs: id, Purge: "true"})
+	if !strings.Contains(resultText(res), "Purged 1") {
+		t.Errorf("expected 1 purged, got: %s", resultText(res))
+	}
+	// Purge destroys — the node is gone.
+	msgs, _ := reg.Server.GetMessagesByIDs([]string{id})
+	if len(msgs) != 0 {
+		t.Errorf("expected message destroyed by purge, got: %v", msgs)
 	}
 }
 
@@ -278,9 +304,9 @@ func TestHandleDeleteMessagesNonExistentID(t *testing.T) {
 	reg := setupHandlerTest(t)
 
 	res, _, _ := reg.handleDeleteMessages(context.Background(), nil, DeleteMessagesInput{MessageIDs: "fake-nonexistent-uuid"})
-	// Non-existent IDs delete 0 messages — not an error
-	if !strings.Contains(resultText(res), "Deleted 0") {
-		t.Errorf("expected 0 deleted for non-existent ID, got: %s", resultText(res))
+	// Non-existent IDs retract 0 messages — not an error
+	if !strings.Contains(resultText(res), "Retracted 0") {
+		t.Errorf("expected 0 retracted for non-existent ID, got: %s", resultText(res))
 	}
 }
 
@@ -312,8 +338,8 @@ func TestHandleDeleteMessagesDryRun(t *testing.T) {
 	if !strings.Contains(text, "DRY RUN") {
 		t.Error("expected 'DRY RUN' in output")
 	}
-	if !strings.Contains(text, "2 message(s) would be deleted") {
-		t.Errorf("expected '2 message(s) would be deleted', got: %s", text)
+	if !strings.Contains(text, "2 message(s) would be retracted") {
+		t.Errorf("expected '2 message(s) would be retracted', got: %s", text)
 	}
 	if !strings.Contains(text, "Claude") {
 		t.Error("expected author 'Claude' in output")
@@ -343,8 +369,8 @@ func TestHandleDeleteMessagesDryRunNotFound(t *testing.T) {
 	})
 	text := resultText(res)
 
-	if !strings.Contains(text, "1 message(s) would be deleted") {
-		t.Errorf("expected '1 message(s) would be deleted', got: %s", text)
+	if !strings.Contains(text, "1 message(s) would be retracted") {
+		t.Errorf("expected '1 message(s) would be retracted', got: %s", text)
 	}
 	if !strings.Contains(text, "not found") {
 		t.Error("expected not found indicator for missing ID")
@@ -356,19 +382,19 @@ func TestHandleDeleteMessagesDryRunFalse(t *testing.T) {
 	mustCreateRoom(t, reg.Server, "dry-false")
 	id := mustPost(t, reg.Server, "dry-false", "Claude", "Delete me")
 
-	// dry_run=false should still delete
+	// dry_run=false should execute the retraction
 	res, _, _ := reg.handleDeleteMessages(context.Background(), nil, DeleteMessagesInput{
 		MessageIDs: id,
 		DryRun:     "false",
 	})
 	text := resultText(res)
-	if !strings.Contains(text, "Deleted 1 message") {
-		t.Errorf("expected deletion confirmation, got: %s", text)
+	if !strings.Contains(text, "Retracted 1 message") {
+		t.Errorf("expected retraction confirmation, got: %s", text)
 	}
 
 	msgs, _ := reg.Server.GetMessagesByIDs([]string{id})
-	if len(msgs) != 0 {
-		t.Error("message should be deleted when dry_run=false")
+	if len(msgs) != 1 || !msgs[0].RetractedAt.Valid {
+		t.Error("message should be retracted (tombstoned, not destroyed) when dry_run=false")
 	}
 }
 
@@ -377,13 +403,13 @@ func TestHandleDeleteMessagesDryRunOmitted(t *testing.T) {
 	mustCreateRoom(t, reg.Server, "dry-omit")
 	id := mustPost(t, reg.Server, "dry-omit", "Claude", "Delete me too")
 
-	// No dry_run param — should delete (backward compatible)
+	// No dry_run param — should retract (the default)
 	res, _, _ := reg.handleDeleteMessages(context.Background(), nil, DeleteMessagesInput{
 		MessageIDs: id,
 	})
 	text := resultText(res)
-	if !strings.Contains(text, "Deleted 1 message") {
-		t.Errorf("expected deletion confirmation, got: %s", text)
+	if !strings.Contains(text, "Retracted 1 message") {
+		t.Errorf("expected retraction confirmation, got: %s", text)
 	}
 }
 
@@ -424,7 +450,7 @@ func TestHandleUpdateMessageExpectedContentMatch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("handleUpdateMessage error: %v", err)
 	}
-	if !strings.Contains(resultText(res), "updated") {
+	if !strings.Contains(resultText(res), "edited") {
 		t.Errorf("expected success, got: %s", resultText(res))
 	}
 }
@@ -454,19 +480,19 @@ func TestHandleUpdateMessageExpectedContentMismatch(t *testing.T) {
 }
 
 func TestHandleUpdateMessageNoExpectedContent(t *testing.T) {
-	// Omitting expected_content = blind overwrite (existing behaviour unchanged)
+	// Omitting expected_content skips the optimistic check (still append-only)
 	reg := setupHandlerTest(t)
 	mustCreateRoom(t, reg.Server, "occ-blind")
 	id := mustPost(t, reg.Server, "occ-blind", "Claude", "original")
 
 	res, _, err := reg.handleUpdateMessage(context.Background(), nil, UpdateMessageInput{
 		MessageID: id,
-		Content:   "blind overwrite",
+		Content:   "new revision",
 	})
 	if err != nil {
 		t.Fatalf("handleUpdateMessage error: %v", err)
 	}
-	if !strings.Contains(resultText(res), "updated") {
+	if !strings.Contains(resultText(res), "edited") {
 		t.Errorf("expected success, got: %s", resultText(res))
 	}
 }

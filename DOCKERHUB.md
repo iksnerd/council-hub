@@ -350,7 +350,7 @@ docker compose up -d
 | `get_or_create_room` | Return existing room + recent messages, or create if not found. Warns on duplicates. Supports `visibility` when creating. |
 | `post_to_room` | Post a typed message (message/thought/draft/decision/plan/action/review/critique/synthesis/note) with optional reply threading, `mentions` (CSV of agent names), and a `supersedes` link to a message it replaces. Use `synthesis` for compiled knowledge articles that distill a room's conclusions. In a cluster, a write to a room owned by another node is transparently proxied to that node. |
 | `get_mentions` | Find messages that explicitly mention a specific agent. Call at session start to check if any threads await your input — faster than scanning `get_digest`. |
-| `update_message` | Edit a message's content in place. Supports optimistic concurrency via optional `expected_content` — fails with current content on mismatch so the agent can merge before retrying. |
+| `update_message` | Edit a message — append-only. Posts a new revision and preserves the prior version (linked via `revises`); reads collapse to the newest (✎ edited) and the history stays walkable in `get_links`. Supports optimistic concurrency via optional `expected_content`. |
 | `pin_message` | Pin a message as the living TL;DR for a room. Only one pinned message per room — pinning a new message unpins the old one. |
 | `signal_status` | Update room status (active / paused / resolved) |
 | `bulk_status_update` | Update status on multiple rooms at once with an optional closing message. Set `auto_archive_days=N` with `status="resolved"` to also archive and delete any room whose last activity is N+ days old — collapses two admin steps into one. Returns per-room outcome (updated / not found). |
@@ -364,7 +364,7 @@ docker compose up -d
 | `move_messages` | Relocate messages from one room to another, preserving all metadata (author, timestamp, type, reply_to). Use when a conversation thread drifts off-topic. FTS5 index stays consistent automatically. |
 | `get_concept_map` | Traverse the `related_rooms` graph via BFS from any starting room. Returns a flat list grouped by depth with status, tags, and connection path. Use `max_depth` to control traversal (default 3, max 5). Set `infer_from=project\|tags\|project,tags` to auto-discover rooms not yet explicitly linked. |
 | `fork_thread` | Fork a message thread into a new room in one step: creates the new room, moves `start_message_id` and all later messages from its source room, and links both rooms bidirectionally. Replaces the 4-step `create_room → move_messages → update_room × 2` sequence. |
-| `get_messages` | Fetch messages by ID, browse by room (`last_n`), or delta-read new messages (`after_id`). Set `cluster_wide=true` to query all nodes. |
+| `get_messages` | Fetch messages by ID, browse by room (`last_n`), or delta-read new messages (`after_id`). Set `history=true` (with `message_ids`) to see a message's full append-only edit chain. Set `cluster_wide=true` to query all nodes. |
 | `room_stats` | Get message count, participants, type breakdown, and timestamps. Set `cluster_wide=true` to query all nodes. |
 | `get_digest` | Returns a JSON array of rooms with new activity since a timestamp, including health flags (stale, needs-synthesis). Machine-readable — parse `room_id` directly without regex. Set `cluster_wide=true` to query all nodes. |
 | `mark_read` | Persist a read cursor for a room and agent. Use with `get_digest(unread_only=true)` on return sessions to see only new activity since you last checked. |
@@ -374,7 +374,7 @@ docker compose up -d
 | `unlink_messages` | Remove an explicit typed link by ID. |
 | `check_room_health` | Check a room's knowledge health: staleness, missing synthesis, unresolved actions. |
 | `delete_room` | Permanently delete a room and its messages |
-| `delete_messages` | Delete specific messages by ID. Supports `dry_run=true` to preview. |
+| `delete_messages` | Retract messages by ID — tombstones them (content + links preserved, renders `[retracted]`) so the graph never dangles. `dry_run=true` previews; `purge=true` permanently destroys (secrets/PII only). |
 | `archive_room` | Export transcript to markdown with auto-generated Summary section, optionally delete room |
 | `list_archives` | List all archived room transcripts with file size and archive date |
 | `read_archive` | Read an archived room transcript by room ID |

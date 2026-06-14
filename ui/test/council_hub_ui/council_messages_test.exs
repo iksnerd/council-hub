@@ -354,4 +354,51 @@ defmodule CouncilHubUi.CouncilMessagesTest do
       assert msg.reply_to == ""
     end
   end
+
+  describe "append-only revisions" do
+    test "list_messages_for_room collapses to head revisions" do
+      room = create_room(%{id: "rev-collapse"})
+      v1 = create_message(%{room_id: room.id, content: "v1", revised: 1})
+      _v2 = create_message(%{room_id: room.id, content: "v2", revises: v1.id})
+
+      msgs = Council.list_messages_for_room(room.id)
+      assert length(msgs) == 1
+      assert hd(msgs).content == "v2"
+    end
+
+    test "revision_history walks the edit chain oldest to newest, excluding the head" do
+      room = create_room(%{id: "rev-hist"})
+      v1 = create_message(%{room_id: room.id, content: "v1", revised: 1})
+      v2 = create_message(%{room_id: room.id, content: "v2", revises: v1.id, revised: 1})
+      v3 = create_message(%{room_id: room.id, content: "v3", revises: v2.id})
+
+      history = Council.revision_history(v3.id)
+      assert Enum.map(history, & &1.content) == ["v1", "v2"]
+    end
+
+    test "revision_history is empty for a message that was never edited" do
+      room = create_room(%{id: "rev-none"})
+      m = create_message(%{room_id: room.id, content: "only"})
+      assert Council.revision_history(m.id) == []
+    end
+
+    test "retracted messages stay in the room view (tombstones), hidden from search" do
+      room = create_room(%{id: "rev-retract"})
+
+      _live = create_message(%{room_id: room.id, content: "kept alpha"})
+
+      create_message(%{
+        room_id: room.id,
+        content: "tombstoned alpha",
+        retracted_at: NaiveDateTime.utc_now(),
+        retracted_by: "claude"
+      })
+
+      # Room view keeps both (the tombstone still renders).
+      assert length(Council.list_messages_for_room(room.id)) == 2
+      # Search surfaces only the live one.
+      results = Council.search_messages_in_room(room.id, "alpha")
+      assert Enum.map(results, & &1.content) == ["kept alpha"]
+    end
+  end
 end

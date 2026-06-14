@@ -34,6 +34,7 @@ type GetMessagesInput struct {
 	LastN       string `json:"last_n"`
 	AfterID     string `json:"after_id"`
 	ClusterWide string `json:"cluster_wide"`
+	History     string `json:"history"`
 }
 
 // GetMentionsInput represents the parameters for querying messages that mention an agent.
@@ -193,6 +194,32 @@ func (r *Registry) handleGetMessages(ctx context.Context, req *mcp.CallToolReque
 			if p != "" {
 				ids = append(ids, p)
 			}
+		}
+
+		// history=true: show each message's full append-only edit chain (every
+		// preserved version, oldest → newest) instead of just the current head.
+		if args.History == "true" {
+			var b strings.Builder
+			for _, id := range ids {
+				chain, err := r.Server.GetRevisionHistory(id)
+				if err != nil {
+					fmt.Fprintf(&b, "#%.8s — not found\n\n", id)
+					continue
+				}
+				fmt.Fprintf(&b, "## #%.8s — %d version(s)\n\n", chain[len(chain)-1].ID, len(chain))
+				for i, m := range chain {
+					marker := "original"
+					if i == len(chain)-1 {
+						marker = "current"
+					} else if i > 0 {
+						marker = "revision"
+					}
+					ts := m.Timestamp.Format("2006-01-02 15:04:05")
+					fmt.Fprintf(&b, "**v%d (%s)** — #%s [%s] %s (%s):\n\n%s\n\n", i+1, marker, m.ID, ts, m.Author, m.MessageType, m.Content)
+				}
+				b.WriteString("---\n\n")
+			}
+			return msg(b.String())
 		}
 
 		var err error

@@ -210,13 +210,14 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "get_messages",
-		Description: "Fetch specific messages by ID, browse a room's recent messages, or delta-read new messages since a known ID. Supports: message_ids for specific fetch, room_id+last_n for browsing, room_id+after_id for 'give me everything new since X'. For formatted transcripts with room context, use read_transcript instead.",
+		Description: "Fetch specific messages by ID, browse a room's recent messages, or delta-read new messages since a known ID. Supports: message_ids for specific fetch, room_id+last_n for browsing, room_id+after_id for 'give me everything new since X'. Set history=true with message_ids to see each message's full append-only edit chain (every preserved version, oldest → newest). For formatted transcripts with room context, use read_transcript instead.",
 		InputSchema: schema(nil, map[string]map[string]any{
 			"message_ids":  prop("string", "Comma-separated message IDs (e.g. 48,52,55)"),
 			"room_id":      prop("string", "Browse messages from this room (alternative to message_ids)"),
 			"last_n":       prop("string", "Number of recent messages to fetch when using room_id (default 10, max 50)"),
 			"after_id":     prop("string", "Return only messages with ID greater than this value (requires room_id). For delta reads without transcript formatting."),
 			"cluster_wide": prop("string", "Set to 'true' to fetch messages from all cluster nodes. Default: local only."),
+			"history":      prop("string", "Set to 'true' (with message_ids) to return each message's full revision history — every preserved version in the append-only edit chain, oldest to newest."),
 		}),
 	}, r.handleGetMessages)
 
@@ -232,12 +233,13 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "update_message",
-		Description: "Edit a message's content in-place. Use for: (1) maintaining living documents like status tables or running summaries that evolve over time, (2) correcting factual errors. Convention: prefer posting a new message for new information; use update_message only when the original is a 'living' document or contains a mistake. Preserves author, timestamp, room, and other fields. Use expected_content to prevent lost updates when multiple agents may edit the same message.",
+		Description: "Edit a message — append-only. Nothing is overwritten: this posts a NEW revision carrying the new content and links it back to the prior version via `revises`, so every version is preserved as an immutable, addressable node (the NLS Journal property). Reads collapse to the newest version (the head) and mark it ✎ edited; the prior versions stay walkable via get_links (revises / revised_by). Use for: (1) maintaining living documents like status tables or running summaries, (2) correcting errors. The new head inherits the original's reply/supersedes links and pin. Use expected_content to prevent lost updates when multiple agents may edit the same message.",
 		InputSchema: schema([]string{"message_id", "content"}, map[string]map[string]any{
-			"message_id":       prop("string", "ID of the message to update"),
-			"content":          prop("string", "New message content (replaces existing)"),
+			"message_id":       prop("string", "ID of the message to edit (must be the current head — editing an already-revised node returns the head to edit instead)"),
+			"content":          prop("string", "New message content (becomes the new head revision)"),
 			"message_type":     prop("string", "Optionally change message type: message, thought, draft, decision, plan, action, review, critique, synthesis, note"),
-			"expected_content": prop("string", "If provided, the update fails with the current content if this doesn't match — prevents lost updates when multiple agents edit the same living document."),
+			"expected_content": prop("string", "If provided, the edit fails with the current content if this doesn't match — prevents lost updates when multiple agents edit the same living document."),
+			"author":           prop("string", "Optional name of the agent making the edit (attributes the revision; defaults to the original author)"),
 		}),
 	}, r.handleUpdateMessage)
 
@@ -290,10 +292,13 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "delete_messages",
-		Description: "Delete specific messages by their IDs. Provide a comma-separated list of message IDs. Use dry_run=true to preview what would be deleted without actually deleting.",
+		Description: "Retract messages — the immutable counterpart to deletion. By default this tombstones the messages (sets retracted_at): the nodes, their content, and their links all survive, and they render as \"[retracted]\" — so the knowledge graph never dangles. Provide a comma-separated list of message IDs. Use dry_run=true to preview. Retraction is reversible: pass restore=true to bring tombstoned messages back. Pass purge=true ONLY for content that must not persist (a leaked secret, PII): purge hard-deletes the rows and cascade-removes their links, permanently destroying signal — prefer retract for everything else.",
 		InputSchema: schema([]string{"message_ids"}, map[string]map[string]any{
-			"message_ids": prop("string", "Comma-separated message IDs to delete"),
-			"dry_run":     prop("string", "Set to 'true' to preview deletions without executing. Returns message details (id, author, timestamp, room, excerpt)."),
+			"message_ids": prop("string", "Comma-separated message IDs to retract (or restore/purge)"),
+			"dry_run":     prop("string", "Set to 'true' to preview without executing. Returns message details (id, author, timestamp, room, excerpt)."),
+			"author":      prop("string", "Optional name of the agent retracting (recorded as retracted_by)"),
+			"purge":       prop("string", "Set to 'true' to permanently destroy instead of retract — hard-deletes the rows and their links. Use only for secrets/PII that must not persist."),
+			"restore":     prop("string", "Set to 'true' to reverse a retraction — clears the tombstone so the messages render normally again."),
 		}),
 	}, r.handleDeleteMessages)
 
@@ -446,8 +451,8 @@ func (r *Registry) RegisterTools() {
 			"project":        prop("string", "Project the notebook belongs to (create only). Omit for a GLOBAL notebook — e.g. cross-project TODOs or standing checklists: it can ref messages from any room and is listed in every project's timeline footer and /notebook view."),
 			"title":          prop("string", "Human-readable title (create only)."),
 			"entry_id":       prop("string", "Target entry (update, start, check, uncheck, move, remove). From the *(entry #...)* markers in read_notebook output."),
-			"kind":           enumProp("string", "Entry kind for add. ref_id implies 'ref' and prose implies 'prose'; pass kind=room_ref explicitly with ref_id=<room_id> to track a room's live state, or kind=task with prose=<label> for a first-class checklist item you check/uncheck.", []string{"ref", "room_ref", "prose", "task"}),
-			"ref_id":         prop("string", "Message ID to transclude (add with kind=ref). Must exist on this node."),
+			"kind":           enumProp("string", "Entry kind for add. ref_id implies 'ref' and prose implies 'prose'; pass kind=room_ref explicitly with ref_id=<room_id> to track a room's live state, kind=query_ref with ref_id=<room_id>:<message_type> to transclude 'the latest <type> in <room>' (resolved live — a structural address, not a frozen ID), or kind=task with prose=<label> for a first-class checklist item you check/uncheck.", []string{"ref", "room_ref", "query_ref", "prose", "task"}),
+			"ref_id":         prop("string", "What to transclude: a message ID (kind=ref), a room ID (kind=room_ref), or 'room_id:message_type' (kind=query_ref, e.g. 'auth-room:synthesis'). Must exist on this node."),
 			"prose":          prop("string", "Markdown content (add with kind=prose, or update) — also the task label (add with kind=task)."),
 			"after_entry_id": prop("string", "Position control for add and move: the entry to land after. Omit on add to append; empty on move means the top."),
 		}),

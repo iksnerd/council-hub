@@ -198,7 +198,7 @@ func TestIntegration_UpdateMessage(t *testing.T) {
 		"message_id": id,
 		"content":    "updated content",
 	})
-	if !strings.Contains(resultText(result), "updated") {
+	if !strings.Contains(resultText(result), "edited") {
 		t.Errorf("unexpected: %s", resultText(result))
 	}
 }
@@ -223,7 +223,7 @@ func TestIntegration_DeleteMessages(t *testing.T) {
 	result := callTool(t, cs, "delete_messages", map[string]any{
 		"message_ids": id,
 	})
-	if !strings.Contains(strings.ToLower(resultText(result)), "deleted") {
+	if !strings.Contains(strings.ToLower(resultText(result)), "retracted") {
 		t.Errorf("unexpected: %s", resultText(result))
 	}
 }
@@ -458,19 +458,21 @@ func TestIntegration_UpdateMessageOptimisticConcurrency(t *testing.T) {
 		"content":          "updated content",
 		"expected_content": "original content",
 	})
-	if !strings.Contains(resultText(okResult), "updated") {
+	if !strings.Contains(resultText(okResult), "edited") {
 		t.Errorf("expected success, got: %s", resultText(okResult))
 	}
 
-	// Mismatched expected_content should fail with a user-readable error
+	// A second agent editing the same (now-superseded) node is caught append-only
+	// style: the original has been revised, so it's pointed at the current head to
+	// edit instead — the immutable counterpart to the optimistic-concurrency guard.
 	failResult := callTool(t, cs, "update_message", map[string]any{
 		"message_id":       id,
-		"content":          "would overwrite",
+		"content":          "would fork the chain",
 		"expected_content": "stale — this no longer matches",
 	})
 	text := resultText(failResult)
-	if !strings.Contains(text, "content changed") {
-		t.Errorf("expected concurrency error, got: %s", text)
+	if !strings.Contains(text, "already revised") {
+		t.Errorf("expected already-revised guard, got: %s", text)
 	}
 }
 

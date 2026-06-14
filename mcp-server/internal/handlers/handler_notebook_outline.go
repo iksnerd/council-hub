@@ -177,6 +177,24 @@ func (r *Registry) renderOutline(notebookID string, level int) (*mcp.CallToolRes
 			} else {
 				inFlight = append(inFlight, e)
 			}
+		case e.Kind == "query_ref":
+			// A live query transclusion: "latest <type> in <room>", resolved now —
+			// structural addressing, not a frozen message ID. Renders inline.
+			roomID, msgType := e.RefID, ""
+			if i := strings.LastIndex(e.RefID, ":"); i > 0 {
+				roomID, msgType = e.RefID[:i], e.RefID[i+1:]
+			}
+			if !e.RefFound {
+				fmt.Fprintf(&b, "\n> **↪ latest %s in %s** — *none yet* *(entry %s)*\n", msgType, roomID, e.ID)
+			} else {
+				ts := e.RefTime.Format("2006-01-02 15:04")
+				content := council.ResolveCommitRefs(e.RefContent, e.RefRepo)
+				if level > 0 {
+					content = firstNonEmptyLine(content)
+				}
+				fmt.Fprintf(&b, "\n> **↪ latest %s in %s** — [%s] %s:\n> %s\n*(entry %s)*\n",
+					msgType, roomID, ts, e.RefAuthor, strings.ReplaceAll(content, "\n", "\n> "), e.ID)
+			}
 		case e.Kind == "prose":
 			prose := e.Prose
 			if level > 0 {
