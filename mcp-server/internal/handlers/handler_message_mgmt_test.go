@@ -291,6 +291,31 @@ func TestHandleDeleteMessagesPurge(t *testing.T) {
 	}
 }
 
+// TestHandleGetMessagesMasksRetracted guards the v0.46.3 fix: a retracted node
+// must read as a tombstone through get_messages too, not just read_transcript —
+// the bug was get_messages printing m.Content raw, leaking withdrawn content.
+func TestHandleGetMessagesMasksRetracted(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "mask-room")
+	id := mustPost(t, reg.Server, "mask-room", "Claude", "secret typo to withdraw")
+
+	if _, err := reg.Server.RetractMessages([]string{id}, "Claude"); err != nil {
+		t.Fatalf("retract failed: %v", err)
+	}
+
+	// Fetch by ID and browse by room — both rendered get_messages paths must mask.
+	for _, in := range []GetMessagesInput{{MessageIDs: id}, {RoomID: "mask-room", LastN: "10"}} {
+		res, _, _ := reg.handleGetMessages(context.Background(), nil, in)
+		out := resultText(res)
+		if strings.Contains(out, "secret typo") {
+			t.Errorf("get_messages leaked retracted content (%+v):\n%s", in, out)
+		}
+		if !strings.Contains(out, "[retracted by Claude]") {
+			t.Errorf("get_messages should show tombstone (%+v):\n%s", in, out)
+		}
+	}
+}
+
 func TestHandleDeleteMessagesMissing(t *testing.T) {
 	reg := setupHandlerTest(t)
 

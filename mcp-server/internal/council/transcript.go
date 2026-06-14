@@ -111,7 +111,7 @@ func FormatTranscriptView(room Room, messages []Message, v ViewSpec) string {
 			}
 			pinnedBody := projectBody(m.Content)
 			if m.RetractedAt.Valid {
-				pinnedBody = "_[retracted]_"
+				pinnedBody = DisplayContent(m)
 			}
 			fmt.Fprintf(&b, "\n**PINNED%s%s:**\n%s\n---\n", prefix, staleNote, pinnedBody)
 			break
@@ -126,11 +126,7 @@ func FormatTranscriptView(room Room, messages []Message, v ViewSpec) string {
 		// A retracted node survives in the log but its content reads as a tombstone —
 		// the immutable counterpart to deletion (graph and lineage stay intact).
 		if m.RetractedAt.Valid {
-			if m.RetractedBy != "" {
-				content = fmt.Sprintf("_[retracted by %s]_", m.RetractedBy)
-			} else {
-				content = "_[retracted]_"
-			}
+			content = DisplayContent(m)
 		}
 		// A head revision carries an "edited" marker; its prior versions are hidden
 		// from the transcript (filtered to revised = 0) but remain in the graph.
