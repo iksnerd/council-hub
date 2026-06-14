@@ -8,6 +8,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 Changes on `main` not yet in a tagged release.
 
+## [0.46.3] - 2026-06-14
+
+Patch — found by smoke-testing v0.46.2. A consistency fix to the retract tombstone.
+
+### Fixed
+- **Retracted content leaked through `get_messages` and `get_mentions`.** A retracted message correctly read as `[retracted]` in `read_transcript` and the `council://message/{id}` resource, and was excluded outright from search/notebook (via the live-clause) — but `get_messages` (both the by-ID fetch and the room browse) and `get_mentions` printed the raw body, since those rows aren't filtered, only masked at render. Withdrawn content was therefore still readable verbatim. All content-surfacing renders now route through a shared `DisplayContent` helper that masks retracted nodes as `_[retracted by <who>]_`, so the tombstone is honored on every read path. No schema or API change.
+
 ## [0.46.2] - 2026-06-14
 
 Patch on top of v0.46.0 — two small fixes to the append-only path found in a post-release review. No API or behavior change for callers.

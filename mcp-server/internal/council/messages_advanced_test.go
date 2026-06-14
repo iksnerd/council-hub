@@ -1,6 +1,7 @@
 package council
 
 import (
+	"database/sql"
 	"strings"
 	"testing"
 )
@@ -345,6 +346,26 @@ func TestRetractTombstonesNode(t *testing.T) {
 	tr := FormatTranscript(room, msgs)
 	if !strings.Contains(tr, "[retracted by claude]") || strings.Contains(tr, "secret typo") {
 		t.Errorf("expected tombstone, not content:\n%s", tr)
+	}
+}
+
+// TestDisplayContent covers the shared masking helper every read path routes
+// through: live content passes verbatim, a retracted node reads as a tombstone
+// (with attribution when recorded).
+func TestDisplayContent(t *testing.T) {
+	if got := DisplayContent(Message{Content: "hello"}); got != "hello" {
+		t.Errorf("live content should pass through, got %q", got)
+	}
+	retracted := Message{Content: "secret", RetractedAt: sql.NullTime{Valid: true}, RetractedBy: "claude"}
+	if got := DisplayContent(retracted); got != "_[retracted by claude]_" {
+		t.Errorf("expected attributed tombstone, got %q", got)
+	}
+	if strings.Contains(DisplayContent(retracted), "secret") {
+		t.Error("retracted content must not leak through DisplayContent")
+	}
+	anon := Message{Content: "secret", RetractedAt: sql.NullTime{Valid: true}}
+	if got := DisplayContent(anon); got != "_[retracted]_" {
+		t.Errorf("expected anonymous tombstone, got %q", got)
 	}
 }
 

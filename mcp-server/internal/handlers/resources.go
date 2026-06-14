@@ -537,7 +537,7 @@ func (r *Registry) handleMessageResource(ctx context.Context, req *mcp.ReadResou
 
 	b.WriteString("\n---\n\n")
 	if m.RetractedAt.Valid {
-		b.WriteString("_[retracted]_\n")
+		b.WriteString(council.DisplayContent(m) + "\n")
 	} else {
 		room, rerr := r.Server.GetRoom(m.RoomID)
 		repo := ""

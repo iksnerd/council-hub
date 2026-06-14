@@ -75,7 +75,7 @@ func (r *Registry) handleSearchMessages(ctx context.Context, req *mcp.CallToolRe
 			} else {
 				fmt.Fprintf(&b, "Found %d message(s):\n\n", len(messages))
 				for _, m := range messages {
-					fmt.Fprintf(&b, "**[#%.8s %s] %s (%s):** %s\n\n", m.ID, m.Timestamp.Format("2006-01-02"), m.Author, m.MessageType, m.Content)
+					fmt.Fprintf(&b, "**[#%.8s %s] %s (%s):** %s\n\n", m.ID, m.Timestamp.Format("2006-01-02"), m.Author, m.MessageType, council.DisplayContent(m))
 				}
 			}
 			return msg(b.String())
@@ -150,7 +150,7 @@ func (r *Registry) handleSearchMessages(ctx context.Context, req *mcp.CallToolRe
 	if args.SummaryOnly == "true" {
 		for _, m := range messages {
 			ts := m.Timestamp.Format("2006-01-02 15:04")
-			excerpt := m.Content
+			excerpt := council.DisplayContent(m)
 			if len(excerpt) > 120 {
 				excerpt = excerpt[:120]
 				if i := strings.LastIndex(excerpt, " "); i > 80 {
@@ -165,7 +165,7 @@ func (r *Registry) handleSearchMessages(ctx context.Context, req *mcp.CallToolRe
 	} else {
 		for _, m := range messages {
 			ts := m.Timestamp.Format("2006-01-02 15:04:05")
-			snippet := m.Content
+			snippet := council.DisplayContent(m)
 			if args.FullContent != "true" && len(snippet) > 300 {
 				snippet = snippet[:300] + "..."
 			}
@@ -267,7 +267,7 @@ func (r *Registry) handleGetMessages(ctx context.Context, req *mcp.CallToolReque
 	fmt.Fprintf(&b, "Found %d message(s):\n\n", len(messages))
 	for _, m := range messages {
 		ts := m.Timestamp.Format("2006-01-02 15:04:05")
-		fmt.Fprintf(&b, "---\n**#%s** [%s] %s in **%s** (%s):\n\n%s\n\n", m.ID, ts, m.Author, m.RoomID, m.MessageType, m.Content)
+		fmt.Fprintf(&b, "---\n**#%s** [%s] %s in **%s** (%s):\n\n%s\n\n", m.ID, ts, m.Author, m.RoomID, m.MessageType, council.DisplayContent(m))
 	}
 
 	return msg(b.String())
@@ -304,7 +304,7 @@ func (r *Registry) handleGetMentions(ctx context.Context, req *mcp.CallToolReque
 	fmt.Fprintf(&b, "Found %d message(s) mentioning @%s:\n\n", len(messages), args.Author)
 	for _, m := range messages {
 		ts := m.Timestamp.Format("2006-01-02 15:04:05")
-		excerpt := m.Content
+		excerpt := council.DisplayContent(m)
 		if len(excerpt) > 200 {
 			excerpt = excerpt[:200]
 			if i := strings.LastIndex(excerpt, " "); i > 150 {

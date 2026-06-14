@@ -57,6 +57,22 @@ type Message struct {
 	Timestamp   time.Time
 }
 
+// DisplayContent returns the content to surface for a message, masking a retracted
+// node as a tombstone so every read path hides withdrawn content consistently — the
+// immutable counterpart to deletion (the row and its links survive, the content
+// reads as "[retracted]"). Non-retracted messages return their content unchanged.
+// Reads that need a raw body (revision history, dry-run previews) use m.Content
+// directly and deliberately bypass this.
+func DisplayContent(m Message) string {
+	if m.RetractedAt.Valid {
+		if m.RetractedBy != "" {
+			return fmt.Sprintf("_[retracted by %s]_", m.RetractedBy)
+		}
+		return "_[retracted]_"
+	}
+	return m.Content
+}
+
 // messageColumns is the canonical column list for SELECT queries on messages.
 const messageColumns = `id, room_id, author, content, message_type, is_summary, reply_to, pinned, reactions, mentions, supersedes, revises, revised, retracted_at, retracted_by, timestamp`
 
