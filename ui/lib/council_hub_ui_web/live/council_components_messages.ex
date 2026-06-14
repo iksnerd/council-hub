@@ -107,8 +107,7 @@ defmodule CouncilHubUiWeb.MessageComponents do
               phx-hook="RelativeTime"
               data-timestamp={NaiveDateTime.to_iso8601(@msg.timestamp)}
               class="text-[10px] text-[var(--ch-text-xs)] font-mono opacity-0 group-hover:opacity-100 transition-opacity"
-            >
-            </span>
+            ></span>
             <button
               id={"permalink-#{@msg.id}"}
               phx-hook="CopyMessage"

@@ -238,8 +238,7 @@ defmodule CouncilHubUiWeb.NotebookLive do
         class="bg-[var(--ch-surface)] border border-[var(--ch-border)] rounded-lg p-3"
       >
         <div class="flex items-center gap-2 flex-wrap">
-          <span class={["w-1.5 h-1.5 rounded-full shrink-0", status_dot_class(@entry.room_status)]}>
-          </span>
+          <span class={["w-1.5 h-1.5 rounded-full shrink-0", status_dot_class(@entry.room_status)]}></span>
           <.link
             navigate={~p"/rooms/#{@entry.room_id}"}
             class="text-[12px] font-mono text-[var(--ch-text-hi)] hover:underline"

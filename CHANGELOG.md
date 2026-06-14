@@ -8,6 +8,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 Changes on `main` not yet in a tagged release.
 
+## [0.46.1] - 2026-06-14
+
+Patch on top of v0.46.0 — **formatting only, no functional change.** The dependabot bump to `phoenix_live_view` 1.2 (auto-merged just before the v0.46.0 tag) ships an updated HEEx formatter; `mix format --check-formatted` then flagged the `.heex`/component templates (including pre-existing ones) under the new rules, turning the v0.46.0 tag's CI red. Re-ran `mix format` against the 1.2 toolchain so the tag CI is green again. v0.46.0's published image is functionally identical.
+
 ## [0.46.0] - 2026-06-14
 
 The **append-only / Open Hyperdocument** leap. The message ledger becomes immutable *by construction* — Engelbart's NLS Journal property, not just by convention. Edits never overwrite: they append a new revision and preserve every prior version as an addressable node; deletes *retract* (tombstone) instead of erasing, so the knowledge graph never dangles, with a deliberate `purge` escape hatch for secrets/PII. On top of that: walkable revision history, reversible retraction, a stable address per message, query-transclusion in notebooks, and the Journal UI to surface it all. No new tools — **37 MCP tools**, **10 message types**; one new resource template, one new notebook entry kind.

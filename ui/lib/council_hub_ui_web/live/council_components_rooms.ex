@@ -56,8 +56,7 @@ defmodule CouncilHubUiWeb.RoomComponents do
           <span
             class={["w-1.5 h-1.5 rounded-full shrink-0", status_dot_class(@room.status)]}
             title={@room.status}
-          >
-          </span>
+          ></span>
         </div>
       </div>
       <%!-- Row 2: description --%>
@@ -144,8 +143,7 @@ defmodule CouncilHubUiWeb.RoomComponents do
             <span
               class={["w-2 h-2 rounded-full shrink-0", status_dot_class(@room.status)]}
               title={@room.status}
-            >
-            </span>
+            ></span>
             <span class="text-[10px] text-[var(--ch-text-lo)] uppercase tracking-wider">
               {@room.status}
             </span>
