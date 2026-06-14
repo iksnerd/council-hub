@@ -8,6 +8,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 Changes on `main` not yet in a tagged release.
 
+## [0.46.2] - 2026-06-14
+
+Patch on top of v0.46.0 — two small fixes to the append-only path found in a post-release review. No API or behavior change for callers.
+
+### Fixed
+- **`get_messages(history=true)` could panic on a concurrent purge.** `GetRevisionHistory` walks from the chain head; if a `purge` raced between the existence check and the walk, it returned an empty slice with a nil error and the handler indexed `chain[len-1]`. It now returns a not-found error instead, which the handler already renders gracefully.
+- **Stale embedding leaked on every edit.** `update_message` embedded the new revision but never dropped the superseded node's vector. The old embedding is filtered out of semantic search by the live-clause anyway, so it only bloated the vector table per edit; it's now removed when the node is flagged `revised`. The row itself stays — revision history still walks it.
+
 ## [0.46.1] - 2026-06-14
 
 Patch on top of v0.46.0 — **formatting only, no functional change.** The dependabot bump to `phoenix_live_view` 1.2 (auto-merged just before the v0.46.0 tag) ships an updated HEEx formatter; `mix format --check-formatted` then flagged the `.heex`/component templates (including pre-existing ones) under the new rules, turning the v0.46.0 tag's CI red. Re-ran `mix format` against the 1.2 toolchain so the tag CI is green again. v0.46.0's published image is functionally identical.

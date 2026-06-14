@@ -174,6 +174,11 @@ func (s *Server) UpdateMessageWithExpected(messageID, newContent, newMessageType
 		return nil, err
 	}
 
+	// Drop the superseded node's vector: it's filtered out of semantic search by
+	// liveClause anyway, so keeping it only bloats the vector table per edit. The
+	// row itself stays (revision history walks it); only the embedding is dropped.
+	s.deleteVectorsLocked("message_vectors", []string{messageID})
+
 	m, err := scanMessage(s.DB.QueryRow(
 		fmt.Sprintf(`SELECT %s FROM messages WHERE id = ?`, messageColumns),
 		newID,

@@ -31,6 +31,12 @@ func (s *Server) GetRevisionHistory(messageID string) ([]Message, error) {
 		chain = append(chain, m)
 		id = m.Revises
 	}
+	// The head read can race a concurrent purge and leave the chain empty even
+	// though the message existed at the top of this call; never hand back an empty
+	// slice with a nil error — callers index chain[len-1].
+	if len(chain) == 0 {
+		return nil, fmt.Errorf("message #%.8s not found", messageID)
+	}
 	// chain is newest → oldest; flip to chronological.
 	for i, j := 0, len(chain)-1; i < j; i, j = i+1, j-1 {
 		chain[i], chain[j] = chain[j], chain[i]
