@@ -264,7 +264,7 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "link_messages",
-		Description: "Assert a typed link between two messages, building an addressable knowledge graph over the ledger. Relations: refines, contradicts, implements, duplicates, depends-on, relates, informs. Use informs to wire a journal note to the deliberation it provides context for (note → decision/action) — the notebook timeline then weaves the note's `↳ informs` connections in, and get_links on the decision surfaces the notes that inform it, so journal context becomes connective tissue rather than a dead-end entry. (The reply and supersedes edges are recorded automatically via post_to_room's reply_to/supersedes params — link_messages is for the richer semantic edges.) Idempotent on (from, to, relation). Use get_links to traverse the graph from any message.",
+		Description: "Assert a typed link between two messages, building an addressable knowledge graph over the ledger. Relations: refines, contradicts, implements, duplicates, depends-on, relates, informs. Use informs to wire a journal note to the deliberation it provides context for (note → decision/action) — the notebook timeline then weaves the note's `↳ informs` connections in, and get_links on the decision surfaces the notes that inform it, so journal context becomes connective tissue rather than a dead-end entry. (The reply and supersedes edges are recorded automatically via post_to_room's reply_to/supersedes params, and revises/revised_by via update_message edits — link_messages is for the richer semantic edges.) Idempotent on (from, to, relation). Use get_links to traverse the graph from any message.",
 		InputSchema: schema([]string{"from_id", "to_id", "relation"}, map[string]map[string]any{
 			"from_id":  prop("string", "Source message ID (the one making the assertion)"),
 			"to_id":    prop("string", "Target message ID (the one being pointed at)"),
@@ -275,7 +275,7 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "get_links",
-		Description: "Show a message's neighborhood in the link graph: outgoing edges (what it points at) and incoming edges — the backlinks (what points at it). Merges explicit typed links (link_messages) with the implicit reply and supersedes edges, so you see the whole graph around a node. Use to find what refines/contradicts/supersedes a given synthesis or decision. Pass depth>1 (max 5) for a link-distance view — a breadth-first walk of everything within N hops, grouped by distance.",
+		Description: "Show a message's neighborhood in the link graph: outgoing edges (what it points at) and incoming edges — the backlinks (what points at it). Merges explicit typed links (link_messages) with the implicit reply, supersedes, and revises/revised_by edges, so you see the whole graph around a node — including the append-only edit history (walk revised_by from any version to the latest). Use to find what refines/contradicts/supersedes/revises a given synthesis or decision. Pass depth>1 (max 5) for a link-distance view — a breadth-first walk of everything within N hops, grouped by distance.",
 		InputSchema: schema([]string{"message_id"}, map[string]map[string]any{
 			"message_id": prop("string", "Message ID to fetch the link neighborhood for"),
 			"depth":      prop("string", "Hops to traverse (default 1 = immediate links; max 5). depth>1 returns a link-distance neighborhood grouped by distance."),
@@ -284,7 +284,7 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "unlink_messages",
-		Description: "Remove an explicit typed link by its ID (from link_messages or get_links output). Implicit reply/supersedes edges can't be removed here — change them via the message itself.",
+		Description: "Remove an explicit typed link by its ID (from link_messages or get_links output). Implicit reply/supersedes/revises edges can't be removed here — they're structural (reply/supersedes set at post time; revises is permanent append-only edit history).",
 		InputSchema: schema([]string{"link_id"}, map[string]map[string]any{
 			"link_id": prop("string", "ID of the link to remove"),
 		}),
