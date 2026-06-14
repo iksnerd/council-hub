@@ -372,6 +372,7 @@
               msg={msg}
               repo={Map.get(@active_room, :repo, "")}
               compact={@view_compact}
+              revisions={Map.get(@revisions, msg.id)}
             />
           <% end %>
         </div>

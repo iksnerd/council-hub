@@ -25,6 +25,7 @@ func (s *Server) GetTranscript(roomID string) ([]Message, error) {
 		SELECT %s
 		FROM messages
 		WHERE room_id = ?
+		  AND `+headClause("")+`
 		  AND (is_summary = 1 OR id > COALESCE(
 		      (SELECT MAX(id) FROM messages WHERE room_id = ? AND is_summary = 1), ''
 		  ))
@@ -54,6 +55,7 @@ func (s *Server) GetUnsummarizedMessages(roomID string) ([]Message, error) {
 		FROM messages
 		WHERE room_id = ?
 		  AND is_summary = 0
+		  AND `+liveClause("")+`
 		  AND id > COALESCE(
 		      (SELECT MAX(id) FROM messages WHERE room_id = ? AND is_summary = 1), ''
 		  )

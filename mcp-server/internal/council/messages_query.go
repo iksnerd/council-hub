@@ -13,6 +13,31 @@ func (s *Server) GetMessageByID(id string) (Message, error) {
 	))
 }
 
+// GetRevisionHistory returns every version of a message in chronological order
+// (oldest → newest), walking the append-only revises chain. messageID may name any
+// node in the chain — the walk finds the head, then follows revises back to the
+// root. A message that's never been edited returns a single-element slice.
+func (s *Server) GetRevisionHistory(messageID string) ([]Message, error) {
+	if _, err := s.GetMessageByID(messageID); err != nil {
+		return nil, err
+	}
+	id := s.headOfRevisionChain(messageID)
+	var chain []Message
+	for i := 0; i < 1000 && id != ""; i++ { // bound against any accidental cycle
+		m, err := s.GetMessageByID(id)
+		if err != nil {
+			break
+		}
+		chain = append(chain, m)
+		id = m.Revises
+	}
+	// chain is newest → oldest; flip to chronological.
+	for i, j := 0, len(chain)-1; i < j; i, j = i+1, j-1 {
+		chain[i], chain[j] = chain[j], chain[i]
+	}
+	return chain, nil
+}
+
 // GetMessagesFromIDInclusive returns all messages in roomID with id >= fromID, in chronological order.
 // UUID v7 IDs are time-ordered, so this correctly captures the starting message and everything after it.
 func (s *Server) GetMessagesFromIDInclusive(roomID, fromID string) ([]Message, error) {
@@ -38,7 +63,7 @@ func (s *Server) GetMessagesFromIDInclusive(roomID, fromID string) ([]Message, e
 
 func (s *Server) GetPinnedMessage(roomID string) (*Message, error) {
 	m, err := scanMessage(s.DB.QueryRow(
-		fmt.Sprintf(`SELECT %s FROM messages WHERE room_id = ? AND pinned = 1 LIMIT 1`, messageColumns),
+		fmt.Sprintf(`SELECT %s FROM messages WHERE room_id = ? AND pinned = 1 AND `+headClause("")+` LIMIT 1`, messageColumns),
 		roomID,
 	))
 	if err == sql.ErrNoRows {
@@ -94,8 +119,9 @@ func (s *Server) GetRecentMessages(roomID string, limit int) ([]Message, error) 
 		return nil, fmt.Errorf("room '%s' not found", roomID)
 	}
 
-	// Get last N messages in reverse, then flip to chronological
-	rows, err := s.DB.Query(fmt.Sprintf(`SELECT %s FROM messages WHERE room_id = ? ORDER BY id DESC LIMIT ?`, messageColumns), roomID, limit)
+	// Get last N messages in reverse, then flip to chronological. Collapse to head
+	// revisions; retracted nodes stay (they render as tombstones).
+	rows, err := s.DB.Query(fmt.Sprintf(`SELECT %s FROM messages WHERE room_id = ? AND `+headClause("")+` ORDER BY id DESC LIMIT ?`, messageColumns), roomID, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -125,7 +151,7 @@ func (s *Server) GetMessagesAfterID(roomID string, afterID string) ([]Message, e
 	rows, err := s.DB.Query(fmt.Sprintf(`
 		SELECT %s
 		FROM messages
-		WHERE room_id = ? AND id > ?
+		WHERE room_id = ? AND id > ? AND `+headClause("")+`
 		ORDER BY timestamp ASC`, messageColumns),
 		roomID, afterID,
 	)
@@ -154,7 +180,7 @@ func (s *Server) GetLatestPerType(roomID string) ([]Message, error) {
 		FROM (
 			SELECT *, ROW_NUMBER() OVER (PARTITION BY message_type ORDER BY id DESC) as rn
 			FROM messages
-			WHERE room_id = ? AND is_summary = 0
+			WHERE room_id = ? AND is_summary = 0 AND `+liveClause("")+`
 		) ranked
 		WHERE rn <= 2
 		ORDER BY message_type, id DESC`, messageColumns),
@@ -177,7 +203,9 @@ func (s *Server) GetLatestPerType(roomID string) ([]Message, error) {
 }
 
 func (s *Server) SearchMessages(query, author, messageType, roomID, project, since, until string, limit int) ([]Message, error) {
-	where := `WHERE 1=1`
+	// Search surfaces only current, live nodes: head revisions, never retracted
+	// tombstones. Old revisions linger in the FTS index but are filtered here.
+	where := `WHERE 1=1 AND ` + liveClause("m")
 	var args []any
 	join := ""
 	orderBy := `ORDER BY m.timestamp DESC`

@@ -102,11 +102,18 @@ func FormatTranscriptView(room Room, messages []Message, v ViewSpec) string {
 			if by, ok := supersededBy[m.ID]; ok {
 				staleNote = fmt.Sprintf(" ⚠️ superseded by #%.8s", by)
 			}
+			if m.Revises != "" {
+				staleNote += " ✎ edited"
+			}
 			prefix := headerPrefix(m, v, true)
 			if prefix != "" {
 				prefix = " " + prefix
 			}
-			fmt.Fprintf(&b, "\n**PINNED%s%s:**\n%s\n---\n", prefix, staleNote, projectBody(m.Content))
+			pinnedBody := projectBody(m.Content)
+			if m.RetractedAt.Valid {
+				pinnedBody = "_[retracted]_"
+			}
+			fmt.Fprintf(&b, "\n**PINNED%s%s:**\n%s\n---\n", prefix, staleNote, pinnedBody)
 			break
 		}
 	}
@@ -116,6 +123,21 @@ func FormatTranscriptView(room Room, messages []Message, v ViewSpec) string {
 			continue // already rendered above
 		}
 		content := projectBody(m.Content)
+		// A retracted node survives in the log but its content reads as a tombstone —
+		// the immutable counterpart to deletion (graph and lineage stay intact).
+		if m.RetractedAt.Valid {
+			if m.RetractedBy != "" {
+				content = fmt.Sprintf("_[retracted by %s]_", m.RetractedBy)
+			} else {
+				content = "_[retracted]_"
+			}
+		}
+		// A head revision carries an "edited" marker; its prior versions are hidden
+		// from the transcript (filtered to revised = 0) but remain in the graph.
+		editedTag := ""
+		if m.Revises != "" {
+			editedTag = " ✎ edited"
+		}
 		replyTag := ""
 		if m.ReplyTo != "" {
 			replyTag = fmt.Sprintf(", re: #%.8s", m.ReplyTo)
@@ -156,7 +178,7 @@ func FormatTranscriptView(room Room, messages []Message, v ViewSpec) string {
 			} else {
 				annot = supersedesTag // bare, no parens (matches the plain-message form)
 			}
-			header := strings.TrimLeft(prefix+annot+mentionTag, " ")
+			header := strings.TrimLeft(prefix+annot+mentionTag+editedTag, " ")
 			fmt.Fprintf(&b, "\n**%s:**\n%s\n", header, content)
 		}
 		if v.ShowReactions {

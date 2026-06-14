@@ -120,7 +120,8 @@ func (s *Server) SearchMessagesSemantic(query string, roomID, project, author, m
 		args[i] = id
 	}
 
-	where := fmt.Sprintf(`WHERE m.id IN (%s)`, strings.Join(placeholders, ","))
+	// Surface only current, live nodes: head revisions, never retracted tombstones.
+	where := fmt.Sprintf(`WHERE m.id IN (%s) AND `+liveClause("m"), strings.Join(placeholders, ","))
 
 	if roomID != "" {
 		parts := strings.Split(roomID, ",")

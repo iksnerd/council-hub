@@ -119,6 +119,44 @@ func TestHandleTranscriptResource(t *testing.T) {
 	}
 }
 
+func TestHandleMessageResource(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "msg-res-room")
+	a := mustPost(t, reg.Server, "msg-res-room", "Claude", "addressable node content")
+	b := mustPost(t, reg.Server, "msg-res-room", "Gemini", "points here")
+	reg.Server.CreateLink(b, a, "relates", "gemini")
+
+	result, err := reg.handleMessageResource(context.Background(), &mcp.ReadResourceRequest{
+		Params: &mcp.ReadResourceParams{URI: "council://message/" + a},
+	})
+	if err != nil {
+		t.Fatalf("handleMessageResource error: %v", err)
+	}
+	text := result.Contents[0].Text
+	if !strings.Contains(text, "council://message/"+a) {
+		t.Error("expected the node's own address in output")
+	}
+	if !strings.Contains(text, "addressable node content") {
+		t.Error("missing message content")
+	}
+	if !strings.Contains(text, "Backlinks") || !strings.Contains(text, b) {
+		t.Errorf("expected backlink from %s, got:\n%s", b, text)
+	}
+}
+
+func TestHandleMessageResourceNotFound(t *testing.T) {
+	reg := setupHandlerTest(t)
+	result, err := reg.handleMessageResource(context.Background(), &mcp.ReadResourceRequest{
+		Params: &mcp.ReadResourceParams{URI: "council://message/nonexistent"},
+	})
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if !strings.Contains(result.Contents[0].Text, "not found") {
+		t.Error("expected not-found message")
+	}
+}
+
 func TestHandleTranscriptResourceNotFound(t *testing.T) {
 	reg := setupHandlerTest(t)
 

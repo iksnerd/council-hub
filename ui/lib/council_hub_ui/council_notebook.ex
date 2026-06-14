@@ -8,6 +8,7 @@ defmodule CouncilHubUi.CouncilNotebook do
   """
 
   import Ecto.Query
+  import CouncilHubUi.MessageFilters
   alias CouncilHubUi.Repo
   alias CouncilHubUi.Council.{Room, Message, Notebook, NotebookEntry}
   alias CouncilHubUi.MessageAnnotations
@@ -34,10 +35,12 @@ defmodule CouncilHubUi.CouncilNotebook do
       limit = parse_limit(Map.get(params, "limit"))
 
       base =
-        from m in Message,
+        from(m in Message,
           join: r in Room,
           on: m.room_id == r.id,
           where: r.project == ^project and m.is_summary == false and m.message_type in ^types
+        )
+        |> live_messages()
 
       base =
         case parse_timestamp(Map.get(params, "since", "")) do

@@ -1,6 +1,7 @@
 package council
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -208,12 +209,19 @@ func TestUpdateMessageWithExpectedMatch(t *testing.T) {
 	s.CreateRoom("occ-room", "OCC test", "", "", "", "", "")
 	id, _ := s.PostMessage("occ-room", "Claude", "original", "message", "")
 
-	m, err := s.UpdateMessageWithExpected(id, "updated", "", "original")
+	m, err := s.UpdateMessageWithExpected(id, "updated", "", "original", "")
 	if err != nil {
 		t.Fatalf("UpdateMessageWithExpected failed: %v", err)
 	}
 	if m.Content != "updated" {
 		t.Errorf("expected content 'updated', got '%s'", m.Content)
+	}
+	// Append-only: the edit returns a NEW head node revising the original.
+	if m.ID == id {
+		t.Error("expected a new revision node, got the same ID (in-place overwrite)")
+	}
+	if m.Revises != id {
+		t.Errorf("expected revision to point back at original %s, got revises=%q", id, m.Revises)
 	}
 }
 
@@ -222,7 +230,7 @@ func TestUpdateMessageWithExpectedMismatch(t *testing.T) {
 	s.CreateRoom("occ-mismatch", "OCC mismatch", "", "", "", "", "")
 	id, _ := s.PostMessage("occ-mismatch", "Claude", "original", "message", "")
 
-	_, err := s.UpdateMessageWithExpected(id, "updated", "", "stale")
+	_, err := s.UpdateMessageWithExpected(id, "updated", "", "stale", "")
 	if err == nil {
 		t.Fatal("expected error for content mismatch, got nil")
 	}
@@ -236,18 +244,174 @@ func TestUpdateMessageWithExpectedMismatch(t *testing.T) {
 }
 
 func TestUpdateMessageWithExpectedEmpty(t *testing.T) {
-	// Empty expected_content = blind overwrite (same as UpdateMessage)
+	// Empty expected_content skips the optimistic check (still append-only).
 	s := setupTestServer(t)
 	s.CreateRoom("occ-empty", "OCC empty", "", "", "", "", "")
 	id, _ := s.PostMessage("occ-empty", "Claude", "original", "message", "")
 
-	m, err := s.UpdateMessageWithExpected(id, "blind update", "", "")
+	m, err := s.UpdateMessageWithExpected(id, "blind update", "", "", "")
 	if err != nil {
 		t.Fatalf("UpdateMessageWithExpected with empty expected failed: %v", err)
 	}
 	if m.Content != "blind update" {
 		t.Errorf("expected 'blind update', got '%s'", m.Content)
 	}
+}
+
+// TestEditAppendsImmutableRevision is the core OHS/Journal property: an edit never
+// overwrites — it appends a new head node, preserves the prior version, collapses
+// reads to the head, and keeps the version history walkable in the link graph.
+func TestEditAppendsImmutableRevision(t *testing.T) {
+	s := setupTestServer(t)
+	s.CreateRoom("rev-room", "Revision test", "", "", "", "", "")
+	orig, _ := s.PostMessage("rev-room", "claude", "deploy on friady", "decision", "")
+
+	head, err := s.UpdateMessageWithExpected(orig, "deploy on Friday", "", "", "gemini")
+	if err != nil {
+		t.Fatalf("edit failed: %v", err)
+	}
+
+	// New head: new ID, new content, points back at the original, attributed to the editor.
+	if head.ID == orig {
+		t.Fatal("edit overwrote in place instead of appending a revision")
+	}
+	if head.Revises != orig || head.Author != "gemini" || head.Content != "deploy on Friday" {
+		t.Errorf("unexpected head: revises=%s author=%s content=%q", head.Revises, head.Author, head.Content)
+	}
+
+	// Original is preserved verbatim and flagged as a non-head revision.
+	old, _ := s.GetMessagesByIDs([]string{orig})
+	if old[0].Content != "deploy on friady" || !old[0].Revised {
+		t.Errorf("original not preserved/flagged: content=%q revised=%v", old[0].Content, old[0].Revised)
+	}
+
+	// Reads collapse to the single head.
+	recent, _ := s.GetRecentMessages("rev-room", 10)
+	if len(recent) != 1 || recent[0].ID != head.ID {
+		t.Fatalf("expected reads to collapse to the head, got %d messages", len(recent))
+	}
+
+	// The version history is walkable: head --revises--> orig, orig <--revised_by-- head.
+	out, _, _ := s.GetLinks(head.ID)
+	if !hasEdge(out, head.ID, orig, "revises") {
+		t.Errorf("expected revises edge from head, got %+v", out)
+	}
+	_, in, _ := s.GetLinks(orig)
+	if !hasEdge(in, head.ID, orig, "revised_by") {
+		t.Errorf("expected revised_by backlink on original, got %+v", in)
+	}
+
+	// Editing the stale original is refused and points at the head.
+	_, err = s.UpdateMessageWithExpected(orig, "fork attempt", "", "", "claude")
+	already, ok := err.(*ErrAlreadyRevised)
+	if !ok || already.HeadID != head.ID {
+		t.Errorf("expected ErrAlreadyRevised pointing at %s, got %v", head.ID, err)
+	}
+
+	// The transcript shows the head marked edited, never the old text.
+	msgs, _ := s.GetTranscript("rev-room")
+	room, _ := s.GetRoom("rev-room")
+	tr := FormatTranscript(room, msgs)
+	if !strings.Contains(tr, "✎ edited") || strings.Contains(tr, "friady") {
+		t.Errorf("transcript should show edited head, not old content:\n%s", tr)
+	}
+}
+
+// TestRetractTombstonesNode verifies retraction preserves the node and its links
+// while rendering a tombstone — the immutable counterpart to deletion.
+func TestRetractTombstonesNode(t *testing.T) {
+	s := setupTestServer(t)
+	s.CreateRoom("tomb-room", "Retract test", "", "", "", "", "")
+	a, _ := s.PostMessage("tomb-room", "claude", "keep", "message", "")
+	b, _ := s.PostMessage("tomb-room", "claude", "secret typo to retract", "message", "")
+	s.CreateLink(a, b, "relates", "claude")
+
+	if _, err := s.RetractMessages([]string{b}, "claude"); err != nil {
+		t.Fatalf("retract failed: %v", err)
+	}
+
+	// Node survives and the link is intact (graph never dangles).
+	msgs, _ := s.GetTranscript("tomb-room")
+	if len(msgs) != 2 {
+		t.Fatalf("retracted node should survive, got %d messages", len(msgs))
+	}
+	out, _, _ := s.GetLinks(a)
+	if !hasEdge(out, a, b, "relates") {
+		t.Errorf("retract must not sever links, got %+v", out)
+	}
+
+	// It renders as a tombstone, not its content.
+	room, _ := s.GetRoom("tomb-room")
+	tr := FormatTranscript(room, msgs)
+	if !strings.Contains(tr, "[retracted by claude]") || strings.Contains(tr, "secret typo") {
+		t.Errorf("expected tombstone, not content:\n%s", tr)
+	}
+}
+
+// TestRestoreMessages verifies retraction is reversible (only purge is final).
+func TestRestoreMessages(t *testing.T) {
+	s := setupTestServer(t)
+	s.CreateRoom("restore-room", "Restore test", "", "", "", "", "")
+	id, _ := s.PostMessage("restore-room", "claude", "back from the dead", "message", "")
+
+	if _, err := s.RetractMessages([]string{id}, "claude"); err != nil {
+		t.Fatalf("retract failed: %v", err)
+	}
+	n, err := s.RestoreMessages([]string{id})
+	if err != nil || n != 1 {
+		t.Fatalf("expected 1 restored, got %d err=%v", n, err)
+	}
+
+	m, _ := s.GetMessagesByIDs([]string{id})
+	if m[0].RetractedAt.Valid || m[0].RetractedBy != "" {
+		t.Errorf("expected retraction cleared, got valid=%v by=%q", m[0].RetractedAt.Valid, m[0].RetractedBy)
+	}
+	// Restoring a live message is a no-op.
+	if n, _ := s.RestoreMessages([]string{id}); n != 0 {
+		t.Errorf("restoring a live message should affect 0 rows, got %d", n)
+	}
+}
+
+// TestGetRevisionHistory walks the append-only edit chain from any node.
+func TestGetRevisionHistory(t *testing.T) {
+	s := setupTestServer(t)
+	s.CreateRoom("hist-room", "History test", "", "", "", "", "")
+	v1, _ := s.PostMessage("hist-room", "claude", "v1", "draft", "")
+	h2, _ := s.UpdateMessage(v1, "v2", "")
+	h3, _ := s.UpdateMessage(h2.ID, "v3", "")
+
+	// History is identical regardless of which node in the chain you ask about.
+	for _, from := range []string{v1, h2.ID, h3.ID} {
+		chain, err := s.GetRevisionHistory(from)
+		if err != nil {
+			t.Fatalf("history(%s) failed: %v", from, err)
+		}
+		if len(chain) != 3 {
+			t.Fatalf("expected 3 versions from %s, got %d", from, len(chain))
+		}
+		if chain[0].Content != "v1" || chain[1].Content != "v2" || chain[2].Content != "v3" {
+			t.Errorf("expected v1→v2→v3, got %q→%q→%q", chain[0].Content, chain[1].Content, chain[2].Content)
+		}
+		if chain[2].ID != h3.ID {
+			t.Errorf("expected head %s last, got %s", h3.ID, chain[2].ID)
+		}
+	}
+
+	// A never-edited message returns a single version.
+	solo, _ := s.PostMessage("hist-room", "claude", "only", "message", "")
+	chain, _ := s.GetRevisionHistory(solo)
+	if len(chain) != 1 {
+		t.Errorf("expected single version for un-edited message, got %d", len(chain))
+	}
+}
+
+func hasEdge(links []MessageLink, from, to, relation string) bool {
+	for _, l := range links {
+		if l.FromID == from && l.ToID == to && l.Relation == relation {
+			return true
+		}
+	}
+	return false
 }
 
 func TestPostMessageWithMentionsStoredAndRetrievable(t *testing.T) {

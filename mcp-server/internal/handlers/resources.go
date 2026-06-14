@@ -207,7 +207,7 @@ the registry; anything tied to this repo / agent / machine → a skill file or C
 - Use **fork_thread** when a sub-conversation in a room has grown into its own topic — creates the new room, moves messages, and links both rooms in one call
 - Use **bulk_status_update** to close out a sprint in one call
 - Use **update_room** to change a room's topic, project, tags, or visibility; use add_tags/remove_tags for surgical tag edits and where_project to patch a whole project at once
-- Use **update_message** for living documents (status tables, running summaries) that evolve over time
+- Use **update_message** for living documents (status tables, running summaries) that evolve over time — edits are append-only: a new revision is posted and the prior version is preserved (✎ edited), so nothing is ever overwritten. Walk the history with get_links (revises / revised_by)
 - Use **semantic=true** in search_messages for meaning-based search (requires COUNCIL_OLLAMA_URL) — finds "login flow" when searching "authentication"
 - Use **react_to_message** for lightweight acknowledgment instead of posting a full message
 - Use **move_messages** to relocate a handful of messages; use **fork_thread** when moving everything from a point forward into a new dedicated room
@@ -334,7 +334,7 @@ update_room(room_id=…, add_tags=…, where_project=…)  # edit metadata/tags;
 rename_project(from=old-name, to=new-name)           # bulk-rename project field across all rooms
 fork_thread(start_message_id=…, new_room_id=…)       # move a thread tail into a new linked room
 move_messages(message_ids=…, target_room_id=…)       # relocate specific off-topic messages
-delete_messages(message_ids=…, dry_run=true)         # preview then delete specific messages
+delete_messages(message_ids=…, dry_run=true)         # retract (tombstone) — content + links survive; purge=true to truly destroy (secrets/PII only)
 delete_room(room_id=…)                               # permanently remove a room and all its messages
 ` + "```" + `
 
@@ -359,9 +359,12 @@ flag once its condition no longer holds — ` + "`stale`" + ` on the next non-sy
 ` + "`needs-synthesis`" + ` on a synthesis, ` + "`stale-pin`" + ` on a re-pin, ` + "`stale-plan`" + ` on an action,
 ` + "`incoherent`" + ` on a synthesis or superseding post.
 
-**Hard rule:** never destroy signal. Don't delete messages, resolve a room with an
-open question, or archive something still in use. Compile and close finished work;
-leave ambiguous rooms for a human.
+**Hard rule:** never destroy signal. The ledger is append-only — edits post a new
+revision (the old one is kept), and delete_messages *retracts* (tombstones) rather
+than erasing, so the knowledge graph never dangles. ` + "`purge=true`" + ` is the one true
+delete: reserve it for content that must not persist (a leaked secret, PII). Don't
+resolve a room with an open question or archive something still in use. Compile and
+close finished work; leave ambiguous rooms for a human.
 
 ## Triage (one project at a time)
 
@@ -464,6 +467,89 @@ func (r *Registry) RegisterResources() {
 		Description: "Prompt-optimized transcript of a council room, showing summaries and recent messages.",
 		MIMEType:    "text/markdown",
 	}, r.handleTranscript)
+
+	// Dynamic resource template for a single addressable message node. Every message
+	// has a stable, resolvable address (council://message/{id}) you can paste, link
+	// to, or transclude — the OHS universal-addressability property.
+	r.Server.MCP.AddResourceTemplate(&mcp.ResourceTemplate{
+		URITemplate: "council://message/{message_id}",
+		Name:        "Message Node",
+		Description: "A single addressable message with its metadata, revision/retraction state, and link neighborhood.",
+		MIMEType:    "text/markdown",
+	}, r.handleMessageResource)
+}
+
+func (r *Registry) handleMessageResource(ctx context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
+	uri := req.Params.URI
+	id := strings.TrimPrefix(uri, "council://message/")
+	if id == "" {
+		return nil, fmt.Errorf("invalid URI: missing message_id")
+	}
+
+	notFound := func(text string) (*mcp.ReadResourceResult, error) {
+		return &mcp.ReadResourceResult{
+			Contents: []*mcp.ResourceContents{{URI: uri, MIMEType: "text/markdown", Text: text}},
+		}, nil
+	}
+
+	m, err := r.Server.GetMessageByID(id)
+	if err != nil {
+		return notFound(fmt.Sprintf("Error: message '%s' not found.", id))
+	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "# Message #%.8s\n\n", m.ID)
+	fmt.Fprintf(&b, "- **Address:** `council://message/%s`\n", m.ID)
+	fmt.Fprintf(&b, "- **Room:** %s\n- **Author:** %s\n- **Type:** %s\n- **Posted:** %s\n",
+		m.RoomID, m.Author, m.MessageType, m.Timestamp.Format("2006-01-02 15:04:05"))
+	if m.Pinned {
+		b.WriteString("- **Pinned** 📌\n")
+	}
+	if m.Revises != "" {
+		fmt.Fprintf(&b, "- ✎ **Edited** — revises `council://message/%s` (use get_messages(history=true) for the full chain)\n", m.Revises)
+	}
+	if m.RetractedAt.Valid {
+		by := m.RetractedBy
+		if by == "" {
+			by = "unknown"
+		}
+		fmt.Fprintf(&b, "- 🪦 **Retracted** by %s\n", by)
+	}
+	if m.Supersedes != "" {
+		fmt.Fprintf(&b, "- Supersedes `council://message/%s`\n", m.Supersedes)
+	}
+
+	// Link neighborhood — outgoing + incoming, so the node is a graph entry point.
+	if out, in, lerr := r.Server.GetLinks(m.ID); lerr == nil {
+		if len(out) > 0 {
+			b.WriteString("\n**Outgoing links:**\n")
+			for _, l := range out {
+				fmt.Fprintf(&b, "- %s → `council://message/%s`\n", l.Relation, l.ToID)
+			}
+		}
+		if len(in) > 0 {
+			b.WriteString("\n**Backlinks (incoming):**\n")
+			for _, l := range in {
+				fmt.Fprintf(&b, "- `council://message/%s` %s → here\n", l.FromID, l.Relation)
+			}
+		}
+	}
+
+	b.WriteString("\n---\n\n")
+	if m.RetractedAt.Valid {
+		b.WriteString("_[retracted]_\n")
+	} else {
+		room, rerr := r.Server.GetRoom(m.RoomID)
+		repo := ""
+		if rerr == nil {
+			repo = room.Repo
+		}
+		b.WriteString(council.ResolveCommitRefs(m.Content, repo) + "\n")
+	}
+
+	return &mcp.ReadResourceResult{
+		Contents: []*mcp.ResourceContents{{URI: uri, MIMEType: "text/markdown", Text: b.String()}},
+	}, nil
 }
 
 func (r *Registry) handleTranscript(ctx context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
@@ -520,6 +606,7 @@ func (r *Registry) handleLoadResources(ctx context.Context, req *mcp.CallToolReq
 			fmt.Fprintf(&b, "| `%s` | %s | %s |\n", res.uri, res.name, res.description)
 		}
 		b.WriteString("| `council://room/{room_id}/transcript` | Room Transcript | Prompt-optimized transcript of a council room. |\n")
+		b.WriteString("| `council://message/{message_id}` | Message Node | A single addressable message with metadata, revision/retraction state, and links. |\n")
 		text := b.String()
 		return &mcp.CallToolResult{
 			Content: []mcp.Content{&mcp.TextContent{Text: text}},

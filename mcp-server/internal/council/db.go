@@ -42,16 +42,63 @@ type Message struct {
 	Reactions   string // JSON: {"emoji": ["author1", "author2"], ...}
 	Mentions    string // CSV of mentioned agent names, e.g. "claude,gemini-cli"
 	Supersedes  string // UUID of a message this one replaces (e.g. a prior synthesis), or ""
+	// Revises holds the UUID of the prior version this message revises, or "". An
+	// edit never overwrites: it appends a new node pointing back at the old one, so
+	// every version is preserved as an immutable, addressable node (the NLS Journal
+	// property). The newest node in a chain is the "head" — the one reads surface.
+	Revises string
+	// Revised is true when a newer revision has superseded this node — i.e. this is
+	// a non-head version. Reads collapse to the head by filtering revised = 0.
+	Revised bool
+	// RetractedAt is set when a message is tombstoned (the immutable counterpart to
+	// deletion): the node and its links survive, but it renders as "[retracted]".
+	RetractedAt sql.NullTime
+	RetractedBy string // who retracted it
 	Timestamp   time.Time
 }
 
 // messageColumns is the canonical column list for SELECT queries on messages.
-const messageColumns = `id, room_id, author, content, message_type, is_summary, reply_to, pinned, reactions, mentions, supersedes, timestamp`
+const messageColumns = `id, room_id, author, content, message_type, is_summary, reply_to, pinned, reactions, mentions, supersedes, revises, revised, retracted_at, retracted_by, timestamp`
+
+// headClause is the SQL predicate that collapses reads to head revisions — the
+// single source of truth for "edits are append-only, so hide superseded versions".
+// alias is the table alias used in the query ("" for none, "m" for "m.col").
+// Retracted nodes pass this filter (they still render as tombstones).
+func headClause(alias string) string {
+	return colPrefix(alias) + "revised = 0"
+}
+
+// liveClause additionally excludes retracted tombstones. Use for reads that surface
+// content as a hit (search, semantic, notebook, latest-per-type), not as a visible
+// tombstone (transcript, recent).
+func liveClause(alias string) string {
+	p := colPrefix(alias)
+	return p + "revised = 0 AND " + p + "retracted_at IS NULL"
+}
+
+func colPrefix(alias string) string {
+	if alias == "" {
+		return ""
+	}
+	return alias + "."
+}
+
+// messageScanDests returns the scan destinations for a Message in messageColumns
+// order. It is the single source of truth for the column→field mapping: scanMessage
+// uses it, and any query that selects messageColumns plus extra trailing columns
+// (e.g. the notebook's repo) appends to it rather than re-listing the fields.
+func messageScanDests(m *Message) []any {
+	return []any{
+		&m.ID, &m.RoomID, &m.Author, &m.Content, &m.MessageType, &m.IsSummary,
+		&m.ReplyTo, &m.Pinned, &m.Reactions, &m.Mentions, &m.Supersedes,
+		&m.Revises, &m.Revised, &m.RetractedAt, &m.RetractedBy, &m.Timestamp,
+	}
+}
 
 // scanMessage scans a single row into a Message struct. Use with messageColumns.
 func scanMessage(scanner interface{ Scan(...any) error }) (Message, error) {
 	var m Message
-	err := scanner.Scan(&m.ID, &m.RoomID, &m.Author, &m.Content, &m.MessageType, &m.IsSummary, &m.ReplyTo, &m.Pinned, &m.Reactions, &m.Mentions, &m.Supersedes, &m.Timestamp)
+	err := scanner.Scan(messageScanDests(&m)...)
 	return m, err
 }
 
@@ -166,6 +213,10 @@ func initSchema(db *sql.DB) error {
 		pinned BOOLEAN DEFAULT 0,
 		reactions TEXT DEFAULT '{}',
 		supersedes TEXT DEFAULT '',
+		revises TEXT DEFAULT '',
+		revised INTEGER DEFAULT 0,
+		retracted_at DATETIME,
+		retracted_by TEXT DEFAULT '',
 		timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
 		FOREIGN KEY(room_id) REFERENCES rooms(id)
 	);
@@ -262,6 +313,10 @@ func initSchema(db *sql.DB) error {
 		`ALTER TABLE rooms ADD COLUMN repo TEXT DEFAULT ''`,
 		`ALTER TABLE messages ADD COLUMN supersedes TEXT DEFAULT ''`,
 		`ALTER TABLE notebook_entries ADD COLUMN status TEXT DEFAULT 'open'`,
+		`ALTER TABLE messages ADD COLUMN revises TEXT DEFAULT ''`,
+		`ALTER TABLE messages ADD COLUMN revised INTEGER DEFAULT 0`,
+		`ALTER TABLE messages ADD COLUMN retracted_at DATETIME`,
+		`ALTER TABLE messages ADD COLUMN retracted_by TEXT DEFAULT ''`,
 	}
 	for _, m := range migrations {
 		_, _ = db.Exec(m) // Ignore "duplicate column" errors for already-migrated DBs
@@ -273,6 +328,7 @@ func initSchema(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_messages_room_id_id ON messages(room_id, id)`,
 		`CREATE INDEX IF NOT EXISTS idx_messages_room_id_timestamp ON messages(room_id, timestamp)`,
 		`CREATE INDEX IF NOT EXISTS idx_messages_room_id_is_summary ON messages(room_id, is_summary)`,
+		`CREATE INDEX IF NOT EXISTS idx_messages_revises ON messages(revises)`,
 		`CREATE INDEX IF NOT EXISTS idx_rooms_project ON rooms(project)`,
 		`CREATE INDEX IF NOT EXISTS idx_rooms_status ON rooms(status)`,
 		`CREATE INDEX IF NOT EXISTS idx_notebook_entries_nb ON notebook_entries(notebook_id, position)`,
@@ -492,6 +548,10 @@ func migrateMessagesToUUIDs(db *sql.DB) error {
 		is_summary BOOLEAN DEFAULT 0,
 		reply_to TEXT DEFAULT '',
 		pinned BOOLEAN DEFAULT 0,
+		revises TEXT DEFAULT '',
+		revised INTEGER DEFAULT 0,
+		retracted_at DATETIME,
+		retracted_by TEXT DEFAULT '',
 		timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
 		FOREIGN KEY(room_id) REFERENCES rooms(id)
 	)`); err != nil {

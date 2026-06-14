@@ -174,18 +174,19 @@ func TestDeleteLink(t *testing.T) {
 	}
 }
 
-func TestDeleteMessagesCascadesLinks(t *testing.T) {
+func TestPurgeMessagesCascadesLinks(t *testing.T) {
 	s := setupTestServer(t)
 	mustCreateRoom(t, s, "casc-room")
 	a := mustPost(t, s, "casc-room", "Claude", "a")
 	b := mustPost(t, s, "casc-room", "Claude", "b")
 	s.CreateLink(a, b, "relates", "")
 
-	if _, err := s.DeleteMessages([]string{b}); err != nil {
-		t.Fatalf("DeleteMessages error: %v", err)
+	if _, err := s.PurgeMessages([]string{b}); err != nil {
+		t.Fatalf("PurgeMessages error: %v", err)
 	}
 
-	// The link referencing the deleted message must be gone (no dangling edges).
+	// The link referencing the purged message must be gone (no dangling edges).
+	// (Retract, by contrast, leaves both the node and its links intact.)
 	out, _, _ := s.GetLinks(a)
 	if len(out) != 0 {
 		t.Errorf("expected links to %s cleaned up after delete, got %+v", b, out)

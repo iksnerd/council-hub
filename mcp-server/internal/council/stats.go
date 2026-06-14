@@ -36,8 +36,10 @@ func (s *Server) GetRoomStats(roomID string) (RoomStats, error) {
 	stats.Status = status
 
 	// Get aggregate stats + latest message ID
+	// Counts reflect live nodes — head revisions only (revised = 0) — so stats match
+	// what the transcript shows. Retracted tombstones still count (they still render).
 	var firstMsg, lastMsg, latestID sql.NullString
-	err = s.DB.QueryRow(`SELECT COUNT(*), MIN(timestamp), MAX(timestamp), MAX(id) FROM messages WHERE room_id = ?`, roomID).
+	err = s.DB.QueryRow(`SELECT COUNT(*), MIN(timestamp), MAX(timestamp), MAX(id) FROM messages WHERE room_id = ? AND `+headClause(""), roomID).
 		Scan(&stats.MessageCount, &firstMsg, &lastMsg, &latestID)
 	if err != nil {
 		return stats, err
@@ -59,12 +61,12 @@ func (s *Server) GetRoomStats(roomID string) (RoomStats, error) {
 	_ = s.DB.QueryRow(`SELECT id FROM messages WHERE room_id = ? AND pinned = 1 LIMIT 1`, roomID).Scan(&pinnedID)
 	if pinnedID.Valid && pinnedID.String != "" {
 		stats.PinnedMessageID = pinnedID.String
-		_ = s.DB.QueryRow(`SELECT COUNT(*) FROM messages WHERE room_id = ? AND id > ?`, roomID, pinnedID.String).
+		_ = s.DB.QueryRow(`SELECT COUNT(*) FROM messages WHERE room_id = ? AND id > ? AND `+headClause(""), roomID, pinnedID.String).
 			Scan(&stats.MessagesSincePin)
 	}
 
 	// Get per-author counts
-	rows, err := s.DB.Query(`SELECT author, COUNT(*) FROM messages WHERE room_id = ? GROUP BY author ORDER BY COUNT(*) DESC`, roomID)
+	rows, err := s.DB.Query(`SELECT author, COUNT(*) FROM messages WHERE room_id = ? AND `+headClause("")+` GROUP BY author ORDER BY COUNT(*) DESC`, roomID)
 	if err != nil {
 		return stats, err
 	}
@@ -89,7 +91,7 @@ func (s *Server) GetRoomStats(roomID string) (RoomStats, error) {
 	}
 
 	// Get per-type counts
-	typeRows, err := s.DB.Query(`SELECT message_type, COUNT(*) FROM messages WHERE room_id = ? AND is_summary = 0 GROUP BY message_type ORDER BY COUNT(*) DESC`, roomID)
+	typeRows, err := s.DB.Query(`SELECT message_type, COUNT(*) FROM messages WHERE room_id = ? AND is_summary = 0 AND `+headClause("")+` GROUP BY message_type ORDER BY COUNT(*) DESC`, roomID)
 	if err != nil {
 		return stats, err
 	}
@@ -168,7 +170,7 @@ func (s *Server) GetDigest(project, since string) ([]DigestEntry, error) {
 // GetMessageCounts returns a map of room_id -> message count for all rooms.
 func (s *Server) GetMessageCounts() map[string]int {
 	counts := make(map[string]int)
-	rows, err := s.DB.Query(`SELECT room_id, COUNT(*) FROM messages GROUP BY room_id`)
+	rows, err := s.DB.Query(`SELECT room_id, COUNT(*) FROM messages WHERE ` + headClause("") + ` GROUP BY room_id`)
 	if err != nil {
 		return counts
 	}

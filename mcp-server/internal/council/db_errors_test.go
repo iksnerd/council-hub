@@ -109,9 +109,9 @@ func TestDeleteRoomDBClosed(t *testing.T) {
 	}
 }
 
-func TestDeleteMessagesDBClosed(t *testing.T) {
+func TestPurgeMessagesDBClosed(t *testing.T) {
 	s := setupAndClose(t)
-	_, err := s.DeleteMessages([]string{"fake-id"})
+	_, err := s.PurgeMessages([]string{"fake-id"})
 	if err == nil {
 		t.Error("expected error on closed DB")
 	}

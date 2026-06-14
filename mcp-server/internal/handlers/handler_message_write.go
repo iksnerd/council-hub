@@ -22,18 +22,24 @@ type PostToRoomInput struct {
 	MarkReadSelf string `json:"mark_read_self"`
 }
 
-// UpdateMessageInput represents the parameters for editing a message in-place.
+// UpdateMessageInput represents the parameters for editing a message. The edit is
+// append-only: it posts a new revision and preserves the prior version.
 type UpdateMessageInput struct {
 	MessageID       string `json:"message_id"`
 	Content         string `json:"content"`
 	MessageType     string `json:"message_type"`
 	ExpectedContent string `json:"expected_content"`
+	Author          string `json:"author"`
 }
 
-// DeleteMessagesInput represents the parameters for deleting messages.
+// DeleteMessagesInput represents the parameters for retracting, restoring, or
+// purging messages.
 type DeleteMessagesInput struct {
 	MessageIDs string `json:"message_ids"`
 	DryRun     string `json:"dry_run"`
+	Author     string `json:"author"`
+	Purge      string `json:"purge"`
+	Restore    string `json:"restore"`
 }
 
 // MoveMessagesInput represents the parameters for moving messages between rooms.
@@ -124,7 +130,7 @@ func (r *Registry) handleUpdateMessage(ctx context.Context, req *mcp.CallToolReq
 		return msg(fmt.Sprintf("Error: invalid message_type '%s'. Valid types: message, thought, draft, decision, plan, review, action, critique, synthesis, note.", args.MessageType))
 	}
 
-	m, err := r.Server.UpdateMessageWithExpected(args.MessageID, args.Content, args.MessageType, args.ExpectedContent)
+	m, err := r.Server.UpdateMessageWithExpected(args.MessageID, args.Content, args.MessageType, args.ExpectedContent, args.Author)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return msg(fmt.Sprintf("Error: message #%.8s not found.", args.MessageID))
@@ -132,12 +138,15 @@ func (r *Registry) handleUpdateMessage(ctx context.Context, req *mcp.CallToolReq
 		if changed, ok := err.(*council.ErrContentChanged); ok {
 			return msg(fmt.Sprintf("Error: content changed since last read — re-read before updating.\n\nCurrent content:\n%s", changed.CurrentContent))
 		}
+		if revised, ok := err.(*council.ErrAlreadyRevised); ok {
+			return msg(fmt.Sprintf("Error: message #%.8s was already revised — edit the current version #%.8s instead.", args.MessageID, revised.HeadID))
+		}
 		r.Server.Logger.Error("Failed to update message", "id", args.MessageID, "error", err)
 		return nil, ToolOutput{}, err
 	}
 
-	r.Server.Logger.Info("Message updated", "id", args.MessageID, "room", m.RoomID)
-	return msg(fmt.Sprintf("Message #%.8s updated. Author: %s, Room: %s, Type: %s.", m.ID, m.Author, m.RoomID, m.MessageType))
+	r.Server.Logger.Info("Message revised", "from", args.MessageID, "to", m.ID, "room", m.RoomID)
+	return msg(fmt.Sprintf("Message #%.8s edited — posted revision #%.8s (the prior version is preserved and stays linked via `revises`). Author: %s, Room: %s, Type: %s.\n\n```json\n{\"message_id\": \"%s\", \"revises\": \"%s\", \"room_id\": \"%s\"}\n```", args.MessageID, m.ID, m.Author, m.RoomID, m.MessageType, m.ID, args.MessageID, m.RoomID))
 }
 
 func (r *Registry) handleDeleteMessages(ctx context.Context, req *mcp.CallToolRequest, args DeleteMessagesInput) (*mcp.CallToolResult, ToolOutput, error) {
@@ -156,6 +165,19 @@ func (r *Registry) handleDeleteMessages(ctx context.Context, req *mcp.CallToolRe
 		}
 	}
 
+	// restore reverses a retraction — bring tombstoned messages back.
+	if args.Restore == "true" {
+		count, err := r.Server.RestoreMessages(ids)
+		if err != nil {
+			r.Server.Logger.Error("Failed to restore messages", "error", err)
+			return nil, ToolOutput{}, err
+		}
+		r.Server.Logger.Info("Messages restored", "count", count, "ids", args.MessageIDs)
+		return msg(fmt.Sprintf("Restored %d message(s) — retraction cleared, they render normally again.", count))
+	}
+
+	purge := args.Purge == "true"
+
 	if args.DryRun == "true" {
 		msgs, err := r.Server.GetMessagesByIDs(ids)
 		if err != nil {
@@ -163,8 +185,12 @@ func (r *Registry) handleDeleteMessages(ctx context.Context, req *mcp.CallToolRe
 			return nil, ToolOutput{}, err
 		}
 
+		verb := "retracted (tombstoned; content + links preserved)"
+		if purge {
+			verb = "PURGED (permanently destroyed; links cascade-deleted)"
+		}
 		var b strings.Builder
-		fmt.Fprintf(&b, "DRY RUN — %d message(s) would be deleted:\n\n", len(msgs))
+		fmt.Fprintf(&b, "DRY RUN — %d message(s) would be %s:\n\n", len(msgs), verb)
 		foundIDs := make(map[string]bool)
 		for _, m := range msgs {
 			foundIDs[m.ID] = true
@@ -188,14 +214,24 @@ func (r *Registry) handleDeleteMessages(ctx context.Context, req *mcp.CallToolRe
 		return msg(b.String())
 	}
 
-	count, err := r.Server.DeleteMessages(ids)
+	if purge {
+		count, err := r.Server.PurgeMessages(ids)
+		if err != nil {
+			r.Server.Logger.Error("Failed to purge messages", "error", err)
+			return nil, ToolOutput{}, err
+		}
+		r.Server.Logger.Info("Messages purged", "count", count, "ids", args.MessageIDs)
+		return msg(fmt.Sprintf("Purged %d message(s) — permanently destroyed. Use this only for content that must not persist (a leaked secret, PII); everything else should be retracted.", count))
+	}
+
+	count, err := r.Server.RetractMessages(ids, args.Author)
 	if err != nil {
-		r.Server.Logger.Error("Failed to delete messages", "error", err)
+		r.Server.Logger.Error("Failed to retract messages", "error", err)
 		return nil, ToolOutput{}, err
 	}
 
-	r.Server.Logger.Info("Messages deleted", "count", count, "ids", args.MessageIDs)
-	return msg(fmt.Sprintf("Deleted %d message(s).", count))
+	r.Server.Logger.Info("Messages retracted", "count", count, "ids", args.MessageIDs)
+	return msg(fmt.Sprintf("Retracted %d message(s) — tombstoned, content and links preserved (they render as \"[retracted]\"). Pass purge=true to permanently destroy instead.", count))
 }
 
 func (r *Registry) handleMoveMessages(ctx context.Context, req *mcp.CallToolRequest, args MoveMessagesInput) (*mcp.CallToolResult, ToolOutput, error) {

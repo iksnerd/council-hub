@@ -43,6 +43,7 @@ defmodule CouncilHubUiWeb.CouncilLive do
        active_room_participants: [],
        last_msg_id: "",
        collapsed_summaries: MapSet.new(),
+       revisions: %{},
        show_system_prompt: false,
        page_title: "Council Hub",
        db_connected: db_connected,
@@ -193,6 +194,19 @@ defmodule CouncilHubUiWeb.CouncilLive do
         else: MapSet.put(collapsed, id)
 
     {:noreply, assign(socket, collapsed_summaries: collapsed)}
+  end
+
+  def handle_event("toggle_revisions", %{"id" => id}, socket) do
+    revisions = socket.assigns.revisions
+
+    revisions =
+      if Map.has_key?(revisions, id) do
+        Map.delete(revisions, id)
+      else
+        Map.put(revisions, id, CouncilHubUi.Council.revision_history(id))
+      end
+
+    {:noreply, assign(socket, revisions: revisions)}
   end
 
   def handle_event("toggle_system_prompt", _params, socket) do

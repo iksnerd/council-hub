@@ -10,6 +10,9 @@ defmodule CouncilHubUiWeb.MessageComponents do
   attr :msg, :map, required: true
   attr :repo, :string, default: ""
   attr :compact, :boolean, default: false
+  # Prior versions of an edited message (oldest → newest), or nil when collapsed.
+  # Loaded on demand by the "✎ edited" toggle.
+  attr :revisions, :list, default: nil
 
   def message_bubble(assigns) do
     ~H"""
@@ -79,6 +82,23 @@ defmodule CouncilHubUiWeb.MessageComponents do
             >
               ⚠ superseded by #{String.slice(Map.get(@msg, :superseded_by, ""), 0, 8)}
             </button>
+            <button
+              :if={Map.get(@msg, :revises, "") != ""}
+              phx-click="toggle_revisions"
+              phx-value-id={@msg.id}
+              type="button"
+              title="Edited — earlier versions are preserved (append-only). Click to show history."
+              class="text-[9px] font-mono text-[var(--ch-text-lo)] hover:text-[var(--ch-text-mid)] transition-colors cursor-pointer"
+            >
+              ✎ edited{if @revisions, do: " ▾", else: " ▸"}
+            </button>
+            <span
+              :if={Map.get(@msg, :retracted_at) != nil}
+              title={"Retracted#{if Map.get(@msg, :retracted_by, "") != "", do: " by " <> Map.get(@msg, :retracted_by), else: ""} — preserved as a tombstone"}
+              class="text-[9px] font-mono uppercase tracking-wider text-[var(--ch-text-lo)]"
+            >
+              retracted
+            </span>
             <span class="text-[10px] text-[var(--ch-text-xs)] font-mono tabular-nums">
               {format_timestamp(@msg.timestamp)}
             </span>
@@ -90,10 +110,20 @@ defmodule CouncilHubUiWeb.MessageComponents do
             >
             </span>
             <button
+              id={"permalink-#{@msg.id}"}
+              phx-hook="CopyMessage"
+              data-copy={"council://message/#{@msg.id}"}
+              class="ml-auto opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded text-[var(--ch-text-xs)] hover:text-[var(--ch-text-mid)] cursor-pointer"
+              title={"Copy address — council://message/#{String.slice(@msg.id, 0, 8)}…"}
+              type="button"
+            >
+              <span class="hero-link w-3.5 h-3.5"></span>
+            </button>
+            <button
               id={"copy-msg-#{@msg.id}"}
               phx-hook="CopyMessage"
               data-copy={"##{@msg.id} | #{format_timestamp(@msg.timestamp)} | #{@msg.author} (#{@msg.message_type})\n\n#{@msg.content}"}
-              class="ml-auto opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded text-[var(--ch-text-xs)] hover:text-[var(--ch-text-mid)] cursor-pointer"
+              class="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded text-[var(--ch-text-xs)] hover:text-[var(--ch-text-mid)] cursor-pointer"
               title="Copy message"
               type="button"
             >
@@ -114,12 +144,47 @@ defmodule CouncilHubUiWeb.MessageComponents do
             </span>
           </div>
 
-          <%!-- Message content --%>
-          <div class={[
-            "council-prose text-[var(--ch-text-mid)] border-l border-[var(--ch-border-mid)] pl-2.5 #{author_prose_class(@msg.author)}",
-            @compact && "line-clamp-1"
-          ]}>
+          <%!-- Message content (a retracted node renders as a tombstone, not its text) --%>
+          <div
+            :if={Map.get(@msg, :retracted_at) != nil}
+            class="text-[var(--ch-text-lo)] italic border-l border-[var(--ch-border-mid)] pl-2.5"
+          >
+            [retracted{if Map.get(@msg, :retracted_by, "") != "",
+              do: " by " <> Map.get(@msg, :retracted_by),
+              else: ""}]
+          </div>
+          <div
+            :if={Map.get(@msg, :retracted_at) == nil}
+            class={[
+              "council-prose text-[var(--ch-text-mid)] border-l border-[var(--ch-border-mid)] pl-2.5 #{author_prose_class(@msg.author)}",
+              @compact && "line-clamp-1"
+            ]}
+          >
             {raw(render_markdown(resolve_commit_refs(@msg.content, @repo)))}
+          </div>
+
+          <%!-- Revision history (expanded via ✎ edited) — prior versions, oldest → newest --%>
+          <div
+            :if={@revisions not in [nil, []]}
+            class="mt-1 ml-2.5 border-l-2 border-dashed border-[var(--ch-border)] pl-2.5 space-y-1"
+          >
+            <div class="text-[9px] uppercase tracking-wider text-[var(--ch-text-xs)]">
+              {length(@revisions)} prior version{if length(@revisions) == 1, do: "", else: "s"}
+            </div>
+            <div :for={{prev, i} <- Enum.with_index(@revisions, 1)} class="text-[11px]">
+              <span class="font-mono text-[var(--ch-text-xs)]">
+                v{i} · #{String.slice(prev.id, 0, 8)} · {format_timestamp(prev.timestamp)}{if prev.author &&
+                                                                                                prev.author !=
+                                                                                                  "",
+                                                                                              do:
+                                                                                                " · " <>
+                                                                                                  prev.author,
+                                                                                              else: ""}
+              </span>
+              <div class="text-[var(--ch-text-lo)] line-through opacity-70">
+                {raw(render_markdown(resolve_commit_refs(prev.content, @repo)))}
+              </div>
+            </div>
           </div>
 
           <%!-- Typed links (E2 graph) — explicit edges to/from this message --%>

@@ -282,22 +282,64 @@ func TestGetRecentMessagesNotFound(t *testing.T) {
 	}
 }
 
-func TestDeleteMessages(t *testing.T) {
+func TestRetractMessages(t *testing.T) {
 	s := setupTestServer(t)
-	s.CreateRoom("delmsg-room", "Delete messages test", "", "", "", "", "")
+	s.CreateRoom("delmsg-room", "Retract messages test", "", "", "", "", "")
 	id1, _ := s.PostMessage("delmsg-room", "Claude", "Keep this", "message", "")
-	id2, _ := s.PostMessage("delmsg-room", "Gemini", "Delete this", "message", "")
-	id3, _ := s.PostMessage("delmsg-room", "Claude", "Delete this too", "message", "")
+	id2, _ := s.PostMessage("delmsg-room", "Gemini", "Retract this", "message", "")
+	id3, _ := s.PostMessage("delmsg-room", "Claude", "Retract this too", "message", "")
 
-	count, err := s.DeleteMessages([]string{id2, id3})
+	count, err := s.RetractMessages([]string{id2, id3}, "claude")
 	if err != nil {
-		t.Fatalf("deleteMessages failed: %v", err)
+		t.Fatalf("RetractMessages failed: %v", err)
 	}
 	if count != 2 {
-		t.Errorf("expected 2 deleted, got %d", count)
+		t.Errorf("expected 2 retracted, got %d", count)
 	}
 
+	// Retract is the immutable counterpart to deletion: the nodes survive (all 3
+	// still in the transcript), tombstoned rather than destroyed.
 	msgs, _ := s.GetTranscript("delmsg-room")
+	if len(msgs) != 3 {
+		t.Fatalf("expected all 3 messages to survive retraction, got %d", len(msgs))
+	}
+	byID := map[string]Message{}
+	for _, m := range msgs {
+		byID[m.ID] = m
+	}
+	if byID[id1].RetractedAt.Valid {
+		t.Error("id1 should not be retracted")
+	}
+	if !byID[id2].RetractedAt.Valid || byID[id2].RetractedBy != "claude" {
+		t.Errorf("id2 should be retracted by claude, got valid=%v by=%q", byID[id2].RetractedAt.Valid, byID[id2].RetractedBy)
+	}
+	if !byID[id3].RetractedAt.Valid {
+		t.Error("id3 should be retracted")
+	}
+
+	// Re-retracting an already-retracted node is a no-op.
+	if c, _ := s.RetractMessages([]string{id2}, "gemini"); c != 0 {
+		t.Errorf("re-retract should affect 0 rows, got %d", c)
+	}
+}
+
+func TestPurgeMessages(t *testing.T) {
+	s := setupTestServer(t)
+	s.CreateRoom("purge-room", "Purge messages test", "", "", "", "", "")
+	id1, _ := s.PostMessage("purge-room", "Claude", "Keep this", "message", "")
+	id2, _ := s.PostMessage("purge-room", "Gemini", "Destroy this", "message", "")
+	id3, _ := s.PostMessage("purge-room", "Claude", "Destroy this too", "message", "")
+
+	count, err := s.PurgeMessages([]string{id2, id3})
+	if err != nil {
+		t.Fatalf("PurgeMessages failed: %v", err)
+	}
+	if count != 2 {
+		t.Errorf("expected 2 purged, got %d", count)
+	}
+
+	// Purge hard-deletes: only the kept message remains.
+	msgs, _ := s.GetTranscript("purge-room")
 	if len(msgs) != 1 {
 		t.Fatalf("expected 1 remaining message, got %d", len(msgs))
 	}
@@ -306,21 +348,21 @@ func TestDeleteMessages(t *testing.T) {
 	}
 }
 
-func TestDeleteMessagesNonexistent(t *testing.T) {
+func TestRetractMessagesNonexistent(t *testing.T) {
 	s := setupTestServer(t)
 
-	count, err := s.DeleteMessages([]string{"fake-nonexistent-uuid"})
+	count, err := s.RetractMessages([]string{"fake-nonexistent-uuid"}, "claude")
 	if err != nil {
-		t.Fatalf("deleteMessages failed: %v", err)
+		t.Fatalf("RetractMessages failed: %v", err)
 	}
 	if count != 0 {
-		t.Errorf("expected 0 deleted, got %d", count)
+		t.Errorf("expected 0 retracted, got %d", count)
 	}
 }
 
-func TestDeleteMessagesEmptySlice(t *testing.T) {
+func TestRetractMessagesEmptySlice(t *testing.T) {
 	s := setupTestServer(t)
-	count, err := s.DeleteMessages([]string{})
+	count, err := s.RetractMessages([]string{}, "claude")
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}

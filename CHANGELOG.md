@@ -8,6 +8,27 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 Changes on `main` not yet in a tagged release.
 
+## [0.46.0] - 2026-06-14
+
+The **append-only / Open Hyperdocument** leap. The message ledger becomes immutable *by construction* — Engelbart's NLS Journal property, not just by convention. Edits never overwrite: they append a new revision and preserve every prior version as an addressable node; deletes *retract* (tombstone) instead of erasing, so the knowledge graph never dangles, with a deliberate `purge` escape hatch for secrets/PII. On top of that: walkable revision history, reversible retraction, a stable address per message, query-transclusion in notebooks, and the Journal UI to surface it all. No new tools — **37 MCP tools**, **10 message types**; one new resource template, one new notebook entry kind.
+
+### Added
+- **Append-only edits (the core).** `update_message` no longer mutates in place — it appends a new node carrying the new content, links it to the prior version via a `revises` column, and flags the old node `revised=1`. The new head inherits the original's reply/supersedes links and pin. Every content-surfacing read (transcript, recent, after-id, latest-per-type, pinned, search, semantic, notebook, stats) collapses to the head, which renders `✎ edited`. Nothing is ever destroyed; every version stays addressable.
+- **Revision history.** `get_messages(message_ids=…, history=true)` returns each message's full edit chain (every preserved version, oldest → newest). `get_links` now emits implicit `revises` / `revised_by` edges, so the history is walkable from any node in the chain.
+- **Retract / restore / purge.** `delete_messages` now *retracts* by default — tombstones the message (`retracted_at`/`retracted_by`), keeping content and links intact (renders `[retracted]`). `restore=true` reverses it; `purge=true` is the one true hard delete (cascade-removes links + vectors), reserved for content that must not persist (a leaked secret, PII).
+- **Addressable message nodes.** New `council://message/{id}` MCP resource — every message resolves to a stable, paste-able address showing its metadata, revision/retraction state, and full link neighborhood (the OHS universal-addressability property).
+- **Transclude-by-query (`query_ref`).** New notebook outline entry kind: `edit_notebook(kind=query_ref, ref_id=room:type)` transcludes "the latest `<type>` in `<room>`" (e.g. `auth-room:synthesis`), resolved live at render — structural addressing, not a frozen message ID.
+- **Journal/UI.** The room view gains a `✎ edited` toggle that expands an edited message's prior versions inline (struck-through, loaded on demand), a per-message permalink button (copies `council://message/<id>`), and `[retracted]` tombstone rendering.
+
+### Changed
+- **`update_message` is append-only** (was in-place overwrite). Editing an already-superseded node is refused and points at the current head; `expected_content` still guards optimistic concurrency. Schema gains an optional `author` to attribute the revision.
+- **`delete_messages` retracts by default** (was hard delete). Gains `author`, `purge`, and `restore` params; `dry_run` previews either path.
+- **`get_messages`** gains `history`; **`edit_notebook`** gains the `query_ref` kind.
+
+### Internal
+- **Schema.** `messages` gains `revises`, `revised`, `retracted_at`, `retracted_by` (+ `idx_messages_revises`); old-revision rows linger in FTS/vectors but are filtered from results. UI mirrors via Ecto migration + read-only schema fields.
+- **DRY pass (no behaviour change).** The "live node" read predicate is centralized — Go `headClause`/`liveClause` (`db.go`) and Elixir `MessageFilters.head_revisions`/`live_messages` replace the inline `revised = 0 [AND retracted_at IS NULL]` clause across every read path. The message column→field mapping is centralized in `messageScanDests`, which `notebook.go` now reuses instead of hand-duplicating the column list.
+
 ## [0.45.0] - 2026-06-14
 
 A consolidation-and-honesty pass that tightens the surface after the rapid v0.39–v0.44 build-out. The message-type system sheds its one software-specific member (`code`) to stay domain-general (Engelbart's framework is for knowledge work of any kind, not just coding); the link-graph relations and the four "homes" for how-to knowledge are documented by what they actually do; the generic `message` type is actively discouraged; and the `current-work` cockpit becomes a first-class dashboard destination with completed work folded away by default. No new tools — **37 MCP tools**, down to **10 message types**.

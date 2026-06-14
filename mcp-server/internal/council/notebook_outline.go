@@ -33,7 +33,7 @@ type Notebook struct {
 type OutlineEntry struct {
 	ID       string
 	Position int
-	Kind     string // "ref" | "room_ref" | "prose" | "task"
+	Kind     string // "ref" | "room_ref" | "query_ref" | "prose" | "task"
 	RefID    string
 	Prose    string
 
@@ -59,7 +59,7 @@ type OutlineEntry struct {
 }
 
 // validOutlineKinds gates the entry kinds accepted by AddOutlineEntry.
-var validOutlineKinds = map[string]bool{"ref": true, "room_ref": true, "prose": true, "task": true}
+var validOutlineKinds = map[string]bool{"ref": true, "room_ref": true, "query_ref": true, "prose": true, "task": true}
 
 // validTaskStatuses gates the states a task entry can hold: open (backlog),
 // doing (actively worked), done (finished).
@@ -192,6 +192,23 @@ func (s *Server) AddOutlineEntry(notebookID, kind, refID, prose, afterEntryID st
 		if exists == 0 {
 			return "", fmt.Errorf("room '%s' not found — room_refs must point at an existing local room", refID)
 		}
+		prose = ""
+	case "query_ref":
+		// A query_ref transcludes "the latest <type> in <room>", resolved live at
+		// render time (structural addressing — no frozen message ID). ref_id is
+		// "room_id:message_type".
+		roomID, msgType, ok := parseQueryRef(refID)
+		if !ok {
+			return "", fmt.Errorf("query_ref ref_id must be 'room_id:message_type' (e.g. 'auth-room:synthesis'), got '%s'", refID)
+		}
+		var exists int
+		if err := s.DB.QueryRow(`SELECT COUNT(*) FROM rooms WHERE id = ?`, roomID).Scan(&exists); err != nil {
+			return "", err
+		}
+		if exists == 0 {
+			return "", fmt.Errorf("room '%s' not found — query_refs must point at an existing local room", roomID)
+		}
+		refID = roomID + ":" + msgType
 		prose = ""
 	case "prose":
 		if strings.TrimSpace(prose) == "" {
@@ -449,7 +466,57 @@ func (s *Server) GetOutline(notebookID string) (Notebook, []OutlineEntry, error)
 		}
 		entries = append(entries, e)
 	}
-	return n, entries, rows.Err()
+	if err := rows.Err(); err != nil {
+		return n, nil, err
+	}
+
+	// Resolve query_refs in Go (a follow-up query each) — "latest <type> in <room>",
+	// live at render time. Cleaner than cramming the "room:type" split into the main
+	// SQL. A query that currently matches nothing resolves as RefFound=false.
+	for i := range entries {
+		if entries[i].Kind == "query_ref" {
+			s.resolveQueryRef(&entries[i])
+		}
+	}
+	return n, entries, nil
+}
+
+// parseQueryRef splits a query_ref ref_id "room_id:message_type" into its parts.
+// The room_id itself never contains a colon (slugified), so the LAST colon
+// separates room from type.
+func parseQueryRef(ref string) (roomID, msgType string, ok bool) {
+	ref = strings.TrimSpace(ref)
+	i := strings.LastIndex(ref, ":")
+	if i <= 0 || i == len(ref)-1 {
+		return "", "", false
+	}
+	return strings.TrimSpace(ref[:i]), strings.TrimSpace(ref[i+1:]), true
+}
+
+// resolveQueryRef fills a query_ref entry with the latest live (head, non-retracted)
+// message of its type in its room, evaluated now.
+func (s *Server) resolveQueryRef(e *OutlineEntry) {
+	roomID, msgType, ok := parseQueryRef(e.RefID)
+	if !ok {
+		return
+	}
+	m, err := scanMessage(s.DB.QueryRow(fmt.Sprintf(`
+		SELECT %s FROM messages
+		WHERE room_id = ? AND message_type = ? AND is_summary = 0 AND `+liveClause("")+`
+		ORDER BY id DESC LIMIT 1`, messageColumns), roomID, msgType))
+	if err != nil {
+		return // no match yet → RefFound stays false
+	}
+	var repo string
+	_ = s.DB.QueryRow(`SELECT COALESCE(repo, '') FROM rooms WHERE id = ?`, roomID).Scan(&repo)
+	e.RefFound = true
+	e.RefRoomID = m.RoomID
+	e.RefAuthor = m.Author
+	e.RefType = m.MessageType
+	e.RefContent = m.Content
+	e.RefPinned = m.Pinned
+	e.RefTime = m.Timestamp
+	e.RefRepo = repo
 }
 
 // parseStoredTime parses a raw SQLite timestamp string in the formats the

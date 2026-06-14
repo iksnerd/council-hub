@@ -230,8 +230,8 @@ func TestGetOutlineDanglingRef(t *testing.T) {
 	if _, err := s.AddOutlineEntry("ol-nb", "ref", msgID, "", ""); err != nil {
 		t.Fatalf("AddOutlineEntry failed: %v", err)
 	}
-	if _, err := s.DeleteMessages([]string{msgID}); err != nil {
-		t.Fatalf("DeleteMessages failed: %v", err)
+	if _, err := s.PurgeMessages([]string{msgID}); err != nil {
+		t.Fatalf("PurgeMessages failed: %v", err)
 	}
 
 	_, entries, err := s.GetOutline("ol-nb")
@@ -241,6 +241,54 @@ func TestGetOutlineDanglingRef(t *testing.T) {
 	if entries[0].RefFound {
 		t.Error("deleted ref should resolve as not found")
 	}
+}
+
+// TestQueryRefResolvesLatest verifies a query_ref transcludes "latest <type> in
+// <room>" live — it tracks the newest matching message, not a frozen ID.
+func TestQueryRefResolvesLatest(t *testing.T) {
+	s := setupTestServer(t)
+	seedOutline(t, s) // creates ol-room + ol-nb
+
+	// No synthesis yet → query_ref resolves as not-found.
+	entryID, err := s.AddOutlineEntry("ol-nb", "query_ref", "ol-room:synthesis", "", "")
+	if err != nil {
+		t.Fatalf("AddOutlineEntry(query_ref) failed: %v", err)
+	}
+	_, entries, _ := s.GetOutline("ol-nb")
+	got := findEntry(entries, entryID)
+	if got.RefFound {
+		t.Error("query_ref with no matching message should resolve not-found")
+	}
+
+	// Post a synthesis → the same query_ref now resolves to it.
+	mustPostTyped(t, s, "ol-room", "claude", "first synthesis", "synthesis")
+	_, entries, _ = s.GetOutline("ol-nb")
+	got = findEntry(entries, entryID)
+	if !got.RefFound || got.RefContent != "first synthesis" || got.RefType != "synthesis" {
+		t.Fatalf("expected query_ref to resolve to first synthesis, got found=%v content=%q", got.RefFound, got.RefContent)
+	}
+
+	// Post a newer synthesis → the query_ref tracks the latest, no edit needed.
+	mustPostTyped(t, s, "ol-room", "gemini", "newer synthesis", "synthesis")
+	_, entries, _ = s.GetOutline("ol-nb")
+	got = findEntry(entries, entryID)
+	if got.RefContent != "newer synthesis" {
+		t.Errorf("query_ref should track the latest synthesis, got %q", got.RefContent)
+	}
+
+	// A malformed query_ref ref_id is rejected at add time.
+	if _, err := s.AddOutlineEntry("ol-nb", "query_ref", "no-colon-here", "", ""); err == nil {
+		t.Error("expected error for query_ref ref_id without 'room:type'")
+	}
+}
+
+func findEntry(entries []OutlineEntry, id string) OutlineEntry {
+	for _, e := range entries {
+		if e.ID == id {
+			return e
+		}
+	}
+	return OutlineEntry{}
 }
 
 func TestUpdateOutlineEntry(t *testing.T) {

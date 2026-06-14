@@ -149,10 +149,11 @@ func TestRoomLifecycle(t *testing.T) {
 		t.Error("expected resolved status")
 	}
 
-	// Delta reads
+	// Delta reads. After id2 there's the code message plus the head revision the
+	// edit appended (an edit is new activity, surfaced like any other head node).
 	after, _ := s.GetMessagesAfterID("design", id2)
-	if len(after) != 1 {
-		t.Errorf("expected 1 message after id %s, got %d", id2, len(after))
+	if len(after) != 2 {
+		t.Errorf("expected 2 messages after id %s, got %d", id2, len(after))
 	}
 
 	// Summary mode

@@ -176,8 +176,8 @@ func TestHandleReadNotebookOutlineDanglingRef(t *testing.T) {
 	reg, msgID := setupOutlineHandler(t)
 
 	mustAddEntry(t, reg, EditNotebookInput{NotebookID: "rel-notes", RefID: msgID})
-	if _, err := reg.Server.DeleteMessages([]string{msgID}); err != nil {
-		t.Fatalf("DeleteMessages failed: %v", err)
+	if _, err := reg.Server.PurgeMessages([]string{msgID}); err != nil {
+		t.Fatalf("PurgeMessages failed: %v", err)
 	}
 
 	res, _, _ := reg.handleReadNotebook(context.Background(), nil, ReadNotebookInput{NotebookID: "rel-notes"})

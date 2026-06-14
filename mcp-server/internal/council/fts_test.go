@@ -219,8 +219,10 @@ func TestSearchMessagesFTSSync(t *testing.T) {
 		t.Fatalf("expected 1 message for 'bananas', got %d", len(msgs))
 	}
 
-	// 2. Update
-	_, err = s.UpdateMessage(id, "This is the updated content about apples", "message")
+	// 2. Edit — append-only: a new head node carries "apples"; the original "bananas"
+	// node is preserved but flagged revised, so search (which filters to revised = 0)
+	// stops matching "bananas" and starts matching "apples".
+	head, err := s.UpdateMessage(id, "This is the updated content about apples", "message")
 	if err != nil {
 		t.Fatalf("UpdateMessage failed: %v", err)
 	}
@@ -235,8 +237,8 @@ func TestSearchMessagesFTSSync(t *testing.T) {
 		t.Fatalf("expected 1 message for 'apples', got %d", len(msgs))
 	}
 
-	// 3. Delete
-	s.DeleteMessages([]string{id})
+	// 3. Purge the head (hard delete fires the FTS delete trigger)
+	s.PurgeMessages([]string{head.ID})
 	msgs, _ = s.SearchMessages("apples", "", "", "fts-room", "", "", "", 10)
 	if len(msgs) != 0 {
 		t.Fatalf("expected 0 messages for 'apples' after delete, got %d", len(msgs))
