@@ -13,8 +13,11 @@ func (s *Server) GetMentions(author, project string, limit int) ([]Message, erro
 	}
 	project = normalizeProject(project)
 
+	// Mentions is a discovery surface like search: collapse to live head revisions
+	// so an edited mention isn't a stale duplicate (old + new both carry the
+	// mention) and a withdrawn (retracted) mention no longer pings.
 	query := `SELECT ` + messageColumns + ` FROM messages
-		WHERE LOWER(mentions) LIKE '%'||LOWER(?)||'%'`
+		WHERE LOWER(mentions) LIKE '%'||LOWER(?)||'%' AND ` + liveClause("")
 	args := []any{author}
 	if project != "" {
 		query += ` AND room_id IN (SELECT id FROM rooms WHERE project = ?)`

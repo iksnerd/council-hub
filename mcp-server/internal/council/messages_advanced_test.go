@@ -126,6 +126,35 @@ func TestGetMentions(t *testing.T) {
 	}
 }
 
+// TestGetMentionsCollapsesToLiveHeads guards the v0.46.4 fix: mentions is a
+// discovery surface, so an edited mention must show once (the head, not a stale
+// duplicate) and a retracted mention must not ping at all.
+func TestGetMentionsCollapsesToLiveHeads(t *testing.T) {
+	s := setupTestServer(t)
+	s.CreateRoom("mention-live", "Mention live-head tests", "", "", "", "", "")
+
+	edited, _ := s.PostMessageWithMentions("mention-live", "gemini-cli", "v1 @claude take a look", "thought", "", "claude")
+	if _, err := s.UpdateMessage(edited, "v2 @claude take a look", ""); err != nil {
+		t.Fatalf("edit failed: %v", err)
+	}
+	gone, _ := s.PostMessageWithMentions("mention-live", "amp", "@claude this will be retracted", "thought", "", "claude")
+	if _, err := s.RetractMessages([]string{gone}, "amp"); err != nil {
+		t.Fatalf("retract failed: %v", err)
+	}
+
+	msgs, err := s.GetMentions("claude", "", 20)
+	if err != nil {
+		t.Fatalf("GetMentions failed: %v", err)
+	}
+	// Only the edited message's head should remain — no stale revision, no retracted.
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 live mention, got %d: %+v", len(msgs), msgs)
+	}
+	if msgs[0].Content != "v2 @claude take a look" {
+		t.Errorf("expected the head revision, got %q", msgs[0].Content)
+	}
+}
+
 func TestGetMentionsNotFound(t *testing.T) {
 	s := setupTestServer(t)
 	s.CreateRoom("mention-empty", "Empty mention room", "", "", "", "", "")

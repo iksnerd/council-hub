@@ -8,6 +8,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 Changes on `main` not yet in a tagged release.
 
+## [0.46.4] - 2026-06-14
+
+Patch — sibling to v0.46.3, same class of bug on the mentions path.
+
+### Fixed
+- **`get_mentions` surfaced stale and retracted mentions.** The query had no revision/retraction filter, so an *edited* mention pinged twice (the old revision and the new head both carry the `mentions` value) and a *retracted* mention still pinged. It now applies the same live-clause as search and the notebook, so mentions collapse to live head revisions — one ping per mention, none for withdrawn ones.
+
 ## [0.46.3] - 2026-06-14
 
 Patch — found by smoke-testing v0.46.2. A consistency fix to the retract tombstone.
