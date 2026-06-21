@@ -1,8 +1,17 @@
 name: Docker
 
+# Manual only. The multi-arch build is heavy, so it does NOT run automatically on
+# a tag — tags trigger just the tests (ci.yml) and the GitHub release (release.yml).
+# Publish a Docker image on demand: Actions → Docker → Run workflow (pick the tag),
+# or `gh workflow run docker.yml -f tag=vX.Y.Z`. Builds natively on amd64 + arm64
+# runners (no QEMU), so amd64 support is preserved without burning minutes per tag.
 on:
-  push:
-    tags: [ "v*.*.*" ]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Git tag to build and publish (e.g. v0.47.0)'
+        required: true
+        type: string
 
 env:
   IMAGE: iksnerd/council-hub
@@ -22,6 +31,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.tag }}
 
       - uses: docker/setup-buildx-action@v4
 
@@ -76,9 +87,9 @@ jobs:
         working-directory: /tmp/digests
         run: |
           docker buildx imagetools create \
-            -t ${{ env.IMAGE }}:${{ github.ref_name }} \
+            -t ${{ env.IMAGE }}:${{ inputs.tag }} \
             -t ${{ env.IMAGE }}:latest \
             $(printf '${{ env.IMAGE }}@sha256:%s ' *)
 
       - name: Inspect manifest
-        run: docker buildx imagetools inspect ${{ env.IMAGE }}:${{ github.ref_name }}
+        run: docker buildx imagetools inspect ${{ env.IMAGE }}:${{ inputs.tag }}

@@ -41,7 +41,8 @@ Docker Hub image: `iksnerd/council-hub` ([hub.docker.com/r/iksnerd/council-hub](
 2. **Update docs**: `DOCKERHUB.md` version refs, `CHANGELOG.md` entry
 3. **Run tests locally, then commit & push**: `make test` (mcp-server) + `mix test` (ui). The suites no longer run in CI on a main push — `ci.yml` is tags-only to conserve Actions minutes — so verify locally first. Then `git commit -m "vX.Y.Z: <summary>" && git push`. The push triggers only the gitleaks Secret Scan.
 4. **Tag & push tag**: `git tag vX.Y.Z && git push origin vX.Y.Z`
-5. **Wait for CI + Docker**: the tag triggers `ci.yml` (Go + Elixir tests/lint), `docker.yml` (builds `linux/amd64 + linux/arm64` on native runners → multi-arch manifest to Docker Hub), and `release.yml` (GitHub release) in parallel. Watch with `gh run list --limit 3` + `gh run watch <id>`. `make docker-push` is an arm64-only emergency fallback (QEMU cross-compile for amd64 fails on OTP 28).
+5. **Wait for CI + release notes**: the tag auto-triggers `ci.yml` (Go + Elixir tests/lint) and `release.yml` (GitHub release) in parallel. Watch with `gh run list --limit 3` + `gh run watch <id>`.
+6. **Publish the Docker image (manual)**: the multi-arch build is heavy, so `docker.yml` does **not** auto-run on the tag — trigger it on demand: `gh workflow run docker.yml -f tag=vX.Y.Z` (or Actions → Docker → Run workflow). It still builds `linux/amd64 + linux/arm64` on native runners (no QEMU) → multi-arch manifest `:vX.Y.Z` + `:latest`. `make docker-push` is an arm64-only local fallback (QEMU cross-compile for amd64 fails on OTP 28).
 
 **Important:** Never move tags. If a fix is needed after tagging, bump to vX.Y.Z+1.
 
@@ -202,7 +203,7 @@ The `Dockerfile` is a 3-stage build: Go builder → Elixir builder → debian:tr
 Workflows (all in `.github/workflows/`):
 - `ci.yml` — Go + Elixir tests + lint. Runs **only on `v*.*.*` tags** (not on main pushes or PRs) to conserve Actions minutes, so run `make test` / `mix test` locally before pushing.
 - `secret-scan.yml` — gitleaks. Runs on PRs and main pushes; it is the only required status check on PRs (so dependabot can still auto-merge).
-- `docker.yml` — multi-arch build (`linux/amd64 + linux/arm64`) + Docker Hub publish, on tags.
+- `docker.yml` — multi-arch build (`linux/amd64 + linux/arm64`, native runners) + Docker Hub publish. **Manual (`workflow_dispatch`)** — the heavy build does not run on a tag; publish on demand with `gh workflow run docker.yml -f tag=vX.Y.Z`.
 - `release.yml` — GitHub release, on tags.
 
 ### Data Flow
