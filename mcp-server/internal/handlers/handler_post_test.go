@@ -151,6 +151,50 @@ func TestHandlePostToRoomMarkReadSelf(t *testing.T) {
 	}
 }
 
+func TestHandlePostToRoomPin(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-pin")
+	old := mustPostTyped(t, reg.Server, "h-pin", "Claude", "old synthesis", "synthesis")
+	if _, err := reg.Server.PinMessage("h-pin", old); err != nil {
+		t.Fatalf("seed pin failed: %v", err)
+	}
+
+	// pin=true folds post→pin into one call and replaces the prior pin.
+	res, _, err := reg.handlePostToRoom(context.Background(), nil, PostToRoomInput{
+		RoomID: "h-pin", Author: "Claude", Message: "new synthesis", MessageType: "synthesis",
+		Pin: "true",
+	})
+	if err != nil {
+		t.Fatalf("handlePostToRoom error: %v", err)
+	}
+	if !strings.Contains(resultText(res), "pinned") {
+		t.Errorf("expected pin confirmation in response, got: %s", resultText(res))
+	}
+
+	pinned, err := reg.Server.GetPinnedMessage("h-pin")
+	if err != nil || pinned == nil {
+		t.Fatalf("expected a pinned message, err=%v", err)
+	}
+	if pinned.Content != "new synthesis" {
+		t.Errorf("expected the new message pinned, got %q", pinned.Content)
+	}
+	if pinned.ID == old {
+		t.Error("previous pin should have been replaced")
+	}
+}
+
+func TestHandlePostToRoomNoPinByDefault(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-nopin")
+
+	reg.handlePostToRoom(context.Background(), nil, PostToRoomInput{
+		RoomID: "h-nopin", Author: "Claude", Message: "just a thought", MessageType: "thought",
+	})
+	if pinned, _ := reg.Server.GetPinnedMessage("h-nopin"); pinned != nil {
+		t.Errorf("expected nothing pinned without pin=true, got %q", pinned.Content)
+	}
+}
+
 func TestHandlePostToRoomAnyReplyToAccepted(t *testing.T) {
 	reg := setupHandlerTest(t)
 	mustCreateRoom(t, reg.Server, "h-reply-any")

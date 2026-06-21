@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -219,6 +220,50 @@ func TestGetDigestBasic(t *testing.T) {
 	}
 	if !strings.Contains(text, "digest-b") {
 		t.Errorf("expected digest-b in output, got: %s", text)
+	}
+}
+
+func TestGetDigestSummaryAndExcludeStale(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "live-room", withProject("dp"))
+	mustPost(t, reg.Server, "live-room", "Claude", "fresh activity")
+	mustCreateRoom(t, reg.Server, "graveyard", withProject("dp"))
+	mustPost(t, reg.Server, "graveyard", "Claude", "old message")
+	// The janitor flags inactivity with a `stale` tag (a system-side flag; a normal
+	// post would auto-clear it). Apply it directly to mimic that state.
+	if _, err := reg.Server.DB.Exec(`UPDATE rooms SET tags='stale' WHERE id='graveyard'`); err != nil {
+		t.Fatalf("flag stale: %v", err)
+	}
+
+	// Since in the past: both rooms have new activity; summary counts the stale one.
+	res, _, err := reg.handleGetDigest(context.Background(), nil, DigestInput{Project: "dp", Since: "2000-01-01T00:00:00"})
+	if err != nil {
+		t.Fatalf("handleGetDigest error: %v", err)
+	}
+	var full digestResponse
+	if err := json.Unmarshal([]byte(resultText(res)), &full); err != nil {
+		t.Fatalf("unmarshal digest: %v", err)
+	}
+	if full.Summary.Total != 2 || full.Summary.Stale != 1 || full.Summary.WithUnread != 2 {
+		t.Errorf("summary over full set wrong: %+v", full.Summary)
+	}
+
+	// Since in the future: only the stale room surfaces (via its tag), new_messages=0.
+	// exclude_stale hides it, but the summary still reports it as hidden.
+	res2, _, _ := reg.handleGetDigest(context.Background(), nil, DigestInput{
+		Project: "dp", Since: "2099-01-01T00:00:00", ExcludeStale: "true",
+	})
+	var pruned digestResponse
+	if err := json.Unmarshal([]byte(resultText(res2)), &pruned); err != nil {
+		t.Fatalf("unmarshal pruned digest: %v", err)
+	}
+	if pruned.Summary.Stale != 1 || pruned.Summary.HiddenStale != 1 {
+		t.Errorf("expected stale=1 hidden_stale=1, got: %+v", pruned.Summary)
+	}
+	for _, e := range pruned.Rooms {
+		if e.RoomID == "graveyard" {
+			t.Error("exclude_stale should have hidden the graveyard room")
+		}
 	}
 }
 

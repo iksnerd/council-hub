@@ -8,6 +8,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 Changes on `main` not yet in a tagged release.
 
+## [0.47.0] - 2026-06-21
+
+DX consolidation — acting on the backlog of agent feedback in `council-hub-mcp-feedback` (reports from four agents, 2026-06-14 → 06-20). Round-trip and discoverability papercuts that showed up at scale, plus a guide that now leads with the product model.
+
+### Added
+- **`post_to_room(pin=true)`** — pins the just-authored message as the room's current pin (auto-unpinning the previous one), folding the near-universal synthesis→pin dance into one call. No separate `pin_message` round-trip or message_id plumbing.
+- **`get_digest` now returns `{summary, rooms}`** with a health header (total / with_unread / stale / needs_synthesis / stale_pin / incoherent), so a session can triage at scale ("35 stale, skip the graveyard") without scanning every entry. New **`exclude_stale=true`** drops the inactive-room graveyard from `rooms[]` while the summary still reports how many were hidden. *(Output shape change: consumers that parsed a top-level array now read `.rooms`.)*
+- **Health-flag action hints.** `read_room` and `post_to_room` responses now append a one-line "→ what to do" for any live Knowledge-Linter flag (`incoherent`, `needs-synthesis`, `stale-pin`, `stale-plan`, `stale`) — the flags were visible but read as dead-ends. `post_to_room` reads tags *after* the post, so a synthesis/pin that clears a flag produces no stale nudge.
+- **`get_or_create_room` repo→project hint.** A new room whose `repo` matches existing rooms grouped under a different project gets a nudge toward that project, so a standalone repo's rooms don't scatter.
+
+### Changed
+- **`edit_notebook(action=add)` ref-like entries are now idempotent.** Re-adding a `ref`/`room_ref`/`query_ref` target already in the notebook is a no-op that returns the existing entry instead of appending a duplicate — so `current-work` room_refs don't silently drift across long or multi-session work. Prose and tasks still append (duplicates there are legitimate). Most-requested item in the backlog (four independent reports).
+- **`read_room` now folds in a summary by default** — the pinned message + latest-per-type (the `read_transcript(mode=summary)` view), so the call orients you instead of returning a bare header that read like a no-op. `include_last_n` still requests the raw recent feed.
+- **`get_or_create_room` / `create_room` similar-room notice now carries content** — each flagged room shows its message count and a one-line excerpt (pinned, else latest), so the use-vs-create decision isn't blind.
+- **`council://guide` leads with the product model** — Council Hub as an agent work journal / DKR (Engelbart Journal/NLS lineage): a primitive→role table, the rooms-are-the-journal / notebooks-are-views rule, a `message_type` quick-chooser, and `current-work` as session-start step 0. `[[wikilink]]` is documented as cosmetic (use `link_messages`). Tool descriptions cross-reference (`create_room`→prefer `get_or_create_room`).
+
 ## [0.46.4] - 2026-06-14
 
 Patch — sibling to v0.46.3, same class of bug on the mentions path.

@@ -13,11 +13,65 @@ import (
 
 // DigestInput represents the parameters for the project digest tool.
 type DigestInput struct {
-	Project     string `json:"project"`
-	Since       string `json:"since"`
-	UnreadOnly  string `json:"unread_only"`
-	Agent       string `json:"agent"`
-	ClusterWide string `json:"cluster_wide"`
+	Project      string `json:"project"`
+	Since        string `json:"since"`
+	UnreadOnly   string `json:"unread_only"`
+	Agent        string `json:"agent"`
+	ClusterWide  string `json:"cluster_wide"`
+	ExcludeStale string `json:"exclude_stale"`
+}
+
+// digestSummary is the at-a-glance health header prepended to the digest so an
+// agent can triage at scale ("35 stale, skip the graveyard") without scanning
+// every room. Counts are over the full result set, before exclude_stale hides rows.
+type digestSummary struct {
+	Total          int `json:"total"`
+	WithUnread     int `json:"with_unread"`
+	Stale          int `json:"stale"`
+	NeedsSynthesis int `json:"needs_synthesis"`
+	StalePin       int `json:"stale_pin"`
+	Incoherent     int `json:"incoherent"`
+	HiddenStale    int `json:"hidden_stale,omitempty"`
+}
+
+// digestResponse wraps the rooms array with a summary header.
+type digestResponse struct {
+	Summary digestSummary         `json:"summary"`
+	Rooms   []council.DigestEntry `json:"rooms"`
+}
+
+// summarizeDigest tallies health flags across digest entries.
+func summarizeDigest(entries []council.DigestEntry) digestSummary {
+	s := digestSummary{Total: len(entries)}
+	for _, e := range entries {
+		if e.NewMessages > 0 {
+			s.WithUnread++
+		}
+		if digestHasTag(e.Tags, "stale") {
+			s.Stale++
+		}
+		if digestHasTag(e.Tags, "needs-synthesis") {
+			s.NeedsSynthesis++
+		}
+		if digestHasTag(e.Tags, "stale-pin") {
+			s.StalePin++
+		}
+		if digestHasTag(e.Tags, "incoherent") {
+			s.Incoherent++
+		}
+	}
+	return s
+}
+
+// digestHasTag reports exact (not substring) membership in a comma-separated tag
+// list, so "stale" does not match "stale-pin"/"stale-plan".
+func digestHasTag(tags, tag string) bool {
+	for _, t := range strings.Split(tags, ",") {
+		if strings.TrimSpace(t) == tag {
+			return true
+		}
+	}
+	return false
 }
 
 // handleGetDigest returns a project activity digest in JSON format.
@@ -61,7 +115,7 @@ func (r *Registry) handleGetDigest(ctx context.Context, req *mcp.CallToolRequest
 			return msg(fmt.Sprintf("No unread rooms for agent '%s'. All rooms are up to date.", agent))
 		}
 
-		out, err := json.MarshalIndent(filtered, "", "  ")
+		out, err := json.MarshalIndent(digestResponse{Summary: summarizeDigest(filtered), Rooms: filtered}, "", "  ")
 		if err != nil {
 			return msg(fmt.Sprintf("Error formatting JSON: %s", err.Error()))
 		}
@@ -82,7 +136,26 @@ func (r *Registry) handleGetDigest(ctx context.Context, req *mcp.CallToolRequest
 		digest[i].LatestExcerpt = digestExcerpt(digest[i].LatestExcerpt)
 	}
 
-	out, err := json.MarshalIndent(digest, "", "  ")
+	// Summary is computed over the full set so the stale count is honest even when
+	// exclude_stale hides those rooms from the list. exclude_stale drops rooms
+	// flagged `stale` (the inactive-room graveyard) — but keeps a `stale` room that
+	// has genuinely new activity, and never hides stale-pin/stale-plan (those are
+	// drift flags on live rooms, not the graveyard).
+	summary := summarizeDigest(digest)
+	rooms := digest
+	if args.ExcludeStale == "true" {
+		kept := rooms[:0:0]
+		for _, e := range digest {
+			if digestHasTag(e.Tags, "stale") && e.NewMessages == 0 {
+				continue
+			}
+			kept = append(kept, e)
+		}
+		summary.HiddenStale = len(digest) - len(kept)
+		rooms = kept
+	}
+
+	out, err := json.MarshalIndent(digestResponse{Summary: summary, Rooms: rooms}, "", "  ")
 	if err != nil {
 		return msg(fmt.Sprintf("Error formatting JSON: %s", err.Error()))
 	}

@@ -158,6 +158,21 @@ func (s *Server) DeleteNotebook(id string) error {
 	return err
 }
 
+// ErrAlreadyReferenced signals that a ref-like entry (ref/room_ref/query_ref)
+// pointing at the same target already exists in the notebook, so AddOutlineEntry
+// no-opped instead of appending a duplicate. EntryID is the pre-existing entry.
+// Callers should treat this as a benign no-op, not a failure — the work-list
+// stays free of silent duplicate refs across long / multi-session work.
+type ErrAlreadyReferenced struct {
+	EntryID string
+	Kind    string
+	RefID   string
+}
+
+func (e *ErrAlreadyReferenced) Error() string {
+	return fmt.Sprintf("%s '%s' is already referenced in this notebook (entry %s)", e.Kind, e.RefID, e.EntryID)
+}
+
 // AddOutlineEntry appends or inserts an entry. kind "ref" requires refID to
 // name an existing local message; kind "prose" requires non-empty prose.
 // afterEntryID "" appends at the end; otherwise the entry lands directly after
@@ -221,6 +236,25 @@ func (s *Server) AddOutlineEntry(notebookID, kind, refID, prose, afterEntryID st
 			return "", fmt.Errorf("prose (the task label) is required for a task entry")
 		}
 		refID = ""
+	}
+
+	// Dedup ref-like entries: a ref/room_ref/query_ref pointing at a target already
+	// in this notebook is a no-op, not a second entry. Prose and tasks legitimately
+	// repeat, so they're exempt. The refID is already canonical here (query_ref is
+	// "room:type"). Keeps the self-sorting cockpit from drifting on repeat adds.
+	if kind == "ref" || kind == "room_ref" || kind == "query_ref" {
+		var existingID string
+		switch err := s.DB.QueryRow(
+			`SELECT id FROM notebook_entries WHERE notebook_id = ? AND kind = ? AND ref_id = ? LIMIT 1`,
+			notebookID, kind, refID,
+		).Scan(&existingID); err {
+		case nil:
+			return existingID, &ErrAlreadyReferenced{EntryID: existingID, Kind: kind, RefID: refID}
+		case sql.ErrNoRows:
+			// fall through to insert
+		default:
+			return "", err
+		}
 	}
 
 	ids, err := s.outlineEntryIDsLocked(notebookID)
