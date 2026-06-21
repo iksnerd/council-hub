@@ -34,6 +34,36 @@ func appendMessageBlock(b *strings.Builder, id, ts, author, msgType, content, re
 	}
 }
 
+// healthTagActions maps each Knowledge-Linter health flag to the corrective move
+// that clears it, in priority order. Surfaced next to a room so the flag is
+// actionable, not just visible — agents reported the flags read as dead-ends.
+var healthTagActions = []struct{ tag, action string }{
+	{"incoherent", "a `contradicts`/`duplicates` edge has no reconciling synthesis — resolve the conflict, then post a `synthesis` (clears on synthesis or a supersedes link)"},
+	{"needs-synthesis", "decisions/actions accumulated with no synthesis — distill them into a `synthesis` and pin it (post_to_room with pin=true)"},
+	{"stale-pin", "the pinned synthesis is outdated — post a fresh `synthesis` and pin it (post_to_room with pin=true) to replace it"},
+	{"stale-plan", "a `plan` was posted but never executed — post an `action` that carries it out, or close the room"},
+	{"stale", "inactive — resume it, post a `synthesis` and `signal_status(resolved)`, or archive it"},
+}
+
+// healthTagHint returns a one-line "→ what to do" block for any health flags
+// present on a room's tags, or "" if there are none. The leading newline lets
+// callers append it directly to a response body.
+func healthTagHint(tags string) string {
+	var lines []string
+	for _, ht := range healthTagActions {
+		for _, t := range strings.Split(tags, ",") {
+			if strings.TrimSpace(t) == ht.tag {
+				lines = append(lines, fmt.Sprintf("  → `%s`: %s", ht.tag, ht.action))
+				break
+			}
+		}
+	}
+	if len(lines) == 0 {
+		return ""
+	}
+	return "\n**Health flags — suggested actions:**\n" + strings.Join(lines, "\n") + "\n"
+}
+
 // Input size limits to prevent DoS and unbounded database growth.
 const (
 	maxIDLen       = 255

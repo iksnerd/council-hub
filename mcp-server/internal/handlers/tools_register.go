@@ -12,7 +12,7 @@ import (
 func (r *Registry) RegisterTools() {
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "create_room",
-		Description: "Create a new council room (virtual workspace) for a topic or task. Does nothing if the room already exists. Related rooms are automatically linked in both directions. Use template to pre-fill system_prompt, tags, and topic for common patterns.",
+		Description: "Create a new council room (virtual workspace) for a topic or task. Prefer get_or_create_room — it returns existing content instead of silently no-opping on a name clash, avoiding duplicate rooms. Does nothing if the room already exists. Related rooms are automatically linked in both directions. Use template to pre-fill system_prompt, tags, and topic for common patterns.",
 		InputSchema: schema([]string{"id"}, map[string]map[string]any{
 			"id": prop("string", "Unique room identifier (e.g. auth-migration-v2)"),
 			"template": prop("string", "Pre-fill system_prompt, tags, and topic for a common pattern. "+
@@ -73,6 +73,7 @@ func (r *Registry) RegisterTools() {
 			"mentions":       prop("string", "Comma-separated agent names to explicitly notify (e.g. 'claude,gemini-cli'). Mentioned agents can call get_mentions on startup to find threads awaiting their input."),
 			"supersedes":     prop("string", "Message ID this one replaces (e.g. an earlier synthesis). Renders as 'supersedes #x' so tooling can dim the dead version. Pinning a new synthesis over an old one sets this automatically."),
 			"mark_read_self": prop("string", "Set 'true' to advance your own read cursor to this new message — folds the end-of-session mark_read into the post (uses author as the agent identity)."),
+			"pin":            prop("string", "Set 'true' to pin this message as the room's current pin (auto-unpins the previous one), folding the post→pin dance into one call. Use for the synthesis/decision you want surfaced as the room's living abstract — no separate pin_message round-trip or message_id plumbing. Applies to local rooms (ignored on cluster-proxied writes)."),
 		}),
 	}, r.handlePostToRoom)
 
@@ -165,7 +166,7 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "read_room",
-		Description: "Read a room's metadata (topic, project, tech_stack, tags, status, system_prompt) without loading messages. Use include_related_summaries=true to also fetch the topic, system_prompt, and pinned message of each related room — provides lateral context in one call. Use include_last_n to inline the last N messages and skip a separate get_messages call.",
+		Description: "Read a room's metadata (topic, project, tech_stack, tags, status, system_prompt) plus a quick orient: by default it folds in the pinned message + latest-per-type (the read_transcript(mode=summary) view) so one call shows you the room, not just its header. For the full sequential history use read_transcript; pass include_last_n to inline the raw last N messages instead of the summary. Use include_related_summaries=true to also fetch the topic, system_prompt, and pinned message of each related room — lateral context in one call.",
 		InputSchema: schema([]string{"room_id"}, map[string]map[string]any{
 			"room_id":                   prop("string", "Target room ID"),
 			"include_related_summaries": prop("string", "Set to 'true' to append topic, system_prompt, and pinned message from each related room."),
@@ -452,7 +453,7 @@ func (r *Registry) RegisterTools() {
 			"title":          prop("string", "Human-readable title (create only)."),
 			"entry_id":       prop("string", "Target entry (update, start, check, uncheck, move, remove). From the *(entry #...)* markers in read_notebook output."),
 			"kind":           enumProp("string", "Entry kind for add. ref_id implies 'ref' and prose implies 'prose'; pass kind=room_ref explicitly with ref_id=<room_id> to track a room's live state, kind=query_ref with ref_id=<room_id>:<message_type> to transclude 'the latest <type> in <room>' (resolved live — a structural address, not a frozen ID), or kind=task with prose=<label> for a first-class checklist item you check/uncheck.", []string{"ref", "room_ref", "query_ref", "prose", "task"}),
-			"ref_id":         prop("string", "What to transclude: a message ID (kind=ref), a room ID (kind=room_ref), or 'room_id:message_type' (kind=query_ref, e.g. 'auth-room:synthesis'). Must exist on this node."),
+			"ref_id":         prop("string", "What to transclude: a message ID (kind=ref), a room ID (kind=room_ref), or 'room_id:message_type' (kind=query_ref, e.g. 'auth-room:synthesis'). Must exist on this node. Ref-like adds are idempotent — re-adding a target already referenced in the notebook is a no-op that returns the existing entry, so it's safe to repeat across sessions without creating duplicate refs."),
 			"prose":          prop("string", "Markdown content (add with kind=prose, or update) — also the task label (add with kind=task)."),
 			"after_entry_id": prop("string", "Position control for add and move: the entry to land after. Omit on add to append; empty on move means the top."),
 		}),
@@ -497,16 +498,18 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name: "get_digest",
-		Description: "Get a project activity and knowledge health digest as a JSON array. Each entry has room_id, new_messages, latest_message_id, latest_excerpt, tags, decision_count, synthesis_count. " +
+		Description: "Get a project activity and knowledge health digest as JSON: {summary, rooms}. The summary header tallies total / with_unread / stale / needs_synthesis / stale_pin / incoherent so you can triage at scale (\"35 stale, skip the graveyard\") without scanning every entry. Each rooms[] entry has room_id, new_messages, latest_message_id, latest_excerpt, tags, decision_count, synthesis_count. " +
 			"Rooms flagged by check_room_health (stale, needs-synthesis, incoherent) are included. Call second at session start (after get_mentions) to see what changed and what needs attention. " +
-			"Machine-readable — parse room_id and latest_message_id directly for delta reads. " +
-			"Set unread_only=true (with agent=<your-name>) to show only rooms with messages newer than your stored cursor — ideal for returning sessions after using mark_read.",
+			"Machine-readable — parse rooms[].room_id and rooms[].latest_message_id directly for delta reads. " +
+			"Set unread_only=true (with agent=<your-name>) to show only rooms with messages newer than your stored cursor — ideal for returning sessions after using mark_read. " +
+			"Set exclude_stale=true to drop the inactive-room graveyard (rooms flagged `stale` with no new activity) from rooms[]; the summary still reports how many were hidden.",
 		InputSchema: schema(nil, map[string]map[string]any{
-			"project":      prop("string", "Filter to rooms in this project (optional — omit for all projects)"),
-			"since":        prop("string", "ISO timestamp (e.g. 2026-03-31T12:00:00). Defaults to 24 hours ago if omitted. Ignored when unread_only=true."),
-			"unread_only":  prop("string", "Set to 'true' to return only rooms with messages newer than your stored cursor. Requires agent param (or uses 'default'). Use after mark_read to see only what changed since your last session."),
-			"agent":        prop("string", "Your agent name, used to look up stored read cursors. Only relevant when unread_only=true. Defaults to 'default'."),
-			"cluster_wide": prop("string", "Set to 'true' to fetch the digest from all cluster nodes. Default: local only."),
+			"project":       prop("string", "Filter to rooms in this project (optional — omit for all projects)"),
+			"since":         prop("string", "ISO timestamp (e.g. 2026-03-31T12:00:00). Defaults to 24 hours ago if omitted. Ignored when unread_only=true."),
+			"unread_only":   prop("string", "Set to 'true' to return only rooms with messages newer than your stored cursor. Requires agent param (or uses 'default'). Use after mark_read to see only what changed since your last session."),
+			"agent":         prop("string", "Your agent name, used to look up stored read cursors. Only relevant when unread_only=true. Defaults to 'default'."),
+			"cluster_wide":  prop("string", "Set to 'true' to fetch the digest from all cluster nodes. Default: local only."),
+			"exclude_stale": prop("string", "Set to 'true' to omit the inactive-room graveyard (rooms flagged `stale` with no new messages) from rooms[]. The summary header still counts them (and reports hidden_stale). Drift flags on live rooms (stale-pin, stale-plan) are never hidden."),
 		}),
 	}, r.handleGetDigest)
 

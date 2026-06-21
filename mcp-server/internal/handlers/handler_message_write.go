@@ -20,6 +20,7 @@ type PostToRoomInput struct {
 	Mentions     string `json:"mentions"`
 	Supersedes   string `json:"supersedes"`
 	MarkReadSelf string `json:"mark_read_self"`
+	Pin          string `json:"pin"`
 }
 
 // UpdateMessageInput represents the parameters for editing a message. The edit is
@@ -109,8 +110,31 @@ func (r *Registry) handlePostToRoom(ctx context.Context, req *mcp.CallToolReques
 		}
 	}
 
-	r.Server.Logger.Info("Message posted", "room_id", args.RoomID, "author", args.Author, "type", args.MessageType, "msg_id", msgID)
-	return msg(fmt.Sprintf("Message #%.8s posted to room '%s' by %s.\n\n```json\n{\"message_id\": \"%s\", \"room_id\": \"%s\", \"latest_message_id\": \"%s\"}\n```", msgID, args.RoomID, args.Author, msgID, args.RoomID, msgID))
+	// pin folds the post→pin dance into one call: pin the just-authored message
+	// (auto-unpinning the room's previous pin, identical to pin_message). The
+	// near-universal flow for synthesis/decision is "write after deliberation,
+	// then pin it" — this saves a round-trip and the manual message_id plumbing.
+	pinNote := ""
+	if args.Pin == "true" {
+		if _, perr := r.Server.PinMessage(args.RoomID, msgID); perr != nil {
+			r.Server.Logger.Warn("pin-on-post failed", "room_id", args.RoomID, "msg_id", msgID, "error", perr)
+			pinNote = " (pin failed — pin it manually with pin_message)"
+		} else {
+			pinNote = " 📌 pinned (previous pin replaced)"
+		}
+	}
+
+	// Surface any Knowledge-Linter health flags that this post didn't clear, so the
+	// flag is actionable. Read tags AFTER the post/pin (a synthesis clears
+	// needs-synthesis, a non-system post clears stale, a pin clears stale-pin) — we
+	// only nudge about what genuinely remains.
+	healthHint := ""
+	if room, gerr := r.Server.GetRoom(args.RoomID); gerr == nil {
+		healthHint = healthTagHint(room.Tags)
+	}
+
+	r.Server.Logger.Info("Message posted", "room_id", args.RoomID, "author", args.Author, "type", args.MessageType, "msg_id", msgID, "pinned", args.Pin == "true")
+	return msg(fmt.Sprintf("Message #%.8s posted to room '%s' by %s.%s\n\n```json\n{\"message_id\": \"%s\", \"room_id\": \"%s\", \"latest_message_id\": \"%s\"}\n```%s", msgID, args.RoomID, args.Author, pinNote, msgID, args.RoomID, msgID, healthHint))
 }
 
 func (r *Registry) handleUpdateMessage(ctx context.Context, req *mcp.CallToolRequest, args UpdateMessageInput) (*mcp.CallToolResult, ToolOutput, error) {

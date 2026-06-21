@@ -169,12 +169,7 @@ func (r *Registry) handleCreateRoom(ctx context.Context, req *mcp.CallToolReques
 	}
 
 	// Advisory duplicate check — never blocks creation.
-	if similar, err := r.Server.FindSimilarRooms(args.ID, args.Topic, args.Project, args.Tags, 3); err == nil && len(similar) > 0 {
-		fmt.Fprintf(&b, "\n**Note:** Similar room(s) already exist:\n")
-		for _, sr := range similar {
-			fmt.Fprintf(&b, "- **%s** — %s (%s)\n", sr.ID, sr.Description, sr.MatchReason)
-		}
-	}
+	r.appendSimilarRooms(&b, args.ID, args.Topic, args.Project, args.Tags)
 
 	return msg(b.String())
 }
@@ -267,18 +262,36 @@ func (r *Registry) handleGetOrCreateRoom(ctx context.Context, req *mcp.CallToolR
 		fmt.Fprintf(&b, "\n**Tip:** No related_rooms set — link parent/sibling rooms for cross-room navigation.\n")
 	}
 
-	// Advisory duplicate check on newly created rooms only.
+	// Advisory checks on newly created rooms only.
 	if created {
-		if similar, err := r.Server.FindSimilarRooms(args.ID, args.Topic, args.Project, args.Tags, 3); err == nil && len(similar) > 0 {
-			fmt.Fprintf(&b, "\n**Note:** Similar room(s) already exist:\n")
-			for _, sr := range similar {
-				fmt.Fprintf(&b, "- **%s** — %s (%s)\n", sr.ID, sr.Description, sr.MatchReason)
-			}
-		}
+		r.appendSimilarRooms(&b, args.ID, args.Topic, args.Project, args.Tags)
+		b.WriteString(r.repoProjectHint(args.Repo, room.ID, room.Project))
 	}
 
 	r.Server.Logger.Info("get_or_create_room", "id", args.ID, "created", created)
 	return msg(b.String())
+}
+
+// repoProjectHint nudges a new room toward the project its repo's other rooms
+// already use, so a standalone repo's rooms don't scatter across projects.
+// Returns "" when there's no repo, no other rooms share it, or the chosen project
+// already matches the dominant one. chosenProject must be the stored (normalized)
+// project so the comparison lines up.
+func (r *Registry) repoProjectHint(repo, excludeID, chosenProject string) string {
+	repo = strings.TrimSpace(repo)
+	if repo == "" {
+		return ""
+	}
+	var proj string
+	var n int
+	err := r.Server.DB.QueryRow(
+		`SELECT project, COUNT(*) c FROM rooms WHERE repo = ? AND id != ? AND project != '' GROUP BY project ORDER BY c DESC LIMIT 1`,
+		repo, excludeID,
+	).Scan(&proj, &n)
+	if err != nil || proj == "" || proj == chosenProject {
+		return ""
+	}
+	return fmt.Sprintf("\n**Tip:** %d existing room(s) with repo `%s` are grouped under project `%s` — consider update_room(room_id=%s, project=%s) to keep this repo's rooms together.\n", n, repo, proj, excludeID, proj)
 }
 
 func (r *Registry) handleUpdateRoom(ctx context.Context, req *mcp.CallToolRequest, args UpdateRoomInput) (*mcp.CallToolResult, ToolOutput, error) {
@@ -445,7 +458,10 @@ func (r *Registry) handleReadRoom(ctx context.Context, req *mcp.CallToolRequest,
 	fmt.Fprintf(&b, "**Created:** %s\n", room.CreatedAt.Format("2006-01-02 15:04:05"))
 	fmt.Fprintf(&b, "**Updated:** %s\n", room.UpdatedAt.Format("2006-01-02 15:04:05"))
 
-	// Append recent messages if requested
+	// Content. include_last_n requests the raw recent feed; otherwise read_room
+	// orients by default — folding in the pinned message + latest-per-type (the
+	// read_transcript(mode=summary) view) so the call shows the room, not just its
+	// header. (The bare-header behaviour read like a no-op and cost a round-trip.)
 	if args.IncludeLastN != "" {
 		lastN := 0
 		_, _ = fmt.Sscanf(args.IncludeLastN, "%d", &lastN)
@@ -461,6 +477,8 @@ func (r *Registry) handleReadRoom(ctx context.Context, req *mcp.CallToolRequest,
 				}
 			}
 		}
+	} else {
+		r.appendRoomSummary(&b, args.RoomID, room.Repo)
 	}
 
 	// Append related room summaries if requested
@@ -496,7 +514,82 @@ func (r *Registry) handleReadRoom(ctx context.Context, req *mcp.CallToolRequest,
 		}
 	}
 
+	// Make any Knowledge-Linter health flags actionable rather than just visible.
+	b.WriteString(healthTagHint(room.Tags))
+
 	return msg(b.String())
+}
+
+// appendSimilarRooms renders the advisory "similar room(s) already exist" notice
+// with enough content to decide use-vs-create in one call: per room, its message
+// count plus a one-line excerpt (the pinned message, else the latest message).
+// Without the excerpt an agent had to make the call blind and discovered the
+// overlap only later. Never blocks creation.
+func (r *Registry) appendSimilarRooms(b *strings.Builder, excludeID, topic, project, tags string) {
+	similar, err := r.Server.FindSimilarRooms(excludeID, topic, project, tags, 3)
+	if err != nil || len(similar) == 0 {
+		return
+	}
+	counts := r.Server.GetMessageCounts()
+	b.WriteString("\n**Note:** Similar room(s) already exist — check before duplicating:\n")
+	for _, sr := range similar {
+		fmt.Fprintf(b, "- **%s** | %d msgs — %s (%s)\n", sr.ID, counts[sr.ID], sr.Description, sr.MatchReason)
+		if pinned, _ := r.Server.GetPinnedMessage(sr.ID); pinned != nil {
+			fmt.Fprintf(b, "    📌 %s\n", excerptLine(pinned.Content, 160))
+		} else if recent, _ := r.Server.GetRecentMessages(sr.ID, 1); len(recent) > 0 {
+			m := recent[0]
+			fmt.Fprintf(b, "    latest [%s]: %s\n", m.MessageType, excerptLine(m.Content, 160))
+		}
+	}
+	b.WriteString("  → To use one, post_to_room there (and link it via related_rooms); otherwise keep this new room.\n")
+}
+
+// excerptLine collapses content to its first non-empty line, clipped to max runes.
+func excerptLine(content string, max int) string {
+	line := firstNonEmptyLine(content)
+	if len(line) > max {
+		line = line[:max] + "…"
+	}
+	return line
+}
+
+// appendRoomSummary folds the pinned message + latest-per-type into a read_room
+// response so one call orients a newcomer (the read_transcript(mode=summary)
+// view). The pinned message, if any, is shown once and not repeated in the
+// per-type list.
+func (r *Registry) appendRoomSummary(b *strings.Builder, roomID, repo string) {
+	pinned, _ := r.Server.GetPinnedMessage(roomID)
+	latest, _ := r.Server.GetLatestPerType(roomID)
+
+	if pinned == nil && len(latest) == 0 {
+		b.WriteString("\n---\nNo messages yet. Post the first with post_to_room.\n")
+		return
+	}
+
+	b.WriteString("\n---\n")
+	if pinned != nil {
+		b.WriteString("**📌 Pinned:**\n")
+		appendMessageBlock(b, pinned.ID, pinned.Timestamp.Format("2006-01-02 15:04:05"), pinned.Author, pinned.MessageType, pinned.Content, repo)
+	}
+
+	var shown int
+	for _, m := range latest {
+		if pinned != nil && m.ID == pinned.ID {
+			continue
+		}
+		shown++
+	}
+	if shown > 0 {
+		fmt.Fprintf(b, "**Latest per type (%d):**\n", shown)
+		for _, m := range latest {
+			if pinned != nil && m.ID == pinned.ID {
+				continue
+			}
+			appendMessageBlock(b, m.ID, m.Timestamp.Format("2006-01-02 15:04:05"), m.Author, m.MessageType, m.Content, repo)
+		}
+	}
+
+	b.WriteString("\n*Full sequential history: read_transcript. Raw recent feed: read_room(include_last_n=N).*\n")
 }
 
 func (r *Registry) handleDeleteRoom(ctx context.Context, req *mcp.CallToolRequest, args DeleteRoomInput) (*mcp.CallToolResult, ToolOutput, error) {

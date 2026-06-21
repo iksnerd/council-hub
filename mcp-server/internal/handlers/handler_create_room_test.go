@@ -184,6 +184,117 @@ func TestHandleCreateRoomDuplicateWarning(t *testing.T) {
 	}
 }
 
+func TestHandleReadRoomFoldsInSummary(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "rr-summary")
+	pinID := mustPostTyped(t, reg.Server, "rr-summary", "Claude", "the living abstract", "synthesis")
+	if _, err := reg.Server.PinMessage("rr-summary", pinID); err != nil {
+		t.Fatalf("pin failed: %v", err)
+	}
+	mustPostTyped(t, reg.Server, "rr-summary", "Gemini", "shipped the fix", "action")
+
+	// No include_last_n: read_room should orient with content, not just a header.
+	res, _, err := reg.handleReadRoom(context.Background(), nil, ReadRoomInput{RoomID: "rr-summary"})
+	if err != nil {
+		t.Fatalf("handleReadRoom error: %v", err)
+	}
+	text := resultText(res)
+	if !strings.Contains(text, "the living abstract") {
+		t.Errorf("expected pinned content folded in, got: %s", text)
+	}
+	if !strings.Contains(text, "shipped the fix") {
+		t.Errorf("expected latest-per-type content folded in, got: %s", text)
+	}
+	if !strings.Contains(text, "📌 Pinned") {
+		t.Errorf("expected pinned marker, got: %s", text)
+	}
+}
+
+func TestHandleGetOrCreateRoomRepoProjectHint(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "lens-core", withProject("weightless"))
+	if err := reg.Server.SetRepo("lens-core", "iksnerd/lens"); err != nil {
+		t.Fatalf("SetRepo: %v", err)
+	}
+
+	// New room, same repo, no project — should suggest the repo's existing project.
+	res, _, _ := reg.handleGetOrCreateRoom(context.Background(), nil, GetOrCreateRoomInput{
+		ID: "lens-review", Topic: "Lens review", Repo: "iksnerd/lens",
+	})
+	text := resultText(res)
+	if !strings.Contains(text, "weightless") || !strings.Contains(text, "keep this repo") {
+		t.Errorf("expected repo→project hint, got: %s", text)
+	}
+
+	// A matching project should NOT trigger the hint.
+	res2, _, _ := reg.handleGetOrCreateRoom(context.Background(), nil, GetOrCreateRoomInput{
+		ID: "lens-spec", Topic: "Lens spec", Repo: "iksnerd/lens", Project: "weightless",
+	})
+	if strings.Contains(resultText(res2), "keep this repo") {
+		t.Errorf("no hint expected when project already matches, got: %s", resultText(res2))
+	}
+}
+
+func TestHandleReadRoomShowsHealthTagHint(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "flagged-room")
+	if _, err := reg.Server.DB.Exec(`UPDATE rooms SET tags='needs-synthesis' WHERE id='flagged-room'`); err != nil {
+		t.Fatalf("flag: %v", err)
+	}
+	res, _, _ := reg.handleReadRoom(context.Background(), nil, ReadRoomInput{RoomID: "flagged-room"})
+	text := resultText(res)
+	if !strings.Contains(text, "Health flags") || !strings.Contains(text, "needs-synthesis") {
+		t.Errorf("expected actionable health-flag hint, got: %s", text)
+	}
+}
+
+func TestHandlePostToRoomClearsThenNoStaleHint(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "stale-then-active")
+	if _, err := reg.Server.DB.Exec(`UPDATE rooms SET tags='stale' WHERE id='stale-then-active'`); err != nil {
+		t.Fatalf("flag: %v", err)
+	}
+	// A normal post clears `stale`, so the response should NOT nudge about it.
+	res, _, _ := reg.handlePostToRoom(context.Background(), nil, PostToRoomInput{
+		RoomID: "stale-then-active", Author: "Claude", Message: "back to work", MessageType: "thought",
+	})
+	if strings.Contains(resultText(res), "Health flags") {
+		t.Errorf("stale flag was cleared by the post; should not hint, got: %s", resultText(res))
+	}
+}
+
+func TestHandleReadRoomEmptyShowsNoMessages(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "rr-empty")
+	res, _, _ := reg.handleReadRoom(context.Background(), nil, ReadRoomInput{RoomID: "rr-empty"})
+	if !strings.Contains(resultText(res), "No messages yet") {
+		t.Errorf("expected empty-room hint, got: %s", resultText(res))
+	}
+}
+
+func TestHandleSimilarRoomsCarryExcerpt(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "existing-cache", withProject("perf"), withTags("redis,caching,backend"))
+	pinID := mustPostTyped(t, reg.Server, "existing-cache", "Claude", "decided on write-through caching", "synthesis")
+	if _, err := reg.Server.PinMessage("existing-cache", pinID); err != nil {
+		t.Fatalf("pin failed: %v", err)
+	}
+
+	res, _, _ := reg.handleCreateRoom(context.Background(), nil, CreateRoomInput{
+		ID: "new-cache", Topic: "Cache design", Project: "perf", Tags: "redis,caching,go",
+	})
+	text := resultText(res)
+	if !strings.Contains(text, "existing-cache") {
+		t.Fatalf("expected similar-room note, got: %s", text)
+	}
+	if !strings.Contains(text, "msgs") {
+		t.Errorf("expected message count in similar-room note, got: %s", text)
+	}
+	if !strings.Contains(text, "decided on write-through caching") {
+		t.Errorf("expected pinned excerpt in similar-room note, got: %s", text)
+	}
+}
+
 func TestHandleCreateRoomNoDuplicateWhenUnrelated(t *testing.T) {
 	reg := setupHandlerTest(t)
 	mustCreateRoom(t, reg.Server, "infra-room", withProject("ops"), withTags("kubernetes,terraform"))

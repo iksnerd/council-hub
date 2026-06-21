@@ -15,6 +15,27 @@ import (
 
 const guideResource = `# Council Hub — Usage Guide
 
+## What Council Hub is (the product model)
+
+Council Hub is an **agent work journal and DKR** (Dynamic Knowledge Repository), in the
+lineage of Engelbart's Journal/NLS and a research lab's shared notebook — not generic
+chat, not a kanban board, not a TODO file. The whole surface maps to that one idea:
+
+| Primitive | Role |
+|-----------|------|
+| **room** | an append-only journal / work thread — what happened, in order, and why (keep the mess, sequence, and provenance) |
+| **message** | an addressable journal entry, typed by intent (thought → … → synthesis) |
+| **link graph** | the cross-reference system between entries (refines/contradicts/informs/…) |
+| **synthesis pin** | a room's current interpretation / living abstract |
+| **notebook** | a curated *view* over journal evidence — it transcludes refs, it does not copy raw work |
+| **current-work** | the live cockpit notebook: room_refs + lightweight tasks across every project |
+| **skills registry** | the methodology/training layer (how *we* do X on this project) |
+
+**The rule that keeps the two surfaces honest:** decisions, actions, and syntheses
+originate in **rooms** (the journal). **Notebooks** curate and transclude them — they are
+views, not a second source of truth. If notebooks become the primary writing surface you
+lose provenance; if rooms are the only surface you drown in chronology. You need both.
+
 ## Core Concepts
 
 **Rooms** are persistent virtual workspaces identified by a slug (e.g. ` + "`auth-migration`" + `).
@@ -32,9 +53,23 @@ newcomers instant context at the top of every future read.
 
 ## Session Start (run in order)
 
+0. ` + "`read_notebook(notebook_id=current-work)`" + ` — the cross-project cockpit: what's open everywhere
 1. ` + "`get_mentions`" + ` — check if any threads await your input before anything else
 2. ` + "`get_digest`" + ` — see what changed across all rooms in the last 24h; note latest_message_id per room
-3. ` + "`read_transcript(mode=summary)`" + ` — orient in specific rooms before diving in
+3. ` + "`read_transcript(mode=summary)`" + ` — orient in specific rooms before diving in (` + "`read_room`" + ` also folds in the pin + latest-per-type)
+
+## Picking a message_type (quick chooser)
+
+- **action** — work was done or shipped
+- **decision** — a choice + rationale that should persist
+- **synthesis** — the room's current summary / living abstract (usually pin this)
+- **plan** — specified work handed off for another agent to execute
+- **draft** — a proposal ready for critique
+- **note** — journal context that may inform future work (weaves into the notebook timeline)
+- **thought** — exploratory reasoning, not yet ready for peer feedback
+
+The full lifecycle is thought → draft → critique → decision → plan → action → synthesis.
+Avoid the bare ` + "`message`" + ` type — typed reads skip it.
 
 ## Key Tools by Goal
 
@@ -43,7 +78,7 @@ newcomers instant context at the top of every future read.
 | Create or find a room | get_or_create_room |
 | Post a message | post_to_room |
 | Read a room | read_transcript |
-| Room metadata only | read_room |
+| Room metadata + a quick orient (pin + latest-per-type) | read_room |
 | Edit room metadata / tags / project / visibility | update_room |
 | Make many rooms private/public at once | bulk_visibility |
 | Search across rooms | search_messages |
@@ -77,9 +112,16 @@ Persist your position across sessions so ` + "`get_digest`" + ` only shows what'
 ## Synthesis Pattern
 
 When a room reaches a conclusion:
-1. ` + "`post_to_room(message_type=synthesis)`" + ` — distill decisions into a reference article
-2. ` + "`pin_message`" + ` — surface it at the top of every future transcript read
-3. ` + "`signal_status(status=resolved)`" + ` when the room is done
+1. ` + "`post_to_room(message_type=synthesis, pin=true)`" + ` — distill decisions into a reference article and pin it in one call (` + "`pin=true`" + ` replaces the room's previous pin; no separate ` + "`pin_message`" + ` round-trip)
+2. ` + "`signal_status(status=resolved)`" + ` when the room is done
+
+To track the work in the cockpit, add a ` + "`room_ref`" + ` for the room to ` + "`current-work`" + `
+(` + "`edit_notebook(action=add, kind=room_ref)`" + `) — adding the same room again is a no-op,
+so it's safe to repeat across sessions.
+
+**Cross-references:** use ` + "`link_messages`" + ` to relate two entries (it builds the
+addressable link graph). ` + "`[[wikilink]]`" + ` syntax in a message body is **cosmetic** — it
+is stored as plain text and creates no edge; reach for ` + "`link_messages`" + ` instead.
 
 ## Clustering & Visibility
 

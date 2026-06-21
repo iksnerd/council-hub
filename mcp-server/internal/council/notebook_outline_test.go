@@ -1,6 +1,7 @@
 package council
 
 import (
+	"errors"
 	"strings"
 	"testing"
 )
@@ -211,6 +212,61 @@ func TestRoomRefTranscludesLiveState(t *testing.T) {
 	_, entries, _ = s.GetOutline("ol-nb")
 	if entries[0].RefStatus != "resolved" {
 		t.Errorf("room_ref should reflect live status, got %q", entries[0].RefStatus)
+	}
+}
+
+func TestAddOutlineEntryDedupesRefs(t *testing.T) {
+	s := setupTestServer(t)
+	msgID := seedOutline(t, s)
+	mustPostTyped(t, s, "ol-room", "claude", "a synthesis", "synthesis")
+
+	// ref dedup: a second add of the same message no-ops to the first entry.
+	first, err := s.AddOutlineEntry("ol-nb", "ref", msgID, "", "")
+	if err != nil {
+		t.Fatalf("first ref add failed: %v", err)
+	}
+	again, err := s.AddOutlineEntry("ol-nb", "ref", msgID, "", "")
+	var dup *ErrAlreadyReferenced
+	if !errors.As(err, &dup) {
+		t.Fatalf("expected ErrAlreadyReferenced on duplicate ref, got %v", err)
+	}
+	if again != first || dup.EntryID != first {
+		t.Errorf("dedup should return the existing entry %s, got id=%s dup=%s", first, again, dup.EntryID)
+	}
+
+	// room_ref dedup.
+	rr, err := s.AddOutlineEntry("ol-nb", "room_ref", "ol-room", "", "")
+	if err != nil {
+		t.Fatalf("first room_ref add failed: %v", err)
+	}
+	if _, err := s.AddOutlineEntry("ol-nb", "room_ref", "ol-room", "", ""); !errors.As(err, &dup) || dup.EntryID != rr {
+		t.Errorf("expected room_ref dedup to entry %s, got %v", rr, err)
+	}
+
+	// query_ref dedup (canonical "room:type" key).
+	qr, err := s.AddOutlineEntry("ol-nb", "query_ref", "ol-room:synthesis", "", "")
+	if err != nil {
+		t.Fatalf("first query_ref add failed: %v", err)
+	}
+	if _, err := s.AddOutlineEntry("ol-nb", "query_ref", "ol-room:synthesis", "", ""); !errors.As(err, &dup) || dup.EntryID != qr {
+		t.Errorf("expected query_ref dedup to entry %s, got %v", qr, err)
+	}
+
+	// Exactly three entries survived — no silent duplicates.
+	_, entries, err := s.GetOutline("ol-nb")
+	if err != nil {
+		t.Fatalf("GetOutline failed: %v", err)
+	}
+	if len(entries) != 3 {
+		t.Errorf("expected 3 deduped entries, got %d", len(entries))
+	}
+
+	// Prose is exempt — duplicates are legitimate content.
+	if _, err := s.AddOutlineEntry("ol-nb", "prose", "", "same text", ""); err != nil {
+		t.Fatalf("prose add failed: %v", err)
+	}
+	if _, err := s.AddOutlineEntry("ol-nb", "prose", "", "same text", ""); err != nil {
+		t.Fatalf("second identical prose should append, not dedup: %v", err)
 	}
 }
 

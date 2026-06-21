@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -67,6 +68,10 @@ func (r *Registry) handleEditNotebook(ctx context.Context, req *mcp.CallToolRequ
 		}
 		entryID, err := r.Server.AddOutlineEntry(args.NotebookID, kind, args.RefID, args.Prose, args.AfterEntryID)
 		if err != nil {
+			var dup *council.ErrAlreadyReferenced
+			if errors.As(err, &dup) {
+				return msg(fmt.Sprintf("Already referenced (no-op) — %s '%s' is entry %s in notebook '%s'. Not re-added.", dup.Kind, dup.RefID, dup.EntryID, args.NotebookID))
+			}
 			return msg(fmt.Sprintf("Error: %s", err.Error()))
 		}
 		return msg(fmt.Sprintf("Entry %s added to notebook '%s' (kind: %s).", entryID, args.NotebookID, kind))

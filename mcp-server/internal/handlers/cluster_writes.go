@@ -4,10 +4,13 @@ import (
 	"bytes"
 	"crypto/subtle"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
+
+	"council-hub/internal/council"
 )
 
 // clusterSecretHeader authenticates cross-node write proxies. The value is the
@@ -304,6 +307,12 @@ func (r *Registry) UINotebookEntryHandler() http.HandlerFunc {
 
 		entryID, err := r.Server.AddOutlineEntry(in.NotebookID, kind, in.RefID, in.Prose, in.AfterEntryID)
 		if err != nil {
+			// A duplicate ref is a benign no-op: return the pre-existing entry, not an error.
+			var dup *council.ErrAlreadyReferenced
+			if errors.As(err, &dup) {
+				writeJSON(uiNotebookEntryResponse{EntryID: dup.EntryID, NotebookID: in.NotebookID})
+				return
+			}
 			r.Server.Logger.Error("UI notebook entry failed", "notebook_id", in.NotebookID, "error", err)
 			writeJSON(uiNotebookEntryResponse{Error: err.Error()})
 			return
