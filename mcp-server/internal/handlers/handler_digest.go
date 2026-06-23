@@ -34,10 +34,24 @@ type digestSummary struct {
 	HiddenStale    int `json:"hidden_stale,omitempty"`
 }
 
-// digestResponse wraps the rooms array with a summary header.
+// digestResponse wraps the rooms array with a summary header. Hint is set only
+// when a project filter matched nothing — the `project` filter is an exact field
+// match, so a room created without its project set returns a silent zero, and the
+// session-start ritual ("call get_digest first") gives no clue why.
 type digestResponse struct {
 	Summary digestSummary         `json:"summary"`
 	Rooms   []council.DigestEntry `json:"rooms"`
+	Hint    string                `json:"hint,omitempty"`
+}
+
+// digestNoMatchHint points an agent at keyword search when an exact-match project
+// filter returns nothing — the common cause is a room whose `project` field was
+// never set (see get_or_create_room metadata backfill).
+func digestNoMatchHint(project string, matched int) string {
+	if project == "" || matched > 0 {
+		return ""
+	}
+	return fmt.Sprintf("No rooms with project='%s'. The project filter is an exact field match, not a keyword search — a room created without its project set won't appear here. Try list_rooms(search='%s') to find it by ID/topic/tag, then get_or_create_room(id=…, project='%s') to backfill the project field.", project, project, project)
 }
 
 // summarizeDigest tallies health flags across digest entries.
@@ -115,7 +129,7 @@ func (r *Registry) handleGetDigest(ctx context.Context, req *mcp.CallToolRequest
 			return msg(fmt.Sprintf("No unread rooms for agent '%s'. All rooms are up to date.", agent))
 		}
 
-		out, err := json.MarshalIndent(digestResponse{Summary: summarizeDigest(filtered), Rooms: filtered}, "", "  ")
+		out, err := json.MarshalIndent(digestResponse{Summary: summarizeDigest(filtered), Rooms: filtered, Hint: digestNoMatchHint(args.Project, len(filtered))}, "", "  ")
 		if err != nil {
 			return msg(fmt.Sprintf("Error formatting JSON: %s", err.Error()))
 		}
@@ -155,7 +169,10 @@ func (r *Registry) handleGetDigest(ctx context.Context, req *mcp.CallToolRequest
 		rooms = kept
 	}
 
-	out, err := json.MarshalIndent(digestResponse{Summary: summary, Rooms: rooms}, "", "  ")
+	// Hint reflects whether the project filter matched any room at all (len(digest)),
+	// not how many survived exclude_stale (len(rooms)) — a project with only stale
+	// rooms still matched, so it isn't the "wrong project name" footgun.
+	out, err := json.MarshalIndent(digestResponse{Summary: summary, Rooms: rooms, Hint: digestNoMatchHint(args.Project, len(digest))}, "", "  ")
 	if err != nil {
 		return msg(fmt.Sprintf("Error formatting JSON: %s", err.Error()))
 	}

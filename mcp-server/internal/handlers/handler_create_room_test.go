@@ -311,6 +311,49 @@ func TestHandleCreateRoomNoDuplicateWhenUnrelated(t *testing.T) {
 	}
 }
 
+func TestHandleGetOrCreateRoomBackfillsEmptyMetadata(t *testing.T) {
+	reg := setupHandlerTest(t)
+	// A room created before any project/tag convention — only an id.
+	mustCreateRoom(t, reg.Server, "early-room")
+
+	res, _, _ := reg.handleGetOrCreateRoom(context.Background(), nil, GetOrCreateRoomInput{
+		ID: "early-room", Project: "diffwire", Tags: "cli,go", Repo: "iksnerd/diffwire",
+	})
+	text := resultText(res)
+	if !strings.Contains(text, "Backfilled") {
+		t.Errorf("expected a Backfilled line, got: %s", text)
+	}
+
+	room, _ := reg.Server.GetRoom("early-room")
+	if room.Project != "diffwire" {
+		t.Errorf("expected project backfilled to 'diffwire', got '%s'", room.Project)
+	}
+	if !strings.Contains(room.Tags, "cli") || !strings.Contains(room.Tags, "go") {
+		t.Errorf("expected tags backfilled, got '%s'", room.Tags)
+	}
+	if room.Repo != "iksnerd/diffwire" {
+		t.Errorf("expected repo backfilled, got '%s'", room.Repo)
+	}
+}
+
+func TestHandleGetOrCreateRoomDoesNotClobberSetMetadata(t *testing.T) {
+	reg := setupHandlerTest(t)
+	// Room already has a project — get_or_create must NOT overwrite it (gap-fill only).
+	mustCreateRoom(t, reg.Server, "owned-room", withProject("original"))
+
+	res, _, _ := reg.handleGetOrCreateRoom(context.Background(), nil, GetOrCreateRoomInput{
+		ID: "owned-room", Project: "hijack",
+	})
+	if strings.Contains(resultText(res), "Backfilled") {
+		t.Errorf("did not expect a Backfilled line when the field was already set, got: %s", resultText(res))
+	}
+
+	room, _ := reg.Server.GetRoom("owned-room")
+	if room.Project != "original" {
+		t.Errorf("expected project to stay 'original', got '%s'", room.Project)
+	}
+}
+
 func TestHandleGetOrCreateRoomDuplicateWarning(t *testing.T) {
 	reg := setupHandlerTest(t)
 	mustCreateRoom(t, reg.Server, "existing-cache", withProject("perf"), withTags("redis,caching,backend"))

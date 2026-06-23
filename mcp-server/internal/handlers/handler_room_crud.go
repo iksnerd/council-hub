@@ -214,6 +214,56 @@ func (r *Registry) handleGetOrCreateRoom(ctx context.Context, req *mcp.CallToolR
 		created = true
 	}
 
+	// Backfill: on an *existing* room, fill metadata fields that are still empty
+	// from the matching creation args (idempotent upsert). This lets a room created
+	// before a project/tag convention adopt it without a separate update_room call —
+	// the gap that left early rooms untagged forever. Gap-fill only: a field the room
+	// already has is never overwritten (that's update_room's job), and visibility is
+	// excluded (it DB-defaults to "public", so it's never "empty" to fill).
+	var backfilled []string
+	if !created {
+		var bfTopic, bfProject, bfTechStack, bfTags, bfSystemPrompt, bfRelated string
+		if args.Topic != "" && room.Description == "" {
+			bfTopic = args.Topic
+			backfilled = append(backfilled, "topic")
+		}
+		if args.Project != "" && room.Project == "" {
+			bfProject = args.Project
+			backfilled = append(backfilled, "project")
+		}
+		if args.TechStack != "" && room.TechStack == "" {
+			bfTechStack = args.TechStack
+			backfilled = append(backfilled, "tech_stack")
+		}
+		if args.Tags != "" && room.Tags == "" {
+			bfTags = args.Tags
+			backfilled = append(backfilled, "tags")
+		}
+		if args.SystemPrompt != "" && room.SystemPrompt == "" {
+			bfSystemPrompt = args.SystemPrompt
+			backfilled = append(backfilled, "system_prompt")
+		}
+		if args.RelatedRooms != "" && room.RelatedRooms == "" {
+			bfRelated = args.RelatedRooms
+			backfilled = append(backfilled, "related_rooms")
+		}
+		if bfTopic != "" || bfProject != "" || bfTechStack != "" || bfTags != "" || bfSystemPrompt != "" || bfRelated != "" {
+			if err := r.Server.UpdateRoom(args.ID, bfTopic, bfProject, bfTechStack, bfTags, "", "", bfSystemPrompt, bfRelated); err != nil {
+				r.Server.Logger.Error("Failed to backfill room metadata", "id", args.ID, "error", err)
+			}
+		}
+		if args.Repo != "" && room.Repo == "" {
+			if err := r.Server.SetRepo(args.ID, args.Repo); err != nil {
+				r.Server.Logger.Error("Failed to backfill room repo", "id", args.ID, "error", err)
+			} else {
+				backfilled = append(backfilled, "repo")
+			}
+		}
+		if len(backfilled) > 0 {
+			room, _ = r.Server.GetRoom(args.ID)
+		}
+	}
+
 	limit := 5
 	if args.LastN != "" {
 		if _, err := fmt.Sscanf(args.LastN, "%d", &limit); err != nil {
@@ -232,6 +282,9 @@ func (r *Registry) handleGetOrCreateRoom(ctx context.Context, req *mcp.CallToolR
 		fmt.Fprintf(&b, "**Created** room '%s'.\n", room.ID)
 	} else {
 		fmt.Fprintf(&b, "**Found** room '%s'.\n", room.ID)
+		if len(backfilled) > 0 {
+			fmt.Fprintf(&b, "**Backfilled** (were empty): %s\n", strings.Join(backfilled, ", "))
+		}
 	}
 	fmt.Fprintf(&b, "**%s** [%s]\n", room.ID, room.Status)
 	fmt.Fprintf(&b, "**Topic:** %s\n", room.Description)
