@@ -35,17 +35,17 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "get_or_create_room",
-		Description: "Get an existing room (with recent messages) or create it if it does not exist. Prefer this over create_room in almost all cases — it returns existing content, avoids duplicates, and saves 2-3 round trips.",
+		Description: "Get an existing room (with recent messages) or create it if it does not exist. Prefer this over create_room in almost all cases — it returns existing content, avoids duplicates, and saves 2-3 round trips. On an existing room it also backfills metadata: any of topic/project/tech_stack/tags/system_prompt/related_rooms/repo you pass that the room is still missing gets filled in (gap-fill only — an already-set field is never overwritten; use update_room to change one). So a room created before a project/tag convention can adopt it just by calling get_or_create_room again with the field set.",
 		InputSchema: schema([]string{"id"}, map[string]map[string]any{
 			"id":            prop("string", "Room identifier \u2014 returns existing room if found, creates if not"),
-			"topic":         prop("string", "Topic (used only when creating)"),
-			"project":       prop("string", "Project grouping (used only when creating)"),
-			"tech_stack":    prop("string", "Technologies (used only when creating)"),
-			"tags":          prop("string", "Comma-separated labels (used only when creating)"),
-			"system_prompt": prop("string", "Instructions (used only when creating)"),
-			"related_rooms": prop("string", "Comma-separated related room IDs (used only when creating)"),
+			"topic":         prop("string", "Topic (set on create; backfilled on an existing room only if its topic is empty)"),
+			"project":       prop("string", "Project grouping (set on create; backfilled on an existing room only if its project is empty)"),
+			"tech_stack":    prop("string", "Technologies (set on create; backfilled on an existing room only if its tech_stack is empty)"),
+			"tags":          prop("string", "Comma-separated labels (set on create; backfilled on an existing room only if its tags are empty)"),
+			"system_prompt": prop("string", "Instructions (set on create; backfilled on an existing room only if its system_prompt is empty)"),
+			"related_rooms": prop("string", "Comma-separated related room IDs (set on create; backfilled on an existing room only if it has none)"),
 			"visibility":    prop("string", "'public' (default) or 'private', used only when creating. Private rooms are node-local — excluded from all cluster fan-out."),
-			"repo":          prop("string", "Optional git repo (owner/repo or clone URL), used only when creating. Enables {sha:<hash>} commit-link resolution in this room's transcripts."),
+			"repo":          prop("string", "Optional git repo (owner/repo or clone URL). Set on create; backfilled on an existing room only if it has no repo. Enables {sha:<hash>} commit-link resolution in this room's transcripts."),
 			"last_n":        prop("string", "Number of recent messages to return for existing rooms (default 5, max 50)"),
 		}),
 	}, r.handleGetOrCreateRoom)
@@ -502,9 +502,10 @@ func (r *Registry) RegisterTools() {
 			"Rooms flagged by check_room_health (stale, needs-synthesis, incoherent) are included. Call second at session start (after get_mentions) to see what changed and what needs attention. " +
 			"Machine-readable — parse rooms[].room_id and rooms[].latest_message_id directly for delta reads. " +
 			"Set unread_only=true (with agent=<your-name>) to show only rooms with messages newer than your stored cursor — ideal for returning sessions after using mark_read. " +
-			"Set exclude_stale=true to drop the inactive-room graveyard (rooms flagged `stale` with no new activity) from rooms[]; the summary still reports how many were hidden.",
+			"Set exclude_stale=true to drop the inactive-room graveyard (rooms flagged `stale` with no new activity) from rooms[]; the summary still reports how many were hidden. " +
+			"When a project filter matches no rooms, the response adds a top-level `hint` explaining the filter is exact-match and pointing at list_rooms(search=…).",
 		InputSchema: schema(nil, map[string]map[string]any{
-			"project":       prop("string", "Filter to rooms in this project (optional — omit for all projects)"),
+			"project":       prop("string", "Filter to rooms in this project (optional — omit for all projects). Exact field match, not keyword search: a room created without its project set won't match. If you get zero rooms, the response carries a hint pointing at list_rooms(search=…)."),
 			"since":         prop("string", "ISO timestamp (e.g. 2026-03-31T12:00:00). Defaults to 24 hours ago if omitted. Ignored when unread_only=true."),
 			"unread_only":   prop("string", "Set to 'true' to return only rooms with messages newer than your stored cursor. Requires agent param (or uses 'default'). Use after mark_read to see only what changed since your last session."),
 			"agent":         prop("string", "Your agent name, used to look up stored read cursors. Only relevant when unread_only=true. Defaults to 'default'."),

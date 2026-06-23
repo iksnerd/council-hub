@@ -8,6 +8,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 Changes on `main` not yet in a tagged release.
 
+## [0.48.0] - 2026-06-23
+
+Room metadata & discovery DX — two papercuts filed from a project session where rooms created without a `project` tag became invisible to the session-start ritual and couldn't be backfilled.
+
+### Added
+- **`get_digest(project=X)` returns a `hint` when the filter matches nothing.** The `project` filter is an exact field match, so a room created without its `project` set returned a silent `{"rooms": null}` — and the session-start guidance ("call `get_digest` first") gave no clue why. The response now carries a top-level `hint` pointing at `list_rooms(search='X')` to find the room by keyword, then `get_or_create_room` to backfill its project.
+
+### Changed
+- **`get_or_create_room` backfills empty metadata on an existing room.** Any of `topic`/`project`/`tech_stack`/`tags`/`system_prompt`/`related_rooms`/`repo` you pass that the room is still missing is filled in (gap-fill only — a field the room already has is never overwritten; that stays `update_room`'s job; `visibility` is excluded since it DB-defaults to `public`). So a room created before a project/tag convention can adopt it just by calling `get_or_create_room` again with the field set, instead of being stuck untagged forever. Backfilled fields are reported in the response.
+
 ## [0.47.0] - 2026-06-21
 
 DX consolidation — acting on the backlog of agent feedback in `council-hub-mcp-feedback` (reports from four agents, 2026-06-14 → 06-20). Round-trip and discoverability papercuts that showed up at scale, plus a guide that now leads with the product model.

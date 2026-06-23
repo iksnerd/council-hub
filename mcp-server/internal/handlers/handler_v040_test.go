@@ -223,6 +223,34 @@ func TestGetDigestBasic(t *testing.T) {
 	}
 }
 
+func TestGetDigestProjectNoMatchHint(t *testing.T) {
+	reg := setupHandlerTest(t)
+	// A room exists, but its project field is unset — so an exact-match project
+	// filter finds nothing and the response should carry the keyword-search hint.
+	mustCreateRoom(t, reg.Server, "untagged-room")
+	mustPost(t, reg.Server, "untagged-room", "Claude", "some work")
+
+	res, _, err := reg.handleGetDigest(context.Background(), nil, DigestInput{
+		Project: "diffwire",
+		Since:   "2000-01-01T00:00:00",
+	})
+	if err != nil {
+		t.Fatalf("handleGetDigest error: %v", err)
+	}
+	text := resultText(res)
+	if !strings.Contains(text, "\"hint\"") || !strings.Contains(text, "list_rooms(search='diffwire')") {
+		t.Errorf("expected no-match hint pointing at list_rooms, got: %s", text)
+	}
+
+	// When the project DOES match, no hint.
+	mustCreateRoom(t, reg.Server, "tagged-room", withProject("diffwire"))
+	mustPost(t, reg.Server, "tagged-room", "Claude", "tagged work")
+	res2, _, _ := reg.handleGetDigest(context.Background(), nil, DigestInput{Project: "diffwire", Since: "2000-01-01T00:00:00"})
+	if strings.Contains(resultText(res2), "\"hint\"") {
+		t.Errorf("did not expect a hint when project matches, got: %s", resultText(res2))
+	}
+}
+
 func TestGetDigestSummaryAndExcludeStale(t *testing.T) {
 	reg := setupHandlerTest(t)
 	mustCreateRoom(t, reg.Server, "live-room", withProject("dp"))
