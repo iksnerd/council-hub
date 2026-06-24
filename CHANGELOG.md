@@ -8,6 +8,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 Changes on `main` not yet in a tagged release.
 
+## [0.49.0] - 2026-06-24
+
+Footprint knobs — measured: the Go MCP server is ~20 MiB and handles 600+ read req/s with flat memory; the bundled Phoenix dashboard (BEAM VM) was ~90% of the container's resident memory. Two levers to shed or trim it.
+
+### Added
+- **`COUNCIL_UI=off`** (http mode) runs the Go MCP server alone, skipping the Phoenix dashboard. Idle footprint drops from ~237 MiB to **~12 MiB** (~20×), and read latency improves (no BEAM scheduler contention). Local reads/writes and cross-node *writes* are unaffected; only `cluster_wide` *reads* (which fan out through Phoenix's internal `:erpc` API) are unavailable. The container healthcheck probes the Go `/health` on `COUNCIL_HTTP_ADDR` in this mode instead of the (absent) `:4000` UI.
+- **Default `ERL_FLAGS` BEAM tuning** for the dashboard (`+S 2:2 +SDio 1 +sbwt none +sbwtdcpu none +sbwtdio none`) — caps scheduler threads and disables scheduler busy-wait, cutting idle memory ~25% (237 → 177 MiB) and idle-CPU churn while keeping the UI. Export your own `ERL_FLAGS` to override.
+
 ## [0.48.0] - 2026-06-23
 
 Room metadata & discovery DX — two papercuts filed from a project session where rooms created without a `project` tag became invisible to the session-start ritual and couldn't be backfilled.

@@ -221,6 +221,8 @@ All state mutations go through the Go server's mutex-protected handlers. Phoenix
 
 - `COUNCIL_DB` — SQLite path (default: `council.db`)
 - `COUNCIL_TRANSPORT` — `stdio` or `http` (default: `stdio`)
+- `COUNCIL_UI` — in `http` mode, set to `off` to skip the Phoenix dashboard and run the Go MCP server alone (idle footprint ~12 MiB vs ~180–240 MiB with the UI; the BEAM is ~90% of the image's memory). Local reads/writes and cross-node *writes* are unaffected; only `cluster_wide` *reads* (which fan out through Phoenix's `:erpc` API) are unavailable. The healthcheck probes the Go `/health` on `COUNCIL_HTTP_ADDR` in this mode.
+- `ERL_FLAGS` — BEAM VM flags for the Phoenix UI (http mode, UI on). Defaults to `+S 2:2 +SDio 1 +sbwt none +sbwtdcpu none +sbwtdio none` (caps schedulers + disables busy-wait → ~25% lower idle memory and CPU than the BEAM default). Export your own to override.
 - `COUNCIL_HTTP_ADDR` — HTTP bind address (default: `:3001`)
 - `COUNCIL_PHOENIX_URL` — Phoenix internal API URL for cluster queries (default: `http://127.0.0.1:4000`)
 - `COUNCIL_PEER_MCP_PORT` — Port used to reach peer Go servers for cross-node writes (default: the port from `COUNCIL_HTTP_ADDR`, i.e. `3001`)

@@ -100,7 +100,12 @@ ENV ELIXIR_ERL_OPTIONS="-kernel inet_dist_listen_min 9000 -kernel inet_dist_list
 VOLUME /data
 EXPOSE 4000 3001 4369 9000
 
+# In stdio mode there's no HTTP server to probe. In COUNCIL_UI=off mode the Phoenix
+# dashboard (:4000) isn't running, so probe the Go server's own health endpoint on
+# its HTTP port (COUNCIL_HTTP_ADDR, default :3001) instead.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-  CMD [ "$COUNCIL_TRANSPORT" = "stdio" ] || wget --no-verbose --tries=1 --spider http://localhost:4000 || exit 1
+  CMD if [ "$COUNCIL_TRANSPORT" = "stdio" ]; then exit 0; \
+      elif [ "$COUNCIL_UI" = "off" ]; then p="${COUNCIL_HTTP_ADDR:-:3001}"; wget --no-verbose --tries=1 --spider "http://localhost:${p#:}/health" || exit 1; \
+      else wget --no-verbose --tries=1 --spider http://localhost:4000 || exit 1; fi
 
 ENTRYPOINT ["entrypoint.sh"]
