@@ -100,7 +100,9 @@ fi
 
 echo "=== Council Hub ==="
 echo "  MCP server: http://0.0.0.0:${COUNCIL_HTTP_ADDR#:}/mcp"
-echo "  Web UI:     http://0.0.0.0:${PORT}"
+if [ "${COUNCIL_UI:-on}" != "off" ]; then
+  echo "  Web UI:     http://0.0.0.0:${PORT}"
+fi
 echo "  Database:   ${COUNCIL_DB}"
 echo "  Node:       ${RELEASE_NODE}"
 if [ -n "$COUNCIL_SEEDS" ]; then
@@ -120,6 +122,21 @@ trap cleanup SIGTERM SIGINT
 # Start Go MCP server in background
 council-hub &
 MCP_PID=$!
+
+# ── COUNCIL_UI=off: run the Go MCP server alone (lowest footprint — no BEAM) ──
+# Drops the Phoenix dashboard, which is ~90% of the image's resident memory. Local
+# reads/writes and cross-node *writes* are unaffected; only cluster_wide *reads*
+# (which fan out through Phoenix's internal :erpc API) are unavailable in this mode.
+if [ "${COUNCIL_UI:-on}" = "off" ]; then
+  echo "  UI:         disabled (COUNCIL_UI=off) — Go MCP server only, no cluster_wide read fan-out"
+  wait $MCP_PID
+  cleanup
+fi
+
+# Trim the BEAM's footprint: cap schedulers and disable scheduler busy-wait so the
+# read-only dashboard doesn't hold a scheduler thread per host core or spin the CPU
+# at idle. Override by exporting your own ERL_FLAGS.
+export ERL_FLAGS="${ERL_FLAGS:-+S 2:2 +SDio 1 +sbwt none +sbwtdcpu none +sbwtdio none}"
 
 # Start Phoenix UI in background
 /app/ui/bin/council_hub_ui start &
