@@ -191,31 +191,38 @@ func (r *Registry) handleReadRoomCluster(args ReadRoomInput) (*mcp.CallToolResul
 	}
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "[%s] **%s** [%s]\n", room.SourceNode, room.ID, room.Status)
-	fmt.Fprintf(&b, "**Topic:** %s\n", room.Description)
-	if room.Project != "" {
-		fmt.Fprintf(&b, "**Project:** %s\n", room.Project)
-	}
-	if room.TechStack != "" {
-		fmt.Fprintf(&b, "**Tech Stack:** %s\n", room.TechStack)
-	}
-	if room.Tags != "" {
-		fmt.Fprintf(&b, "**Tags:** %s\n", room.Tags)
-	}
-	if room.SystemPrompt != "" {
-		fmt.Fprintf(&b, "**System Prompt:** %s\n", room.SystemPrompt)
-	}
-	if room.RelatedRooms != "" {
-		fmt.Fprintf(&b, "**Related Rooms:** %s\n", room.RelatedRooms)
-	}
-	if room.Repo != "" {
-		fmt.Fprintf(&b, "**Repo:** %s\n", room.Repo)
-	}
-	fmt.Fprintf(&b, "**Created:** %s\n", room.CreatedAt)
-	fmt.Fprintf(&b, "**Updated:** %s\n", room.UpdatedAt)
+	writeClusterRoomHeader(&b, *room)
 
 	formatClusterWarnings(&b, warnings)
 	return msg(b.String())
+}
+
+// writeClusterRoomHeader renders a cluster room's metadata block — shared by
+// handleReadRoomCluster and handleReadRoomClusterWithMessages, which otherwise
+// render the identical header byte-for-byte.
+func writeClusterRoomHeader(b *strings.Builder, room ClusterRoomResult) {
+	fmt.Fprintf(b, "[%s] **%s** [%s]\n", room.SourceNode, room.ID, room.Status)
+	fmt.Fprintf(b, "**Topic:** %s\n", room.Description)
+	if room.Project != "" {
+		fmt.Fprintf(b, "**Project:** %s\n", room.Project)
+	}
+	if room.TechStack != "" {
+		fmt.Fprintf(b, "**Tech Stack:** %s\n", room.TechStack)
+	}
+	if room.Tags != "" {
+		fmt.Fprintf(b, "**Tags:** %s\n", room.Tags)
+	}
+	if room.SystemPrompt != "" {
+		fmt.Fprintf(b, "**System Prompt:** %s\n", room.SystemPrompt)
+	}
+	if room.RelatedRooms != "" {
+		fmt.Fprintf(b, "**Related Rooms:** %s\n", room.RelatedRooms)
+	}
+	if room.Repo != "" {
+		fmt.Fprintf(b, "**Repo:** %s\n", room.Repo)
+	}
+	fmt.Fprintf(b, "**Created:** %s\n", room.CreatedAt)
+	fmt.Fprintf(b, "**Updated:** %s\n", room.UpdatedAt)
 }
 
 // handleReadRoomClusterWithMessages serves read_room(cluster_wide, include_last_n)
@@ -247,28 +254,7 @@ func (r *Registry) handleReadRoomClusterWithMessages(args ReadRoomInput) (*mcp.C
 
 	room := result.Room
 	var b strings.Builder
-	fmt.Fprintf(&b, "[%s] **%s** [%s]\n", room.SourceNode, room.ID, room.Status)
-	fmt.Fprintf(&b, "**Topic:** %s\n", room.Description)
-	if room.Project != "" {
-		fmt.Fprintf(&b, "**Project:** %s\n", room.Project)
-	}
-	if room.TechStack != "" {
-		fmt.Fprintf(&b, "**Tech Stack:** %s\n", room.TechStack)
-	}
-	if room.Tags != "" {
-		fmt.Fprintf(&b, "**Tags:** %s\n", room.Tags)
-	}
-	if room.SystemPrompt != "" {
-		fmt.Fprintf(&b, "**System Prompt:** %s\n", room.SystemPrompt)
-	}
-	if room.RelatedRooms != "" {
-		fmt.Fprintf(&b, "**Related Rooms:** %s\n", room.RelatedRooms)
-	}
-	if room.Repo != "" {
-		fmt.Fprintf(&b, "**Repo:** %s\n", room.Repo)
-	}
-	fmt.Fprintf(&b, "**Created:** %s\n", room.CreatedAt)
-	fmt.Fprintf(&b, "**Updated:** %s\n", room.UpdatedAt)
+	writeClusterRoomHeader(&b, room)
 
 	// Append the last N messages (cap 50, matching the local read_room handler).
 	lastN := 0

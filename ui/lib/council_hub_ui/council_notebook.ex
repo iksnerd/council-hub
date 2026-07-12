@@ -11,7 +11,7 @@ defmodule CouncilHubUi.CouncilNotebook do
   import CouncilHubUi.MessageFilters
   alias CouncilHubUi.Repo
   alias CouncilHubUi.Council.{Room, Message, Notebook, NotebookEntry}
-  alias CouncilHubUi.{MessageAnnotations, Timestamps}
+  alias CouncilHubUi.{MessageAnnotations, Params, Timestamps}
 
   @default_types ~w(decision plan action synthesis note)
   @default_limit 100
@@ -251,16 +251,5 @@ defmodule CouncilHubUi.CouncilNotebook do
     end
   end
 
-  defp parse_limit(nil), do: @default_limit
-  defp parse_limit(n) when is_integer(n) and n > 0, do: min(n, @max_limit)
-  defp parse_limit(n) when is_integer(n), do: @default_limit
-
-  defp parse_limit(str) when is_binary(str) do
-    case Integer.parse(str) do
-      {n, _} when n > 0 -> min(n, @max_limit)
-      _ -> @default_limit
-    end
-  end
-
-  defp parse_limit(_), do: @default_limit
+  defp parse_limit(val), do: Params.clamp_int(val, @default_limit, max: @max_limit)
 end

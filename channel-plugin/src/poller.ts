@@ -14,6 +14,9 @@ interface Row {
   timestamp: string;
 }
 
+// Mirrors the Row fields above — shared by every message query in fetchRows.
+const MESSAGE_COLUMNS = "id, room_id, author, content, message_type, timestamp";
+
 export type NotifyFn = (params: {
   content: string;
   meta: Record<string, string>;
@@ -156,8 +159,7 @@ export class Poller {
     // Add newly-active rooms.
     for (const id of activeIds) {
       if (eligible(id) && !this.watchedRooms.has(id)) {
-        this.watchedRooms.add(id);
-        this.seedCatchup(id);
+        this.startWatching(id);
         this.log(`Watching room: ${id}`);
       }
     }
@@ -166,9 +168,7 @@ export class Poller {
     // don't poll dead rooms forever. Rooms added via watch_room are kept.
     for (const id of this.watchedRooms) {
       if (this.manuallyWatched.has(id) || eligible(id)) continue;
-      this.rememberFloor(id);
-      this.watchedRooms.delete(id);
-      this.catchupFloor.delete(id);
+      this.stopWatching(id);
       this.log(`Unwatching inactive/removed room: ${id}`);
     }
   }
@@ -188,6 +188,22 @@ export class Poller {
   // established room has been delivered).
   private rememberFloor(id: string): void {
     this.lastFloor.set(id, this.catchupFloor.get(id) ?? this.cursor);
+  }
+
+  // Begins tracking a newly-(re)watched room: adds it to the watch set and
+  // enters catch-up mode so its pre-discovery backlog isn't lost.
+  private startWatching(id: string): void {
+    this.watchedRooms.add(id);
+    this.seedCatchup(id);
+  }
+
+  // Stops tracking a room leaving the watch set: remembers how far delivery
+  // got (for a clean resume on rediscovery) and drops it from both the watch
+  // set and any in-flight catch-up state.
+  private stopWatching(id: string): void {
+    this.rememberFloor(id);
+    this.watchedRooms.delete(id);
+    this.catchupFloor.delete(id);
   }
 
   private async poll(): Promise<void> {
@@ -308,7 +324,7 @@ export class Poller {
       rows.push(
         ...this.db
           .query<Row, string[]>(
-            `SELECT id, room_id, author, content, message_type, timestamp
+            `SELECT ${MESSAGE_COLUMNS}
              FROM messages
              WHERE room_id IN (${placeholders}) AND id > ?
              ORDER BY id ASC`
@@ -325,7 +341,7 @@ export class Poller {
       rows.push(
         ...this.db
           .query<Row, [string, string]>(
-            `SELECT id, room_id, author, content, message_type, timestamp
+            `SELECT ${MESSAGE_COLUMNS}
              FROM messages
              WHERE room_id = ? AND id > ?
              ORDER BY id ASC`
@@ -342,8 +358,7 @@ export class Poller {
     this.manuallyUnwatched.delete(id);
     this.manuallyWatched.add(id);
     if (this.watchedRooms.has(id)) return `Already watching ${id}`;
-    this.watchedRooms.add(id);
-    this.seedCatchup(id);
+    this.startWatching(id);
     this.log(`Manually watching room: ${id}`);
     return `Now watching ${id}`;
   }
@@ -352,21 +367,17 @@ export class Poller {
     const count = this.watchedRooms.size;
     for (const id of this.watchedRooms) {
       this.manuallyUnwatched.add(id);
-      this.rememberFloor(id);
-      this.catchupFloor.delete(id);
+      this.stopWatching(id);
     }
-    this.watchedRooms.clear();
     this.manuallyWatched.clear();
     return `Stopped watching ${count} room(s)`;
   }
 
   unwatchRoom(id: string): string {
     if (!this.watchedRooms.has(id)) return `Not currently watching ${id}`;
-    this.rememberFloor(id);
-    this.watchedRooms.delete(id);
+    this.stopWatching(id);
     this.manuallyWatched.delete(id);
     this.manuallyUnwatched.add(id);
-    this.catchupFloor.delete(id);
     this.log(`Manually unwatched room: ${id}`);
     return `Stopped watching ${id}`;
   }

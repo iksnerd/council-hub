@@ -3,7 +3,7 @@ defmodule CouncilHubUi.CouncilRooms do
 
   import Ecto.Query
   import CouncilHubUi.MessageFilters
-  alias CouncilHubUi.Repo
+  alias CouncilHubUi.{Params, Repo}
   alias CouncilHubUi.Council.{Room, Message}
 
   def list_rooms do
@@ -95,25 +95,8 @@ defmodule CouncilHubUi.CouncilRooms do
           end)
       end
 
-    limit =
-      case Map.get(params, "limit") do
-        nil -> 50
-        "" -> 50
-        val when is_integer(val) -> val
-        val when is_binary(val) -> String.to_integer(val)
-      end
-
-    offset =
-      case Map.get(params, "offset") do
-        nil -> 0
-        "" -> 0
-        val when is_integer(val) -> val
-        val when is_binary(val) -> String.to_integer(val)
-      end
-
-    limit = if limit <= 0, do: 50, else: limit
-    limit = if limit > 100, do: 100, else: limit
-    offset = if offset < 0, do: 0, else: offset
+    limit = Params.clamp_int(Map.get(params, "limit"), 50, max: 100)
+    offset = Params.clamp_int(Map.get(params, "offset"), 0, min: 0)
 
     Repo.all(
       from [room: r] in base, order_by: [desc: r.updated_at], limit: ^limit, offset: ^offset

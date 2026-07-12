@@ -195,75 +195,53 @@ defmodule CouncilHubUiWeb.CouncilLivePolling do
 
   # -- Safe aggregate wrappers --
 
-  def safe_room_counts(false), do: %{}
-
-  def safe_room_counts(true) do
-    Council.all_room_message_counts()
+  # Every safe_* wrapper below shares one shape: skip the DB call when
+  # disconnected (returning a default value the caller can render against), and
+  # degrade to that same default — logging why — if the shared SQLite
+  # connection drops mid-call instead of crashing the LiveView.
+  defp safe_call(default, label, fun) do
+    fun.()
   rescue
     e in [DBConnection.ConnectionError, Exqlite.Error] ->
-      Logger.warning("Failed to load room counts: #{inspect(e)}")
-      %{}
+      Logger.warning("Failed to load #{label}: #{inspect(e)}")
+      default
   end
+
+  def safe_room_counts(false), do: %{}
+
+  def safe_room_counts(true),
+    do: safe_call(%{}, "room counts", &Council.all_room_message_counts/0)
 
   def safe_participant_counts(false), do: %{}
 
-  def safe_participant_counts(true) do
-    Council.all_room_participant_counts()
-  rescue
-    e in [DBConnection.ConnectionError, Exqlite.Error] ->
-      Logger.warning("Failed to load participant counts: #{inspect(e)}")
-      %{}
-  end
+  def safe_participant_counts(true),
+    do: safe_call(%{}, "participant counts", &Council.all_room_participant_counts/0)
 
   def safe_latest_ids(false), do: %{}
 
-  def safe_latest_ids(true) do
-    Council.all_room_latest_message_ids()
-  rescue
-    e in [DBConnection.ConnectionError, Exqlite.Error] ->
-      Logger.warning("Failed to load latest message ids: #{inspect(e)}")
-      %{}
-  end
+  def safe_latest_ids(true),
+    do: safe_call(%{}, "latest message ids", &Council.all_room_latest_message_ids/0)
 
   def safe_synthesis_flags(false), do: MapSet.new()
 
-  def safe_synthesis_flags(true) do
-    Council.all_room_synthesis_flags()
-  rescue
-    e in [DBConnection.ConnectionError, Exqlite.Error] ->
-      Logger.warning("Failed to load synthesis flags: #{inspect(e)}")
-      MapSet.new()
-  end
+  def safe_synthesis_flags(true),
+    do: safe_call(MapSet.new(), "synthesis flags", &Council.all_room_synthesis_flags/0)
 
   def safe_type_counts(false), do: %{}
 
-  def safe_type_counts(true) do
-    Council.all_room_full_type_counts()
-  rescue
-    e in [DBConnection.ConnectionError, Exqlite.Error] ->
-      Logger.warning("Failed to load type counts: #{inspect(e)}")
-      %{}
-  end
+  def safe_type_counts(true),
+    do: safe_call(%{}, "type counts", &Council.all_room_full_type_counts/0)
 
   def safe_time_ranges(false), do: %{}
 
-  def safe_time_ranges(true) do
-    Council.all_room_time_ranges()
-  rescue
-    e in [DBConnection.ConnectionError, Exqlite.Error] ->
-      Logger.warning("Failed to load time ranges: #{inspect(e)}")
-      %{}
-  end
+  def safe_time_ranges(true),
+    do: safe_call(%{}, "time ranges", &Council.all_room_time_ranges/0)
 
   def safe_room_participants(_room_id, false), do: []
 
-  def safe_room_participants(room_id, true) do
-    Council.room_participants_with_counts(room_id)
-  rescue
-    e in [DBConnection.ConnectionError, Exqlite.Error] ->
-      Logger.warning("Failed to load room participants: #{inspect(e)}")
-      []
-  end
+  def safe_room_participants(room_id, true),
+    do:
+      safe_call([], "room participants", fn -> Council.room_participants_with_counts(room_id) end)
 
   # -- Pure helpers --
 

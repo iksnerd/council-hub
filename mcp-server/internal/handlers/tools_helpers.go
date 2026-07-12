@@ -18,6 +18,18 @@ func textResult(text string) (*mcp.CallToolResult, ToolOutput, error) {
 	}, ToolOutput{Message: text}, nil
 }
 
+// splitIDList splits a comma-separated ID list into trimmed, non-empty IDs.
+func splitIDList(s string) []string {
+	var ids []string
+	for _, p := range strings.Split(s, ",") {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			ids = append(ids, p)
+		}
+	}
+	return ids
+}
+
 // resolveIDList resolves each id in ids via ResolveMessageID (exact match, or a
 // unique prefix). An id that doesn't resolve is passed through unchanged — this
 // covers both "genuinely doesn't exist" (the caller's own not-found reporting,
@@ -51,6 +63,20 @@ func (r *Registry) resolveSingleID(id string) (string, error) {
 		return "", err
 	}
 	return resolved[0], nil
+}
+
+// resolveInto resolves *id in place via resolveSingleID (exact match, or a
+// unique prefix — an unresolvable-but-unambiguous id is left unchanged so the
+// caller's own not-found handling still applies). Collapses the
+// "resolved, err := r.resolveSingleID(id); if err != nil {...}; id = resolved"
+// shape repeated at every single-ID call site down to one line.
+func (r *Registry) resolveInto(id *string) error {
+	resolved, err := r.resolveSingleID(*id)
+	if err != nil {
+		return err
+	}
+	*id = resolved
+	return nil
 }
 
 // appendMessageBlock writes one message in the compact "[#id ts] author (type):"

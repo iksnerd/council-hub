@@ -31,11 +31,9 @@ func (r *Registry) handlePinMessage(ctx context.Context, req *mcp.CallToolReques
 	if args.MessageID == "" {
 		return msg("Error: message_id is required.")
 	}
-	resolved, err := r.resolveSingleID(args.MessageID)
-	if err != nil {
+	if err := r.resolveInto(&args.MessageID); err != nil {
 		return msg(fmt.Sprintf("Error: %s", err.Error()))
 	}
-	args.MessageID = resolved
 
 	pinned, err := r.Server.PinMessage(args.RoomID, args.MessageID)
 	if err != nil {
@@ -66,11 +64,9 @@ func (r *Registry) handleReactToMessage(ctx context.Context, req *mcp.CallToolRe
 	if args.Author == "" {
 		return msg("Error: author is required.")
 	}
-	resolved, err := r.resolveSingleID(args.MessageID)
-	if err != nil {
+	if err := r.resolveInto(&args.MessageID); err != nil {
 		return msg(fmt.Sprintf("Error: %s", err.Error()))
 	}
-	args.MessageID = resolved
 
 	reactions, added, err := r.Server.ReactToMessage(args.MessageID, args.Emoji, args.Author)
 	if err != nil {

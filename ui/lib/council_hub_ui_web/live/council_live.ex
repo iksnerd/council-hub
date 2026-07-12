@@ -89,7 +89,6 @@ defmodule CouncilHubUiWeb.CouncilLive do
         same_room = match?(%{id: ^room_id}, socket.assigns[:active_room])
         type_filter = if same_room, do: socket.assigns.type_filter, else: "all"
         messages = Council.list_messages_for_room(room_id, type_filter)
-        last_id = Polling.last_message_id(messages)
         participants = Polling.safe_room_participants(room_id, socket.assigns.db_connected)
 
         {:noreply,
@@ -97,11 +96,8 @@ defmodule CouncilHubUiWeb.CouncilLive do
          |> assign(
            active_room: room,
            active_room_participants: participants,
-           last_msg_id: last_id,
-           msg_state: Polling.build_msg_state(messages),
            show_system_prompt: false,
            page_title: "Council Hub · #{room.id}",
-           has_messages: messages != [],
            view_compact: params["compact"] == "1",
            type_filter: type_filter,
            message_search: "",
@@ -111,7 +107,7 @@ defmodule CouncilHubUiWeb.CouncilLive do
            search_since: "",
            search_until: ""
          )
-         |> stream(:messages, messages, reset: true)}
+         |> reset_message_stream(messages)}
     end
   end
 
@@ -249,19 +245,11 @@ defmodule CouncilHubUiWeb.CouncilLive do
 
       room ->
         messages = Council.list_messages_for_room(room.id, type)
-        last_id = Polling.last_message_id(messages)
 
         {:noreply,
          socket
-         |> assign(
-           type_filter: type,
-           last_msg_id: last_id,
-           msg_state: Polling.build_msg_state(messages),
-           has_messages: messages != [],
-           searching: false,
-           message_search: ""
-         )
-         |> stream(:messages, messages, reset: true)}
+         |> assign(type_filter: type, searching: false, message_search: "")
+         |> reset_message_stream(messages)}
     end
   end
 
@@ -272,18 +260,11 @@ defmodule CouncilHubUiWeb.CouncilLive do
 
       room ->
         messages = Council.list_messages_for_room(room.id, socket.assigns.type_filter)
-        last_id = Polling.last_message_id(messages)
 
         {:noreply,
          socket
-         |> assign(
-           message_search: "",
-           searching: false,
-           last_msg_id: last_id,
-           msg_state: Polling.build_msg_state(messages),
-           has_messages: messages != []
-         )
-         |> stream(:messages, messages, reset: true)}
+         |> assign(message_search: "", searching: false)
+         |> reset_message_stream(messages)}
     end
   end
 
@@ -297,8 +278,8 @@ defmodule CouncilHubUiWeb.CouncilLive do
 
         {:noreply,
          socket
-         |> assign(message_search: query, searching: true, has_messages: results != [])
-         |> stream(:messages, results, reset: true)}
+         |> assign(message_search: query, searching: true)
+         |> reset_message_stream(results)}
     end
   end
 
@@ -349,17 +330,10 @@ defmodule CouncilHubUiWeb.CouncilLive do
             {msgs, false}
           end
 
-        last_id = Polling.last_message_id(results)
-
         {:noreply,
          socket
-         |> assign(
-           last_msg_id: last_id,
-           msg_state: Polling.build_msg_state(results),
-           searching: searching,
-           has_messages: results != []
-         )
-         |> stream(:messages, results, reset: true)}
+         |> assign(searching: searching)
+         |> reset_message_stream(results)}
     end
   end
 
@@ -488,6 +462,26 @@ defmodule CouncilHubUiWeb.CouncilLive do
          |> assign(editing_tags: false, tag_input: "")
          |> put_flash(:error, "Tag update failed — is the MCP server running in HTTP mode?")}
     end
+  end
+
+  # -- Private helpers --
+
+  # Refreshes the :messages stream from a fresh message list, computing the
+  # derived assigns (last_msg_id / msg_state / has_messages) once instead of at
+  # every call site that resets the stream after a room/filter/search change.
+  defp reset_message_stream(socket, messages, extra_assigns \\ %{}) do
+    socket
+    |> assign(
+      Map.merge(
+        %{
+          last_msg_id: Polling.last_message_id(messages),
+          msg_state: Polling.build_msg_state(messages),
+          has_messages: messages != []
+        },
+        extra_assigns
+      )
+    )
+    |> stream(:messages, messages, reset: true)
   end
 
   # -- Template helpers (public — called from council_live.html.heex) --

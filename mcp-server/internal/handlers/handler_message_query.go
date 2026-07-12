@@ -185,14 +185,7 @@ func (r *Registry) handleGetMessages(ctx context.Context, req *mcp.CallToolReque
 
 	if args.MessageIDs != "" {
 		// Mode 1: fetch by explicit IDs
-		parts := strings.Split(args.MessageIDs, ",")
-		var ids []string
-		for _, p := range parts {
-			p = strings.TrimSpace(p)
-			if p != "" {
-				ids = append(ids, p)
-			}
-		}
+		ids := splitIDList(args.MessageIDs)
 		ids, idErr := r.resolveIDList(ids)
 		if idErr != nil {
 			return msg(fmt.Sprintf("Error: %s", idErr.Error()))
