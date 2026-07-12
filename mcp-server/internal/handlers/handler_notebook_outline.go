@@ -69,11 +69,9 @@ func (r *Registry) handleEditNotebook(ctx context.Context, req *mcp.CallToolRequ
 		// Only kind="ref" points at a message ID (room_ref/query_ref point at a
 		// room, task has no ref_id) — resolve a possibly-truncated prefix.
 		if kind == "ref" {
-			resolved, rerr := r.resolveSingleID(args.RefID)
-			if rerr != nil {
-				return msg(fmt.Sprintf("Error: %s", rerr.Error()))
+			if err := r.resolveInto(&args.RefID); err != nil {
+				return msg(fmt.Sprintf("Error: %s", err.Error()))
 			}
-			args.RefID = resolved
 		}
 		entryID, err := r.Server.AddOutlineEntry(args.NotebookID, kind, args.RefID, args.Prose, args.AfterEntryID)
 		if err != nil {

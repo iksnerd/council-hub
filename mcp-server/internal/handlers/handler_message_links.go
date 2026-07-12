@@ -70,11 +70,9 @@ func (r *Registry) handleGetLinks(ctx context.Context, req *mcp.CallToolRequest,
 	if args.MessageID == "" {
 		return msg("Error: message_id is required.")
 	}
-	resolved, idErr := r.resolveSingleID(args.MessageID)
-	if idErr != nil {
-		return msg(fmt.Sprintf("Error: %s", idErr.Error()))
+	if err := r.resolveInto(&args.MessageID); err != nil {
+		return msg(fmt.Sprintf("Error: %s", err.Error()))
 	}
-	args.MessageID = resolved
 
 	// depth > 1 switches to a link-distance neighborhood walk (NLS level-clip).
 	if depth := parseDepth(args.Depth); depth > 1 {

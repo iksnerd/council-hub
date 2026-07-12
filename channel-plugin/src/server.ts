@@ -6,6 +6,13 @@ import {
 import type { Config } from "./config.js";
 import type { Poller } from "./poller.js";
 
+// Every tool response below wraps a single text block in this shape.
+function textResult(text: string, isError = false) {
+  return isError
+    ? { content: [{ type: "text" as const, text }], isError: true }
+    : { content: [{ type: "text" as const, text }] };
+}
+
 export function createServer(config: Config, poller: Poller): Server {
   const server = new Server(
     { name: "council-hub-channel", version: "0.1.0" },
@@ -104,25 +111,21 @@ export function createServer(config: Config, poller: Poller): Server {
 
     if (name === "watch_room") {
       const { room_id } = req.params.arguments as { room_id: string };
-      const msg = poller.watchRoom(room_id);
-      return { content: [{ type: "text", text: msg }] };
+      return textResult(poller.watchRoom(room_id));
     }
 
     if (name === "unwatch_all") {
-      const msg = poller.unwatchAll();
-      return { content: [{ type: "text", text: msg }] };
+      return textResult(poller.unwatchAll());
     }
 
     if (name === "unwatch_room") {
       const { room_id } = req.params.arguments as { room_id: string };
-      const msg = poller.unwatchRoom(room_id);
-      return { content: [{ type: "text", text: msg }] };
+      return textResult(poller.unwatchRoom(room_id));
     }
 
     if (name === "list_watched_rooms") {
       const rooms = poller.listWatched();
-      const text = rooms.length ? rooms.join("\n") : "Not watching any rooms";
-      return { content: [{ type: "text", text }] };
+      return textResult(rooms.length ? rooms.join("\n") : "Not watching any rooms");
     }
 
     if (name !== "council_reply") {
@@ -133,20 +136,14 @@ export function createServer(config: Config, poller: Poller): Server {
     const { room_id, content, message_type = "message", reply_to = "" } = args;
 
     if (!room_id || !content) {
-      return {
-        content: [{ type: "text", text: "Error: room_id and content are required" }],
-        isError: true,
-      };
+      return textResult("Error: room_id and content are required", true);
     }
 
     try {
       const result = await postToRoom(config, { room_id, content, message_type, reply_to });
-      return { content: [{ type: "text", text: result }] };
+      return textResult(result);
     } catch (err) {
-      return {
-        content: [{ type: "text", text: `Error posting to room: ${err}` }],
-        isError: true,
-      };
+      return textResult(`Error posting to room: ${err}`, true);
     }
   });
 

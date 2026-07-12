@@ -173,11 +173,9 @@ func (r *Registry) handleUpdateMessage(ctx context.Context, req *mcp.CallToolReq
 	if args.MessageType != "" && !validMessageTypes[args.MessageType] {
 		return msg(fmt.Sprintf("Error: invalid message_type '%s'. Valid types: message, thought, draft, decision, plan, review, action, critique, synthesis, note.", args.MessageType))
 	}
-	resolvedID, rerr := r.resolveSingleID(args.MessageID)
-	if rerr != nil {
-		return msg(fmt.Sprintf("Error: %s", rerr.Error()))
+	if err := r.resolveInto(&args.MessageID); err != nil {
+		return msg(fmt.Sprintf("Error: %s", err.Error()))
 	}
-	args.MessageID = resolvedID
 
 	m, err := r.Server.UpdateMessageWithExpected(args.MessageID, args.Content, args.MessageType, args.ExpectedContent, args.Author)
 	if err != nil {
@@ -205,14 +203,7 @@ func (r *Registry) handleDeleteMessages(ctx context.Context, req *mcp.CallToolRe
 		return msg("Error: message_ids is required (comma-separated list of message IDs).")
 	}
 
-	parts := strings.Split(args.MessageIDs, ",")
-	var ids []string
-	for _, p := range parts {
-		p = strings.TrimSpace(p)
-		if p != "" {
-			ids = append(ids, p)
-		}
-	}
+	ids := splitIDList(args.MessageIDs)
 	// Purge is irreversible, so prefixes are never resolved for it: a typo'd
 	// prefix that happens to uniquely match a *different* message must not
 	// hard-delete it. Only exact full IDs purge; everything else reports not found.
@@ -298,14 +289,7 @@ func (r *Registry) handleMoveMessages(ctx context.Context, req *mcp.CallToolRequ
 		return msg("Error: " + err.Error())
 	}
 
-	parts := strings.Split(args.MessageIDs, ",")
-	var ids []string
-	for _, p := range parts {
-		p = strings.TrimSpace(p)
-		if p != "" {
-			ids = append(ids, p)
-		}
-	}
+	ids := splitIDList(args.MessageIDs)
 	if len(ids) == 0 {
 		return msg("Error: no valid message IDs provided.")
 	}
@@ -342,11 +326,9 @@ func (r *Registry) handleForkThread(ctx context.Context, req *mcp.CallToolReques
 		return msg("Error: " + err.Error())
 	}
 
-	resolvedStartID, rerr := r.resolveSingleID(args.StartMessageID)
-	if rerr != nil {
-		return msg(fmt.Sprintf("Error: %s", rerr.Error()))
+	if err := r.resolveInto(&args.StartMessageID); err != nil {
+		return msg(fmt.Sprintf("Error: %s", err.Error()))
 	}
-	args.StartMessageID = resolvedStartID
 
 	// Look up the starting message to find the source room.
 	startMsg, err := r.Server.GetMessageByID(args.StartMessageID)

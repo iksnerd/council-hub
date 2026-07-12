@@ -1,7 +1,7 @@
 defmodule CouncilHubUiWeb.ClusterController do
   use CouncilHubUiWeb, :controller
 
-  alias CouncilHubUi.Cluster
+  alias CouncilHubUi.{Cluster, Params}
   require Logger
 
   def nodes(conn, _params) do
@@ -49,7 +49,7 @@ defmodule CouncilHubUiWeb.ClusterController do
       "project" => Map.get(params, "project", ""),
       "since" => Map.get(params, "since", ""),
       "until" => Map.get(params, "until", ""),
-      "limit" => parse_limit(Map.get(params, "limit", "20"))
+      "limit" => Params.clamp_int(Map.get(params, "limit"), 20, max: 100)
     }
 
     result = Cluster.search_messages(cluster_params)
@@ -66,8 +66,8 @@ defmodule CouncilHubUiWeb.ClusterController do
       "tag" => Map.get(params, "tag", ""),
       "status" => Map.get(params, "status", ""),
       "search" => Map.get(params, "search", ""),
-      "limit" => parse_limit(Map.get(params, "limit", "50")),
-      "offset" => parse_offset(Map.get(params, "offset", "0"))
+      "limit" => Params.clamp_int(Map.get(params, "limit"), 50, max: 100),
+      "offset" => Params.clamp_int(Map.get(params, "offset"), 0, min: 0)
     }
 
     result = Cluster.list_rooms(cluster_params)
@@ -153,7 +153,7 @@ defmodule CouncilHubUiWeb.ClusterController do
         true ->
           %{
             "room_id" => room_id,
-            "limit" => parse_limit(Map.get(params, "last_n", "10"))
+            "limit" => Params.clamp_int(Map.get(params, "last_n"), 10, max: 100)
           }
       end
 
@@ -177,7 +177,9 @@ defmodule CouncilHubUiWeb.ClusterController do
         "since" => Map.get(params, "since", ""),
         "until" => Map.get(params, "until", ""),
         "after_id" => Map.get(params, "after_id", ""),
-        "limit" => parse_notebook_limit(Map.get(params, "limit", ""))
+        # Notebook entries cap at 500 (vs 100 elsewhere) — a project timeline
+        # legitimately spans more items than a search result page.
+        "limit" => Params.clamp_int(Map.get(params, "limit"), 100, max: 500)
       }
 
       result = Cluster.read_notebook(cluster_params)
@@ -202,39 +204,6 @@ defmodule CouncilHubUiWeb.ClusterController do
       warnings: result.warnings
     })
   end
-
-  defp parse_limit(val) when is_binary(val) do
-    case Integer.parse(val) do
-      {n, _} when n > 0 and n <= 100 -> n
-      _ -> 20
-    end
-  end
-
-  defp parse_limit(val) when is_integer(val), do: min(max(val, 1), 100)
-  defp parse_limit(_), do: 20
-
-  defp parse_offset(val) when is_binary(val) do
-    case Integer.parse(val) do
-      {n, _} when n >= 0 -> n
-      _ -> 0
-    end
-  end
-
-  defp parse_offset(val) when is_integer(val), do: max(val, 0)
-  defp parse_offset(_), do: 0
-
-  # Notebook entries cap at 500 (vs 100 elsewhere) — a project timeline
-  # legitimately spans more items than a search result page.
-  defp parse_notebook_limit(val) when is_binary(val) do
-    case Integer.parse(val) do
-      {n, _} when n > 0 and n <= 500 -> n
-      {n, _} when n > 500 -> 500
-      _ -> 100
-    end
-  end
-
-  defp parse_notebook_limit(val) when is_integer(val), do: min(max(val, 1), 500)
-  defp parse_notebook_limit(_), do: 100
 
   defp serialize_notebook_entry(entry) do
     entry
