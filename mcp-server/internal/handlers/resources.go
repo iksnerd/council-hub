@@ -53,7 +53,9 @@ short ` + "`#xxxxxxxx`" + ` prefix for readability, and any ID-taking tool (` + 
 prefix directly — no need to look up the full UUID first. An ambiguous prefix (two
 messages posted within the same ~65-second window — the first 8 hex chars are only the top
 32 bits of a UUIDv7's 48-bit millisecond timestamp) errors out naming the real candidates
-instead of guessing.
+instead of guessing. Two safety rails: prefixes shorter than 8 chars are rejected, and
+` + "`delete_messages(purge=true)`" + ` accepts exact full IDs only — a typo'd prefix must never
+hard-delete the wrong message.
 
 **Transcripts** are the full ordered record of a room. Pin a synthesis message to give
 newcomers instant context at the top of every future read.
