@@ -239,11 +239,23 @@
                       <%= if entry.pinned do %>
                         <span title="Pinned">📌</span>
                       <% end %>
+                      <.retracted_badge
+                        :if={Map.get(entry, :retracted_at) != nil}
+                        retracted_by={Map.get(entry, :retracted_by, "")}
+                      />
                       <span class="text-[9px] font-mono text-[var(--ch-text-xs)] ml-auto">
                         #{String.slice(entry.ref_id, 0, 8)}
                       </span>
                     </div>
-                    <div class="council-prose text-[12px] leading-relaxed">
+                    <.retracted_body
+                      :if={Map.get(entry, :retracted_at) != nil}
+                      retracted_by={Map.get(entry, :retracted_by, "")}
+                      class="text-[12px] text-[var(--ch-text-lo)] italic"
+                    />
+                    <div
+                      :if={Map.get(entry, :retracted_at) == nil}
+                      class="council-prose text-[12px] leading-relaxed"
+                    >
                       {raw(render_markdown(resolve_commit_refs(entry.content, entry.repo)))}
                     </div>
                   </div>

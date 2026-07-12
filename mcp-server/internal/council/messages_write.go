@@ -159,9 +159,17 @@ func (s *Server) UpdateMessageWithExpected(messageID, newContent, newMessageType
 		author = origAuthor
 	}
 
-	// Append the new revision as a fresh immutable node pointing back at the old one.
+	// Append the new revision as a fresh immutable node pointing back at the old
+	// one, and flag the old node superseded, in one transaction — otherwise a
+	// crash/SQLITE_BUSY between the two statements leaves two live heads.
 	newID := uuid.Must(uuid.NewV7()).String()
-	if _, err := s.DB.Exec(
+	tx, err := s.DB.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.Exec(
 		`INSERT INTO messages (id, room_id, author, content, message_type, reply_to, mentions, supersedes, revises, pinned) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		newID, roomID, author, newContent, newType, curReplyTo, curMentions, curSupersedes, messageID, curPinned,
 	); err != nil {
@@ -170,16 +178,15 @@ func (s *Server) UpdateMessageWithExpected(messageID, newContent, newMessageType
 
 	// Flag the old node as a superseded revision and move the pin to the head, so
 	// reads (which filter revised = 0) surface exactly one current version.
-	if _, err := s.DB.Exec(`UPDATE messages SET revised = 1, pinned = 0 WHERE id = ?`, messageID); err != nil {
+	if _, err := tx.Exec(`UPDATE messages SET revised = 1, pinned = 0 WHERE id = ?`, messageID); err != nil {
 		return nil, err
 	}
 
-	// Drop the superseded node's vector: it's filtered out of semantic search by
-	// liveClause anyway, so keeping it only bloats the vector table per edit. The
-	// row itself stays (revision history walks it); only the embedding is dropped.
-	s.deleteVectorsLocked("message_vectors", []string{messageID})
+	if _, err := tx.Exec(`UPDATE rooms SET updated_at = CURRENT_TIMESTAMP WHERE id = ?`, roomID); err != nil {
+		return nil, err
+	}
 
-	m, err := scanMessage(s.DB.QueryRow(
+	m, err := scanMessage(tx.QueryRow(
 		fmt.Sprintf(`SELECT %s FROM messages WHERE id = ?`, messageColumns),
 		newID,
 	))
@@ -187,7 +194,14 @@ func (s *Server) UpdateMessageWithExpected(messageID, newContent, newMessageType
 		return nil, err
 	}
 
-	_, _ = s.DB.Exec(`UPDATE rooms SET updated_at = CURRENT_TIMESTAMP WHERE id = ?`, roomID)
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	// Drop the superseded node's vector: it's filtered out of semantic search by
+	// liveClause anyway, so keeping it only bloats the vector table per edit. The
+	// row itself stays (revision history walks it); only the embedding is dropped.
+	s.deleteVectorsLocked("message_vectors", []string{messageID})
 	s.EmbedAsync("message_vectors", newID, newContent)
 
 	return &m, nil
@@ -230,8 +244,12 @@ func (s *Server) MoveMessages(ids []string, targetRoomID string) (int, error) {
 		args[i+1] = id
 	}
 
+	// Clear pinned on the move: a pin is scoped to its room, so carrying it over
+	// unconditionally could leave the target room with two pinned messages (its
+	// own existing pin plus this one) — violating the one-pin-per-room invariant
+	// every pin reader (GetPinnedMessage's LIMIT 1, GetPinnedExcerpts) assumes.
 	res, err := s.DB.Exec(
-		fmt.Sprintf(`UPDATE messages SET room_id = ? WHERE id IN (%s)`, strings.Join(placeholders, ",")),
+		fmt.Sprintf(`UPDATE messages SET room_id = ?, pinned = 0 WHERE id IN (%s)`, strings.Join(placeholders, ",")),
 		args...,
 	)
 	if err != nil {

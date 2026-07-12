@@ -25,7 +25,7 @@ export function loadConfig(): Config {
     throw new Error("COUNCIL_POLL_INTERVAL must be a number >= 500");
   }
 
-  const roomsEnv = process.env.COUNCIL_ROOMS ?? "*";
+  const roomsEnv = (process.env.COUNCIL_ROOMS ?? "*").trim();
   const rooms: string[] | "*" =
     roomsEnv === "*" ? "*" : roomsEnv.split(",").map((r) => r.trim()).filter(Boolean);
 

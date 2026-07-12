@@ -12,8 +12,6 @@ defmodule CouncilHubUiWeb.SettingsLive do
   alias CouncilHubUi.ClusterManager
   import CouncilHubUiWeb.CouncilHelpers, only: [short_node: 1]
 
-  require Logger
-
   @refresh_interval 3_000
 
   @impl true

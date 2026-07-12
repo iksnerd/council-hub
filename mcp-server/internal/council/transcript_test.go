@@ -2,6 +2,7 @@ package council
 
 import (
 	"context"
+	"database/sql"
 	"os"
 	"strings"
 	"testing"
@@ -545,7 +546,6 @@ func TestJanitorSweepRunsIntegrityCheck(t *testing.T) {
 // ========== buildEpitaph ==========
 
 func TestBuildEpitaph(t *testing.T) {
-	room := Room{ID: "epi-room", Description: "Test"}
 	msgs := []Message{
 		{ID: "1", MessageType: "thought", Author: "Claude", Content: "a thought"},
 		{ID: "2", MessageType: "decision", Author: "Claude", Content: "use postgres"},
@@ -553,7 +553,7 @@ func TestBuildEpitaph(t *testing.T) {
 		{ID: "4", MessageType: "decision", Author: "Gemini", Content: "switch to redis"},
 	}
 
-	out := buildEpitaph(room, msgs)
+	out := buildEpitaph(msgs)
 
 	if !strings.Contains(out, "## Summary") {
 		t.Error("expected ## Summary header")
@@ -571,19 +571,17 @@ func TestBuildEpitaph(t *testing.T) {
 }
 
 func TestBuildEpitaphNoMessages(t *testing.T) {
-	room := Room{ID: "epi-empty"}
-	out := buildEpitaph(room, []Message{})
+	out := buildEpitaph([]Message{})
 	if out != "" {
 		t.Errorf("expected empty epitaph with no messages, got: %s", out)
 	}
 }
 
 func TestBuildEpitaphDecisionOnly(t *testing.T) {
-	room := Room{ID: "epi-dec"}
 	msgs := []Message{
 		{ID: "1", MessageType: "decision", Author: "Claude", Content: "chose kafka"},
 	}
-	out := buildEpitaph(room, msgs)
+	out := buildEpitaph(msgs)
 	if !strings.Contains(out, "chose kafka") {
 		t.Errorf("expected decision in epitaph, got: %s", out)
 	}
@@ -678,13 +676,28 @@ func TestRunJanitorStopsOnContextCancel(t *testing.T) {
 	}
 }
 
+func TestBuildEpitaphRetractedDecisionTombstone(t *testing.T) {
+	msgs := []Message{
+		{ID: "1", MessageType: "decision", Author: "Claude", Content: "the withdrawn call",
+			RetractedAt: sql.NullTime{Time: time.Now(), Valid: true}, RetractedBy: "Claude"},
+	}
+	out := buildEpitaph(msgs)
+	// Archives are permanent — a retracted decision must render as its tombstone,
+	// never leak the withdrawn body.
+	if strings.Contains(out, "the withdrawn call") {
+		t.Errorf("retracted content leaked into epitaph: %s", out)
+	}
+	if !strings.Contains(out, "[retracted by Claude]") {
+		t.Errorf("expected tombstone in epitaph, got: %s", out)
+	}
+}
+
 func TestBuildEpitaphLongContentTruncated(t *testing.T) {
-	room := Room{ID: "epi-long"}
 	longContent := strings.Repeat("word ", 100) // 500 chars
 	msgs := []Message{
 		{ID: "1", MessageType: "decision", Author: "Claude", Content: longContent},
 	}
-	out := buildEpitaph(room, msgs)
+	out := buildEpitaph(msgs)
 	if !strings.Contains(out, "...") {
 		t.Errorf("expected long content to be truncated with ..., got: %s", out)
 	}

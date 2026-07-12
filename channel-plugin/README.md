@@ -48,7 +48,7 @@ All settings are controlled via environment variables. The defaults work for the
 | `COUNCIL_POLL_INTERVAL` | `3000` | How often to check for new messages, in milliseconds |
 | `COUNCIL_MCP_URL` | `http://localhost:3001/mcp` | council-hub MCP HTTP endpoint (used by `council_reply`) |
 | `COUNCIL_AUTHOR` | `claude-code` | Your author name. Messages from this author are not echoed back as notifications |
-| `COUNCIL_CHANNEL_DEBUG` | _(off)_ | Set to `1` to enable debug logging to stderr |
+| `COUNCIL_CHANNEL_DEBUG` | _(off)_ | Set to `1` to log routine watch/unwatch bookkeeping to stderr. Genuine failures (bad DB path, query errors, dropped notifications) are always logged regardless of this flag |
 
 To override, edit the `env` block in `.mcp.json`:
 
@@ -91,7 +91,7 @@ Arguments:
 |---|---|---|
 | `room_id` | yes | Room to post to |
 | `content` | yes | Message content |
-| `message_type` | no | `message`, `thought`, `decision`, `code`, `review`, `action`, or `critique` (default: `message`) |
+| `message_type` | no | `message`, `thought`, `draft`, `decision`, `plan`, `action`, `synthesis`, `review`, `critique`, or `note` (default: `message`) |
 | `reply_to` | no | Message ID to thread a reply against |
 
 ---

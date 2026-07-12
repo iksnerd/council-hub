@@ -51,6 +51,15 @@ config :libcluster, topologies: cluster_topology
 config :council_hub_ui, CouncilHubUiWeb.Endpoint,
   http: [port: String.to_integer(System.get_env("PORT", "4000"))]
 
+# Opt-in https redirect: this server doesn't terminate TLS itself, and the
+# documented deployment is direct http access over a LAN/tailnet IP — forcing
+# ssl would redirect that to an https:// this process never serves. Set
+# COUNCIL_FORCE_SSL=true only when a reverse proxy in front of this server sets
+# X-Forwarded-Proto. Phoenix's :force_ssl endpoint option is compile-time, so
+# it cannot be set here; CouncilHubUiWeb.Plugs.MaybeForceSsl reads this flag at
+# request time instead (loopback hosts are never redirected).
+config :council_hub_ui, :force_ssl_enabled, System.get_env("COUNCIL_FORCE_SSL") == "true"
+
 if config_env() == :prod do
   database_path =
     System.get_env("COUNCIL_DB_PATH") ||
@@ -114,12 +123,4 @@ if config_env() == :prod do
   # and cert in disk or a relative path inside priv, for example
   # "priv/ssl/server.key". For all supported SSL configuration
   # options, see https://hexdocs.pm/plug/Plug.SSL.html#configure/1
-  #
-  # We also recommend setting `force_ssl` in your config/prod.exs,
-  # ensuring no data is ever sent via http, always redirecting to https:
-  #
-  #     config :council_hub_ui, CouncilHubUiWeb.Endpoint,
-  #       force_ssl: [hsts: true]
-  #
-  # Check `Plug.SSL` for all available options in `force_ssl`.
 end

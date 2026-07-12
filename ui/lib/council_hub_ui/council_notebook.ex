@@ -11,7 +11,7 @@ defmodule CouncilHubUi.CouncilNotebook do
   import CouncilHubUi.MessageFilters
   alias CouncilHubUi.Repo
   alias CouncilHubUi.Council.{Room, Message, Notebook, NotebookEntry}
-  alias CouncilHubUi.MessageAnnotations
+  alias CouncilHubUi.{MessageAnnotations, Timestamps}
 
   @default_types ~w(decision plan action synthesis note)
   @default_limit 100
@@ -43,13 +43,13 @@ defmodule CouncilHubUi.CouncilNotebook do
         |> live_messages()
 
       base =
-        case parse_timestamp(Map.get(params, "since", "")) do
+        case Timestamps.parse_since(Map.get(params, "since", "")) do
           nil -> base
           since -> from [m, r] in base, where: m.timestamp >= ^since
         end
 
       base =
-        case parse_timestamp(Map.get(params, "until", "")) do
+        case Timestamps.parse_until(Map.get(params, "until", "")) do
           nil -> base
           until_ts -> from [m, r] in base, where: m.timestamp <= ^until_ts
         end
@@ -145,12 +145,16 @@ defmodule CouncilHubUi.CouncilNotebook do
           room_id: coalesce(coalesce(m.room_id, rr.id), ""),
           author: coalesce(m.author, ""),
           message_type: coalesce(m.message_type, ""),
+          # The fragment's `revised = 0 AND retracted_at IS NULL` hand-writes the
+          # live-node predicate (fragments need literal SQL, so MessageFilters
+          # can't pipe into a correlated select subquery). MessageFilters is the
+          # canonical definition — a change there must be mirrored here.
           content:
             coalesce(
               coalesce(
                 m.content,
                 fragment(
-                  "(SELECT content FROM messages WHERE room_id = ? AND message_type IN ('decision','action') ORDER BY id DESC LIMIT 1)",
+                  "(SELECT content FROM messages WHERE room_id = ? AND message_type IN ('decision','action') AND revised = 0 AND retracted_at IS NULL ORDER BY id DESC LIMIT 1)",
                   rr.id
                 )
               ),
@@ -160,9 +164,67 @@ defmodule CouncilHubUi.CouncilNotebook do
           timestamp: m.timestamp,
           repo: coalesce(coalesce(r.repo, rr.repo), ""),
           room_status: coalesce(rr.status, ""),
-          room_topic: coalesce(rr.description, "")
+          room_topic: coalesce(rr.description, ""),
+          retracted_at: m.retracted_at,
+          retracted_by: coalesce(m.retracted_by, "")
         }
     )
+    |> Enum.map(&resolve_ref_head/1)
+  end
+
+  # The main query joins a "ref" entry on its stored ref_id directly — a fixed
+  # address. If that message has since been edited (revises appends a new node,
+  # flags the old one revised), the join keeps transcluding the stale prior
+  # version forever instead of "update the referenced message instead"
+  # (the documented outline contract). Walk forward to the current head.
+  defp resolve_ref_head(%{kind: "ref", ref_found: true, ref_id: ref_id} = entry) do
+    case head_of_revision_chain(ref_id) do
+      ^ref_id ->
+        entry
+
+      head_id ->
+        case Repo.get(Message, head_id) do
+          nil ->
+            entry
+
+          head ->
+            %{
+              entry
+              | author: head.author,
+                message_type: head.message_type,
+                content: head.content,
+                pinned: head.pinned,
+                timestamp: head.timestamp,
+                retracted_at: head.retracted_at,
+                retracted_by: head.retracted_by || ""
+            }
+        end
+    end
+  end
+
+  defp resolve_ref_head(entry), do: entry
+
+  defp head_of_revision_chain(message_id, hops \\ 0)
+  defp head_of_revision_chain(message_id, hops) when hops >= 1000, do: message_id
+
+  defp head_of_revision_chain(message_id, hops) do
+    # A healthy chain has at most one revision per node, but the pre-transactional
+    # update path could fork it (two rows sharing a `revises` value) — Repo.one
+    # would raise Ecto.MultipleResultsError on such legacy data. Pick the newest
+    # branch deterministically instead (the Go twin's walk also picks one row).
+    next =
+      Repo.one(
+        from m in Message,
+          where: m.revises == ^message_id,
+          order_by: [desc: m.id],
+          limit: 1,
+          select: m.id
+      )
+
+    case next do
+      nil -> message_id
+      next_id -> head_of_revision_chain(next_id, hops + 1)
+    end
   end
 
   @doc "Distinct non-empty project names, alphabetical. Feeds the /notebook picker."
@@ -186,16 +248,6 @@ defmodule CouncilHubUi.CouncilNotebook do
          |> Enum.reject(&(&1 == "")) do
       [] -> @default_types
       types -> types
-    end
-  end
-
-  defp parse_timestamp(""), do: nil
-  defp parse_timestamp(nil), do: nil
-
-  defp parse_timestamp(str) when is_binary(str) do
-    case NaiveDateTime.from_iso8601(str) do
-      {:ok, ts} -> ts
-      _ -> nil
     end
   end
 

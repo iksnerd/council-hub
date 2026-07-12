@@ -177,3 +177,42 @@ func TestBackfillEmbeddings(t *testing.T) {
 		t.Errorf("expected 2 backfilled messages, got %d", len(messages))
 	}
 }
+
+func TestBackfillEmbeddingsSkipsRevisedAndRetracted(t *testing.T) {
+	s := setupTestServer(t)
+	s.CreateRoom("bf-skip", "Backfill skip room", "proj", "", "", "", "")
+
+	live, _ := s.PostMessage("bf-skip", "alice", "still live", "thought", "")
+	edited, _ := s.PostMessage("bf-skip", "alice", "original wording", "thought", "")
+	retracted, _ := s.PostMessage("bf-skip", "bob", "withdrawn", "thought", "")
+
+	// Revise one (the prior version gets revised=1) and retract another; only
+	// live heads should be embedded (liveClause).
+	head, err := s.UpdateMessageWithExpected(edited, "new wording", "", "", "alice")
+	if err != nil {
+		t.Fatalf("UpdateMessageWithExpected: %v", err)
+	}
+	if _, err := s.RetractMessages([]string{retracted}, "bob"); err != nil {
+		t.Fatalf("RetractMessages: %v", err)
+	}
+
+	s.Embedder = &mockEmbedder{vec: makeVec(0.5)}
+	s.BackfillEmbeddings(context.Background())
+
+	hasVector := func(id string) bool {
+		var one int
+		return s.DB.QueryRow(`SELECT 1 FROM message_vectors WHERE message_id = ?`, id).Scan(&one) == nil
+	}
+	if !hasVector(live) {
+		t.Error("expected live message to be embedded")
+	}
+	if !hasVector(head.ID) {
+		t.Error("expected the revision head to be embedded")
+	}
+	if hasVector(edited) {
+		t.Error("revised (superseded) version must not be embedded")
+	}
+	if hasVector(retracted) {
+		t.Error("retracted message must not be embedded")
+	}
+}

@@ -70,6 +70,36 @@ func (s *Server) JanitorSweep() LintResult {
 	return LintResult{NeedsSynthesis: ns, Stale: st, StalePin: sp, StalePlan: spl, Incoherent: inc, NeedsNotebook: nn}
 }
 
+// FlaggedRooms returns the IDs of active rooms currently carrying each of the
+// given Knowledge-Linter tags, regardless of which sweep applied them, keyed by
+// tag — one room-table scan for all tags rather than one per tag. The lint*
+// sweeps below only ever return rooms newly flagged *this* sweep (so they don't
+// re-post the same warning every cycle) — reporting that delta as "current
+// health" made a room flagged in an earlier sweep invisible until it happened
+// to flip again during the exact call. This queries the live tag state instead.
+func (s *Server) FlaggedRooms(tags ...string) map[string][]string {
+	flagged := make(map[string][]string, len(tags))
+	rows, err := s.DB.Query(`SELECT id, COALESCE(tags, '') FROM rooms WHERE status = 'active'`)
+	if err != nil {
+		s.Logger.Error("Linter: failed to query flagged rooms", "error", err)
+		return flagged
+	}
+	defer func() { _ = rows.Close() }()
+
+	for rows.Next() {
+		var id, roomTags string
+		if err := rows.Scan(&id, &roomTags); err != nil {
+			continue
+		}
+		for _, tag := range tags {
+			if hasTag(roomTags, tag) {
+				flagged[tag] = append(flagged[tag], id)
+			}
+		}
+	}
+	return flagged
+}
+
 // hasTag checks whether a comma-separated tag string contains an exact tag.
 func hasTag(tags, tag string) bool {
 	for _, t := range strings.Split(tags, ",") {

@@ -213,7 +213,7 @@ func (r *Registry) RegisterTools() {
 		Name:        "get_messages",
 		Description: "Fetch specific messages by ID, browse a room's recent messages, or delta-read new messages since a known ID. Supports: message_ids for specific fetch, room_id+last_n for browsing, room_id+after_id for 'give me everything new since X'. Set history=true with message_ids to see each message's full append-only edit chain (every preserved version, oldest → newest). For formatted transcripts with room context, use read_transcript instead.",
 		InputSchema: schema(nil, map[string]map[string]any{
-			"message_ids":  prop("string", "Comma-separated message IDs (e.g. 48,52,55)"),
+			"message_ids":  prop("string", "Comma-separated message IDs (e.g. 48,52,55) — each accepts a full ID or an unambiguous ID prefix (e.g. from a transcript)"),
 			"room_id":      prop("string", "Browse messages from this room (alternative to message_ids)"),
 			"last_n":       prop("string", "Number of recent messages to fetch when using room_id (default 10, max 50)"),
 			"after_id":     prop("string", "Return only messages with ID greater than this value (requires room_id). For delta reads without transcript formatting."),
@@ -236,7 +236,7 @@ func (r *Registry) RegisterTools() {
 		Name:        "update_message",
 		Description: "Edit a message — append-only. Nothing is overwritten: this posts a NEW revision carrying the new content and links it back to the prior version via `revises`, so every version is preserved as an immutable, addressable node (the NLS Journal property). Reads collapse to the newest version (the head) and mark it ✎ edited; the prior versions stay walkable via get_links (revises / revised_by). Use for: (1) maintaining living documents like status tables or running summaries, (2) correcting errors. The new head inherits the original's reply/supersedes links and pin. Use expected_content to prevent lost updates when multiple agents may edit the same message.",
 		InputSchema: schema([]string{"message_id", "content"}, map[string]map[string]any{
-			"message_id":       prop("string", "ID of the message to edit (must be the current head — editing an already-revised node returns the head to edit instead)"),
+			"message_id":       prop("string", "ID of the message to edit (must be the current head — editing an already-revised node returns the head to edit instead). Accepts a full ID or an unambiguous ID prefix (e.g. from a transcript)."),
 			"content":          prop("string", "New message content (becomes the new head revision)"),
 			"message_type":     prop("string", "Optionally change message type: message, thought, draft, decision, plan, action, review, critique, synthesis, note"),
 			"expected_content": prop("string", "If provided, the edit fails with the current content if this doesn't match — prevents lost updates when multiple agents edit the same living document."),
@@ -249,7 +249,7 @@ func (r *Registry) RegisterTools() {
 		Description: "Pin a message as the living TL;DR for a room. Use after posting a synthesis or decision that captures the room's current state — pinned messages appear first in every transcript read, giving newcomers instant context. Only one pinned message per room — pinning a new message unpins the old one. Pinning an already-pinned message unpins it (toggle).",
 		InputSchema: schema([]string{"room_id", "message_id"}, map[string]map[string]any{
 			"room_id":    prop("string", "Target room ID"),
-			"message_id": prop("string", "ID of the message to pin/unpin"),
+			"message_id": prop("string", "ID of the message to pin/unpin — accepts a full ID or an unambiguous ID prefix (e.g. from a transcript)"),
 		}),
 	}, r.handlePinMessage)
 
@@ -257,7 +257,7 @@ func (r *Registry) RegisterTools() {
 		Name:        "react_to_message",
 		Description: "Add or remove an emoji reaction on a message. Toggle behavior: reacting with the same emoji by the same author removes it. Reactions are lightweight agreement/acknowledgment signals — use instead of posting a full message when a simple thumbs-up or checkmark suffices.",
 		InputSchema: schema([]string{"message_id", "emoji", "author"}, map[string]map[string]any{
-			"message_id": prop("string", "ID of the message to react to"),
+			"message_id": prop("string", "ID of the message to react to — accepts a full ID or an unambiguous ID prefix (e.g. from a transcript)"),
 			"emoji":      prop("string", "Emoji to react with (e.g. 👍, ✅, 🎉, ❌)"),
 			"author":     prop("string", "Name of the reacting agent"),
 		}),
@@ -267,8 +267,8 @@ func (r *Registry) RegisterTools() {
 		Name:        "link_messages",
 		Description: "Assert a typed link between two messages, building an addressable knowledge graph over the ledger. Relations: refines, contradicts, implements, duplicates, depends-on, relates, informs. Use informs to wire a journal note to the deliberation it provides context for (note → decision/action) — the notebook timeline then weaves the note's `↳ informs` connections in, and get_links on the decision surfaces the notes that inform it, so journal context becomes connective tissue rather than a dead-end entry. (The reply and supersedes edges are recorded automatically via post_to_room's reply_to/supersedes params, and revises/revised_by via update_message edits — link_messages is for the richer semantic edges.) Idempotent on (from, to, relation). Use get_links to traverse the graph from any message.",
 		InputSchema: schema([]string{"from_id", "to_id", "relation"}, map[string]map[string]any{
-			"from_id":  prop("string", "Source message ID (the one making the assertion)"),
-			"to_id":    prop("string", "Target message ID (the one being pointed at)"),
+			"from_id":  prop("string", "Source message ID (the one making the assertion) — accepts a full ID or an unambiguous ID prefix"),
+			"to_id":    prop("string", "Target message ID (the one being pointed at) — accepts a full ID or an unambiguous ID prefix"),
 			"relation": prop("string", "Edge type: refines, contradicts, implements, duplicates, depends-on, relates, or informs (a note → the decision/action it provides context for). Behaviour varies: contradicts/duplicates feed the coherence linter (incoherent flag); informs/relates/refines weave a note into the notebook timeline; implements/depends-on are descriptive — they render as chips and show in get_links, but trigger nothing."),
 			"author":   prop("string", "Optional name of the agent asserting the link"),
 		}),
@@ -278,7 +278,7 @@ func (r *Registry) RegisterTools() {
 		Name:        "get_links",
 		Description: "Show a message's neighborhood in the link graph: outgoing edges (what it points at) and incoming edges — the backlinks (what points at it). Merges explicit typed links (link_messages) with the implicit reply, supersedes, and revises/revised_by edges, so you see the whole graph around a node — including the append-only edit history (walk revised_by from any version to the latest). Use to find what refines/contradicts/supersedes/revises a given synthesis or decision. Pass depth>1 (max 5) for a link-distance view — a breadth-first walk of everything within N hops, grouped by distance.",
 		InputSchema: schema([]string{"message_id"}, map[string]map[string]any{
-			"message_id": prop("string", "Message ID to fetch the link neighborhood for"),
+			"message_id": prop("string", "Message ID to fetch the link neighborhood for — accepts a full ID or an unambiguous ID prefix"),
 			"depth":      prop("string", "Hops to traverse (default 1 = immediate links; max 5). depth>1 returns a link-distance neighborhood grouped by distance."),
 		}),
 	}, r.handleGetLinks)
@@ -293,12 +293,12 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "delete_messages",
-		Description: "Retract messages — the immutable counterpart to deletion. By default this tombstones the messages (sets retracted_at): the nodes, their content, and their links all survive, and they render as \"[retracted]\" — so the knowledge graph never dangles. Provide a comma-separated list of message IDs. Use dry_run=true to preview. Retraction is reversible: pass restore=true to bring tombstoned messages back. Pass purge=true ONLY for content that must not persist (a leaked secret, PII): purge hard-deletes the rows and cascade-removes their links, permanently destroying signal — prefer retract for everything else.",
+		Description: "Retract messages — the immutable counterpart to deletion. By default this tombstones the messages (sets retracted_at): the nodes, their content, and their links all survive, and they render as \"[retracted]\" — so the knowledge graph never dangles. Provide a comma-separated list of message IDs. Use dry_run=true to preview. Retraction is reversible: pass restore=true to bring tombstoned messages back. Pass purge=true ONLY for content that must not persist (a leaked secret, PII): purge hard-deletes the rows and cascade-removes their links, permanently destroying signal — prefer retract for everything else. Purge requires exact full message IDs (prefixes are not resolved — a typo'd prefix must never hard-delete the wrong message).",
 		InputSchema: schema([]string{"message_ids"}, map[string]map[string]any{
-			"message_ids": prop("string", "Comma-separated message IDs to retract (or restore/purge)"),
+			"message_ids": prop("string", "Comma-separated message IDs to retract (or restore/purge) — each accepts a full ID or an unambiguous ID prefix"),
 			"dry_run":     prop("string", "Set to 'true' to preview without executing. Returns message details (id, author, timestamp, room, excerpt)."),
 			"author":      prop("string", "Optional name of the agent retracting (recorded as retracted_by)"),
-			"purge":       prop("string", "Set to 'true' to permanently destroy instead of retract — hard-deletes the rows and their links. Use only for secrets/PII that must not persist."),
+			"purge":       prop("string", "Set to 'true' to permanently destroy instead of retract — hard-deletes the rows and their links. Use only for secrets/PII that must not persist. Requires exact full message IDs (prefixes are not resolved)."),
 			"restore":     prop("string", "Set to 'true' to reverse a retraction — clears the tombstone so the messages render normally again."),
 		}),
 	}, r.handleDeleteMessages)
@@ -307,7 +307,7 @@ func (r *Registry) RegisterTools() {
 		Name:        "move_messages",
 		Description: "Move messages from their current room to a different room, preserving all metadata (author, timestamp, type, reply_to). Useful when a conversation thread drifts off-topic and belongs in a more appropriate room. Returns the count of moved messages and their new room. Note: message IDs and content are unchanged — existing references and cursors remain valid.",
 		InputSchema: schema([]string{"message_ids", "target_room_id"}, map[string]map[string]any{
-			"message_ids":    prop("string", "Comma-separated message IDs to move (e.g. abc123,def456)"),
+			"message_ids":    prop("string", "Comma-separated message IDs to move (e.g. abc123,def456) — each accepts a full ID or an unambiguous ID prefix"),
 			"target_room_id": prop("string", "Room ID to move the messages into"),
 		}),
 	}, r.handleMoveMessages)
@@ -358,29 +358,45 @@ func (r *Registry) RegisterTools() {
 
 	type KnowledgeLintInput struct{}
 	roomHealthHandler := func(ctx context.Context, req *mcp.CallToolRequest, args KnowledgeLintInput) (*mcp.CallToolResult, ToolOutput, error) {
-		result := r.Server.JanitorSweep()
+		// Run the sweep for its side effects (tag + post a notice on anything newly
+		// crossing a threshold this cycle), but report the live tag state below —
+		// the sweep's own return value is only "newly flagged this sweep", which
+		// would hide a room flagged by an earlier sweep that hasn't changed since.
+		sweep := r.Server.JanitorSweep()
+
+		// One room-table scan for all five flags, rendered in fixed order.
+		categories := []struct{ tag, label string }{
+			{"needs-synthesis", "Needs synthesis"},
+			{"stale", "Stale"},
+			{"stale-pin", "Stale pin"},
+			{"stale-plan", "Stale plan"},
+			{"incoherent", "Incoherent"},
+		}
+		tags := make([]string, len(categories))
+		for i, c := range categories {
+			tags[i] = c.tag
+		}
+		flagged := r.Server.FlaggedRooms(tags...)
+
+		anyFlagged := false
+		for _, ids := range flagged {
+			if len(ids) > 0 {
+				anyFlagged = true
+				break
+			}
+		}
 
 		var b strings.Builder
-		if len(result.NeedsSynthesis) == 0 && len(result.Stale) == 0 && len(result.StalePin) == 0 && len(result.StalePlan) == 0 && len(result.Incoherent) == 0 && len(result.NeedsNotebook) == 0 {
+		if !anyFlagged && len(sweep.NeedsNotebook) == 0 {
 			b.WriteString("All clear — no rooms need attention.")
 		} else {
-			if len(result.NeedsSynthesis) > 0 {
-				fmt.Fprintf(&b, "**Needs synthesis** (%d rooms): %s\n", len(result.NeedsSynthesis), strings.Join(result.NeedsSynthesis, ", "))
+			for _, c := range categories {
+				if ids := flagged[c.tag]; len(ids) > 0 {
+					fmt.Fprintf(&b, "**%s** (%d rooms): %s\n", c.label, len(ids), strings.Join(ids, ", "))
+				}
 			}
-			if len(result.Stale) > 0 {
-				fmt.Fprintf(&b, "**Stale** (%d rooms): %s\n", len(result.Stale), strings.Join(result.Stale, ", "))
-			}
-			if len(result.StalePin) > 0 {
-				fmt.Fprintf(&b, "**Stale pin** (%d rooms): %s\n", len(result.StalePin), strings.Join(result.StalePin, ", "))
-			}
-			if len(result.StalePlan) > 0 {
-				fmt.Fprintf(&b, "**Stale plan** (%d rooms): %s\n", len(result.StalePlan), strings.Join(result.StalePlan, ", "))
-			}
-			if len(result.Incoherent) > 0 {
-				fmt.Fprintf(&b, "**Incoherent** (%d rooms): %s\n", len(result.Incoherent), strings.Join(result.Incoherent, ", "))
-			}
-			if len(result.NeedsNotebook) > 0 {
-				fmt.Fprintf(&b, "**No notebook** (%d projects with decided work but no curated notebook — compile one with edit_notebook(action=create, project=…)): %s\n", len(result.NeedsNotebook), strings.Join(result.NeedsNotebook, ", "))
+			if len(sweep.NeedsNotebook) > 0 {
+				fmt.Fprintf(&b, "**No notebook** (%d projects with decided work but no curated notebook — compile one with edit_notebook(action=create, project=…)): %s\n", len(sweep.NeedsNotebook), strings.Join(sweep.NeedsNotebook, ", "))
 			}
 		}
 		fmt.Fprintf(&b, "\n**Last scanned:** %s", time.Now().UTC().Format("2006-01-02 15:04:05 UTC"))
@@ -453,7 +469,7 @@ func (r *Registry) RegisterTools() {
 			"title":          prop("string", "Human-readable title (create only)."),
 			"entry_id":       prop("string", "Target entry (update, start, check, uncheck, move, remove). From the *(entry #...)* markers in read_notebook output."),
 			"kind":           enumProp("string", "Entry kind for add. ref_id implies 'ref' and prose implies 'prose'; pass kind=room_ref explicitly with ref_id=<room_id> to track a room's live state, kind=query_ref with ref_id=<room_id>:<message_type> to transclude 'the latest <type> in <room>' (resolved live — a structural address, not a frozen ID), or kind=task with prose=<label> for a first-class checklist item you check/uncheck.", []string{"ref", "room_ref", "query_ref", "prose", "task"}),
-			"ref_id":         prop("string", "What to transclude: a message ID (kind=ref), a room ID (kind=room_ref), or 'room_id:message_type' (kind=query_ref, e.g. 'auth-room:synthesis'). Must exist on this node. Ref-like adds are idempotent — re-adding a target already referenced in the notebook is a no-op that returns the existing entry, so it's safe to repeat across sessions without creating duplicate refs."),
+			"ref_id":         prop("string", "What to transclude: a message ID (kind=ref, accepts a full ID or an unambiguous ID prefix), a room ID (kind=room_ref), or 'room_id:message_type' (kind=query_ref, e.g. 'auth-room:synthesis'). Must exist on this node. Ref-like adds are idempotent — re-adding a target already referenced in the notebook is a no-op that returns the existing entry, so it's safe to repeat across sessions without creating duplicate refs."),
 			"prose":          prop("string", "Markdown content (add with kind=prose, or update) — also the task label (add with kind=task)."),
 			"after_entry_id": prop("string", "Position control for add and move: the entry to land after. Omit on add to append; empty on move means the top."),
 		}),
@@ -475,7 +491,7 @@ func (r *Registry) RegisterTools() {
 			"Use when a conversation in one room has grown into its own distinct topic. " +
 			"Replaces the manual create_room → move_messages → update_room × 2 sequence.",
 		InputSchema: schema([]string{"start_message_id", "new_room_id"}, map[string]map[string]any{
-			"start_message_id": prop("string", "ID of the first message to move — this message and all later messages in the same room are relocated."),
+			"start_message_id": prop("string", "ID of the first message to move — this message and all later messages in the same room are relocated. Accepts a full ID or an unambiguous ID prefix."),
 			"new_room_id":      prop("string", "ID for the new room to create (must not already exist)."),
 			"topic":            prop("string", "Description for the new room. Defaults to 'Forked from <source_room>'."),
 			"project":          prop("string", "Project for the new room. Defaults to the source room's project."),

@@ -2,6 +2,7 @@ package council
 
 import (
 	"database/sql"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -583,5 +584,198 @@ func TestGetMessageByID(t *testing.T) {
 	_, err = s.GetMessageByID("nonexistent-id")
 	if err == nil {
 		t.Error("expected error for nonexistent ID, got nil")
+	}
+}
+
+func TestResolveMessageIDExactMatch(t *testing.T) {
+	s := setupTestServer(t)
+	s.CreateRoom("room-resolve", "Test room", "", "", "", "", "")
+	id, _ := s.PostMessage("room-resolve", "bob", "hello", "thought", "")
+
+	resolved, err := s.ResolveMessageID(id)
+	if err != nil {
+		t.Fatalf("ResolveMessageID failed: %v", err)
+	}
+	if resolved != id {
+		t.Errorf("expected exact match to return %q, got %q", id, resolved)
+	}
+}
+
+func TestResolveMessageIDUniquePrefix(t *testing.T) {
+	s := setupTestServer(t)
+	s.CreateRoom("room-resolve2", "Test room", "", "", "", "", "")
+	id, _ := s.PostMessage("room-resolve2", "bob", "hello", "thought", "")
+
+	resolved, err := s.ResolveMessageID(id[:8])
+	if err != nil {
+		t.Fatalf("ResolveMessageID(prefix) failed: %v", err)
+	}
+	if resolved != id {
+		t.Errorf("expected prefix to resolve to %q, got %q", id, resolved)
+	}
+}
+
+func TestResolveMessageIDAmbiguousPrefix(t *testing.T) {
+	s := setupTestServer(t)
+	s.CreateRoom("room-resolve3", "Test room", "", "", "", "", "")
+	id1, _ := s.PostMessage("room-resolve3", "bob", "first", "thought", "")
+
+	// Force a second row sharing id1's 8-char prefix — real collisions come from
+	// UUIDv7's shared millisecond-timestamp bits; this constructs the same shape
+	// directly against the DB so the test doesn't need real timing collisions.
+	sharedPrefix := id1[:8]
+	fakeID := sharedPrefix + "-0000-7000-8000-000000000000"
+	if _, err := s.DB.Exec(
+		`INSERT INTO messages (id, room_id, author, content, message_type) VALUES (?, ?, ?, ?, ?)`,
+		fakeID, "room-resolve3", "alice", "second", "thought",
+	); err != nil {
+		t.Fatalf("insert collision row: %v", err)
+	}
+
+	_, err := s.ResolveMessageID(sharedPrefix)
+	if err == nil {
+		t.Fatal("expected ambiguous-prefix error, got nil")
+	}
+	if !strings.Contains(err.Error(), "ambiguous") {
+		t.Errorf("expected 'ambiguous' in error, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), id1) || !strings.Contains(err.Error(), fakeID) {
+		t.Errorf("expected both candidate IDs listed, got: %v", err)
+	}
+}
+
+func TestResolveMessageIDNotFound(t *testing.T) {
+	s := setupTestServer(t)
+	_, err := s.ResolveMessageID("totally-nonexistent-prefix")
+	if err == nil {
+		t.Fatal("expected not-found error, got nil")
+	}
+}
+
+func TestResolveMessageIDShortPrefixRejected(t *testing.T) {
+	s := setupTestServer(t)
+	s.CreateRoom("room-resolve-short", "Test room", "", "", "", "", "")
+	id, _ := s.PostMessage("room-resolve-short", "bob", "hello", "thought", "")
+
+	// A 6-char prefix would uniquely match, but anything below minResolvePrefixLen
+	// never came from our own display output (which prints #%.8s) — reject it.
+	_, err := s.ResolveMessageID(id[:6])
+	if err == nil {
+		t.Fatal("expected error for prefix shorter than 8 chars, got nil")
+	}
+	if !strings.Contains(err.Error(), "at least 8") {
+		t.Errorf("expected error to mention the 8-char minimum, got: %v", err)
+	}
+
+	// An exact full ID shorter than 8 chars must still resolve — the exact-match
+	// attempt runs before the length check (legacy pre-UUID IDs).
+	if _, err := s.DB.Exec(
+		`INSERT INTO messages (id, room_id, author, content, message_type) VALUES (?, ?, ?, ?, ?)`,
+		"42", "room-resolve-short", "alice", "legacy", "thought",
+	); err != nil {
+		t.Fatalf("insert legacy row: %v", err)
+	}
+	resolved, err := s.ResolveMessageID("42")
+	if err != nil {
+		t.Fatalf("expected short exact ID to resolve, got: %v", err)
+	}
+	if resolved != "42" {
+		t.Errorf("expected exact match '42', got %q", resolved)
+	}
+}
+
+func TestResolveMessageIDAmbiguousTruncationExact(t *testing.T) {
+	s := setupTestServer(t)
+	s.CreateRoom("room-resolve-many", "Test room", "", "", "", "", "")
+
+	// maxPrefixCandidates+2 rows sharing an 8-char prefix: the error must list
+	// exactly maxPrefixCandidates candidates and flag that more exist.
+	sharedPrefix := "0aaaaaaa"
+	for i := 0; i < maxPrefixCandidates+2; i++ {
+		id := fmt.Sprintf("%s-%04d-7000-8000-000000000000", sharedPrefix, i)
+		if _, err := s.DB.Exec(
+			`INSERT INTO messages (id, room_id, author, content, message_type) VALUES (?, ?, ?, ?, ?)`,
+			id, "room-resolve-many", "alice", "collision", "thought",
+		); err != nil {
+			t.Fatalf("insert collision row %d: %v", i, err)
+		}
+	}
+
+	_, err := s.ResolveMessageID(sharedPrefix)
+	ambiguous, ok := err.(*ErrAmbiguousMessageID)
+	if !ok {
+		t.Fatalf("expected *ErrAmbiguousMessageID, got: %v", err)
+	}
+	if len(ambiguous.Candidates) != maxPrefixCandidates {
+		t.Errorf("expected exactly %d candidates listed, got %d", maxPrefixCandidates, len(ambiguous.Candidates))
+	}
+	if !ambiguous.Truncated {
+		t.Error("expected Truncated=true when more matches exist beyond the cap")
+	}
+	if !strings.Contains(err.Error(), "...and more") {
+		t.Errorf("expected '...and more' in error, got: %v", err)
+	}
+
+	// Exactly maxPrefixCandidates matches: all listed, NOT flagged as truncated.
+	s.CreateRoom("room-resolve-exact", "Test room", "", "", "", "", "")
+	sharedPrefix2 := "0bbbbbbb"
+	for i := 0; i < maxPrefixCandidates; i++ {
+		id := fmt.Sprintf("%s-%04d-7000-8000-000000000000", sharedPrefix2, i)
+		if _, err := s.DB.Exec(
+			`INSERT INTO messages (id, room_id, author, content, message_type) VALUES (?, ?, ?, ?, ?)`,
+			id, "room-resolve-exact", "alice", "collision", "thought",
+		); err != nil {
+			t.Fatalf("insert collision row %d: %v", i, err)
+		}
+	}
+	_, err = s.ResolveMessageID(sharedPrefix2)
+	ambiguous, ok = err.(*ErrAmbiguousMessageID)
+	if !ok {
+		t.Fatalf("expected *ErrAmbiguousMessageID, got: %v", err)
+	}
+	if len(ambiguous.Candidates) != maxPrefixCandidates {
+		t.Errorf("expected all %d candidates listed, got %d", maxPrefixCandidates, len(ambiguous.Candidates))
+	}
+	if ambiguous.Truncated {
+		t.Error("expected Truncated=false when the matches fit the cap exactly")
+	}
+	if strings.Contains(err.Error(), "...and more") {
+		t.Errorf("expected no '...and more' when nothing is truncated, got: %v", err)
+	}
+}
+
+func TestResolveMessageIDRangeBoundaries(t *testing.T) {
+	s := setupTestServer(t)
+	s.CreateRoom("room-resolve-range", "Test room", "", "", "", "", "")
+
+	// The range form (id >= prefix AND id < prefix+"g") must match only true
+	// prefixes: an adjacent id one hex increment above the prefix ("0000000f" →
+	// "00000010") sorts inside a naive open-ended range but is not a match.
+	target := "0000000f-0000-7000-8000-000000000001"
+	adjacent := "00000010-0000-7000-8000-000000000002"
+	for _, id := range []string{target, adjacent} {
+		if _, err := s.DB.Exec(
+			`INSERT INTO messages (id, room_id, author, content, message_type) VALUES (?, ?, ?, ?, ?)`,
+			id, "room-resolve-range", "alice", "boundary", "thought",
+		); err != nil {
+			t.Fatalf("insert row %s: %v", id, err)
+		}
+	}
+
+	resolved, err := s.ResolveMessageID("0000000f")
+	if err != nil {
+		t.Fatalf("expected hex-boundary prefix to resolve uniquely, got: %v", err)
+	}
+	if resolved != target {
+		t.Errorf("expected %q, got %q", target, resolved)
+	}
+
+	// A prefix spanning a dash boundary resolves too ('-' sorts below 'g').
+	resolved, err = s.ResolveMessageID(target[:14]) // "0000000f-0000-"
+	if err != nil {
+		t.Fatalf("expected dash-boundary prefix to resolve, got: %v", err)
+	}
+	if resolved != target {
+		t.Errorf("expected %q, got %q", target, resolved)
 	}
 }

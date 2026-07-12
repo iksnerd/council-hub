@@ -66,6 +66,15 @@ func (r *Registry) handleEditNotebook(ctx context.Context, req *mcp.CallToolRequ
 				kind = "prose"
 			}
 		}
+		// Only kind="ref" points at a message ID (room_ref/query_ref point at a
+		// room, task has no ref_id) — resolve a possibly-truncated prefix.
+		if kind == "ref" {
+			resolved, rerr := r.resolveSingleID(args.RefID)
+			if rerr != nil {
+				return msg(fmt.Sprintf("Error: %s", rerr.Error()))
+			}
+			args.RefID = resolved
+		}
 		entryID, err := r.Server.AddOutlineEntry(args.NotebookID, kind, args.RefID, args.Prose, args.AfterEntryID)
 		if err != nil {
 			var dup *council.ErrAlreadyReferenced
@@ -276,9 +285,7 @@ func renderRoomRef(b *strings.Builder, e council.OutlineEntry) {
 	if e.RefContent != "" {
 		ts := e.RefTime.Format("2006-01-02 15:04")
 		excerpt := strings.ReplaceAll(e.RefContent, "\n", " ")
-		if len(excerpt) > 240 {
-			excerpt = excerpt[:240] + "..."
-		}
+		excerpt = council.TruncateRunes(excerpt, 240, "", 0)
 		fmt.Fprintf(b, "  latest %s [%s %s]: %s\n", e.RefType, ts, e.RefAuthor, council.ResolveCommitRefs(excerpt, e.RefRepo))
 	}
 	fmt.Fprintf(b, "*(entry %s)*\n", e.ID)

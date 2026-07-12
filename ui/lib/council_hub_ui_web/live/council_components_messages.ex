@@ -5,6 +5,37 @@ defmodule CouncilHubUiWeb.MessageComponents do
   import Phoenix.HTML, only: [raw: 1]
   import CouncilHubUiWeb.CouncilHelpers
 
+  # -- Retraction rendering --
+  #
+  # Shared by the room view (message_bubble) and the notebook outline so the
+  # tombstone markup can't drift between the two.
+
+  @doc "Header badge marking a retracted message."
+  attr :retracted_by, :string, default: ""
+
+  def retracted_badge(assigns) do
+    ~H"""
+    <span
+      title={"Retracted#{if @retracted_by != "", do: " by " <> @retracted_by, else: ""} — preserved as a tombstone"}
+      class="text-[9px] font-mono uppercase tracking-wider text-[var(--ch-text-lo)]"
+    >
+      retracted
+    </span>
+    """
+  end
+
+  @doc "Body swap for a retracted message: the tombstone text instead of the content."
+  attr :retracted_by, :string, default: ""
+  attr :class, :any, default: nil
+
+  def retracted_body(assigns) do
+    ~H"""
+    <div class={@class}>
+      [retracted{if @retracted_by != "", do: " by " <> @retracted_by, else: ""}]
+    </div>
+    """
+  end
+
   # -- Message Bubble --
 
   attr :msg, :map, required: true
@@ -92,13 +123,10 @@ defmodule CouncilHubUiWeb.MessageComponents do
             >
               ✎ edited{if @revisions, do: " ▾", else: " ▸"}
             </button>
-            <span
+            <.retracted_badge
               :if={Map.get(@msg, :retracted_at) != nil}
-              title={"Retracted#{if Map.get(@msg, :retracted_by, "") != "", do: " by " <> Map.get(@msg, :retracted_by), else: ""} — preserved as a tombstone"}
-              class="text-[9px] font-mono uppercase tracking-wider text-[var(--ch-text-lo)]"
-            >
-              retracted
-            </span>
+              retracted_by={Map.get(@msg, :retracted_by, "")}
+            />
             <span class="text-[10px] text-[var(--ch-text-xs)] font-mono tabular-nums">
               {format_timestamp(@msg.timestamp)}
             </span>
@@ -144,14 +172,11 @@ defmodule CouncilHubUiWeb.MessageComponents do
           </div>
 
           <%!-- Message content (a retracted node renders as a tombstone, not its text) --%>
-          <div
+          <.retracted_body
             :if={Map.get(@msg, :retracted_at) != nil}
+            retracted_by={Map.get(@msg, :retracted_by, "")}
             class="text-[var(--ch-text-lo)] italic border-l border-[var(--ch-border-mid)] pl-2.5"
-          >
-            [retracted{if Map.get(@msg, :retracted_by, "") != "",
-              do: " by " <> Map.get(@msg, :retracted_by),
-              else: ""}]
-          </div>
+          />
           <div
             :if={Map.get(@msg, :retracted_at) == nil}
             class={[

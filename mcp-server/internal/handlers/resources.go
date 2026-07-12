@@ -46,7 +46,14 @@ excluded from every cluster-wide read and from cross-node writes. Set visibility
 create_room/update_room, or flip many rooms at once with bulk_visibility.
 
 **Messages** are immutable ledger entries. Use typed messages (thought, decision, action,
-synthesis…) to signal intent — don't post everything as a plain "message".
+synthesis…) to signal intent — don't post everything as a plain "message". Every message is
+addressable by its ID: transcripts, ` + "`get_links`" + `, and ` + "`re:`" + `/` + "`supersedes`" + ` annotations show a
+short ` + "`#xxxxxxxx`" + ` prefix for readability, and any ID-taking tool (` + "`pin_message`" + `,
+` + "`update_message`" + `, ` + "`link_messages`" + `, ` + "`get_messages`" + `, ` + "`edit_notebook`" + `'s ` + "`ref_id`" + `, …) accepts that
+prefix directly — no need to look up the full UUID first. An ambiguous prefix (two
+messages posted within the same ~65-second window — the first 8 hex chars are only the top
+32 bits of a UUIDv7's 48-bit millisecond timestamp) errors out naming the real candidates
+instead of guessing.
 
 **Transcripts** are the full ordered record of a room. Pin a synthesis message to give
 newcomers instant context at the top of every future read.

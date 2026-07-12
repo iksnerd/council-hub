@@ -17,8 +17,10 @@ func init() {
 // Acquires its own lock — do not call while holding s.Mu.
 func (s *Server) StoreVector(table, id string, vec []float32) error {
 	idCol := "message_id"
+	parentTable := "messages"
 	if table == "room_vectors" {
 		idCol = "room_id"
+		parentTable = "rooms"
 	}
 
 	serialized, err := sqlite_vec.SerializeFloat32(vec)
@@ -32,9 +34,13 @@ func (s *Server) StoreVector(table, id string, vec []float32) error {
 	// Delete existing vector if present (upsert)
 	_, _ = s.DB.Exec(fmt.Sprintf(`DELETE FROM %s WHERE %s = ?`, table, idCol), id)
 
+	// EmbedAsync runs this in a background goroutine, so the message/room can be
+	// deleted or purged before the embedding finishes — insert only if the parent
+	// row still exists, or a straggling embed leaves an orphan vector that nothing
+	// (delete/purge already ran and is done) ever cleans up.
 	_, err = s.DB.Exec(
-		fmt.Sprintf(`INSERT INTO %s(%s, embedding) VALUES (?, ?)`, table, idCol),
-		id, serialized,
+		fmt.Sprintf(`INSERT INTO %s(%s, embedding) SELECT ?, ? WHERE EXISTS (SELECT 1 FROM %s WHERE id = ?)`, table, idCol, parentTable),
+		id, serialized, id,
 	)
 	return err
 }
@@ -282,7 +288,7 @@ func (s *Server) BackfillEmbeddings(ctx context.Context) {
 	rows, err := s.DB.Query(
 		`SELECT m.id, m.content FROM messages m
 		 LEFT JOIN message_vectors v ON m.id = v.message_id
-		 WHERE v.message_id IS NULL`)
+		 WHERE v.message_id IS NULL AND ` + liveClause("m"))
 	if err != nil {
 		s.Logger.Warn("backfill messages query failed", "error", err)
 		return

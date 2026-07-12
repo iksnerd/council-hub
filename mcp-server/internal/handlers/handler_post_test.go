@@ -195,18 +195,61 @@ func TestHandlePostToRoomNoPinByDefault(t *testing.T) {
 	}
 }
 
-func TestHandlePostToRoomAnyReplyToAccepted(t *testing.T) {
+func TestHandlePostToRoomGarbageReplyToRejected(t *testing.T) {
 	reg := setupHandlerTest(t)
 	mustCreateRoom(t, reg.Server, "h-reply-any")
 
-	// Any string is accepted as reply_to (UUID or otherwise)
+	// A reply_to that resolves to no message is an error, not a silently stored
+	// dangling ref — downstream backlink matching is exact, so a bad ref would
+	// never surface anywhere.
 	res, _, _ := reg.handlePostToRoom(context.Background(), nil, PostToRoomInput{
 		RoomID: "h-reply-any", Author: "Claude", Message: "Hello",
 		ReplyTo: "any-string-reply-to",
 	})
 	text := resultText(res)
+	if !strings.Contains(text, "Error") || !strings.Contains(text, "reply_to") || !strings.Contains(text, "not found") {
+		t.Errorf("expected a reply_to not-found error, got: %s", text)
+	}
+}
+
+func TestHandlePostToRoomReplyToPrefixResolved(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-reply-prefix")
+	fullID, err := reg.Server.PostMessage("h-reply-prefix", "Claude", "the original", "thought", "")
+	if err != nil {
+		t.Fatalf("PostMessage: %v", err)
+	}
+
+	res, _, _ := reg.handlePostToRoom(context.Background(), nil, PostToRoomInput{
+		RoomID: "h-reply-prefix", Author: "Gemini", Message: "replying via prefix",
+		ReplyTo: fullID[:8],
+	})
+	text := resultText(res)
 	if !strings.Contains(text, "posted") {
-		t.Errorf("expected success for any string reply_to, got: %s", text)
+		t.Fatalf("expected success for unique 8-char prefix reply_to, got: %s", text)
+	}
+
+	// The stored reply_to must be the resolved FULL ID, so the implicit reply
+	// edge is visible from the original message.
+	msgs, err := reg.Server.GetRecentMessages("h-reply-prefix", 1)
+	if err != nil || len(msgs) != 1 {
+		t.Fatalf("GetRecentMessages: %v (%d msgs)", err, len(msgs))
+	}
+	if msgs[0].ReplyTo != fullID {
+		t.Errorf("expected stored reply_to %q, got %q", fullID, msgs[0].ReplyTo)
+	}
+	_, incoming, err := reg.Server.GetLinks(fullID)
+	if err != nil {
+		t.Fatalf("GetLinks: %v", err)
+	}
+	foundReply := false
+	for _, l := range incoming {
+		if l.Relation == "reply" && l.FromID == msgs[0].ID {
+			foundReply = true
+		}
+	}
+	if !foundReply {
+		t.Errorf("expected implicit reply backlink on %s, got incoming: %+v", fullID, incoming)
 	}
 }
 

@@ -466,14 +466,15 @@ func (s *Server) GetOutline(notebookID string) (Notebook, []OutlineEntry, error)
 		       COALESCE(m.pinned, 0),
 		       COALESCE(m.timestamp, lm.timestamp),
 		       COALESCE(r.repo, rr.repo, ''),
-		       COALESCE(rr.status, ''), COALESCE(rr.description, '')
+		       COALESCE(rr.status, ''), COALESCE(rr.description, ''),
+		       m.retracted_at, COALESCE(m.retracted_by, '')
 		FROM notebook_entries e
 		LEFT JOIN messages m ON e.kind = 'ref' AND m.id = e.ref_id
 		LEFT JOIN rooms r ON r.id = m.room_id
 		LEFT JOIN rooms rr ON e.kind = 'room_ref' AND rr.id = e.ref_id
 		LEFT JOIN messages lm ON lm.id = (
 			SELECT id FROM messages
-			WHERE room_id = rr.id AND message_type IN ('decision', 'action')
+			WHERE room_id = rr.id AND message_type IN ('decision', 'action') AND `+liveClause("")+`
 			ORDER BY id DESC LIMIT 1
 		)
 		WHERE e.notebook_id = ?
@@ -489,14 +490,19 @@ func (s *Server) GetOutline(notebookID string) (Notebook, []OutlineEntry, error)
 		// COALESCE strips the column's datetime affinity, so the driver hands
 		// back the raw stored string — parse it instead of scanning NullTime.
 		var ts sql.NullString
+		var retractedAt sql.NullTime
+		var retractedBy string
 		if err := rows.Scan(&e.ID, &e.Position, &e.Kind, &e.RefID, &e.Prose, &e.Status,
 			&e.RefFound, &e.RefRoomID, &e.RefAuthor, &e.RefType,
 			&e.RefContent, &e.RefPinned, &ts, &e.RefRepo,
-			&e.RefStatus, &e.RefTopic); err != nil {
+			&e.RefStatus, &e.RefTopic, &retractedAt, &retractedBy); err != nil {
 			return n, nil, err
 		}
 		if ts.Valid {
 			e.RefTime = parseStoredTime(ts.String)
+		}
+		if e.Kind == "ref" {
+			e.RefContent = DisplayContent(Message{Content: e.RefContent, RetractedAt: retractedAt, RetractedBy: retractedBy})
 		}
 		entries = append(entries, e)
 	}
@@ -508,11 +514,38 @@ func (s *Server) GetOutline(notebookID string) (Notebook, []OutlineEntry, error)
 	// live at render time. Cleaner than cramming the "room:type" split into the main
 	// SQL. A query that currently matches nothing resolves as RefFound=false.
 	for i := range entries {
-		if entries[i].Kind == "query_ref" {
+		switch entries[i].Kind {
+		case "query_ref":
 			s.resolveQueryRef(&entries[i])
+		case "ref":
+			s.resolveRefHead(&entries[i])
 		}
 	}
 	return n, entries, nil
+}
+
+// resolveRefHead re-resolves a "ref" entry to the head of its revision chain.
+// The main query joins on the entry's stored ref_id directly, which is a fixed
+// address; if that message has since been edited (revises appends a new node
+// and flags the old one revised), the join keeps transcluding the stale prior
+// version forever. Walk forward to the current head and re-fetch its content.
+func (s *Server) resolveRefHead(e *OutlineEntry) {
+	if !e.RefFound {
+		return
+	}
+	headID := s.headOfRevisionChain(e.RefID)
+	if headID == e.RefID {
+		return // not revised, nothing to do
+	}
+	m, err := scanMessage(s.DB.QueryRow(fmt.Sprintf(`SELECT %s FROM messages WHERE id = ?`, messageColumns), headID))
+	if err != nil {
+		return
+	}
+	e.RefAuthor = m.Author
+	e.RefType = m.MessageType
+	e.RefContent = DisplayContent(m)
+	e.RefPinned = m.Pinned
+	e.RefTime = m.Timestamp
 }
 
 // parseQueryRef splits a query_ref ref_id "room_id:message_type" into its parts.

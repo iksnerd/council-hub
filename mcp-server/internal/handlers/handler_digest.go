@@ -195,10 +195,7 @@ func digestExcerpt(content string) string {
 		if strings.HasPrefix(line, "#") {
 			heading := strings.TrimLeft(line, "# ")
 			if heading != "" {
-				if len(heading) > 120 {
-					heading = heading[:120] + "..."
-				}
-				return heading
+				return council.TruncateRunes(heading, 120, "", 0)
 			}
 		}
 		// Stop looking after first non-empty non-heading line
@@ -220,12 +217,5 @@ func digestExcerpt(content string) string {
 	}
 
 	// Fallback: word-boundary truncation
-	if len(flat) > 120 {
-		truncated := flat[:120]
-		if i := strings.LastIndex(truncated, " "); i > 80 {
-			truncated = truncated[:i]
-		}
-		return truncated + "..."
-	}
-	return flat
+	return council.TruncateRunes(flat, 120, " ", 80)
 }

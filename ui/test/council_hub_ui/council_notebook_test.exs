@@ -226,5 +226,40 @@ defmodule CouncilHubUi.CouncilNotebookTest do
       refute entry.ref_found
       assert entry.content == ""
     end
+
+    test "a forked revision chain (legacy corruption) does not raise — picks one head" do
+      # The pre-transactional update path could append two revisions of the same
+      # node (two rows sharing a `revises` value). Repo.one on that chain raised
+      # Ecto.MultipleResultsError and took the outline render down with it.
+      room = create_room(%{id: "nb-fork-room", project: "nb-proj"})
+
+      original =
+        create_message(%{
+          room_id: room.id,
+          content: "original",
+          message_type: "decision",
+          revised: 1
+        })
+
+      _fork_a =
+        create_message(%{room_id: room.id, content: "fork a", revises: original.id})
+
+      fork_b =
+        create_message(%{room_id: room.id, content: "fork b", revises: original.id})
+
+      create_notebook(%{id: "nb-fork", project: "nb-proj"})
+
+      create_notebook_entry(%{
+        notebook_id: "nb-fork",
+        position: 1,
+        kind: "ref",
+        ref_id: original.id
+      })
+
+      [entry] = Council.outline_entries("nb-fork")
+      assert entry.ref_found
+      # Deterministic pick: the newest branch (max id) wins.
+      assert entry.content == fork_b.content
+    end
   end
 end

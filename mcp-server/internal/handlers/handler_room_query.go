@@ -97,10 +97,7 @@ func (r *Registry) handleListRooms(ctx context.Context, req *mcp.CallToolRequest
 	useVerbose := args.Verbose == "true" || args.Compact == "false"
 	if !useVerbose {
 		for _, rm := range rooms {
-			topic := rm.Description
-			if len(topic) > 60 {
-				topic = topic[:60] + "..."
-			}
+			topic := council.TruncateRunes(rm.Description, 60, "", 0)
 			project := rm.Project
 			if project == "" {
 				project = "-"
