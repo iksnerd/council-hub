@@ -30,6 +30,7 @@ defmodule CouncilHubUi.Council do
 
   defdelegate search_messages(params), to: CouncilHubUi.CouncilMessages
   defdelegate get_messages_by_ids(ids), to: CouncilHubUi.CouncilMessages
+  defdelegate get_messages_mutable_state(ids), to: CouncilHubUi.CouncilMessages
   defdelegate revision_history(head_id), to: CouncilHubUi.CouncilMessages
   defdelegate get_recent_messages(room_id, limit), to: CouncilHubUi.CouncilMessages
 

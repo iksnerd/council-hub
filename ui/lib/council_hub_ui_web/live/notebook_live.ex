@@ -12,6 +12,8 @@ defmodule CouncilHubUiWeb.NotebookLive do
   alias CouncilHubUi.Council
   alias CouncilHubUi.McpClient
 
+  import CouncilHubUiWeb.MessageComponents, only: [retracted_badge: 1, retracted_body: 1]
+
   import CouncilHubUiWeb.CouncilHelpers,
     only: [
       type_color: 1,

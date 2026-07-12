@@ -339,6 +339,42 @@ defmodule CouncilHubUi.CouncilMessagesTest do
 
       assert length(Council.get_mentions("claude", 3)) == 3
     end
+
+    # Mirror of the Go TestGetMentionsCollapsesToLiveHeads.
+    test "collapses to live heads: retracted and superseded revisions excluded" do
+      r = create_room(%{id: "mentions-live-heads"})
+
+      v1 =
+        create_message(%{
+          room_id: r.id,
+          author: "gemini",
+          content: "stale ping v1",
+          mentions: "claude",
+          revised: 1
+        })
+
+      head =
+        create_message(%{
+          room_id: r.id,
+          author: "gemini",
+          content: "current ping v2",
+          mentions: "claude",
+          revises: v1.id
+        })
+
+      create_message(%{
+        room_id: r.id,
+        author: "gemini",
+        content: "withdrawn ping",
+        mentions: "claude",
+        retracted_at: NaiveDateTime.utc_now(),
+        retracted_by: "gemini"
+      })
+
+      result = Council.get_mentions("claude")
+      assert Enum.map(result, & &1.id) == [head.id]
+      assert hd(result).content == "current ping v2"
+    end
   end
 
   describe "Message schema" do

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"database/sql"
 	"fmt"
 	"strings"
 	"time"
@@ -19,6 +20,13 @@ type ClusterSearchResult struct {
 	ReplyTo     string `json:"reply_to"`
 	Pinned      bool   `json:"pinned"`
 	Timestamp   string `json:"timestamp"`
+	// RetractedAt is "" when live; non-empty means the receiving side must render
+	// a tombstone instead of Content — the cluster-fan-out counterpart of the
+	// local retracted_at/retracted_by columns. Render via
+	// council.DisplayContent(mapClusterMessage(m)) so the tombstone logic stays
+	// single-sourced.
+	RetractedAt string `json:"retracted_at"`
+	RetractedBy string `json:"retracted_by"`
 	SourceNode  string `json:"source_node"`
 }
 
@@ -88,6 +96,10 @@ func parseClusterTime(ts string) time.Time {
 }
 
 func mapClusterMessage(m ClusterSearchResult) council.Message {
+	var retractedAt sql.NullTime
+	if m.RetractedAt != "" {
+		retractedAt = sql.NullTime{Time: parseClusterTime(m.RetractedAt), Valid: true}
+	}
 	return council.Message{
 		ID:          m.ID,
 		RoomID:      m.RoomID,
@@ -98,6 +110,8 @@ func mapClusterMessage(m ClusterSearchResult) council.Message {
 		ReplyTo:     m.ReplyTo,
 		Pinned:      m.Pinned,
 		Timestamp:   parseClusterTime(m.Timestamp),
+		RetractedAt: retractedAt,
+		RetractedBy: m.RetractedBy,
 	}
 }
 

@@ -151,23 +151,20 @@ func (r *Registry) handleSearchMessages(ctx context.Context, req *mcp.CallToolRe
 		for _, m := range messages {
 			ts := m.Timestamp.Format("2006-01-02 15:04")
 			excerpt := council.DisplayContent(m)
-			if len(excerpt) > 120 {
-				excerpt = excerpt[:120]
-				if i := strings.LastIndex(excerpt, " "); i > 80 {
-					excerpt = excerpt[:i]
-				}
-				excerpt += "..."
-			}
+			excerpt = council.TruncateRunes(excerpt, 120, " ", 80)
 			// Replace newlines in excerpt for single-line display
 			excerpt = strings.ReplaceAll(excerpt, "\n", " ")
-			fmt.Fprintf(&b, "- #%.8s | %s | %s | %s | %s | %s\n", m.ID, ts, m.Author, m.RoomID, m.MessageType, excerpt)
+			// Full ID: this is the designated lookup surface for get_messages, so
+			// the id printed here must be pastable directly into it — an 8-char
+			// prefix can collide with other messages from the same ~65s window.
+			fmt.Fprintf(&b, "- #%s | %s | %s | %s | %s | %s\n", m.ID, ts, m.Author, m.RoomID, m.MessageType, excerpt)
 		}
 	} else {
 		for _, m := range messages {
 			ts := m.Timestamp.Format("2006-01-02 15:04:05")
 			snippet := council.DisplayContent(m)
-			if args.FullContent != "true" && len(snippet) > 300 {
-				snippet = snippet[:300] + "..."
+			if args.FullContent != "true" {
+				snippet = council.TruncateRunes(snippet, 300, "", 0)
 			}
 			fmt.Fprintf(&b, "- **#%s** [%s] %s in **%s** (%s):\n  %s\n\n", m.ID, ts, m.Author, m.RoomID, m.MessageType, snippet)
 		}
@@ -184,6 +181,7 @@ func (r *Registry) handleGetMessages(ctx context.Context, req *mcp.CallToolReque
 	msg := textResult
 
 	var messages []council.Message
+	var requestedIDs []string // set only in mode 1, to report which requested IDs missed
 
 	if args.MessageIDs != "" {
 		// Mode 1: fetch by explicit IDs
@@ -195,6 +193,11 @@ func (r *Registry) handleGetMessages(ctx context.Context, req *mcp.CallToolReque
 				ids = append(ids, p)
 			}
 		}
+		ids, idErr := r.resolveIDList(ids)
+		if idErr != nil {
+			return msg(fmt.Sprintf("Error: %s", idErr.Error()))
+		}
+		requestedIDs = ids
 
 		// history=true: show each message's full append-only edit chain (every
 		// preserved version, oldest → newest) instead of just the current head.
@@ -203,10 +206,10 @@ func (r *Registry) handleGetMessages(ctx context.Context, req *mcp.CallToolReque
 			for _, id := range ids {
 				chain, err := r.Server.GetRevisionHistory(id)
 				if err != nil {
-					fmt.Fprintf(&b, "#%.8s — not found\n\n", id)
+					fmt.Fprintf(&b, "#%s — not found\n\n", id)
 					continue
 				}
-				fmt.Fprintf(&b, "## #%.8s — %d version(s)\n\n", chain[len(chain)-1].ID, len(chain))
+				fmt.Fprintf(&b, "## #%s — %d version(s)\n\n", chain[len(chain)-1].ID, len(chain))
 				for i, m := range chain {
 					marker := "original"
 					if i == len(chain)-1 {
@@ -259,7 +262,26 @@ func (r *Registry) handleGetMessages(ctx context.Context, req *mcp.CallToolReque
 		return msg("Error: provide either message_ids, or room_id (with optional after_id or last_n).")
 	}
 
+	// Name which requested IDs missed instead of a bare "No messages found" —
+	// silently swallowing 5 requested IDs down to 0 (or 3) results with no
+	// indication of *which* ones failed was the actionable-empty-result gap.
+	var missing []string
+	if requestedIDs != nil {
+		found := make(map[string]bool, len(messages))
+		for _, m := range messages {
+			found[m.ID] = true
+		}
+		for _, id := range requestedIDs {
+			if !found[id] {
+				missing = append(missing, id)
+			}
+		}
+	}
+
 	if len(messages) == 0 {
+		if len(missing) > 0 {
+			return msg(fmt.Sprintf("No messages found. Not found: %s.", strings.Join(missing, ", ")))
+		}
 		return msg("No messages found.")
 	}
 
@@ -268,6 +290,9 @@ func (r *Registry) handleGetMessages(ctx context.Context, req *mcp.CallToolReque
 	for _, m := range messages {
 		ts := m.Timestamp.Format("2006-01-02 15:04:05")
 		fmt.Fprintf(&b, "---\n**#%s** [%s] %s in **%s** (%s):\n\n%s\n\n", m.ID, ts, m.Author, m.RoomID, m.MessageType, council.DisplayContent(m))
+	}
+	if len(missing) > 0 {
+		fmt.Fprintf(&b, "Not found: %s.\n", strings.Join(missing, ", "))
 	}
 
 	return msg(b.String())
@@ -305,13 +330,7 @@ func (r *Registry) handleGetMentions(ctx context.Context, req *mcp.CallToolReque
 	for _, m := range messages {
 		ts := m.Timestamp.Format("2006-01-02 15:04:05")
 		excerpt := council.DisplayContent(m)
-		if len(excerpt) > 200 {
-			excerpt = excerpt[:200]
-			if i := strings.LastIndex(excerpt, " "); i > 150 {
-				excerpt = excerpt[:i]
-			}
-			excerpt += "..."
-		}
+		excerpt = council.TruncateRunes(excerpt, 200, " ", 150)
 		excerpt = strings.ReplaceAll(excerpt, "\n", " ")
 		fmt.Fprintf(&b, "- **#%s** [%s] %s in **%s** (%s): %s\n", m.ID, ts, m.Author, m.RoomID, m.MessageType, excerpt)
 	}

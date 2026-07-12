@@ -18,6 +18,41 @@ func textResult(text string) (*mcp.CallToolResult, ToolOutput, error) {
 	}, ToolOutput{Message: text}, nil
 }
 
+// resolveIDList resolves each id in ids via ResolveMessageID (exact match, or a
+// unique prefix). An id that doesn't resolve is passed through unchanged — this
+// covers both "genuinely doesn't exist" (the caller's own not-found reporting,
+// e.g. delete_messages/move_messages listing skipped IDs, already handles that
+// fine) and an infra failure resolving it (e.g. the DB going away mid-request —
+// don't mask that as "not found"; let the real operation attempt against the
+// same DB and surface its own accurate error). An *ambiguous* prefix is the one
+// case genuinely different from either of those (several real messages match)
+// and must not resolve silently to whichever one happens to sort first, so it's
+// returned as an error naming the candidates.
+func (r *Registry) resolveIDList(ids []string) ([]string, error) {
+	resolved := make([]string, len(ids))
+	for i, id := range ids {
+		got, err := r.Server.ResolveMessageID(id)
+		if err != nil {
+			if ambiguous, ok := err.(*council.ErrAmbiguousMessageID); ok {
+				return nil, ambiguous
+			}
+			resolved[i] = id
+			continue
+		}
+		resolved[i] = got
+	}
+	return resolved, nil
+}
+
+// resolveSingleID is resolveIDList for the common single-ID case.
+func (r *Registry) resolveSingleID(id string) (string, error) {
+	resolved, err := r.resolveIDList([]string{id})
+	if err != nil {
+		return "", err
+	}
+	return resolved[0], nil
+}
+
 // appendMessageBlock writes one message in the compact "[#id ts] author (type):"
 // form shared by get_or_create_room, read_room (include_last_n), and the cluster
 // read_room transcript. ts must already be a formatted "2006-01-02 15:04:05"

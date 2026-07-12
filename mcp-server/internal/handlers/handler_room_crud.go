@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"council-hub/internal/council"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -100,15 +101,16 @@ func (r *Registry) handleCreateRoom(ctx context.Context, req *mcp.CallToolReques
 		}
 	}
 
-	// Pre-check existence so we know whether to post the initial message
-	_, roomAlreadyExists := r.Server.GetRoom(args.ID)
+	// Pre-check existence — create_room does nothing if the room already exists
+	// (get_or_create_room is the upsert-with-backfill variant).
+	if _, getErr := r.Server.GetRoom(args.ID); getErr == nil {
+		return msg(fmt.Sprintf("Room '%s' already exists — create_room does nothing on a name clash. Use get_or_create_room to view/backfill it, update_room to change its metadata, or post_to_room to participate.", args.ID))
+	}
 
-	// Z1 conflict guard: if the room doesn't exist locally but a public peer owns
+	// Z1 conflict guard: the room doesn't exist locally, but if a public peer owns
 	// the same ID, refuse to create a local shadow — name the owner instead.
-	if roomAlreadyExists != nil {
-		if owner, lerr := r.locateRoomOwner(args.ID); lerr == nil && owner != "" {
-			return msg(fmt.Sprintf("Error: room '%s' already exists on cluster node '%s'. Use post_to_room to participate in it, read_room(cluster_wide=true) to view it, or choose a different id.", args.ID, owner))
-		}
+	if owner, lerr := r.locateRoomOwner(args.ID); lerr == nil && owner != "" {
+		return msg(fmt.Sprintf("Error: room '%s' already exists on cluster node '%s'. Use post_to_room to participate in it, read_room(cluster_wide=true) to view it, or choose a different id.", args.ID, owner))
 	}
 
 	if err := r.Server.CreateRoom(args.ID, args.Topic, args.Project, args.TechStack, args.Tags, args.SystemPrompt, args.RelatedRooms); err != nil {
@@ -131,7 +133,7 @@ func (r *Registry) handleCreateRoom(ctx context.Context, req *mcp.CallToolReques
 	}
 
 	// Post initial message for new rooms created from a template
-	if args.Template != "" && roomAlreadyExists != nil {
+	if args.Template != "" {
 		tpl := roomTemplates[args.Template]
 		if tpl.InitialMsg != "" {
 			r.Server.PostMessage(args.ID, "system", tpl.InitialMsg, "thought", "") //nolint:errcheck
@@ -303,7 +305,7 @@ func (r *Registry) handleGetOrCreateRoom(ctx context.Context, req *mcp.CallToolR
 		if len(messages) > 0 {
 			fmt.Fprintf(&b, "---\n**Recent messages (%d):**\n", len(messages))
 			for _, m := range messages {
-				appendMessageBlock(&b, m.ID, m.Timestamp.Format("2006-01-02 15:04:05"), m.Author, m.MessageType, m.Content, room.Repo)
+				appendMessageBlock(&b, m.ID, m.Timestamp.Format("2006-01-02 15:04:05"), m.Author, m.MessageType, council.DisplayContent(m), room.Repo)
 			}
 		} else {
 			b.WriteString("No messages yet.\n")
@@ -526,7 +528,7 @@ func (r *Registry) handleReadRoom(ctx context.Context, req *mcp.CallToolRequest,
 			if len(messages) > 0 {
 				fmt.Fprintf(&b, "\n---\n**Recent messages (%d):**\n", len(messages))
 				for _, m := range messages {
-					appendMessageBlock(&b, m.ID, m.Timestamp.Format("2006-01-02 15:04:05"), m.Author, m.MessageType, m.Content, room.Repo)
+					appendMessageBlock(&b, m.ID, m.Timestamp.Format("2006-01-02 15:04:05"), m.Author, m.MessageType, council.DisplayContent(m), room.Repo)
 				}
 			}
 		}
@@ -554,14 +556,7 @@ func (r *Registry) handleReadRoom(ctx context.Context, req *mcp.CallToolRequest,
 			}
 			pinned, _ := r.Server.GetPinnedMessage(rid)
 			if pinned != nil {
-				excerpt := pinned.Content
-				if len(excerpt) > 200 {
-					excerpt = excerpt[:200]
-					if i := strings.LastIndex(excerpt, " "); i > 120 {
-						excerpt = excerpt[:i]
-					}
-					excerpt += "..."
-				}
+				excerpt := council.TruncateRunes(council.DisplayContent(*pinned), 200, " ", 120)
 				fmt.Fprintf(&b, "📌 %s\n", excerpt)
 			}
 		}
@@ -588,10 +583,10 @@ func (r *Registry) appendSimilarRooms(b *strings.Builder, excludeID, topic, proj
 	for _, sr := range similar {
 		fmt.Fprintf(b, "- **%s** | %d msgs — %s (%s)\n", sr.ID, counts[sr.ID], sr.Description, sr.MatchReason)
 		if pinned, _ := r.Server.GetPinnedMessage(sr.ID); pinned != nil {
-			fmt.Fprintf(b, "    📌 %s\n", excerptLine(pinned.Content, 160))
+			fmt.Fprintf(b, "    📌 %s\n", excerptLine(council.DisplayContent(*pinned), 160))
 		} else if recent, _ := r.Server.GetRecentMessages(sr.ID, 1); len(recent) > 0 {
 			m := recent[0]
-			fmt.Fprintf(b, "    latest [%s]: %s\n", m.MessageType, excerptLine(m.Content, 160))
+			fmt.Fprintf(b, "    latest [%s]: %s\n", m.MessageType, excerptLine(council.DisplayContent(m), 160))
 		}
 	}
 	b.WriteString("  → To use one, post_to_room there (and link it via related_rooms); otherwise keep this new room.\n")
@@ -599,11 +594,7 @@ func (r *Registry) appendSimilarRooms(b *strings.Builder, excludeID, topic, proj
 
 // excerptLine collapses content to its first non-empty line, clipped to max runes.
 func excerptLine(content string, max int) string {
-	line := firstNonEmptyLine(content)
-	if len(line) > max {
-		line = line[:max] + "…"
-	}
-	return line
+	return council.TruncateRunes(firstNonEmptyLine(content), max, "", 0)
 }
 
 // appendRoomSummary folds the pinned message + latest-per-type into a read_room
@@ -622,7 +613,7 @@ func (r *Registry) appendRoomSummary(b *strings.Builder, roomID, repo string) {
 	b.WriteString("\n---\n")
 	if pinned != nil {
 		b.WriteString("**📌 Pinned:**\n")
-		appendMessageBlock(b, pinned.ID, pinned.Timestamp.Format("2006-01-02 15:04:05"), pinned.Author, pinned.MessageType, pinned.Content, repo)
+		appendMessageBlock(b, pinned.ID, pinned.Timestamp.Format("2006-01-02 15:04:05"), pinned.Author, pinned.MessageType, council.DisplayContent(*pinned), repo)
 	}
 
 	var shown int
@@ -638,7 +629,7 @@ func (r *Registry) appendRoomSummary(b *strings.Builder, roomID, repo string) {
 			if pinned != nil && m.ID == pinned.ID {
 				continue
 			}
-			appendMessageBlock(b, m.ID, m.Timestamp.Format("2006-01-02 15:04:05"), m.Author, m.MessageType, m.Content, repo)
+			appendMessageBlock(b, m.ID, m.Timestamp.Format("2006-01-02 15:04:05"), m.Author, m.MessageType, council.DisplayContent(m), repo)
 		}
 	}
 

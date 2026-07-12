@@ -45,7 +45,7 @@ func (r *Registry) handleGetMessagesCluster(args GetMessagesInput) (*mcp.CallToo
 		if len(ts) > 19 {
 			ts = ts[:19]
 		}
-		fmt.Fprintf(&b, "---\n**#%s** [%s] [%s] %s in **%s** (%s):\n\n%s\n\n", m.ID, m.SourceNode, ts, m.Author, m.RoomID, m.MessageType, m.Content)
+		fmt.Fprintf(&b, "---\n**#%s** [%s] [%s] %s in **%s** (%s):\n\n%s\n\n", m.ID, m.SourceNode, ts, m.Author, m.RoomID, m.MessageType, council.DisplayContent(mapClusterMessage(m)))
 	}
 
 	formatClusterWarnings(&b, warnings)
@@ -288,7 +288,7 @@ func (r *Registry) handleReadRoomClusterWithMessages(args ReadRoomInput) (*mcp.C
 				if len(ts) > 19 {
 					ts = ts[:19]
 				}
-				appendMessageBlock(&b, m.ID, ts, m.Author, m.MessageType, m.Content, room.Repo)
+				appendMessageBlock(&b, m.ID, ts, m.Author, m.MessageType, council.DisplayContent(mapClusterMessage(m)), room.Repo)
 			}
 		}
 	}
@@ -430,22 +430,15 @@ func (r *Registry) handleSearchMessagesCluster(args SearchMessagesInput) (*mcp.C
 			if len(ts) > 16 {
 				ts = ts[:16]
 			}
-			excerpt := m.Content
-			if len(excerpt) > 120 {
-				excerpt = excerpt[:120]
-				if i := strings.LastIndex(excerpt, " "); i > 80 {
-					excerpt = excerpt[:i]
-				}
-				excerpt += "..."
-			}
+			excerpt := council.TruncateRunes(council.DisplayContent(mapClusterMessage(m)), 120, " ", 80)
 			excerpt = strings.ReplaceAll(excerpt, "\n", " ")
-			fmt.Fprintf(&b, "- [%s] #%.8s | %s | %s | %s | %s | %s\n", m.SourceNode, m.ID, ts, m.Author, m.RoomID, m.MessageType, excerpt)
+			fmt.Fprintf(&b, "- [%s] #%s | %s | %s | %s | %s | %s\n", m.SourceNode, m.ID, ts, m.Author, m.RoomID, m.MessageType, excerpt)
 		}
 	} else {
 		for _, m := range results {
-			snippet := m.Content
-			if args.FullContent != "true" && len(snippet) > 300 {
-				snippet = snippet[:300] + "..."
+			snippet := council.DisplayContent(mapClusterMessage(m))
+			if args.FullContent != "true" {
+				snippet = council.TruncateRunes(snippet, 300, "", 0)
 			}
 			fmt.Fprintf(&b, "- [%s] **#%s** [%s] %s in **%s** (%s):\n  %s\n\n", m.SourceNode, m.ID, m.Timestamp, m.Author, m.RoomID, m.MessageType, snippet)
 		}
@@ -490,10 +483,7 @@ func (r *Registry) handleListRoomsCluster(args ListRoomsInput) (*mcp.CallToolRes
 	useVerbose := args.Verbose == "true" || args.Compact == "false"
 	if !useVerbose {
 		for _, rm := range results {
-			topic := rm.Description
-			if len(topic) > 60 {
-				topic = topic[:60] + "..."
-			}
+			topic := council.TruncateRunes(rm.Description, 60, "", 0)
 			project := rm.Project
 			if project == "" {
 				project = "-"

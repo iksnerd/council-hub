@@ -5,9 +5,14 @@ defmodule CouncilHubUiWeb.CouncilLivePolling do
   """
 
   import Phoenix.Component, only: [assign: 2]
-  import Phoenix.LiveView, only: [stream: 4]
+  import Phoenix.LiveView, only: [stream: 4, stream_insert: 3, stream_delete: 3]
   alias CouncilHubUi.{Council, Cluster}
   require Logger
+
+  # A poll tick only re-checks this many of the most-recently-seen messages for
+  # in-place mutations (reactions/pins/retractions/edits) — bounded so the check
+  # stays cheap on rooms with long histories. UUIDv7 ids sort chronologically.
+  @mutation_window 300
 
   # -- Schedule --
 
@@ -39,9 +44,78 @@ defmodule CouncilHubUiWeb.CouncilLivePolling do
         else
           socket
           |> stream(:messages, new_messages, at: -1)
-          |> assign(last_msg_id: new_last_id, has_messages: true)
+          |> assign(
+            last_msg_id: new_last_id,
+            has_messages: true,
+            msg_state: Map.merge(socket.assigns.msg_state, build_msg_state(new_messages))
+          )
         end
     end
+  end
+
+  # -- In-place mutation polling --
+  #
+  # New-message polling (above) only ever appends rows past last_msg_id, so a
+  # reaction, pin, or retraction on an already-displayed message — an UPDATE, not
+  # an INSERT — never reaches a connected viewer, and an edit (which appends a
+  # new head and flags the old row `revised`) leaves the stale row on screen
+  # forever instead of being replaced. Re-checking a bounded window of already-seen
+  # ids each tick catches all three.
+
+  @doc "Snapshot of a message's mutable fields, keyed by id — used to diff polls."
+  def build_msg_state(messages), do: Map.new(messages, &{&1.id, &1})
+
+  def poll_active_room_mutations(%{assigns: %{active_room: nil}} = socket), do: socket
+  def poll_active_room_mutations(%{assigns: %{searching: true}} = socket), do: socket
+
+  def poll_active_room_mutations(%{assigns: %{msg_state: msg_state}} = socket)
+      when map_size(msg_state) == 0,
+      do: socket
+
+  def poll_active_room_mutations(%{assigns: %{msg_state: msg_state}} = socket) do
+    ids = msg_state |> Map.keys() |> Enum.sort(:desc) |> Enum.take(@mutation_window)
+
+    # Slim fetch — the diff below only reads the small mutable fields, so don't
+    # pull up to @mutation_window full content rows every 3s tick per socket.
+    ids
+    |> Council.get_messages_mutable_state()
+    |> Enum.reduce(socket, &apply_mutation(&2, &1))
+  end
+
+  defp apply_mutation(socket, fresh) do
+    case Map.get(socket.assigns.msg_state, fresh.id) do
+      nil ->
+        socket
+
+      old ->
+        cond do
+          fresh.revised ->
+            socket
+            |> stream_delete(:messages, old)
+            |> assign(msg_state: Map.delete(socket.assigns.msg_state, fresh.id))
+
+          mutated?(old, fresh) ->
+            merged = %{
+              old
+              | pinned: fresh.pinned,
+                reactions: fresh.reactions,
+                retracted_at: fresh.retracted_at,
+                retracted_by: fresh.retracted_by
+            }
+
+            socket
+            |> stream_insert(:messages, merged)
+            |> assign(msg_state: Map.put(socket.assigns.msg_state, fresh.id, merged))
+
+          true ->
+            socket
+        end
+    end
+  end
+
+  defp mutated?(old, fresh) do
+    old.pinned != fresh.pinned or old.reactions != fresh.reactions or
+      old.retracted_at != fresh.retracted_at or old.retracted_by != fresh.retracted_by
   end
 
   # -- Room polling --

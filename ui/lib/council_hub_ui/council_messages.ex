@@ -5,7 +5,7 @@ defmodule CouncilHubUi.CouncilMessages do
   import CouncilHubUi.MessageFilters
   alias CouncilHubUi.Repo
   alias CouncilHubUi.Council.{Room, Message}
-  alias CouncilHubUi.MessageAnnotations
+  alias CouncilHubUi.{MessageAnnotations, Timestamps}
 
   def list_messages_for_room(room_id, type_filter \\ "all") do
     # Collapse to head revisions; retracted nodes stay (rendered as tombstones).
@@ -31,6 +31,8 @@ defmodule CouncilHubUi.CouncilMessages do
         else: base
 
     Repo.all(from m in base, order_by: [asc: m.id])
+    |> MessageAnnotations.annotate_superseded_by()
+    |> MessageAnnotations.annotate_links()
   end
 
   def search_messages_in_room(room_id, query, type_filter \\ "all")
@@ -132,16 +134,14 @@ defmodule CouncilHubUi.CouncilMessages do
       end
 
     base =
-      case Map.get(params, "since") do
+      case Timestamps.parse_since(Map.get(params, "since")) do
         nil -> base
-        "" -> base
         since -> from([msg: m] in base, where: m.timestamp >= ^since)
       end
 
     base =
-      case Map.get(params, "until") do
+      case Timestamps.parse_until(Map.get(params, "until")) do
         nil -> base
-        "" -> base
         until_val -> from([msg: m] in base, where: m.timestamp <= ^until_val)
       end
 
@@ -155,6 +155,26 @@ defmodule CouncilHubUi.CouncilMessages do
   @doc "Fetch messages by a list of IDs"
   def get_messages_by_ids(ids) when is_list(ids) do
     Repo.all(from m in Message, where: m.id in ^ids, order_by: [asc: m.timestamp])
+  end
+
+  @doc """
+  Slim variant of get_messages_by_ids for the mutation poll: only the small
+  mutable fields the diff reads (see CouncilLivePolling.apply_mutation/2), so a
+  3s tick over up to 300 already-seen messages never refetches full content.
+  """
+  def get_messages_mutable_state(ids) when is_list(ids) do
+    Repo.all(
+      from m in Message,
+        where: m.id in ^ids,
+        select: %{
+          id: m.id,
+          pinned: m.pinned,
+          reactions: m.reactions,
+          retracted_at: m.retracted_at,
+          retracted_by: m.retracted_by,
+          revised: m.revised
+        }
+    )
   end
 
   @doc """
@@ -187,9 +207,14 @@ defmodule CouncilHubUi.CouncilMessages do
   def get_mentions(author, limit \\ 20) do
     pattern = "%#{author}%"
 
+    # Collapse to live heads (Go GetMentions does the same): a retracted or
+    # superseded-revision mention is excluded entirely, not tombstoned.
+    base =
+      from(m in Message, where: like(m.mentions, ^pattern) and m.mentions != "")
+      |> live_messages()
+
     Repo.all(
-      from m in Message,
-        where: like(m.mentions, ^pattern) and m.mentions != "",
+      from m in base,
         order_by: [desc: m.timestamp],
         limit: ^limit,
         select: %{

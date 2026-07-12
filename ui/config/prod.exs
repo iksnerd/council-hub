@@ -8,17 +8,13 @@ import Config
 config :council_hub_ui, CouncilHubUiWeb.Endpoint,
   cache_static_manifest: "priv/static/cache_manifest.json"
 
-# Force using SSL in production. This also sets the "strict-security-transport" header,
-# known as HSTS. If you have a health check endpoint, you may want to exclude it below.
-# Note `:force_ssl` is required to be set at compile-time.
-config :council_hub_ui, CouncilHubUiWeb.Endpoint,
-  force_ssl: [
-    rewrite_on: [:x_forwarded_proto],
-    exclude: [
-      # paths: ["/health"],
-      hosts: ["localhost", "127.0.0.1"]
-    ]
-  ]
+# The https redirect is opt-in at runtime (COUNCIL_FORCE_SSL=true, read in
+# config/runtime.exs and enforced by CouncilHubUiWeb.Plugs.MaybeForceSsl — the
+# endpoint's :force_ssl option is compile-time, so it can't be toggled by env).
+# This server does not terminate TLS itself — the documented deployment is direct
+# http access over a LAN/tailnet IP (e.g. http://100.x.x.x:4000) — so forcing it
+# unconditionally here would redirect any non-localhost host to an https:// this
+# process never serves. Enable it only when a reverse proxy sets X-Forwarded-Proto.
 
 # Do not print debug messages in production
 config :logger, level: :info

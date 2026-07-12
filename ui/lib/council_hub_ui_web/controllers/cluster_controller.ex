@@ -2,6 +2,7 @@ defmodule CouncilHubUiWeb.ClusterController do
   use CouncilHubUiWeb, :controller
 
   alias CouncilHubUi.Cluster
+  require Logger
 
   def nodes(conn, _params) do
     local_vsn = Application.spec(:council_hub_ui, :vsn) |> to_string()
@@ -10,10 +11,21 @@ defmodule CouncilHubUiWeb.ClusterController do
     peers =
       Node.list()
       |> Enum.map(fn node ->
+        # :erpc.call/5 raises (not {:error, _}) on a dropped/unreachable peer —
+        # a single bad node must not 500 the whole endpoint.
         version =
-          case :erpc.call(node, Application, :spec, [:council_hub_ui, :vsn], 1_000) do
-            vsn when is_list(vsn) -> to_string(vsn)
-            _ -> "unknown"
+          try do
+            case :erpc.call(node, Application, :spec, [:council_hub_ui, :vsn], 1_000) do
+              vsn when is_list(vsn) -> to_string(vsn)
+              _ -> "unknown"
+            end
+          catch
+            kind, reason ->
+              Logger.warning(
+                "cluster nodes: #{inspect(node)} unreachable: #{kind} #{inspect(reason)}"
+              )
+
+              "unreachable"
           end
 
         %{node: to_string(node), version: version}
@@ -244,6 +256,10 @@ defmodule CouncilHubUiWeb.ClusterController do
       reply_to: msg.reply_to,
       pinned: msg.pinned,
       timestamp: format_datetime(msg.timestamp),
+      # Carried so the consuming node can render a tombstone (DisplayContent)
+      # instead of broadcasting withdrawn content across the cluster.
+      retracted_at: format_datetime(Map.get(msg, :retracted_at)),
+      retracted_by: Map.get(msg, :retracted_by, ""),
       source_node: Map.get(msg, :source_node, nil)
     }
   end

@@ -152,7 +152,7 @@ func (r *Registry) readSingleTranscript(args ReadTranscriptInput) (*mcp.CallTool
 		pinned, _ := r.Server.GetPinnedMessage(args.RoomID)
 		if pinned != nil {
 			ts := pinned.Timestamp.Format("2006-01-02 15:04:05")
-			fmt.Fprintf(&b, "**PINNED [#%.8s %s] %s:**\n%s\n---\n", pinned.ID, ts, pinned.Author, pinned.Content)
+			fmt.Fprintf(&b, "**PINNED [#%.8s %s] %s:**\n%s\n---\n", pinned.ID, ts, pinned.Author, council.DisplayContent(*pinned))
 		}
 
 		if len(latestMsgs) == 0 {
@@ -164,10 +164,7 @@ func (r *Registry) readSingleTranscript(args ReadTranscriptInput) (*mcp.CallTool
 					continue // already shown above
 				}
 				ts := m.Timestamp.Format("2006-01-02 15:04:05")
-				snippet := m.Content
-				if len(snippet) > 200 {
-					snippet = snippet[:200] + "..."
-				}
+				snippet := council.TruncateRunes(council.DisplayContent(m), 200, "", 0)
 				seenType[m.MessageType]++
 				label := "Latest"
 				if seenType[m.MessageType] > 1 {
@@ -205,7 +202,7 @@ func (r *Registry) readSingleTranscript(args ReadTranscriptInput) (*mcp.CallTool
 			if m.MessageType == "decision" {
 				label = "Decision"
 			}
-			fmt.Fprintf(&b, "## [%s] %s — %s (#%.8s)\n\n%s\n\n", ts, label, m.Author, m.ID, m.Content)
+			fmt.Fprintf(&b, "## [%s] %s — %s (#%.8s)\n\n%s\n\n", ts, label, m.Author, m.ID, council.DisplayContent(m))
 		}
 		if count == 0 {
 			b.WriteString("No actions or decisions recorded yet.\n")
@@ -234,7 +231,7 @@ func (r *Registry) readSingleTranscript(args ReadTranscriptInput) (*mcp.CallTool
 				continue
 			}
 			ts := m.Timestamp.Format("2006-01-02 15:04:05")
-			fmt.Fprintf(&b, "\n**[#%.8s %s] %s (%s):**\n%s\n", m.ID, ts, m.Author, m.MessageType, m.Content)
+			fmt.Fprintf(&b, "\n**[#%.8s %s] %s (%s):**\n%s\n", m.ID, ts, m.Author, m.MessageType, council.DisplayContent(m))
 			count++
 		}
 		if count == 0 {
@@ -274,7 +271,7 @@ func (r *Registry) readSingleTranscript(args ReadTranscriptInput) (*mcp.CallTool
 		pinned, _ := r.Server.GetPinnedMessage(args.RoomID)
 		if pinned != nil {
 			ts := pinned.Timestamp.Format("2006-01-02 15:04:05")
-			fmt.Fprintf(&b, "\n**PINNED [#%.8s %s] %s:**\n%s\n---\n", pinned.ID, ts, pinned.Author, pinned.Content)
+			fmt.Fprintf(&b, "\n**PINNED [#%.8s %s] %s:**\n%s\n---\n", pinned.ID, ts, pinned.Author, council.DisplayContent(*pinned))
 		}
 
 		for _, m := range messages {
@@ -283,12 +280,13 @@ func (r *Registry) readSingleTranscript(args ReadTranscriptInput) (*mcp.CallTool
 			if m.ReplyTo != "" {
 				replyTag = fmt.Sprintf(", re: #%.8s", m.ReplyTo)
 			}
+			content := council.DisplayContent(m)
 			if m.IsSummary {
-				fmt.Fprintf(&b, "\n**[%s] SUMMARY:**\n%s\n", ts, m.Content)
+				fmt.Fprintf(&b, "\n**[%s] SUMMARY:**\n%s\n", ts, content)
 			} else if m.MessageType != "" && m.MessageType != "message" {
-				fmt.Fprintf(&b, "\n**[#%.8s %s] %s (%s%s):**\n%s\n", m.ID, ts, m.Author, m.MessageType, replyTag, m.Content)
+				fmt.Fprintf(&b, "\n**[#%.8s %s] %s (%s%s):**\n%s\n", m.ID, ts, m.Author, m.MessageType, replyTag, content)
 			} else {
-				fmt.Fprintf(&b, "\n**[#%.8s %s] %s:**\n%s\n", m.ID, ts, m.Author, m.Content)
+				fmt.Fprintf(&b, "\n**[#%.8s %s] %s:**\n%s\n", m.ID, ts, m.Author, content)
 			}
 		}
 

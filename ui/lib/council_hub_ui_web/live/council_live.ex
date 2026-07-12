@@ -42,6 +42,7 @@ defmodule CouncilHubUiWeb.CouncilLive do
        active_room: nil,
        active_room_participants: [],
        last_msg_id: "",
+       msg_state: %{},
        collapsed_summaries: MapSet.new(),
        revisions: %{},
        show_system_prompt: false,
@@ -97,6 +98,7 @@ defmodule CouncilHubUiWeb.CouncilLive do
            active_room: room,
            active_room_participants: participants,
            last_msg_id: last_id,
+           msg_state: Polling.build_msg_state(messages),
            show_system_prompt: false,
            page_title: "Council Hub · #{room.id}",
            has_messages: messages != [],
@@ -116,7 +118,7 @@ defmodule CouncilHubUiWeb.CouncilLive do
   def handle_params(_params, _uri, socket) do
     {:noreply,
      socket
-     |> assign(active_room: nil, last_msg_id: 0)
+     |> assign(active_room: nil, last_msg_id: 0, msg_state: %{})
      |> stream(:messages, [], reset: true)}
   end
 
@@ -128,6 +130,7 @@ defmodule CouncilHubUiWeb.CouncilLive do
 
     socket
     |> Polling.poll_active_room_messages()
+    |> Polling.poll_active_room_mutations()
     |> then(&{:noreply, &1})
   end
 
@@ -253,6 +256,7 @@ defmodule CouncilHubUiWeb.CouncilLive do
          |> assign(
            type_filter: type,
            last_msg_id: last_id,
+           msg_state: Polling.build_msg_state(messages),
            has_messages: messages != [],
            searching: false,
            message_search: ""
@@ -276,6 +280,7 @@ defmodule CouncilHubUiWeb.CouncilLive do
            message_search: "",
            searching: false,
            last_msg_id: last_id,
+           msg_state: Polling.build_msg_state(messages),
            has_messages: messages != []
          )
          |> stream(:messages, messages, reset: true)}
@@ -350,6 +355,7 @@ defmodule CouncilHubUiWeb.CouncilLive do
          socket
          |> assign(
            last_msg_id: last_id,
+           msg_state: Polling.build_msg_state(results),
            searching: searching,
            has_messages: results != []
          )
