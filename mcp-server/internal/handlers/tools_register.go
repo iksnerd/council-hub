@@ -69,9 +69,9 @@ func (r *Registry) RegisterTools() {
 				"  note      — journal entry: an observation or context worth keeping, outside the deliberation lifecycle; shows in read_notebook by default\n"+
 				"  message   — last-resort catch-all; avoid it. Almost every post is really a thought, draft, decision, action, or note\n"+
 				"Lifecycle: thought → draft → critique → decision → plan → action → synthesis. If you set no type it defaults to 'message' — but typed reads (read_notebook, search_messages(message_type=…), read_transcript(mode=changelog)) skip 'message', so an untyped post goes uncounted in the project notebook and decision log. Pick the real type."),
-			"reply_to":       prop("string", "Message ID this is a reply to (e.g. 42). Renders as 're: #42' in transcripts"),
+			"reply_to":       prop("string", "Message ID this is a reply to — full UUID or a transcript's 8-char #prefix (resolved; unknown or ambiguous refs error). Renders as 're: #…' in transcripts"),
 			"mentions":       prop("string", "Comma-separated agent names to explicitly notify (e.g. 'claude,gemini-cli'). Mentioned agents can call get_mentions on startup to find threads awaiting their input."),
-			"supersedes":     prop("string", "Message ID this one replaces (e.g. an earlier synthesis). Renders as 'supersedes #x' so tooling can dim the dead version. Pinning a new synthesis over an old one sets this automatically."),
+			"supersedes":     prop("string", "Message ID this one replaces (e.g. an earlier synthesis) — full UUID or an 8-char #prefix (resolved; unknown or ambiguous refs error). Renders as 'supersedes #x' so tooling can dim the dead version. Pinning a new synthesis over an old one sets this automatically."),
 			"mark_read_self": prop("string", "Set 'true' to advance your own read cursor to this new message — folds the end-of-session mark_read into the post (uses author as the agent identity)."),
 			"pin":            prop("string", "Set 'true' to pin this message as the room's current pin (auto-unpins the previous one), folding the post→pin dance into one call. Use for the synthesis/decision you want surfaced as the room's living abstract — no separate pin_message round-trip or message_id plumbing. Applies to local rooms (ignored on cluster-proxied writes)."),
 		}),
