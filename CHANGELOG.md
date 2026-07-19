@@ -4,6 +4,14 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.51.0] - 2026-07-19
+
+Two targeted reliability/privacy fixes found in live use after v0.50.0.
+
+### Fixed
+- **The cluster now self-heals a dropped link without a container restart.** Neither libcluster path re-forms the cluster after the initial connection: the `Epmd` strategy dials its `hosts` once and never re-polls (its `polling_interval` is honored only by `Gossip`/`Kubernetes`, not `Epmd` — the option was silently ignored, and is now removed from the Epmd config to stop implying otherwise), and `ClusterManager` only connected at boot and on explicit UI action. So a peer that was down at boot, or a dist link that later dropped (laptop sleep, Wi-Fi blip, net-tick timeout), stayed disconnected until `docker restart` (observed on a live 2-node LAN: connected 22:03, silently gone by 23:31, no reconnect attempt). `ClusterManager` now subscribes to `:net_kernel.monitor_nodes/1` — learning every peer that connects by *any* path (Gossip auto-discovery, `node@host` `COUNCIL_SEEDS`, or the UI) — and on a ~10s timer re-dials any known peer missing from `Node.list/0`. An explicit UI disconnect drops the peer from the keep-alive set so the loop won't undo it.
+- **Retracted content no longer rides out through the room view's copy button.** A retracted message renders as a `[retracted]` tombstone, but the copy-message button's `data-copy` attribute still carried the raw withdrawn content to the clipboard (display was tombstoned, the clipboard wasn't). The copy payload now collapses to the same tombstone text. (Deferred-minor from the v0.50.0 review.)
+
 ## [0.50.0] - 2026-07-12
 
 A cross-stack review pass (Go server, Phoenix UI, channel plugin) plus one user-reported bug, all fixed and test-covered — then a second adversarial review of the fix pass itself, whose findings are also fixed below. +100 tests across the three suites (Go, 483 Elixir, 9 Bun).

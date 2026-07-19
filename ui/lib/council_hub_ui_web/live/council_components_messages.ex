@@ -149,7 +149,7 @@ defmodule CouncilHubUiWeb.MessageComponents do
             <button
               id={"copy-msg-#{@msg.id}"}
               phx-hook="CopyMessage"
-              data-copy={"##{@msg.id} | #{format_timestamp(@msg.timestamp)} | #{@msg.author} (#{@msg.message_type})\n\n#{@msg.content}"}
+              data-copy={copy_text(@msg)}
               class="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded text-[var(--ch-text-xs)] hover:text-[var(--ch-text-mid)] cursor-pointer"
               title="Copy message"
               type="button"
@@ -285,6 +285,21 @@ defmodule CouncilHubUiWeb.MessageComponents do
   # Arrow for a typed link: outgoing (this → other) vs incoming (other → this).
   defp link_arrow(:out), do: "→"
   defp link_arrow(_), do: "←"
+
+  # Clipboard payload for the copy-message button. A retracted node is a
+  # tombstone: its display is swapped for [retracted], and so is what you can
+  # copy — the raw content must not ride out through the data-copy attribute.
+  defp copy_text(msg) do
+    body =
+      if Map.get(msg, :retracted_at) != nil do
+        by = Map.get(msg, :retracted_by, "")
+        "[retracted#{if by != "", do: " by " <> by, else: ""}]"
+      else
+        msg.content
+      end
+
+    "##{msg.id} | #{format_timestamp(msg.timestamp)} | #{msg.author} (#{msg.message_type})\n\n#{body}"
+  end
 
   # -- Summary Block --
 
