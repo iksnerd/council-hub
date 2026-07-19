@@ -38,10 +38,14 @@ cluster_topology =
         |> String.split(",", trim: true)
         |> Enum.map(fn s -> String.to_atom(String.trim(s)) end)
 
+      # NOTE: Epmd connects to `hosts` once at boot and never re-polls
+      # (`polling_interval` is honored only by Gossip/Kubernetes, not Epmd), so
+      # it is omitted here to avoid implying otherwise. CouncilHubUi.ClusterManager
+      # runs the periodic reconnect that actually self-heals a dropped link.
       [
         council_hub: [
           strategy: Cluster.Strategy.Epmd,
-          config: [hosts: seeds, polling_interval: 3_000]
+          config: [hosts: seeds]
         ]
       ]
   end

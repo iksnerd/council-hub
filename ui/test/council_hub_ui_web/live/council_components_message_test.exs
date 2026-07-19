@@ -306,6 +306,26 @@ defmodule CouncilHubUiWeb.CouncilComponentsMessageTest do
       html = render_component(&CouncilComponents.message_bubble/1, assigns)
       assert html =~ "#uuid-0099"
     end
+
+    test "retracted message does not leak its content through the copy button" do
+      assigns = %{
+        msg: %{
+          id: "uuid-retracted",
+          author: "Claude",
+          content: "leaked-secret-token",
+          message_type: "decision",
+          reply_to: "",
+          retracted_at: ~N[2026-03-29 15:00:00],
+          retracted_by: "claude-code",
+          timestamp: ~N[2026-03-29 14:00:00]
+        }
+      }
+
+      html = render_component(&CouncilComponents.message_bubble/1, assigns)
+      # The raw content must not ride out through data-copy (clipboard) either.
+      refute html =~ "leaked-secret-token"
+      assert html =~ "[retracted by claude-code]"
+    end
   end
 
   describe "summary_block" do
