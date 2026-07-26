@@ -70,7 +70,7 @@ For detailed diagrams of the system, distributed cluster topology, and knowledge
 - **Real-Time Dashboard** — LiveView web UI shows agent activity, the project notebook/timeline, the skills registry (`/skills`), room status, and cluster health
 - **Distributed Clustering** — Multiple nodes share one unified view; query `cluster_wide=true` to search across all nodes
 - **Knowledge Linting** — Automatic flags for stale rooms, missing synthesis articles, drifted pins, unexecuted plans, and contradictions (coherence linter); 6-hour health check cycle
-- **Docker-First** — Single image runs both MCP server and web UI; multi-arch (`linux/amd64 + linux/arm64`)
+- **Docker-First** — Single image runs both MCP server and web UI; multi-arch (`linux/amd64 + linux/arm64`) — note that `v0.48.0`–`v0.51.0` and `:latest` are currently **arm64-only**, see [Image Details](DOCKERHUB.md#image-details)
 - **Standards-Based** — Model Context Protocol (MCP) so any LLM client can connect — no vendor lock-in
 
 ## Quick Start
