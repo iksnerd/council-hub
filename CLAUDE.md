@@ -42,9 +42,43 @@ Docker Hub image: `iksnerd/council-hub` ([hub.docker.com/r/iksnerd/council-hub](
 3. **Run tests locally, then commit & push**: `make test` (mcp-server) + `mix test` (ui). The suites no longer run in CI on a main push — `ci.yml` is tags-only to conserve Actions minutes — so verify locally first. Then `git commit -m "vX.Y.Z: <summary>" && git push`. The push triggers only the gitleaks Secret Scan.
 4. **Tag & push tag**: `git tag vX.Y.Z && git push origin vX.Y.Z`
 5. **Wait for CI + release notes**: the tag auto-triggers `ci.yml` (Go + Elixir tests/lint) and `release.yml` (GitHub release) in parallel. Watch with `gh run list --limit 3` + `gh run watch <id>`.
-6. **Publish the Docker image (manual)**: the multi-arch build is heavy, so `docker.yml` does **not** auto-run on the tag — trigger it on demand: `gh workflow run docker.yml -f tag=vX.Y.Z` (or Actions → Docker → Run workflow). It still builds `linux/amd64 + linux/arm64` on native runners (no QEMU) → multi-arch manifest `:vX.Y.Z` + `:latest`. `make docker-push` is an arm64-only local fallback (QEMU cross-compile for amd64 fails on OTP 28).
+6. **Publish the Docker image (manual)**: the multi-arch build is heavy, so `docker.yml` does **not** auto-run on the tag — trigger it on demand: `gh workflow run docker.yml -f tag=vX.Y.Z` (or Actions → Docker → Run workflow). It builds `linux/amd64 + linux/arm64` on native runners (no emulation) → multi-arch manifest `:vX.Y.Z` + `:latest`. **This workflow is the only way to publish amd64** — see below.
 
 **Important:** Never move tags. If a fix is needed after tagging, bump to vX.Y.Z+1.
+
+#### amd64 cannot be built on an Apple Silicon Mac
+
+`make docker-push` is an **arm64-only** local fallback. Don't reach for it as a substitute for `docker.yml` — an image pushed that way silently drops amd64 support, and `make docker-push` also overwrites `:latest`, so one local push can leave every x86 user unable to pull the project at all.
+
+The blocker is the BEAM under x86 emulation, not the Dockerfile and not a cross-compile flag. Under Docker Desktop's QEMU emulation, the `prim_tty` NIF fails to load, so *any* BEAM process dies at startup — the whole `elixir-builder` stage is unreachable:
+
+```
+$ docker run --rm --platform linux/amd64 elixir:1.19-otp-28 elixir -e 'IO.puts(1+1)'
+** State machine user_drv terminating
+** Reason for termination = error:undef
+   [{erlang,nif_error,[undef],…},{prim_tty,isatty,1,…},{user_drv,init,1,…}]
+Kernel pid terminated (application_controller) ("…failed_to_start_child,user,nouser…")
+```
+
+Verified dead ends (2026-07-25, Apple Silicon / macOS 26 / Docker Desktop engine 29.x) — don't re-litigate these:
+- `ERL_FLAGS="-noinput"`, `-noshell`, or both — the NIF stub raises regardless.
+- **Docker Desktop's Rosetta emulation.** `UseVirtualizationFrameworkRosetta: true` persists in `~/Library/Group Containers/group.com.docker/settings-store.json` and the VM is Apple Virtualization framework (so the option is valid), but Docker never mounts Rosetta into containers (`/run/rosetta` absent) and the crash is unchanged.
+
+Earlier revisions of this file blamed "QEMU cross-compile fails on OTP 28." The OTP version is incidental; the JIT is not involved.
+
+**If the Docker workflow fails, fix the workflow — do not fall back to a local push.** Its usual failure is an expired `DOCKERHUB_TOKEN` (a Docker Hub PAT, which expires on a schedule Docker Hub picks). Symptom in the run log:
+
+```
+Error response from daemon: Get "https://registry-1.docker.io/v2/": unauthorized: personal access token is expired
+```
+
+Fix: mint a Read & Write PAT at hub.docker.com → Account Settings → Personal access tokens, then `gh secret set DOCKERHUB_TOKEN --repo iksnerd/council-hub` and re-run the workflow. Prefer a no-expiry token — this exact secret lapsing on 2026-04-04 went unnoticed and shipped v0.48.0 through v0.51.0 arm64-only.
+
+To confirm a publish actually produced both architectures (an `unknown/unknown` entry is the SBOM/provenance attestation, not a platform):
+
+```bash
+docker buildx imagetools inspect iksnerd/council-hub:vX.Y.Z | grep Platform
+```
 
 ### Local testing without a release (the fast loop)
 
