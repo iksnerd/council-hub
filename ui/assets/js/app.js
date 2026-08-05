@@ -36,6 +36,68 @@ function formatRelativeTime(isoString) {
 }
 
 const Hooks = {
+  ClusterNodeSound: {
+    mounted() {
+      this.storageKey = "councilHubNodeSounds"
+      this.enabled = localStorage.getItem(this.storageKey) === "on"
+      this.nodes = this.readNodes()
+      this.button = this.el.querySelector("[data-sound-toggle]")
+      this.icon = this.el.querySelector("[data-sound-icon]")
+      this.audioContext = null
+      this.render()
+
+      this.button?.addEventListener("click", () => {
+        this.enabled = !this.enabled
+        localStorage.setItem(this.storageKey, this.enabled ? "on" : "off")
+        if (this.enabled) this.ensureAudio()
+        this.render()
+      })
+    },
+    updated() {
+      const next = this.readNodes()
+      const previous = this.nodes || []
+      const connected = next.filter(node => !previous.includes(node)).length
+      const disconnected = previous.filter(node => !next.includes(node)).length
+      this.nodes = next
+
+      if (!this.enabled || previous.length === 0) return
+      if (connected > 0) this.playTone(660, 0.055, 0.035)
+      if (disconnected > 0) this.playTone(220, 0.09, 0.045)
+    },
+    readNodes() {
+      return (this.el.dataset.nodes || "").split("|").filter(Boolean).sort()
+    },
+    ensureAudio() {
+      if (!this.audioContext) {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext
+        if (AudioCtx) this.audioContext = new AudioCtx()
+      }
+      if (this.audioContext?.state === "suspended") this.audioContext.resume()
+      return this.audioContext
+    },
+    playTone(frequency, duration, gainValue) {
+      const ctx = this.ensureAudio()
+      if (!ctx) return
+
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.type = "sine"
+      osc.frequency.value = frequency
+      gain.gain.setValueAtTime(0.0001, ctx.currentTime)
+      gain.gain.exponentialRampToValueAtTime(gainValue, ctx.currentTime + 0.01)
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + duration)
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.start()
+      osc.stop(ctx.currentTime + duration)
+    },
+    render() {
+      if (!this.icon) return
+      this.icon.classList.toggle("hero-speaker-wave", this.enabled)
+      this.icon.classList.toggle("hero-speaker-x-mark", !this.enabled)
+      this.button?.setAttribute("aria-pressed", this.enabled ? "true" : "false")
+    }
+  },
   CopyMessage: {
     mounted() {
       this.el.addEventListener("click", () => {
@@ -196,4 +258,3 @@ if (process.env.NODE_ENV === "development") {
     window.liveReloader = reloader
   })
 }
-

@@ -56,6 +56,9 @@ docs/personal/
 # Local Makefile overrides (personal node names, IPs, etc.)
 Makefile.local
 
+# Local compose overrides (host bind paths, node names, IPs)
+docker-compose.override.yml
+
 # OS
 .DS_Store
 Thumbs.db

@@ -2,12 +2,37 @@ package handlers
 
 import (
 	"council-hub/internal/council"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
+
+// StringBool accepts the historical string form ("true") and JSON booleans.
+// MCP tool schemas still advertise strings for compatibility, but some clients
+// naturally send true/false for boolean-looking flags; treating those as false
+// made cluster_wide reads look empty instead of visibly mis-typed.
+type StringBool string
+
+func (b *StringBool) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err == nil {
+		*b = StringBool(s)
+		return nil
+	}
+	var v bool
+	if err := json.Unmarshal(data, &v); err == nil {
+		if v {
+			*b = "true"
+		} else {
+			*b = "false"
+		}
+		return nil
+	}
+	return fmt.Errorf("expected string or boolean")
+}
 
 // textResult wraps a plain-text response in the standard MCP tool-result tuple
 // that every handler returns. Handlers alias it as `msg := textResult` so the
@@ -103,6 +128,7 @@ var healthTagActions = []struct{ tag, action string }{
 	{"needs-synthesis", "decisions/actions accumulated with no synthesis — distill them into a `synthesis` and pin it (post_to_room with pin=true)"},
 	{"stale-pin", "the pinned synthesis is outdated — post a fresh `synthesis` and pin it (post_to_room with pin=true) to replace it"},
 	{"stale-plan", "a `plan` was posted but never executed — post an `action` that carries it out, or close the room"},
+	{"unpinned-synthesis", "a synthesis exists but is not pinned — pin it so the room has a living TL;DR"},
 	{"stale", "inactive — resume it, post a `synthesis` and `signal_status(resolved)`, or archive it"},
 }
 

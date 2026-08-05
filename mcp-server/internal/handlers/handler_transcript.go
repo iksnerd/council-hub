@@ -11,19 +11,19 @@ import (
 
 // ReadTranscriptInput represents the parameters for reading a room transcript.
 type ReadTranscriptInput struct {
-	RoomID         string `json:"room_id"`
-	RoomIDs        string `json:"room_ids"`
-	LastN          string `json:"last_n"`
-	AfterID        string `json:"after_id"`
-	Mode           string `json:"mode"`
-	IncludeRelated string `json:"include_related"`
-	ClusterWide    string `json:"cluster_wide"`
-	Show           string `json:"show"`
-	Truncate       string `json:"truncate"`
-	Author         string `json:"author"`
-	MessageType    string `json:"message_type"`
-	Since          string `json:"since"`
-	Until          string `json:"until"`
+	RoomID         string     `json:"room_id"`
+	RoomIDs        string     `json:"room_ids"`
+	LastN          string     `json:"last_n"`
+	AfterID        string     `json:"after_id"`
+	Mode           string     `json:"mode"`
+	IncludeRelated string     `json:"include_related"`
+	ClusterWide    StringBool `json:"cluster_wide"`
+	Show           string     `json:"show"`
+	Truncate       string     `json:"truncate"`
+	Author         string     `json:"author"`
+	MessageType    string     `json:"message_type"`
+	Since          string     `json:"since"`
+	Until          string     `json:"until"`
 }
 
 // ArchiveRoomInput represents the parameters for archiving a room.

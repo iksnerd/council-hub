@@ -63,9 +63,11 @@ defmodule CouncilHubUiWeb.ClusterController do
   def list_rooms(conn, params) do
     cluster_params = %{
       "project" => Map.get(params, "project", ""),
+      "project_not_in" => Map.get(params, "project_not_in", ""),
       "tag" => Map.get(params, "tag", ""),
       "status" => Map.get(params, "status", ""),
       "search" => Map.get(params, "search", ""),
+      "related_to" => Map.get(params, "related_to", ""),
       "limit" => Params.clamp_int(Map.get(params, "limit"), 50, max: 100),
       "offset" => Params.clamp_int(Map.get(params, "offset"), 0, min: 0)
     }

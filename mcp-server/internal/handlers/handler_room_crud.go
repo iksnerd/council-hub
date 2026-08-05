@@ -56,10 +56,10 @@ type UpdateRoomInput struct {
 
 // ReadRoomInput represents the parameters for reading a room's metadata.
 type ReadRoomInput struct {
-	RoomID                  string `json:"room_id"`
-	ClusterWide             string `json:"cluster_wide"`
-	IncludeRelatedSummaries string `json:"include_related_summaries"`
-	IncludeLastN            string `json:"include_last_n"`
+	RoomID                  string     `json:"room_id"`
+	ClusterWide             StringBool `json:"cluster_wide"`
+	IncludeRelatedSummaries string     `json:"include_related_summaries"`
+	IncludeLastN            string     `json:"include_last_n"`
 }
 
 // DeleteRoomInput represents the parameters for deleting a room.

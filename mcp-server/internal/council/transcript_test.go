@@ -268,6 +268,51 @@ func TestLintNeedsSynthesisIdempotent(t *testing.T) {
 	}
 }
 
+func TestLintNeedsSynthesisIncludesResolvedRooms(t *testing.T) {
+	cs := setupTestServer(t)
+	mustCreateRoom(t, cs, "lint-resolved-synth")
+	mustPostTyped(t, cs, "lint-resolved-synth", "Claude", "Decision 1", "decision")
+	mustPostTyped(t, cs, "lint-resolved-synth", "Claude", "Decision 2", "decision")
+	mustPostTyped(t, cs, "lint-resolved-synth", "Claude", "Decision 3", "decision")
+	cs.DB.Exec(`UPDATE rooms SET status = 'resolved', created_at = datetime('now', '-2 days') WHERE id = 'lint-resolved-synth'`)
+
+	cs.lintNeedsSynthesis()
+
+	room, _ := cs.GetRoom("lint-resolved-synth")
+	if !hasTag(room.Tags, "needs-synthesis") {
+		t.Errorf("expected resolved room without synthesis to be flagged, got '%s'", room.Tags)
+	}
+}
+
+func TestLintUnpinnedSyntheses(t *testing.T) {
+	cs := setupTestServer(t)
+	mustCreateRoom(t, cs, "lint-unpinned-synth")
+	mustPostTyped(t, cs, "lint-unpinned-synth", "Claude", "Compiled state", "synthesis")
+
+	cs.lintUnpinnedSyntheses()
+
+	room, _ := cs.GetRoom("lint-unpinned-synth")
+	if !hasTag(room.Tags, "unpinned-synthesis") {
+		t.Errorf("expected 'unpinned-synthesis' tag, got '%s'", room.Tags)
+	}
+}
+
+func TestLintUnpinnedSynthesesSkipsPinnedRoom(t *testing.T) {
+	cs := setupTestServer(t)
+	mustCreateRoom(t, cs, "lint-pinned-synth")
+	id := mustPostTyped(t, cs, "lint-pinned-synth", "Claude", "Compiled state", "synthesis")
+	if _, err := cs.PinMessage("lint-pinned-synth", id); err != nil {
+		t.Fatal(err)
+	}
+
+	cs.lintUnpinnedSyntheses()
+
+	room, _ := cs.GetRoom("lint-pinned-synth")
+	if hasTag(room.Tags, "unpinned-synthesis") {
+		t.Errorf("pinned synthesis should not be flagged, got '%s'", room.Tags)
+	}
+}
+
 func TestLintStaleRooms(t *testing.T) {
 	cs := setupTestServer(t)
 	mustCreateRoom(t, cs, "lint-stale")
@@ -486,7 +531,7 @@ func TestLintStalePlansIdempotent(t *testing.T) {
 
 func TestPinMessageClearsStalePin(t *testing.T) {
 	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "repin-room", withTags("stale-pin,important"))
+	mustCreateRoom(t, cs, "repin-room", withTags("stale-pin,unpinned-synthesis,important"))
 	freshID := mustPostTyped(t, cs, "repin-room", "Claude", "New TL;DR", "synthesis")
 
 	if _, err := cs.PinMessage("repin-room", freshID); err != nil {
@@ -496,6 +541,9 @@ func TestPinMessageClearsStalePin(t *testing.T) {
 	room, _ := cs.GetRoom("repin-room")
 	if hasTag(room.Tags, "stale-pin") {
 		t.Errorf("re-pin should clear 'stale-pin', got '%s'", room.Tags)
+	}
+	if hasTag(room.Tags, "unpinned-synthesis") {
+		t.Errorf("re-pin should clear 'unpinned-synthesis', got '%s'", room.Tags)
 	}
 	if !hasTag(room.Tags, "important") {
 		t.Errorf("non-linter tags should survive re-pin, got '%s'", room.Tags)

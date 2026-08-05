@@ -12,15 +12,15 @@ import (
 // ReadNotebookInput represents the parameters for reading a project notebook
 // (compiled timeline via project, or a curated outline via notebook_id).
 type ReadNotebookInput struct {
-	Project     string `json:"project"`
-	NotebookID  string `json:"notebook_id"`
-	Types       string `json:"types"`
-	Since       string `json:"since"`
-	Until       string `json:"until"`
-	AfterID     string `json:"after_id"`
-	Limit       string `json:"limit"`
-	Level       string `json:"level"`
-	ClusterWide string `json:"cluster_wide"`
+	Project     string     `json:"project"`
+	NotebookID  string     `json:"notebook_id"`
+	Types       string     `json:"types"`
+	Since       string     `json:"since"`
+	Until       string     `json:"until"`
+	AfterID     string     `json:"after_id"`
+	Limit       string     `json:"limit"`
+	Level       string     `json:"level"`
+	ClusterWide StringBool `json:"cluster_wide"`
 }
 
 // parseNotebookTypes splits and validates a CSV of message types. Empty input

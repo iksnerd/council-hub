@@ -52,6 +52,28 @@ defmodule CouncilHubUi.CouncilRooms do
       end
 
     base =
+      case Map.get(params, "project_not_in") do
+        nil ->
+          base
+
+        "" ->
+          base
+
+        value ->
+          projects =
+            value
+            |> String.split(",", trim: true)
+            |> Enum.map(&String.trim/1)
+            |> Enum.reject(&(&1 == ""))
+
+          if projects == [] do
+            base
+          else
+            from([room: r] in base, where: r.project not in ^projects)
+          end
+      end
+
+    base =
       case Map.get(params, "tag") do
         nil ->
           base
@@ -70,6 +92,20 @@ defmodule CouncilHubUi.CouncilRooms do
         nil -> base
         "" -> base
         s -> from([room: r] in base, where: r.status == ^s)
+      end
+
+    base =
+      case Map.get(params, "related_to") do
+        nil ->
+          base
+
+        "" ->
+          base
+
+        room_id ->
+          from([room: r] in base,
+            where: like(fragment("',' || ? || ','", r.related_rooms), ^"%,#{room_id},%")
+          )
       end
 
     base =
