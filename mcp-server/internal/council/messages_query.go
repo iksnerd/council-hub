@@ -13,6 +13,119 @@ func (s *Server) GetMessageByID(id string) (Message, error) {
 	))
 }
 
+// maxPrefixCandidates bounds how many rows ResolveMessageID displays for an
+// ambiguous prefix — enough to show the ambiguity is real without rendering an
+// unbounded candidate list.
+const maxPrefixCandidates = 6
+
+// minResolvePrefixLen is the shortest prefix ResolveMessageID will attempt to
+// match. Every display surface prints 8-char prefixes (#%.8s), so anything
+// shorter never came from our own output — and short prefixes both match too
+// promiscuously to be safe addresses and force wide index scans.
+const minResolvePrefixLen = 8
+
+// PrefixCandidate is one match for an ambiguous ID prefix, with enough context
+// (room, author, type) to tell candidates apart at a glance.
+type PrefixCandidate struct {
+	ID          string
+	RoomID      string
+	Author      string
+	MessageType string
+}
+
+// ErrAmbiguousMessageID is returned by ResolveMessageID when a prefix matches
+// more than one message. Candidates is capped at maxPrefixCandidates; Truncated
+// is true if more matches exist beyond what's listed.
+type ErrAmbiguousMessageID struct {
+	Prefix     string
+	Candidates []PrefixCandidate
+	Truncated  bool
+}
+
+func (e *ErrAmbiguousMessageID) Error() string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "'%s' is an ambiguous prefix — multiple messages match:", e.Prefix)
+	for _, c := range e.Candidates {
+		fmt.Fprintf(&b, "\n  #%s in %s by %s (%s)", c.ID, c.RoomID, c.Author, c.MessageType)
+	}
+	if e.Truncated {
+		b.WriteString("\n  ...and more")
+	}
+	b.WriteString("\n\nUse a longer prefix, or the full message ID (from search_messages or get_links), to disambiguate.")
+	return b.String()
+}
+
+// ResolveMessageID resolves a possibly-truncated message ID to its full UUIDv7.
+// Every display surface (transcripts, notebook entries, get_links, re:/supersedes
+// annotations) prints an 8-char prefix (#%.8s) for readability, but UUIDv7's
+// first 8 hex chars are only the top bits of a millisecond timestamp — messages
+// posted within the same ~65s window collide on it. Every ID-taking tool used to
+// require an exact full ID, so a prefix copied from a transcript silently
+// resolved to "not found" with no hint why. This makes those prefixes into real
+// addresses: an exact match wins immediately (so already-full IDs are untouched
+// and incur no extra query cost beyond the initial lookup); otherwise a prefix
+// of at least minResolvePrefixLen chars resolves if unique, or fails loudly
+// naming the candidates if ambiguous. Shorter non-exact input is rejected as
+// not-found rather than matched — it never came from our own display output.
+func (s *Server) ResolveMessageID(id string) (string, error) {
+	if id == "" {
+		return "", fmt.Errorf("message id is required")
+	}
+
+	var exact string
+	err := s.DB.QueryRow(`SELECT id FROM messages WHERE id = ?`, id).Scan(&exact)
+	if err == nil {
+		return exact, nil
+	}
+	if err != sql.ErrNoRows {
+		return "", err
+	}
+
+	if len(id) < minResolvePrefixLen {
+		return "", fmt.Errorf("message '%s' not found (prefixes must be at least %d characters; use the 8-char #prefix printed in transcripts, or the full ID)", id, minResolvePrefixLen)
+	}
+
+	// Range scan instead of LIKE: `id LIKE ? || '%'` can't use the primary-key
+	// index under the default BINARY collation, so it full-scans messages. UUIDv7
+	// IDs are lowercase hex plus '-', all of which sort below 'g', so prefix+"g"
+	// is a strict upper bound for every id sharing the prefix — the pair of
+	// comparisons becomes an index range seek. Fetch one row past the display cap
+	// so Truncated ("...and more") is exact, not a guess.
+	rows, qerr := s.DB.Query(
+		`SELECT id, room_id, author, message_type FROM messages WHERE id >= ? AND id < ? ORDER BY id LIMIT ?`,
+		id, id+"g", maxPrefixCandidates+1,
+	)
+	if qerr != nil {
+		return "", qerr
+	}
+	defer func() { _ = rows.Close() }()
+
+	var candidates []PrefixCandidate
+	for rows.Next() {
+		var c PrefixCandidate
+		if serr := rows.Scan(&c.ID, &c.RoomID, &c.Author, &c.MessageType); serr != nil {
+			continue
+		}
+		candidates = append(candidates, c)
+	}
+	if err := rows.Err(); err != nil {
+		return "", err
+	}
+
+	switch len(candidates) {
+	case 0:
+		return "", fmt.Errorf("message '%s' not found (checked as both a full ID and a prefix)", id)
+	case 1:
+		return candidates[0].ID, nil
+	default:
+		truncated := len(candidates) > maxPrefixCandidates
+		if truncated {
+			candidates = candidates[:maxPrefixCandidates]
+		}
+		return "", &ErrAmbiguousMessageID{Prefix: id, Candidates: candidates, Truncated: truncated}
+	}
+}
+
 // GetRevisionHistory returns every version of a message in chronological order
 // (oldest → newest), walking the append-only revises chain. messageID may name any
 // node in the chain — the walk finds the head, then follows revises back to the

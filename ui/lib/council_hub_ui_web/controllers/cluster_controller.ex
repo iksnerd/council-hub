@@ -1,7 +1,8 @@
 defmodule CouncilHubUiWeb.ClusterController do
   use CouncilHubUiWeb, :controller
 
-  alias CouncilHubUi.Cluster
+  alias CouncilHubUi.{Cluster, Params}
+  require Logger
 
   def nodes(conn, _params) do
     local_vsn = Application.spec(:council_hub_ui, :vsn) |> to_string()
@@ -10,10 +11,21 @@ defmodule CouncilHubUiWeb.ClusterController do
     peers =
       Node.list()
       |> Enum.map(fn node ->
+        # :erpc.call/5 raises (not {:error, _}) on a dropped/unreachable peer —
+        # a single bad node must not 500 the whole endpoint.
         version =
-          case :erpc.call(node, Application, :spec, [:council_hub_ui, :vsn], 1_000) do
-            vsn when is_list(vsn) -> to_string(vsn)
-            _ -> "unknown"
+          try do
+            case :erpc.call(node, Application, :spec, [:council_hub_ui, :vsn], 1_000) do
+              vsn when is_list(vsn) -> to_string(vsn)
+              _ -> "unknown"
+            end
+          catch
+            kind, reason ->
+              Logger.warning(
+                "cluster nodes: #{inspect(node)} unreachable: #{kind} #{inspect(reason)}"
+              )
+
+              "unreachable"
           end
 
         %{node: to_string(node), version: version}
@@ -37,7 +49,7 @@ defmodule CouncilHubUiWeb.ClusterController do
       "project" => Map.get(params, "project", ""),
       "since" => Map.get(params, "since", ""),
       "until" => Map.get(params, "until", ""),
-      "limit" => parse_limit(Map.get(params, "limit", "20"))
+      "limit" => Params.clamp_int(Map.get(params, "limit"), 20, max: 100)
     }
 
     result = Cluster.search_messages(cluster_params)
@@ -51,11 +63,13 @@ defmodule CouncilHubUiWeb.ClusterController do
   def list_rooms(conn, params) do
     cluster_params = %{
       "project" => Map.get(params, "project", ""),
+      "project_not_in" => Map.get(params, "project_not_in", ""),
       "tag" => Map.get(params, "tag", ""),
       "status" => Map.get(params, "status", ""),
       "search" => Map.get(params, "search", ""),
-      "limit" => parse_limit(Map.get(params, "limit", "50")),
-      "offset" => parse_offset(Map.get(params, "offset", "0"))
+      "related_to" => Map.get(params, "related_to", ""),
+      "limit" => Params.clamp_int(Map.get(params, "limit"), 50, max: 100),
+      "offset" => Params.clamp_int(Map.get(params, "offset"), 0, min: 0)
     }
 
     result = Cluster.list_rooms(cluster_params)
@@ -141,7 +155,7 @@ defmodule CouncilHubUiWeb.ClusterController do
         true ->
           %{
             "room_id" => room_id,
-            "limit" => parse_limit(Map.get(params, "last_n", "10"))
+            "limit" => Params.clamp_int(Map.get(params, "last_n"), 10, max: 100)
           }
       end
 
@@ -165,7 +179,9 @@ defmodule CouncilHubUiWeb.ClusterController do
         "since" => Map.get(params, "since", ""),
         "until" => Map.get(params, "until", ""),
         "after_id" => Map.get(params, "after_id", ""),
-        "limit" => parse_notebook_limit(Map.get(params, "limit", ""))
+        # Notebook entries cap at 500 (vs 100 elsewhere) — a project timeline
+        # legitimately spans more items than a search result page.
+        "limit" => Params.clamp_int(Map.get(params, "limit"), 100, max: 500)
       }
 
       result = Cluster.read_notebook(cluster_params)
@@ -191,39 +207,6 @@ defmodule CouncilHubUiWeb.ClusterController do
     })
   end
 
-  defp parse_limit(val) when is_binary(val) do
-    case Integer.parse(val) do
-      {n, _} when n > 0 and n <= 100 -> n
-      _ -> 20
-    end
-  end
-
-  defp parse_limit(val) when is_integer(val), do: min(max(val, 1), 100)
-  defp parse_limit(_), do: 20
-
-  defp parse_offset(val) when is_binary(val) do
-    case Integer.parse(val) do
-      {n, _} when n >= 0 -> n
-      _ -> 0
-    end
-  end
-
-  defp parse_offset(val) when is_integer(val), do: max(val, 0)
-  defp parse_offset(_), do: 0
-
-  # Notebook entries cap at 500 (vs 100 elsewhere) — a project timeline
-  # legitimately spans more items than a search result page.
-  defp parse_notebook_limit(val) when is_binary(val) do
-    case Integer.parse(val) do
-      {n, _} when n > 0 and n <= 500 -> n
-      {n, _} when n > 500 -> 500
-      _ -> 100
-    end
-  end
-
-  defp parse_notebook_limit(val) when is_integer(val), do: min(max(val, 1), 500)
-  defp parse_notebook_limit(_), do: 100
-
   defp serialize_notebook_entry(entry) do
     entry
     |> serialize_message()
@@ -244,6 +227,10 @@ defmodule CouncilHubUiWeb.ClusterController do
       reply_to: msg.reply_to,
       pinned: msg.pinned,
       timestamp: format_datetime(msg.timestamp),
+      # Carried so the consuming node can render a tombstone (DisplayContent)
+      # instead of broadcasting withdrawn content across the cluster.
+      retracted_at: format_datetime(Map.get(msg, :retracted_at)),
+      retracted_by: Map.get(msg, :retracted_by, ""),
       source_node: Map.get(msg, :source_node, nil)
     }
   end

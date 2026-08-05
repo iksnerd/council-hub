@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	_ "github.com/mattn/go-sqlite3"
@@ -71,6 +72,29 @@ func DisplayContent(m Message) string {
 		return "_[retracted]_"
 	}
 	return m.Content
+}
+
+// TruncateRunes clips s to at most max runes — not bytes, so multi-byte UTF-8
+// (emoji, CJK, Cyrillic, etc.) is never split mid-character, which byte-slicing
+// (s[:max]) can do and corrupt the tail of the excerpt. If boundary is non-empty
+// and occurs after minBoundary runes' worth of content, the cut backs up to it
+// (e.g. the last space) instead of stopping mid-word; pass boundary="" to hard-cut.
+// No-op (returns s unchanged) when s is already within the limit.
+func TruncateRunes(s string, max int, boundary string, minBoundary int) string {
+	runes := []rune(s)
+	if len(runes) <= max {
+		return s
+	}
+	cut := string(runes[:max])
+	if boundary != "" {
+		// LastIndex returns a BYTE offset, but minBoundary counts RUNES — compare
+		// in rune space, or multi-byte text (Cyrillic, CJK) backs up far too
+		// aggressively (a boundary at rune 21 looks like byte 40+).
+		if i := strings.LastIndex(cut, boundary); i >= 0 && utf8.RuneCountInString(cut[:i]) > minBoundary {
+			cut = cut[:i]
+		}
+	}
+	return cut + "..."
 }
 
 // messageColumns is the canonical column list for SELECT queries on messages.

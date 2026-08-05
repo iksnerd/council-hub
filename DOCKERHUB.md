@@ -333,13 +333,15 @@ docker compose up -d
 | Detail | Value |
 |--------|-------|
 | Base image | `debian:trixie-slim` |
-| Architecture | `linux/amd64, linux/arm64` (multi-arch) |
+| Architecture | `linux/arm64` — see the note below ⚠️ |
 | Image size | ~292 MB |
 | Compressed | ~73 MB |
 | Build | Multi-stage (Go 1.25 + Elixir 1.19/OTP 28 + slim runtime) |
 | User | `council` (UID 1000, non-root) |
 | Healthcheck | `wget` to `:4000` every 30s, 10s timeout, 3 retries |
 | Entrypoint | `entrypoint.sh` — manages both Go and Elixir processes |
+
+> **⚠️ amd64 is temporarily unavailable (v0.48.0 – v0.52.0).** A publishing-pipeline failure (the `docker.yml` workflow's Docker Hub token keeps expiring) meant these tags, and `:latest`, went out as `linux/arm64` only. On an x86 host the pull will fail or the container won't start. **`v0.47.0` is the most recent tag with `linux/amd64`** — use `iksnerd/council-hub:v0.47.0` there until a multi-arch build is republished. arm64 hosts (Apple Silicon, Ampere, Raspberry Pi 4/5 64-bit) are unaffected.
 
 
 ## MCP Tools

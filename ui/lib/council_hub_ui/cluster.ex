@@ -206,6 +206,20 @@ defmodule CouncilHubUi.Cluster do
         # erpc failures (node unreachable, timeout, etc.)
         {node, {:error, reason}}, {results, warns} ->
           {results, ["#{node}: #{inspect(reason)}" | warns]}
+
+        # erpc failures where the remote call itself threw or the remote process
+        # exited mid-call — :erpc.multicall/5 can return either shape, and without
+        # a clause here a single such peer raised FunctionClauseError and 500'd
+        # every cluster_wide query, not just the one bad node.
+        {node, {:throw, reason}}, {results, warns} ->
+          {results, ["#{node}: threw #{inspect(reason)}" | warns]}
+
+        {node, {:exit, reason}}, {results, warns} ->
+          {results, ["#{node}: exited #{inspect(reason)}" | warns]}
+
+        # Anything else unexpected — degrade to a warning rather than crash.
+        {node, other}, {results, warns} ->
+          {results, ["#{node}: unexpected reply #{inspect(other)}" | warns]}
       end)
 
     {Enum.reverse(tagged_results), Enum.reverse(warnings)}

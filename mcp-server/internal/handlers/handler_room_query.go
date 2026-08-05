@@ -11,24 +11,24 @@ import (
 
 // ListRoomsInput represents the parameters for listing rooms.
 type ListRoomsInput struct {
-	Project      string `json:"project"`
-	ProjectNotIn string `json:"project_not_in"`
-	Tag          string `json:"tag"`
-	Status       string `json:"status"`
-	Search       string `json:"search"`
-	RelatedTo    string `json:"related_to"`
-	Compact      string `json:"compact"` // deprecated: compact is now default; kept for backwards compat
-	Verbose      string `json:"verbose"`
-	ClusterWide  string `json:"cluster_wide"`
-	Limit        string `json:"limit"`
-	Offset       string `json:"offset"`
+	Project      string     `json:"project"`
+	ProjectNotIn string     `json:"project_not_in"`
+	Tag          string     `json:"tag"`
+	Status       string     `json:"status"`
+	Search       string     `json:"search"`
+	RelatedTo    string     `json:"related_to"`
+	Compact      string     `json:"compact"` // deprecated: compact is now default; kept for backwards compat
+	Verbose      string     `json:"verbose"`
+	ClusterWide  StringBool `json:"cluster_wide"`
+	Limit        string     `json:"limit"`
+	Offset       string     `json:"offset"`
 }
 
 // RoomStatsInput represents the parameters for getting room statistics.
 type RoomStatsInput struct {
-	RoomID      string `json:"room_id"`
-	RoomIDs     string `json:"room_ids"`
-	ClusterWide string `json:"cluster_wide"`
+	RoomID      string     `json:"room_id"`
+	RoomIDs     string     `json:"room_ids"`
+	ClusterWide StringBool `json:"cluster_wide"`
 }
 
 func (r *Registry) handleListRooms(ctx context.Context, req *mcp.CallToolRequest, args ListRoomsInput) (*mcp.CallToolResult, ToolOutput, error) {
@@ -97,10 +97,7 @@ func (r *Registry) handleListRooms(ctx context.Context, req *mcp.CallToolRequest
 	useVerbose := args.Verbose == "true" || args.Compact == "false"
 	if !useVerbose {
 		for _, rm := range rooms {
-			topic := rm.Description
-			if len(topic) > 60 {
-				topic = topic[:60] + "..."
-			}
+			topic := council.TruncateRunes(rm.Description, 60, "", 0)
 			project := rm.Project
 			if project == "" {
 				project = "-"

@@ -129,6 +129,35 @@ func TestHandleGetMessagesNotFound(t *testing.T) {
 	}
 }
 
+func TestHandleGetMessagesByPrefix(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-get-prefix")
+	id := mustPost(t, reg.Server, "h-get-prefix", "Claude", "hello via prefix")
+
+	res, _, _ := reg.handleGetMessages(context.Background(), nil, GetMessagesInput{MessageIDs: id[:8]})
+	text := resultText(res)
+	if !strings.Contains(text, id) {
+		t.Errorf("expected full message %s resolved from prefix, got: %s", id, text)
+	}
+}
+
+func TestHandleGetMessagesReportsMissingIDs(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-get-partial")
+	id := mustPost(t, reg.Server, "h-get-partial", "Claude", "found me")
+
+	res, _, _ := reg.handleGetMessages(context.Background(), nil, GetMessagesInput{
+		MessageIDs: id + ",totally-fake-id",
+	})
+	text := resultText(res)
+	if !strings.Contains(text, "Not found: totally-fake-id") {
+		t.Errorf("expected missing ID named in output, got: %s", text)
+	}
+	if !strings.Contains(text, id) {
+		t.Errorf("expected the found message to still render, got: %s", text)
+	}
+}
+
 func TestHandleGetMessagesMultiple(t *testing.T) {
 	reg := setupHandlerTest(t)
 	mustCreateRoom(t, reg.Server, "h-get-multi")

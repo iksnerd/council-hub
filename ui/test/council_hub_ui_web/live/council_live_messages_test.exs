@@ -307,6 +307,47 @@ defmodule CouncilHubUiWeb.CouncilLiveMessagesTest do
     end
   end
 
+  describe "apply_search_filters clear branch" do
+    test "clearing filters rebuilds msg_state so later mutations reach messages that arrived mid-search",
+         %{conn: conn} do
+      room = create_room(%{id: "asf-clear-room"})
+      create_message(%{room_id: room.id, author: "Claude", content: "Original message"})
+
+      {:ok, view, _html} = live(conn, "/rooms/asf-clear-room")
+
+      # Apply an advanced filter (searching state).
+      render_click(view, "apply_search_filters", %{
+        "author" => "Claude",
+        "since" => "",
+        "until" => ""
+      })
+
+      assert :sys.get_state(view.pid).socket.assigns.searching == true
+
+      # A message arrives while the search view is up.
+      arrived =
+        create_message(%{room_id: room.id, author: "Gemini", content: "Arrived mid-search"})
+
+      # Clear the filters — the reload must cover the new message in msg_state.
+      render_click(view, "apply_search_filters", %{"author" => "", "since" => "", "until" => ""})
+
+      assigns = :sys.get_state(view.pid).socket.assigns
+      assert assigns.searching == false
+      assert Map.has_key?(assigns.msg_state, arrived.id)
+
+      # A subsequent in-place mutation (a reaction) on that message renders.
+      import Ecto.Query
+
+      CouncilHubUi.Repo.update_all(
+        from(m in CouncilHubUi.Council.Message, where: m.id == ^arrived.id),
+        set: [reactions: ~s({"👍":["claude"]})]
+      )
+
+      send(view.pid, :poll_messages)
+      assert render(view) =~ "👍"
+    end
+  end
+
   describe "apply_search_filters with no active room" do
     test "is a noop and assigns filter params", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/")

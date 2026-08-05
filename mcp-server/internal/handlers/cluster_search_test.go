@@ -125,15 +125,15 @@ func TestHandleSearchMessagesBranching(t *testing.T) {
 		t.Errorf("expected local result, got: %s", text)
 	}
 
-	// Cluster path (no Phoenix running, should get error message)
+	// Cluster path includes local results even when Phoenix fan-out is unavailable.
 	args.ClusterWide = "true"
 	result, _, err = reg.handleSearchMessages(nil, nil, args)
 	if err != nil {
 		t.Fatalf("cluster search should not return error: %v", err)
 	}
 	text = resultText(result)
-	if !strings.Contains(text, "Error: cluster search failed") {
-		t.Errorf("expected cluster error, got: %s", text)
+	if !strings.Contains(text, "Hello local") || !strings.Contains(text, "peer fan-out unavailable") {
+		t.Errorf("expected local result plus peer warning, got: %s", text)
 	}
 }
 

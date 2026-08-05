@@ -2,7 +2,8 @@ defmodule CouncilHubUi.CouncilRooms do
   @moduledoc "Read-only room queries. Called via CouncilHubUi.Council facade."
 
   import Ecto.Query
-  alias CouncilHubUi.Repo
+  import CouncilHubUi.MessageFilters
+  alias CouncilHubUi.{Params, Repo}
   alias CouncilHubUi.Council.{Room, Message}
 
   def list_rooms do
@@ -19,11 +20,19 @@ defmodule CouncilHubUi.CouncilRooms do
         {:error, "room '#{room_id}' not found"}
 
       room ->
+        # Collapse to head revisions (retracted nodes stay, rendered as tombstones
+        # by the caller) — matches the local Go read_transcript/read_room semantics.
         messages =
-          Repo.all(from m in Message, where: m.room_id == ^room_id, order_by: [asc: m.id])
+          Repo.all(
+            from(m in Message, where: m.room_id == ^room_id, order_by: [asc: m.id])
+            |> head_revisions()
+          )
 
         pinned =
-          Repo.one(from m in Message, where: m.room_id == ^room_id and m.pinned == true, limit: 1)
+          Repo.one(
+            from(m in Message, where: m.room_id == ^room_id and m.pinned == true, limit: 1)
+            |> head_revisions()
+          )
 
         {:ok, %{room: room, messages: messages, pinned: pinned}}
     end
@@ -40,6 +49,28 @@ defmodule CouncilHubUi.CouncilRooms do
         nil -> base
         "" -> base
         p -> from([room: r] in base, where: r.project == ^p)
+      end
+
+    base =
+      case Map.get(params, "project_not_in") do
+        nil ->
+          base
+
+        "" ->
+          base
+
+        value ->
+          projects =
+            value
+            |> String.split(",", trim: true)
+            |> Enum.map(&String.trim/1)
+            |> Enum.reject(&(&1 == ""))
+
+          if projects == [] do
+            base
+          else
+            from([room: r] in base, where: r.project not in ^projects)
+          end
       end
 
     base =
@@ -61,6 +92,20 @@ defmodule CouncilHubUi.CouncilRooms do
         nil -> base
         "" -> base
         s -> from([room: r] in base, where: r.status == ^s)
+      end
+
+    base =
+      case Map.get(params, "related_to") do
+        nil ->
+          base
+
+        "" ->
+          base
+
+        room_id ->
+          from([room: r] in base,
+            where: like(fragment("',' || ? || ','", r.related_rooms), ^"%,#{room_id},%")
+          )
       end
 
     base =
@@ -86,25 +131,8 @@ defmodule CouncilHubUi.CouncilRooms do
           end)
       end
 
-    limit =
-      case Map.get(params, "limit") do
-        nil -> 50
-        "" -> 50
-        val when is_integer(val) -> val
-        val when is_binary(val) -> String.to_integer(val)
-      end
-
-    offset =
-      case Map.get(params, "offset") do
-        nil -> 0
-        "" -> 0
-        val when is_integer(val) -> val
-        val when is_binary(val) -> String.to_integer(val)
-      end
-
-    limit = if limit <= 0, do: 50, else: limit
-    limit = if limit > 100, do: 100, else: limit
-    offset = if offset < 0, do: 0, else: offset
+    limit = Params.clamp_int(Map.get(params, "limit"), 50, max: 100)
+    offset = Params.clamp_int(Map.get(params, "offset"), 0, min: 0)
 
     Repo.all(
       from [room: r] in base, order_by: [desc: r.updated_at], limit: ^limit, offset: ^offset
@@ -121,9 +149,11 @@ defmodule CouncilHubUi.CouncilRooms do
         {:error, "room '#{room_id}' not found"}
 
       room ->
+        # Counts reflect live nodes — head revisions only — so stats match what the
+        # transcript shows and don't inflate by one per edit. Mirrors Go GetRoomStats().
         stats =
           Repo.one(
-            from m in Message,
+            from(m in Message,
               where: m.room_id == ^room_id,
               select: %{
                 message_count: count(m.id),
@@ -131,25 +161,31 @@ defmodule CouncilHubUi.CouncilRooms do
                 last_message: max(m.timestamp),
                 latest_message_id: max(m.id)
               }
+            )
+            |> head_revisions()
           )
 
         participants =
           Repo.all(
-            from m in Message,
+            from(m in Message,
               where: m.room_id == ^room_id,
               group_by: m.author,
               select: {m.author, count(m.id)},
               order_by: [desc: count(m.id)]
+            )
+            |> head_revisions()
           )
           |> Map.new()
 
         type_counts =
           Repo.all(
-            from m in Message,
+            from(m in Message,
               where: m.room_id == ^room_id and m.is_summary == false,
               group_by: m.message_type,
               select: {m.message_type, count(m.id)},
               order_by: [desc: count(m.id)]
+            )
+            |> head_revisions()
           )
           |> Map.new()
 
@@ -170,21 +206,25 @@ defmodule CouncilHubUi.CouncilRooms do
   @doc "Returns unique authors for a room as a list of strings."
   def room_participants(room_id) do
     Repo.all(
-      from m in Message,
+      from(m in Message,
         where: m.room_id == ^room_id and m.is_summary == false,
         group_by: m.author,
         select: m.author
+      )
+      |> head_revisions()
     )
   end
 
   @doc "Returns [{author, count}] sorted by count desc for a single room."
   def room_participants_with_counts(room_id) do
     Repo.all(
-      from m in Message,
+      from(m in Message,
         where: m.room_id == ^room_id and m.is_summary == false,
         group_by: m.author,
         select: {m.author, count(m.id)},
         order_by: [desc: count(m.id)]
+      )
+      |> head_revisions()
     )
   end
 end

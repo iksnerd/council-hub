@@ -96,6 +96,26 @@ func (r *Registry) handlePostToRoom(ctx context.Context, req *mcp.CallToolReques
 		return msg(fmt.Sprintf("Error: Room '%s' not found. Create it first with create_room.", args.RoomID))
 	}
 
+	// Resolve reply_to/supersedes to full IDs before storing them. PostMessageWithRefs
+	// stores these refs verbatim and downstream matching (backlinks, revision chains,
+	// get_links) is exact — a stored prefix or typo'd ID would create a silently
+	// dangling edge, so unlike resolveSingleID's pass-through this errors on
+	// not-found too. Local-only: on the cluster-proxy path above the referenced
+	// message lives on the owning node, so the owner resolves it there.
+	for _, ref := range []struct {
+		name  string
+		value *string
+	}{{"reply_to", &args.ReplyTo}, {"supersedes", &args.Supersedes}} {
+		if *ref.value == "" {
+			continue
+		}
+		resolved, rerr := r.Server.ResolveMessageID(*ref.value)
+		if rerr != nil {
+			return msg(fmt.Sprintf("Error: %s: %s", ref.name, rerr.Error()))
+		}
+		*ref.value = resolved
+	}
+
 	msgID, err := r.Server.PostMessageWithRefs(args.RoomID, args.Author, args.Message, args.MessageType, args.ReplyTo, args.Mentions, args.Supersedes)
 	if err != nil {
 		r.Server.Logger.Error("Failed to post message", "room_id", args.RoomID, "error", err)
@@ -153,6 +173,9 @@ func (r *Registry) handleUpdateMessage(ctx context.Context, req *mcp.CallToolReq
 	if args.MessageType != "" && !validMessageTypes[args.MessageType] {
 		return msg(fmt.Sprintf("Error: invalid message_type '%s'. Valid types: message, thought, draft, decision, plan, review, action, critique, synthesis, note.", args.MessageType))
 	}
+	if err := r.resolveInto(&args.MessageID); err != nil {
+		return msg(fmt.Sprintf("Error: %s", err.Error()))
+	}
 
 	m, err := r.Server.UpdateMessageWithExpected(args.MessageID, args.Content, args.MessageType, args.ExpectedContent, args.Author)
 	if err != nil {
@@ -180,12 +203,16 @@ func (r *Registry) handleDeleteMessages(ctx context.Context, req *mcp.CallToolRe
 		return msg("Error: message_ids is required (comma-separated list of message IDs).")
 	}
 
-	parts := strings.Split(args.MessageIDs, ",")
-	var ids []string
-	for _, p := range parts {
-		p = strings.TrimSpace(p)
-		if p != "" {
-			ids = append(ids, p)
+	ids := splitIDList(args.MessageIDs)
+	// Purge is irreversible, so prefixes are never resolved for it: a typo'd
+	// prefix that happens to uniquely match a *different* message must not
+	// hard-delete it. Only exact full IDs purge; everything else reports not found.
+	purge := args.Purge == "true"
+	if !purge {
+		var idErr error
+		ids, idErr = r.resolveIDList(ids)
+		if idErr != nil {
+			return msg(fmt.Sprintf("Error: %s", idErr.Error()))
 		}
 	}
 
@@ -199,8 +226,6 @@ func (r *Registry) handleDeleteMessages(ctx context.Context, req *mcp.CallToolRe
 		r.Server.Logger.Info("Messages restored", "count", count, "ids", args.MessageIDs)
 		return msg(fmt.Sprintf("Restored %d message(s) — retraction cleared, they render normally again.", count))
 	}
-
-	purge := args.Purge == "true"
 
 	if args.DryRun == "true" {
 		msgs, err := r.Server.GetMessagesByIDs(ids)
@@ -218,14 +243,7 @@ func (r *Registry) handleDeleteMessages(ctx context.Context, req *mcp.CallToolRe
 		foundIDs := make(map[string]bool)
 		for _, m := range msgs {
 			foundIDs[m.ID] = true
-			excerpt := m.Content
-			if len(excerpt) > 120 {
-				excerpt = excerpt[:120]
-				if i := strings.LastIndex(excerpt, " "); i > 80 {
-					excerpt = excerpt[:i]
-				}
-				excerpt += "..."
-			}
+			excerpt := council.TruncateRunes(m.Content, 120, " ", 80)
 			excerpt = strings.ReplaceAll(excerpt, "\n", " ")
 			fmt.Fprintf(&b, "  #%.8s | %s | %s | %s | %s\n",
 				m.ID, m.Author, m.Timestamp.Format("2006-01-02 15:04:05"), m.RoomID, excerpt)
@@ -271,16 +289,13 @@ func (r *Registry) handleMoveMessages(ctx context.Context, req *mcp.CallToolRequ
 		return msg("Error: " + err.Error())
 	}
 
-	parts := strings.Split(args.MessageIDs, ",")
-	var ids []string
-	for _, p := range parts {
-		p = strings.TrimSpace(p)
-		if p != "" {
-			ids = append(ids, p)
-		}
-	}
+	ids := splitIDList(args.MessageIDs)
 	if len(ids) == 0 {
 		return msg("Error: no valid message IDs provided.")
+	}
+	ids, idErr := r.resolveIDList(ids)
+	if idErr != nil {
+		return msg(fmt.Sprintf("Error: %s", idErr.Error()))
 	}
 
 	moved, err := r.Server.MoveMessages(ids, args.TargetRoomID)
@@ -309,6 +324,10 @@ func (r *Registry) handleForkThread(ctx context.Context, req *mcp.CallToolReques
 	}
 	if err := validateSize("new_room_id", args.NewRoomID, maxIDLen); err != nil {
 		return msg("Error: " + err.Error())
+	}
+
+	if err := r.resolveInto(&args.StartMessageID); err != nil {
+		return msg(fmt.Sprintf("Error: %s", err.Error()))
 	}
 
 	// Look up the starting message to find the source room.

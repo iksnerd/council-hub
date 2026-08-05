@@ -42,9 +42,43 @@ Docker Hub image: `iksnerd/council-hub` ([hub.docker.com/r/iksnerd/council-hub](
 3. **Run tests locally, then commit & push**: `make test` (mcp-server) + `mix test` (ui). The suites no longer run in CI on a main push — `ci.yml` is tags-only to conserve Actions minutes — so verify locally first. Then `git commit -m "vX.Y.Z: <summary>" && git push`. The push triggers only the gitleaks Secret Scan.
 4. **Tag & push tag**: `git tag vX.Y.Z && git push origin vX.Y.Z`
 5. **Wait for CI + release notes**: the tag auto-triggers `ci.yml` (Go + Elixir tests/lint) and `release.yml` (GitHub release) in parallel. Watch with `gh run list --limit 3` + `gh run watch <id>`.
-6. **Publish the Docker image (manual)**: the multi-arch build is heavy, so `docker.yml` does **not** auto-run on the tag — trigger it on demand: `gh workflow run docker.yml -f tag=vX.Y.Z` (or Actions → Docker → Run workflow). It still builds `linux/amd64 + linux/arm64` on native runners (no QEMU) → multi-arch manifest `:vX.Y.Z` + `:latest`. `make docker-push` is an arm64-only local fallback (QEMU cross-compile for amd64 fails on OTP 28).
+6. **Publish the Docker image (manual)**: the multi-arch build is heavy, so `docker.yml` does **not** auto-run on the tag — trigger it on demand: `gh workflow run docker.yml -f tag=vX.Y.Z` (or Actions → Docker → Run workflow). It builds `linux/amd64 + linux/arm64` on native runners (no emulation) → multi-arch manifest `:vX.Y.Z` + `:latest`. **This workflow is the only way to publish amd64** — see below.
 
 **Important:** Never move tags. If a fix is needed after tagging, bump to vX.Y.Z+1.
+
+#### amd64 cannot be built on an Apple Silicon Mac
+
+`make docker-push` is an **arm64-only** local fallback. Don't reach for it as a substitute for `docker.yml` — an image pushed that way silently drops amd64 support, and `make docker-push` also overwrites `:latest`, so one local push can leave every x86 user unable to pull the project at all.
+
+The blocker is the BEAM under x86 emulation, not the Dockerfile and not a cross-compile flag. Under Docker Desktop's QEMU emulation, the `prim_tty` NIF fails to load, so *any* BEAM process dies at startup — the whole `elixir-builder` stage is unreachable:
+
+```
+$ docker run --rm --platform linux/amd64 elixir:1.19-otp-28 elixir -e 'IO.puts(1+1)'
+** State machine user_drv terminating
+** Reason for termination = error:undef
+   [{erlang,nif_error,[undef],…},{prim_tty,isatty,1,…},{user_drv,init,1,…}]
+Kernel pid terminated (application_controller) ("…failed_to_start_child,user,nouser…")
+```
+
+Verified dead ends (2026-07-25, Apple Silicon / macOS 26 / Docker Desktop engine 29.x) — don't re-litigate these:
+- `ERL_FLAGS="-noinput"`, `-noshell`, or both — the NIF stub raises regardless.
+- **Docker Desktop's Rosetta emulation.** `UseVirtualizationFrameworkRosetta: true` persists in `~/Library/Group Containers/group.com.docker/settings-store.json` and the VM is Apple Virtualization framework (so the option is valid), but Docker never mounts Rosetta into containers (`/run/rosetta` absent) and the crash is unchanged.
+
+Earlier revisions of this file blamed "QEMU cross-compile fails on OTP 28." The OTP version is incidental; the JIT is not involved.
+
+**If the Docker workflow fails, fix the workflow — do not fall back to a local push.** Its usual failure is an expired `DOCKERHUB_TOKEN` (a Docker Hub PAT, which expires on a schedule Docker Hub picks). Symptom in the run log:
+
+```
+Error response from daemon: Get "https://registry-1.docker.io/v2/": unauthorized: personal access token is expired
+```
+
+Fix: mint a Read & Write PAT at hub.docker.com → Account Settings → Personal access tokens, then `gh secret set DOCKERHUB_TOKEN --repo iksnerd/council-hub` and re-run the workflow. Prefer a no-expiry token — this exact secret lapsing on 2026-04-04 went unnoticed and shipped v0.48.0 through v0.51.0 arm64-only.
+
+To confirm a publish actually produced both architectures (an `unknown/unknown` entry is the SBOM/provenance attestation, not a platform):
+
+```bash
+docker buildx imagetools inspect iksnerd/council-hub:vX.Y.Z | grep Platform
+```
 
 ### Local testing without a release (the fast loop)
 
@@ -75,7 +109,7 @@ The channel plugin is a Claude Code MCP channel that watches for new messages in
 
 **Usage:** Registered in `.mcp.json` as `council-hub-channel`. Start Claude Code with `--dangerously-load-development-channels` during the preview period.
 
-**Internals:** The poller uses a single global UUIDv7 cursor (one batched `WHERE room_id IN (...) AND id > ?` query per tick), advances the cursor only after a notification is delivered (so a transient failure retries rather than drops), and prunes watched rooms once they're resolved/archived/deleted. The `council_reply` path posts over the MCP StreamableHTTP transport, which requires a session — it performs the `initialize` → `notifications/initialized` handshake (caching the session, re-handshaking if stale) before `tools/call`; a bare call is rejected with `method "tools/call" is invalid during session initialization`. Tests: `cd channel-plugin && bun test`.
+**Internals:** The poller uses a shared UUIDv7 cursor for established rooms (one batched `WHERE room_id IN (...) AND id > ?` query per tick), advances it only after a notification is delivered (so a transient failure retries rather than drops), and prunes watched rooms once they're resolved/archived/deleted. Rooms discovered mid-session enter a per-room *catch-up* mode (`catchupFloor`, queried individually so a backlog older than the shared cursor isn't leapfrogged) and are promoted to the shared cursor once caught up — promotion only considers rooms actually queried that tick, and an empty catch-up result promotes immediately. A `lastFloor` map remembers each room's delivered-through position across prune/unwatch, so re-watching a room resumes where delivery stopped instead of replaying the session's history. The `council_reply` path posts over the MCP StreamableHTTP transport, which requires a session — it performs the `initialize` → `notifications/initialized` handshake (caching the session, re-handshaking if stale) before `tools/call`; a bare call is rejected with `method "tools/call" is invalid during session initialization`. Tests: `cd channel-plugin && bun test`.
 
 **Note:** the plugin runs from source (not bundled in the Docker image), so changes take effect on the next `/mcp` reconnect or Claude Code restart — no release needed.
 
@@ -232,6 +266,7 @@ All state mutations go through the Go server's mutex-protected handlers. Phoenix
 - `COUNCIL_SEEDS` — Peers to connect to. Accepts bare IPs (`192.168.0.5`), hostnames (MagicDNS names, FQDNs), or full `node@ip`. Bare values resolved at startup via `:3001/health`. When empty, auto-discovery scans the local /24 subnet for EPMD (4369) then probes health.
 - `COUNCIL_NO_DISCOVER` — Set to `1` to skip the LAN subnet scan on startup (useful on VPN where scanning is unnecessary)
 - `COUNCIL_CLUSTER_ADMIN_TOKEN` — Enables the UI Cluster Settings page (`/settings`) when set. Unlock by visiting `/settings?token=<token>` once. Unset = page disabled (404). IP gating can't work behind Docker NAT, so this token is the gate.
+- `COUNCIL_FORCE_SSL` — Set to `true` to make Phoenix redirect http→https (a runtime plug, `MaybeForceSSL`, wrapping `Plug.SSL` with `rewrite_on: x_forwarded_proto`; localhost/127.0.0.1/::1 are always excluded so the Go server's internal cluster API calls and local healthchecks never redirect). It's a runtime env check — Phoenix's built-in `:force_ssl` endpoint option is compile-time and can't be toggled in the release. Off by default: this server doesn't terminate TLS itself, and the documented deployment is direct http access over a LAN/tailnet IP — forcing it unconditionally would redirect that to an https:// nothing serves. Only enable behind a reverse proxy that sets the forwarded-proto header.
 - `COUNCIL_OLLAMA_URL` — Ollama API endpoint for semantic search (e.g. `http://localhost:11434`)
 - `COUNCIL_EMBED_MODEL` — Ollama embedding model name (default: `embeddinggemma:300m`)
 - Data volume mounts to `/data` in Docker

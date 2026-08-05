@@ -52,11 +52,18 @@ func (s *Server) CreateRoom(id, description, project, techStack, tags, systemPro
 	project = normalizeProject(project)
 	tags = normalizeTags(tags)
 
-	_, err := s.DB.Exec(
+	res, err := s.DB.Exec(
 		`INSERT OR IGNORE INTO rooms (id, description, project, tech_stack, tags, system_prompt, related_rooms) VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		id, description, project, techStack, tags, systemPrompt, relatedRooms,
 	)
 	if err != nil {
+		return err
+	}
+
+	// OR IGNORE means a pre-existing room is left untouched — skip the side
+	// effects too, or a duplicate create_room call would sync links and overwrite
+	// the room's vector with a description that was never actually applied to it.
+	if n, err := res.RowsAffected(); err != nil || n == 0 {
 		return err
 	}
 
@@ -121,6 +128,7 @@ func (s *Server) SetVisibility(roomID, visibility string) error {
 // where_project path in update_room, this is uncapped — "all" really means all.
 func (s *Server) BulkSetVisibility(visibility string, roomIDs []string, project string, all bool) (int64, error) {
 	v := normalizeVisibility(visibility)
+	project = normalizeProject(project)
 
 	where := ""
 	args := []any{v}
@@ -289,6 +297,12 @@ func (s *Server) DeleteRoom(roomID string) error {
 	// Clean up vectors before deleting messages (best-effort)
 	_, _ = s.DB.Exec(`DELETE FROM message_vectors WHERE message_id IN (SELECT id FROM messages WHERE room_id = ?)`, roomID)
 	_, _ = s.DB.Exec(`DELETE FROM room_vectors WHERE room_id = ?`, roomID)
+
+	// Cascade-clean links that reference this room's messages (either endpoint) and
+	// this room's read cursors — otherwise get_links keeps pointing at messages that
+	// no longer exist, and agent_cursors accumulates rows for a room that's gone.
+	_, _ = s.DB.Exec(`DELETE FROM message_links WHERE from_id IN (SELECT id FROM messages WHERE room_id = ?) OR to_id IN (SELECT id FROM messages WHERE room_id = ?)`, roomID, roomID)
+	_, _ = s.DB.Exec(`DELETE FROM agent_cursors WHERE room_id = ?`, roomID)
 
 	if _, err := s.DB.Exec(`DELETE FROM messages WHERE room_id = ?`, roomID); err != nil {
 		return fmt.Errorf("delete messages for room '%s': %w", roomID, err)

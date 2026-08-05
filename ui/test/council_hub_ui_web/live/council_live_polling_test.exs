@@ -79,6 +79,68 @@ defmodule CouncilHubUiWeb.CouncilLivePollingTest do
     end
   end
 
+  describe "mutation polling (slim fetch)" do
+    import Ecto.Query
+
+    defp set_message_fields(id, fields) do
+      CouncilHubUi.Repo.update_all(
+        from(m in CouncilHubUi.Council.Message, where: m.id == ^id),
+        set: fields
+      )
+    end
+
+    test "a reaction added to an already-displayed message merges in", %{conn: conn} do
+      room = create_room(%{id: "mut-react-room"})
+      msg = create_message(%{room_id: room.id, author: "Claude", content: "React target"})
+
+      {:ok, view, html} = live(conn, "/rooms/mut-react-room")
+      assert html =~ "React target"
+
+      set_message_fields(msg.id, reactions: ~s({"🚀":["gemini"]}))
+      send(view.pid, :poll_messages)
+
+      assert render(view) =~ "🚀"
+    end
+
+    test "a retraction of an already-displayed message renders the tombstone", %{conn: conn} do
+      room = create_room(%{id: "mut-retract-room"})
+      msg = create_message(%{room_id: room.id, author: "Claude", content: "Withdraw me please"})
+
+      {:ok, view, html} = live(conn, "/rooms/mut-retract-room")
+      # The rendered prose form — distinct from the raw content that also rides
+      # along in the copy-button data attribute even after retraction.
+      rendered_prose = "<p>\nWithdraw me please</p>"
+      assert html =~ rendered_prose
+
+      set_message_fields(msg.id,
+        retracted_at: NaiveDateTime.utc_now(),
+        retracted_by: "claude"
+      )
+
+      send(view.pid, :poll_messages)
+
+      html = render(view)
+      assert html =~ "[retracted by claude]"
+      refute html =~ rendered_prose
+    end
+
+    test "an edit (revised flag) removes the stale row from the stream", %{conn: conn} do
+      room = create_room(%{id: "mut-revise-room"})
+      msg = create_message(%{room_id: room.id, author: "Claude", content: "Stale version"})
+
+      {:ok, view, html} = live(conn, "/rooms/mut-revise-room")
+      assert html =~ "Stale version"
+
+      set_message_fields(msg.id, revised: true)
+      create_message(%{room_id: room.id, author: "Claude", content: "New head", revises: msg.id})
+      send(view.pid, :poll_messages)
+
+      html = render(view)
+      assert html =~ "New head"
+      refute html =~ "Stale version"
+    end
+  end
+
   describe "poll_mentions" do
     test "poll_mentions assigns mentions list", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/")

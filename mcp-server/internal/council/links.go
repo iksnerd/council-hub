@@ -180,7 +180,7 @@ func (s *Server) GetLinkNeighborhood(messageID string, depth int) ([]LinkNode, [
 			ID:       id,
 			Author:   m.Author,
 			Type:     m.MessageType,
-			Excerpt:  linkExcerpt(m.Content, 80),
+			Excerpt:  linkExcerpt(DisplayContent(m), 80),
 			Distance: dist[id],
 		})
 	}
@@ -188,12 +188,10 @@ func (s *Server) GetLinkNeighborhood(messageID string, depth int) ([]LinkNode, [
 }
 
 // linkExcerpt collapses a message body to a single short line for graph display.
+// TruncateRunes clips by runes, not bytes, so multi-byte UTF-8 is never split.
 func linkExcerpt(s string, max int) string {
 	s = strings.TrimSpace(strings.ReplaceAll(s, "\n", " "))
-	if len(s) > max {
-		s = strings.TrimRight(s[:max], " ") + "…"
-	}
-	return s
+	return TruncateRunes(s, max, "", 0)
 }
 
 // GetLinks returns a message's neighborhood in the link graph: outgoing edges (this

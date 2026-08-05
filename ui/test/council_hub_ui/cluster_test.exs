@@ -136,6 +136,29 @@ defmodule CouncilHubUi.ClusterTest do
       assert hd(result.results).id == "cluster-tagged"
     end
 
+    test "filters by excluded projects" do
+      create_room(%{id: "cluster-keep", project: "keep"})
+      create_room(%{id: "cluster-drop-a", project: "old"})
+      create_room(%{id: "cluster-drop-b", project: "graveyard"})
+
+      result = Cluster.list_rooms(%{"project_not_in" => "old,graveyard"})
+      ids = Enum.map(result.results, & &1.id)
+
+      assert "cluster-keep" in ids
+      refute "cluster-drop-a" in ids
+      refute "cluster-drop-b" in ids
+    end
+
+    test "filters by related room" do
+      create_room(%{id: "cluster-related", related_rooms: "root-room,other-room"})
+      create_room(%{id: "cluster-unrelated", related_rooms: "other-room"})
+
+      result = Cluster.list_rooms(%{"related_to" => "root-room"})
+
+      assert length(result.results) == 1
+      assert hd(result.results).id == "cluster-related"
+    end
+
     test "searches by keyword" do
       create_room(%{id: "cluster-kw-match", description: "distributed erlang setup"})
       create_room(%{id: "cluster-kw-other", description: "unrelated stuff"})

@@ -13,12 +13,12 @@ import (
 
 // DigestInput represents the parameters for the project digest tool.
 type DigestInput struct {
-	Project      string `json:"project"`
-	Since        string `json:"since"`
-	UnreadOnly   string `json:"unread_only"`
-	Agent        string `json:"agent"`
-	ClusterWide  string `json:"cluster_wide"`
-	ExcludeStale string `json:"exclude_stale"`
+	Project      string     `json:"project"`
+	Since        string     `json:"since"`
+	UnreadOnly   string     `json:"unread_only"`
+	Agent        string     `json:"agent"`
+	ClusterWide  StringBool `json:"cluster_wide"`
+	ExcludeStale string     `json:"exclude_stale"`
 }
 
 // digestSummary is the at-a-glance health header prepended to the digest so an
@@ -30,6 +30,7 @@ type digestSummary struct {
 	Stale          int `json:"stale"`
 	NeedsSynthesis int `json:"needs_synthesis"`
 	StalePin       int `json:"stale_pin"`
+	UnpinnedSynth  int `json:"unpinned_synthesis"`
 	Incoherent     int `json:"incoherent"`
 	HiddenStale    int `json:"hidden_stale,omitempty"`
 }
@@ -69,6 +70,9 @@ func summarizeDigest(entries []council.DigestEntry) digestSummary {
 		}
 		if digestHasTag(e.Tags, "stale-pin") {
 			s.StalePin++
+		}
+		if digestHasTag(e.Tags, "unpinned-synthesis") {
+			s.UnpinnedSynth++
 		}
 		if digestHasTag(e.Tags, "incoherent") {
 			s.Incoherent++
@@ -195,10 +199,7 @@ func digestExcerpt(content string) string {
 		if strings.HasPrefix(line, "#") {
 			heading := strings.TrimLeft(line, "# ")
 			if heading != "" {
-				if len(heading) > 120 {
-					heading = heading[:120] + "..."
-				}
-				return heading
+				return council.TruncateRunes(heading, 120, "", 0)
 			}
 		}
 		// Stop looking after first non-empty non-heading line
@@ -220,12 +221,5 @@ func digestExcerpt(content string) string {
 	}
 
 	// Fallback: word-boundary truncation
-	if len(flat) > 120 {
-		truncated := flat[:120]
-		if i := strings.LastIndex(truncated, " "); i > 80 {
-			truncated = truncated[:i]
-		}
-		return truncated + "..."
-	}
-	return flat
+	return council.TruncateRunes(flat, 120, " ", 80)
 }

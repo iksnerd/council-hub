@@ -27,6 +27,7 @@ type LintResult struct {
 	Stale          []string
 	StalePin       []string
 	StalePlan      []string
+	UnpinnedSynth  []string
 	Incoherent     []string
 	NeedsNotebook  []string // projects with lots of decided work but no curated notebook
 }
@@ -53,6 +54,7 @@ func (s *Server) JanitorSweep() LintResult {
 	st := s.lintStaleRooms()
 	sp := s.lintStalePins()
 	spl := s.lintStalePlans()
+	us := s.lintUnpinnedSyntheses()
 	inc := s.lintIncoherent()
 	nn := s.lintProjectsNeedingNotebook()
 	healed, err := healIndexes(s.DB, s.Logger)
@@ -67,7 +69,37 @@ func (s *Server) JanitorSweep() LintResult {
 	s.LastJanitorScan = now
 	s.LastIntegrityCheck = now
 	s.Mu.Unlock()
-	return LintResult{NeedsSynthesis: ns, Stale: st, StalePin: sp, StalePlan: spl, Incoherent: inc, NeedsNotebook: nn}
+	return LintResult{NeedsSynthesis: ns, Stale: st, StalePin: sp, StalePlan: spl, UnpinnedSynth: us, Incoherent: inc, NeedsNotebook: nn}
+}
+
+// FlaggedRooms returns the IDs of active rooms currently carrying each of the
+// given Knowledge-Linter tags, regardless of which sweep applied them, keyed by
+// tag — one room-table scan for all tags rather than one per tag. The lint*
+// sweeps below only ever return rooms newly flagged *this* sweep (so they don't
+// re-post the same warning every cycle) — reporting that delta as "current
+// health" made a room flagged in an earlier sweep invisible until it happened
+// to flip again during the exact call. This queries the live tag state instead.
+func (s *Server) FlaggedRooms(tags ...string) map[string][]string {
+	flagged := make(map[string][]string, len(tags))
+	rows, err := s.DB.Query(`SELECT id, COALESCE(tags, '') FROM rooms WHERE status = 'active'`)
+	if err != nil {
+		s.Logger.Error("Linter: failed to query flagged rooms", "error", err)
+		return flagged
+	}
+	defer func() { _ = rows.Close() }()
+
+	for rows.Next() {
+		var id, roomTags string
+		if err := rows.Scan(&id, &roomTags); err != nil {
+			continue
+		}
+		for _, tag := range tags {
+			if hasTag(roomTags, tag) {
+				flagged[tag] = append(flagged[tag], id)
+			}
+		}
+	}
+	return flagged
 }
 
 // hasTag checks whether a comma-separated tag string contains an exact tag.
@@ -106,10 +138,65 @@ func appendTag(tags, tag string) string {
 	return tags + "," + tag
 }
 
+// flagAndNotify tags a room with the given Knowledge-Linter tag and posts the
+// notice as a system message. Callers filter out already-tagged rooms first
+// (hasTag) — this always applies the tag. The shared tail of every lint* sweep:
+// tag under lock, post the notice, log. Returns true if the tag update
+// succeeded (a post failure is logged but doesn't make the flag itself fail).
+func (s *Server) flagAndNotify(roomID, currentTags, tag, content string) bool {
+	newTags := appendTag(currentTags, tag)
+	s.Mu.Lock()
+	_, err := s.DB.Exec(`UPDATE rooms SET tags = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, newTags, roomID)
+	s.Mu.Unlock()
+	if err != nil {
+		s.Logger.Error("Linter: failed to update tags", "room_id", roomID, "tag", tag, "error", err)
+		return false
+	}
+	if _, err := s.PostMessage(roomID, "system", content, "message", ""); err != nil {
+		s.Logger.Error("Linter: failed to post message", "room_id", roomID, "tag", tag, "error", err)
+	}
+	return true
+}
+
+// flagRooms runs a lint query returning (id, tags) rows, skips rooms already
+// carrying tag, flags + notifies the rest via flagAndNotify, and returns the
+// newly flagged room IDs. The shared shape behind every lint* sweep below
+// except lintStalePins (its query carries an extra per-row field for its log
+// line) and lintIncoherent (its candidates come from a union of two queries).
+func (s *Server) flagRooms(query string, args []any, tag, content, queryErrContext string) []string {
+	rows, err := s.DB.Query(query, args...)
+	if err != nil {
+		s.Logger.Error("Linter: failed to query "+queryErrContext, "error", err)
+		return nil
+	}
+	defer func() { _ = rows.Close() }()
+
+	type candidate struct{ id, tags string }
+	var candidates []candidate
+	for rows.Next() {
+		var id, tags string
+		if err := rows.Scan(&id, &tags); err != nil {
+			continue
+		}
+		if !hasTag(tags, tag) {
+			candidates = append(candidates, candidate{id, tags})
+		}
+	}
+
+	var flagged []string
+	for _, c := range candidates {
+		if s.flagAndNotify(c.id, c.tags, tag, content) {
+			s.Logger.Info("Linter: flagged room", "tag", tag, "room_id", c.id)
+			flagged = append(flagged, c.id)
+		}
+	}
+	return flagged
+}
+
 func (s *Server) lintNeedsSynthesis() []string {
 	query := `
 		SELECT id, tags FROM rooms
-		WHERE status = 'active'
+		WHERE status IN ('active', 'resolved')
 		  AND created_at < datetime('now', '-1 day')
 		  AND NOT EXISTS (SELECT 1 FROM messages WHERE room_id = rooms.id AND message_type = 'synthesis')
 		  AND (
@@ -118,50 +205,9 @@ func (s *Server) lintNeedsSynthesis() []string {
 		    (SELECT COUNT(*) FROM messages WHERE room_id = rooms.id) >= ?
 		  )
 	`
-	rows, err := s.DB.Query(query, synthesisMinDecisions, synthesisMinMessages)
-	if err != nil {
-		s.Logger.Error("Linter: failed to query rooms needing synthesis", "error", err)
-		return nil
-	}
-	defer func() { _ = rows.Close() }()
-
-	type candidate struct {
-		id   string
-		tags string
-	}
-	var candidates []candidate
-
-	for rows.Next() {
-		var id, tags string
-		if err := rows.Scan(&id, &tags); err != nil {
-			continue
-		}
-		if !hasTag(tags, "needs-synthesis") {
-			candidates = append(candidates, candidate{id, tags})
-		}
-	}
-
-	var flagged []string
-	for _, c := range candidates {
-		newTags := appendTag(c.tags, "needs-synthesis")
-		s.Mu.Lock()
-		_, err := s.DB.Exec(`UPDATE rooms SET tags = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, newTags, c.id)
-		s.Mu.Unlock()
-		if err != nil {
-			s.Logger.Error("Linter: failed to update tags", "room_id", c.id, "error", err)
-			continue
-		}
-
-		content := "### Knowledge Linter\nThis room contains decisions but lacks a `synthesis` message. " +
-			"Please read the deliberation and compile a structured article using `post_to_room(message_type=\"synthesis\")`."
-		if _, err := s.PostMessage(c.id, "system", content, "message", ""); err != nil {
-			s.Logger.Error("Linter: failed to post message", "room_id", c.id, "error", err)
-		} else {
-			s.Logger.Info("Linter: flagged room for synthesis", "room_id", c.id)
-		}
-		flagged = append(flagged, c.id)
-	}
-	return flagged
+	content := "### Knowledge Linter\nThis room contains decisions but lacks a `synthesis` message. " +
+		"Please read the deliberation and compile a structured article using `post_to_room(message_type=\"synthesis\")`."
+	return s.flagRooms(query, []any{synthesisMinDecisions, synthesisMinMessages}, "needs-synthesis", content, "rooms needing synthesis")
 }
 
 func (s *Server) lintStaleRooms() []string {
@@ -171,47 +217,9 @@ func (s *Server) lintStaleRooms() []string {
 		  AND created_at < datetime('now', '-1 day')
 		  AND (SELECT MAX(timestamp) FROM messages WHERE room_id = rooms.id) < datetime('now', '-7 days')
 	`
-	rows, err := s.DB.Query(query)
-	if err != nil {
-		s.Logger.Error("Linter: failed to query stale rooms", "error", err)
-		return nil
-	}
-	defer func() { _ = rows.Close() }()
-
-	type candidate struct {
-		id   string
-		tags string
-	}
-	var candidates []candidate
-
-	for rows.Next() {
-		var id, tags string
-		if err := rows.Scan(&id, &tags); err != nil {
-			continue
-		}
-		if !hasTag(tags, "stale") {
-			candidates = append(candidates, candidate{id, tags})
-		}
-	}
-
-	var flagged []string
-	for _, c := range candidates {
-		newTags := appendTag(c.tags, "stale")
-		s.Mu.Lock()
-		_, err := s.DB.Exec(`UPDATE rooms SET tags = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, newTags, c.id)
-		s.Mu.Unlock()
-		if err != nil {
-			continue
-		}
-
-		content := "### Knowledge Linter\nThis room has been inactive for over 7 days. " +
-			"Please review the context and either update the `status` to `paused`/`resolved`, or post an update to resume work."
-		if _, err := s.PostMessage(c.id, "system", content, "message", ""); err == nil {
-			s.Logger.Info("Linter: flagged room as stale", "room_id", c.id)
-		}
-		flagged = append(flagged, c.id)
-	}
-	return flagged
+	content := "### Knowledge Linter\nThis room has been inactive for over 7 days. " +
+		"Please review the context and either update the `status` to `paused`/`resolved`, or post an update to resume work."
+	return s.flagRooms(query, nil, "stale", content, "stale rooms")
 }
 
 // lintStalePins flags active rooms whose pinned message has fallen behind the live
@@ -263,24 +271,16 @@ func (s *Server) lintStalePins() []string {
 		}
 	}
 
+	content := "### Knowledge Linter\nThe pinned summary in this room may no longer reflect the live " +
+		"state — newer `decision`/`action` updates have landed since it, or a superseding message exists. " +
+		"Consider posting a fresh `synthesis` and pinning it (`pin_message`)."
+
 	var flagged []string
 	for _, c := range candidates {
-		newTags := appendTag(c.tags, "stale-pin")
-		s.Mu.Lock()
-		_, err := s.DB.Exec(`UPDATE rooms SET tags = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, newTags, c.id)
-		s.Mu.Unlock()
-		if err != nil {
-			s.Logger.Error("Linter: failed to update stale-pin tags", "room_id", c.id, "error", err)
-			continue
-		}
-
-		content := "### Knowledge Linter\nThe pinned summary in this room may no longer reflect the live " +
-			"state — newer `decision`/`action` updates have landed since it, or a superseding message exists. " +
-			"Consider posting a fresh `synthesis` and pinning it (`pin_message`)."
-		if _, err := s.PostMessage(c.id, "system", content, "message", ""); err == nil {
+		if s.flagAndNotify(c.id, c.tags, "stale-pin", content) {
 			s.Logger.Info("Linter: flagged room for stale pin", "room_id", c.id, "updates_since_pin", c.cnt)
+			flagged = append(flagged, c.id)
 		}
-		flagged = append(flagged, c.id)
 	}
 	return flagged
 }
@@ -305,49 +305,33 @@ func (s *Server) lintStalePlans() []string {
 		    WHERE a.room_id = r.id AND a.message_type = 'action' AND a.id > p.plan_id
 		  )
 	`
-	rows, err := s.DB.Query(query)
-	if err != nil {
-		s.Logger.Error("Linter: failed to query stale-plan rooms", "error", err)
-		return nil
-	}
-	defer func() { _ = rows.Close() }()
+	content := "### Knowledge Linter\nThis room has a `plan` (specified work awaiting execution) with no " +
+		"follow-on `action`. If the work is done, post an `action` referencing it; if it's been dropped, " +
+		"note that and resolve the room."
+	return s.flagRooms(query, nil, "stale-plan", content, "stale-plan rooms")
+}
 
-	type candidate struct {
-		id   string
-		tags string
-	}
-	var candidates []candidate
-
-	for rows.Next() {
-		var id, tags string
-		if err := rows.Scan(&id, &tags); err != nil {
-			continue
-		}
-		if !hasTag(tags, "stale-plan") {
-			candidates = append(candidates, candidate{id, tags})
-		}
-	}
-
-	var flagged []string
-	for _, c := range candidates {
-		newTags := appendTag(c.tags, "stale-plan")
-		s.Mu.Lock()
-		_, err := s.DB.Exec(`UPDATE rooms SET tags = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, newTags, c.id)
-		s.Mu.Unlock()
-		if err != nil {
-			s.Logger.Error("Linter: failed to update stale-plan tags", "room_id", c.id, "error", err)
-			continue
-		}
-
-		content := "### Knowledge Linter\nThis room has a `plan` (specified work awaiting execution) with no " +
-			"follow-on `action`. If the work is done, post an `action` referencing it; if it's been dropped, " +
-			"note that and resolve the room."
-		if _, err := s.PostMessage(c.id, "system", content, "message", ""); err == nil {
-			s.Logger.Info("Linter: flagged room for stale plan", "room_id", c.id)
-		}
-		flagged = append(flagged, c.id)
-	}
-	return flagged
+func (s *Server) lintUnpinnedSyntheses() []string {
+	query := `
+		SELECT r.id, COALESCE(r.tags, '')
+		FROM rooms r
+		WHERE r.status = 'active'
+		  AND EXISTS (
+		    SELECT 1 FROM messages m
+		    WHERE m.room_id = r.id
+		      AND m.message_type = 'synthesis'
+		      AND ` + liveClause("m") + `
+		  )
+		  AND NOT EXISTS (
+		    SELECT 1 FROM messages p
+		    WHERE p.room_id = r.id
+		      AND p.pinned = 1
+		      AND ` + headClause("p") + `
+		  )
+	`
+	content := "### Knowledge Linter\nThis room has a `synthesis` message, but nothing is pinned. " +
+		"Pin the current synthesis so cold-start readers see the living TL;DR immediately."
+	return s.flagRooms(query, nil, "unpinned-synthesis", content, "rooms with unpinned synthesis")
 }
 
 // lintIncoherent is the Coherence linter (Engelbart's CoDIAK Integration leg): it
@@ -459,20 +443,11 @@ func (s *Server) lintIncoherent() []string {
 		if hasTag(tags, "incoherent") {
 			continue
 		}
-		newTags := appendTag(tags, "incoherent")
-		s.Mu.Lock()
-		_, err := s.DB.Exec(`UPDATE rooms SET tags = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, newTags, id)
-		s.Mu.Unlock()
-		if err != nil {
-			s.Logger.Error("Linter: failed to update incoherent tags", "room_id", id, "error", err)
-			continue
-		}
-
 		content := "### Knowledge Linter\nThis room has an unresolved coherence problem: " + reason
-		if _, err := s.PostMessage(id, "system", content, "message", ""); err == nil {
+		if s.flagAndNotify(id, tags, "incoherent", content) {
 			s.Logger.Info("Linter: flagged room as incoherent", "room_id", id)
+			flagged = append(flagged, id)
 		}
-		flagged = append(flagged, id)
 	}
 
 	// Self-correct: clear `incoherent` from any active room that still carries the tag
@@ -543,4 +518,10 @@ func (s *Server) lintProjectsNeedingNotebook() []string {
 		s.Logger.Info("Linter: projects with decided work but no notebook", "projects", projects)
 	}
 	return projects
+}
+
+// LintProjectsNeedingNotebookPreview exposes the report-only notebook nudge for
+// dry-run health checks. It has no side effects.
+func (s *Server) LintProjectsNeedingNotebookPreview() []string {
+	return s.lintProjectsNeedingNotebook()
 }

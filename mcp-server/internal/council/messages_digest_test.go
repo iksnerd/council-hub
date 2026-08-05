@@ -147,6 +147,36 @@ func TestGetDigest(t *testing.T) {
 	}
 }
 
+func TestGetDigestRetractedHeadTombstone(t *testing.T) {
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "digest-retract", withProject("proj-r"))
+	mustPost(t, s, "digest-retract", "Claude", "earlier msg")
+	id := mustPost(t, s, "digest-retract", "Claude", "the withdrawn latest")
+	if _, err := s.RetractMessages([]string{id}, "Claude"); err != nil {
+		t.Fatalf("RetractMessages: %v", err)
+	}
+
+	since := time.Now().UTC().Add(-1 * time.Hour).Format("2006-01-02 15:04:05")
+	entries, err := s.GetDigest("proj-r", since)
+	if err != nil {
+		t.Fatalf("GetDigest failed: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(entries))
+	}
+	// The latest head is retracted: the excerpt must render as a tombstone,
+	// never broadcast the withdrawn content.
+	if strings.Contains(entries[0].LatestExcerpt, "withdrawn latest") {
+		t.Errorf("retracted content leaked into digest excerpt: %q", entries[0].LatestExcerpt)
+	}
+	if !strings.Contains(entries[0].LatestExcerpt, "[retracted by Claude]") {
+		t.Errorf("expected tombstone excerpt, got %q", entries[0].LatestExcerpt)
+	}
+	if entries[0].LatestAuthor != "Claude" {
+		t.Errorf("expected latest author preserved, got %q", entries[0].LatestAuthor)
+	}
+}
+
 func TestGetDigestNoResults(t *testing.T) {
 	s := setupTestServer(t)
 	mustCreateRoom(t, s, "digest-empty")

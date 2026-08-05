@@ -2,12 +2,37 @@ package handlers
 
 import (
 	"council-hub/internal/council"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
+
+// StringBool accepts the historical string form ("true") and JSON booleans.
+// MCP tool schemas still advertise strings for compatibility, but some clients
+// naturally send true/false for boolean-looking flags; treating those as false
+// made cluster_wide reads look empty instead of visibly mis-typed.
+type StringBool string
+
+func (b *StringBool) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err == nil {
+		*b = StringBool(s)
+		return nil
+	}
+	var v bool
+	if err := json.Unmarshal(data, &v); err == nil {
+		if v {
+			*b = "true"
+		} else {
+			*b = "false"
+		}
+		return nil
+	}
+	return fmt.Errorf("expected string or boolean")
+}
 
 // textResult wraps a plain-text response in the standard MCP tool-result tuple
 // that every handler returns. Handlers alias it as `msg := textResult` so the
@@ -16,6 +41,67 @@ func textResult(text string) (*mcp.CallToolResult, ToolOutput, error) {
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{&mcp.TextContent{Text: text}},
 	}, ToolOutput{Message: text}, nil
+}
+
+// splitIDList splits a comma-separated ID list into trimmed, non-empty IDs.
+func splitIDList(s string) []string {
+	var ids []string
+	for _, p := range strings.Split(s, ",") {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			ids = append(ids, p)
+		}
+	}
+	return ids
+}
+
+// resolveIDList resolves each id in ids via ResolveMessageID (exact match, or a
+// unique prefix). An id that doesn't resolve is passed through unchanged — this
+// covers both "genuinely doesn't exist" (the caller's own not-found reporting,
+// e.g. delete_messages/move_messages listing skipped IDs, already handles that
+// fine) and an infra failure resolving it (e.g. the DB going away mid-request —
+// don't mask that as "not found"; let the real operation attempt against the
+// same DB and surface its own accurate error). An *ambiguous* prefix is the one
+// case genuinely different from either of those (several real messages match)
+// and must not resolve silently to whichever one happens to sort first, so it's
+// returned as an error naming the candidates.
+func (r *Registry) resolveIDList(ids []string) ([]string, error) {
+	resolved := make([]string, len(ids))
+	for i, id := range ids {
+		got, err := r.Server.ResolveMessageID(id)
+		if err != nil {
+			if ambiguous, ok := err.(*council.ErrAmbiguousMessageID); ok {
+				return nil, ambiguous
+			}
+			resolved[i] = id
+			continue
+		}
+		resolved[i] = got
+	}
+	return resolved, nil
+}
+
+// resolveSingleID is resolveIDList for the common single-ID case.
+func (r *Registry) resolveSingleID(id string) (string, error) {
+	resolved, err := r.resolveIDList([]string{id})
+	if err != nil {
+		return "", err
+	}
+	return resolved[0], nil
+}
+
+// resolveInto resolves *id in place via resolveSingleID (exact match, or a
+// unique prefix — an unresolvable-but-unambiguous id is left unchanged so the
+// caller's own not-found handling still applies). Collapses the
+// "resolved, err := r.resolveSingleID(id); if err != nil {...}; id = resolved"
+// shape repeated at every single-ID call site down to one line.
+func (r *Registry) resolveInto(id *string) error {
+	resolved, err := r.resolveSingleID(*id)
+	if err != nil {
+		return err
+	}
+	*id = resolved
+	return nil
 }
 
 // appendMessageBlock writes one message in the compact "[#id ts] author (type):"
@@ -42,6 +128,7 @@ var healthTagActions = []struct{ tag, action string }{
 	{"needs-synthesis", "decisions/actions accumulated with no synthesis — distill them into a `synthesis` and pin it (post_to_room with pin=true)"},
 	{"stale-pin", "the pinned synthesis is outdated — post a fresh `synthesis` and pin it (post_to_room with pin=true) to replace it"},
 	{"stale-plan", "a `plan` was posted but never executed — post an `action` that carries it out, or close the room"},
+	{"unpinned-synthesis", "a synthesis exists but is not pinned — pin it so the room has a living TL;DR"},
 	{"stale", "inactive — resume it, post a `synthesis` and `signal_status(resolved)`, or archive it"},
 }
 

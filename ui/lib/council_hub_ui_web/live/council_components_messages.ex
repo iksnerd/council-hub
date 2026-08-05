@@ -5,6 +5,37 @@ defmodule CouncilHubUiWeb.MessageComponents do
   import Phoenix.HTML, only: [raw: 1]
   import CouncilHubUiWeb.CouncilHelpers
 
+  # -- Retraction rendering --
+  #
+  # Shared by the room view (message_bubble) and the notebook outline so the
+  # tombstone markup can't drift between the two.
+
+  @doc "Header badge marking a retracted message."
+  attr :retracted_by, :string, default: ""
+
+  def retracted_badge(assigns) do
+    ~H"""
+    <span
+      title={"Retracted#{if @retracted_by != "", do: " by " <> @retracted_by, else: ""} — preserved as a tombstone"}
+      class="text-[9px] font-mono uppercase tracking-wider text-[var(--ch-text-lo)]"
+    >
+      retracted
+    </span>
+    """
+  end
+
+  @doc "Body swap for a retracted message: the tombstone text instead of the content."
+  attr :retracted_by, :string, default: ""
+  attr :class, :any, default: nil
+
+  def retracted_body(assigns) do
+    ~H"""
+    <div class={@class}>
+      [retracted{if @retracted_by != "", do: " by " <> @retracted_by, else: ""}]
+    </div>
+    """
+  end
+
   # -- Message Bubble --
 
   attr :msg, :map, required: true
@@ -92,13 +123,10 @@ defmodule CouncilHubUiWeb.MessageComponents do
             >
               ✎ edited{if @revisions, do: " ▾", else: " ▸"}
             </button>
-            <span
+            <.retracted_badge
               :if={Map.get(@msg, :retracted_at) != nil}
-              title={"Retracted#{if Map.get(@msg, :retracted_by, "") != "", do: " by " <> Map.get(@msg, :retracted_by), else: ""} — preserved as a tombstone"}
-              class="text-[9px] font-mono uppercase tracking-wider text-[var(--ch-text-lo)]"
-            >
-              retracted
-            </span>
+              retracted_by={Map.get(@msg, :retracted_by, "")}
+            />
             <span class="text-[10px] text-[var(--ch-text-xs)] font-mono tabular-nums">
               {format_timestamp(@msg.timestamp)}
             </span>
@@ -121,7 +149,7 @@ defmodule CouncilHubUiWeb.MessageComponents do
             <button
               id={"copy-msg-#{@msg.id}"}
               phx-hook="CopyMessage"
-              data-copy={"##{@msg.id} | #{format_timestamp(@msg.timestamp)} | #{@msg.author} (#{@msg.message_type})\n\n#{@msg.content}"}
+              data-copy={copy_text(@msg)}
               class="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded text-[var(--ch-text-xs)] hover:text-[var(--ch-text-mid)] cursor-pointer"
               title="Copy message"
               type="button"
@@ -144,14 +172,11 @@ defmodule CouncilHubUiWeb.MessageComponents do
           </div>
 
           <%!-- Message content (a retracted node renders as a tombstone, not its text) --%>
-          <div
+          <.retracted_body
             :if={Map.get(@msg, :retracted_at) != nil}
+            retracted_by={Map.get(@msg, :retracted_by, "")}
             class="text-[var(--ch-text-lo)] italic border-l border-[var(--ch-border-mid)] pl-2.5"
-          >
-            [retracted{if Map.get(@msg, :retracted_by, "") != "",
-              do: " by " <> Map.get(@msg, :retracted_by),
-              else: ""}]
-          </div>
+          />
           <div
             :if={Map.get(@msg, :retracted_at) == nil}
             class={[
@@ -260,6 +285,21 @@ defmodule CouncilHubUiWeb.MessageComponents do
   # Arrow for a typed link: outgoing (this → other) vs incoming (other → this).
   defp link_arrow(:out), do: "→"
   defp link_arrow(_), do: "←"
+
+  # Clipboard payload for the copy-message button. A retracted node is a
+  # tombstone: its display is swapped for [retracted], and so is what you can
+  # copy — the raw content must not ride out through the data-copy attribute.
+  defp copy_text(msg) do
+    body =
+      if Map.get(msg, :retracted_at) != nil do
+        by = Map.get(msg, :retracted_by, "")
+        "[retracted#{if by != "", do: " by " <> by, else: ""}]"
+      else
+        msg.content
+      end
+
+    "##{msg.id} | #{format_timestamp(msg.timestamp)} | #{msg.author} (#{msg.message_type})\n\n#{body}"
+  end
 
   # -- Summary Block --
 

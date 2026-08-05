@@ -95,7 +95,14 @@ func (r *Registry) handleBulkStatusUpdate(ctx context.Context, req *mcp.CallTool
 		if roomID == "" {
 			continue
 		}
-		// Post closing message before status change (if provided)
+		// Validate existence before posting — messages carries no FK on room_id, so
+		// posting first (the old order) left an orphan message row for any nonexistent
+		// room ID instead of just reporting it not found.
+		if _, err := r.Server.GetRoom(roomID); err != nil {
+			notFound = append(notFound, roomID)
+			continue
+		}
+
 		if args.Message != "" {
 			_, _ = r.Server.PostMessage(roomID, args.Author, args.Message, "decision", "")
 		}

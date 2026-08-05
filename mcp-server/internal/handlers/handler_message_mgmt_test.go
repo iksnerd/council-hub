@@ -256,6 +256,57 @@ func TestHandlePinMessageNonExistentID(t *testing.T) {
 	}
 }
 
+func TestHandlePinMessageByPrefix(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "pin-prefix-room")
+	id := mustPostTyped(t, reg.Server, "pin-prefix-room", "Claude", "Important TL;DR", "decision")
+
+	res, _, err := reg.handlePinMessage(context.Background(), nil, PinMessageInput{
+		RoomID:    "pin-prefix-room",
+		MessageID: id[:8], // an unambiguous 8-char prefix, like a transcript shows
+	})
+	if err != nil {
+		t.Fatalf("handlePinMessage error: %v", err)
+	}
+	if !strings.Contains(resultText(res), "pinned") {
+		t.Errorf("expected 'pinned' in result, got: %s", resultText(res))
+	}
+
+	pinned, err := reg.Server.GetPinnedMessage("pin-prefix-room")
+	if err != nil || pinned == nil || pinned.ID != id {
+		t.Errorf("expected full message %s pinned via prefix, got %+v (err=%v)", id, pinned, err)
+	}
+}
+
+func TestHandlePinMessageAmbiguousPrefix(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "pin-ambig-room")
+	id1 := mustPostTyped(t, reg.Server, "pin-ambig-room", "Claude", "first", "decision")
+
+	// Construct a second row sharing id1's 8-char prefix (see
+	// TestResolveMessageIDAmbiguousPrefix in the council package for why this
+	// mirrors a real UUIDv7 timestamp collision).
+	fakeID := id1[:8] + "-0000-7000-8000-000000000000"
+	if _, err := reg.Server.DB.Exec(
+		`INSERT INTO messages (id, room_id, author, content, message_type) VALUES (?, ?, ?, ?, ?)`,
+		fakeID, "pin-ambig-room", "Gemini", "second", "decision",
+	); err != nil {
+		t.Fatalf("insert collision row: %v", err)
+	}
+
+	res, _, _ := reg.handlePinMessage(context.Background(), nil, PinMessageInput{
+		RoomID:    "pin-ambig-room",
+		MessageID: id1[:8],
+	})
+	text := resultText(res)
+	if !strings.Contains(text, "ambiguous") {
+		t.Errorf("expected ambiguous-prefix error, got: %s", text)
+	}
+	if !strings.Contains(text, id1) || !strings.Contains(text, fakeID) {
+		t.Errorf("expected both candidates listed, got: %s", text)
+	}
+}
+
 // ========== delete_messages ==========
 
 func TestHandleDeleteMessages(t *testing.T) {
@@ -288,6 +339,39 @@ func TestHandleDeleteMessagesPurge(t *testing.T) {
 	msgs, _ := reg.Server.GetMessagesByIDs([]string{id})
 	if len(msgs) != 0 {
 		t.Errorf("expected message destroyed by purge, got: %v", msgs)
+	}
+}
+
+// TestHandleDeleteMessagesPurgeRejectsPrefix guards the exact-ID contract for
+// purge: prefixes are never resolved on the purge path — a typo'd prefix that
+// happens to uniquely match a different message must not hard-delete it.
+func TestHandleDeleteMessagesPurgeRejectsPrefix(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-purgeprefix")
+	id := mustPost(t, reg.Server, "h-purgeprefix", "Claude", "Precious")
+
+	// A unique 8-char prefix would retract fine, but must NOT purge.
+	res, _, _ := reg.handleDeleteMessages(context.Background(), nil, DeleteMessagesInput{
+		MessageIDs: id[:8], Purge: "true",
+	})
+	if !strings.Contains(resultText(res), "Purged 0") {
+		t.Errorf("expected 0 purged for a prefix, got: %s", resultText(res))
+	}
+	msgs, _ := reg.Server.GetMessagesByIDs([]string{id})
+	if len(msgs) != 1 || msgs[0].RetractedAt.Valid {
+		t.Errorf("expected message untouched after prefix purge attempt, got: %v", msgs)
+	}
+
+	// The exact full ID still purges.
+	res, _, _ = reg.handleDeleteMessages(context.Background(), nil, DeleteMessagesInput{
+		MessageIDs: id, Purge: "true",
+	})
+	if !strings.Contains(resultText(res), "Purged 1") {
+		t.Errorf("expected 1 purged for the exact ID, got: %s", resultText(res))
+	}
+	msgs, _ = reg.Server.GetMessagesByIDs([]string{id})
+	if len(msgs) != 0 {
+		t.Errorf("expected message destroyed by exact-ID purge, got: %v", msgs)
 	}
 }
 

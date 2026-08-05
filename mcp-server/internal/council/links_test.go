@@ -1,6 +1,10 @@
 package council
 
-import "testing"
+import (
+	"strings"
+	"testing"
+	"unicode/utf8"
+)
 
 func TestCreateAndGetLinks(t *testing.T) {
 	s := setupTestServer(t)
@@ -152,6 +156,58 @@ func TestGetLinkNeighborhood(t *testing.T) {
 	}
 	if dist2[c] != 2 {
 		t.Errorf("c should be distance 2 at depth 2, got %d", dist2[c])
+	}
+}
+
+func TestGetLinkNeighborhoodRetractedNodeTombstone(t *testing.T) {
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "nbhd-retract")
+	a := mustPostTyped(t, s, "nbhd-retract", "Claude", "root decision", "decision")
+	b := mustPostTyped(t, s, "nbhd-retract", "Gemini", "the withdrawn refinement", "decision")
+	s.CreateLink(b, a, "refines", "")
+	if _, err := s.RetractMessages([]string{b}, "Gemini"); err != nil {
+		t.Fatalf("RetractMessages error: %v", err)
+	}
+
+	nodes, _, err := s.GetLinkNeighborhood(a, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range nodes {
+		if n.ID != b {
+			continue
+		}
+		if strings.Contains(n.Excerpt, "withdrawn refinement") {
+			t.Errorf("retracted content leaked into neighborhood excerpt: %q", n.Excerpt)
+		}
+		if !strings.Contains(n.Excerpt, "[retracted by Gemini]") {
+			t.Errorf("expected tombstone excerpt for retracted node, got %q", n.Excerpt)
+		}
+		return
+	}
+	t.Fatalf("retracted node %s missing from neighborhood: %+v", b, nodes)
+}
+
+func TestGetLinkNeighborhoodCyrillicExcerptNotByteSplit(t *testing.T) {
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "nbhd-utf8")
+	// >80 runes of 2-byte Cyrillic: a byte-sliced excerpt would cut mid-character.
+	long := strings.Repeat("решение", 20) // 140 runes, 280 bytes
+	a := mustPostTyped(t, s, "nbhd-utf8", "Claude", long, "decision")
+
+	nodes, _, err := s.GetLinkNeighborhood(a, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(nodes) == 0 {
+		t.Fatal("expected the focus node in its own neighborhood")
+	}
+	excerpt := nodes[0].Excerpt
+	if !utf8.ValidString(excerpt) {
+		t.Errorf("excerpt is not valid UTF-8 (byte-split rune): %q", excerpt)
+	}
+	if got := utf8.RuneCountInString(excerpt); got > 83 { // 80 + "..."
+		t.Errorf("expected excerpt clipped to 80 runes (+ellipsis), got %d runes", got)
 	}
 }
 

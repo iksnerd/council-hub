@@ -127,17 +127,28 @@ func (s *Server) GetDigest(project, since string) ([]DigestEntry, error) {
 	since = strings.ReplaceAll(since, "T", " ")
 	project = normalizeProject(project)
 
+	// The lm join resolves each room's latest head revision ONCE (headClause, so
+	// an edited message's stale prior version never surfaces as the "latest"
+	// excerpt/author) and pulls author/content/retracted_at/retracted_by from that
+	// single row — the same resolved-head-id pattern as GetOutline's room_ref join.
+	// retracted_at/by come along so the caller can render a tombstone via
+	// DisplayContent instead of broadcasting withdrawn content.
 	query := `
 		SELECT m.room_id,
-		       SUM(CASE WHEN m.timestamp > ? THEN 1 ELSE 0 END) as new_msgs,
-		       COALESCE((SELECT author FROM messages WHERE room_id = m.room_id ORDER BY id DESC LIMIT 1), '') as latest_author,
-		       COALESCE((SELECT content FROM messages WHERE room_id = m.room_id ORDER BY id DESC LIMIT 1), '') as latest_content,
+		       SUM(CASE WHEN m.timestamp > ? AND ` + liveClause("m") + ` THEN 1 ELSE 0 END) as new_msgs,
+		       COALESCE(lm.author, '') as latest_author,
+		       COALESCE(lm.content, '') as latest_content,
+		       lm.retracted_at as latest_retracted_at,
+		       COALESCE(lm.retracted_by, '') as latest_retracted_by,
 		       COALESCE(r.tags, '') as tags,
-		       (SELECT COUNT(*) FROM messages WHERE room_id = m.room_id AND message_type = 'decision') as decision_count,
-		       (SELECT COUNT(*) FROM messages WHERE room_id = m.room_id AND message_type = 'synthesis') as synthesis_count,
+		       (SELECT COUNT(*) FROM messages WHERE room_id = m.room_id AND message_type = 'decision' AND ` + liveClause("") + `) as decision_count,
+		       (SELECT COUNT(*) FROM messages WHERE room_id = m.room_id AND message_type = 'synthesis' AND ` + liveClause("") + `) as synthesis_count,
 		       COALESCE((SELECT MAX(id) FROM messages WHERE room_id = m.room_id), '') as latest_message_id
 		FROM messages m
 		JOIN rooms r ON m.room_id = r.id
+		LEFT JOIN messages lm ON lm.id = (
+			SELECT id FROM messages WHERE room_id = m.room_id AND ` + headClause("") + ` ORDER BY id DESC LIMIT 1
+		)
 		WHERE (m.timestamp > ? OR r.tags LIKE '%stale%' OR r.tags LIKE '%needs-synthesis%')`
 
 	var args []any
@@ -159,9 +170,12 @@ func (s *Server) GetDigest(project, since string) ([]DigestEntry, error) {
 	var entries []DigestEntry
 	for rows.Next() {
 		var d DigestEntry
-		if err := rows.Scan(&d.RoomID, &d.NewMessages, &d.LatestAuthor, &d.LatestExcerpt, &d.Tags, &d.DecisionCount, &d.SynthesisCount, &d.LatestMessageID); err != nil {
+		var retractedAt sql.NullTime
+		var retractedBy string
+		if err := rows.Scan(&d.RoomID, &d.NewMessages, &d.LatestAuthor, &d.LatestExcerpt, &retractedAt, &retractedBy, &d.Tags, &d.DecisionCount, &d.SynthesisCount, &d.LatestMessageID); err != nil {
 			return nil, err
 		}
+		d.LatestExcerpt = DisplayContent(Message{Content: d.LatestExcerpt, RetractedAt: retractedAt, RetractedBy: retractedBy})
 		entries = append(entries, d)
 	}
 	return entries, rows.Err()
@@ -202,7 +216,7 @@ func (s *Server) GetPinnedExcerpts(roomIDs []string) map[string]string {
 	}
 
 	query := fmt.Sprintf(
-		`SELECT room_id, content FROM messages WHERE pinned = 1 AND room_id IN (%s)`,
+		`SELECT room_id, content, retracted_at, retracted_by FROM messages WHERE pinned = 1 AND `+headClause("")+` AND room_id IN (%s)`,
 		strings.Join(placeholders, ","),
 	)
 	rows, err := s.DB.Query(query, args...)
@@ -212,18 +226,14 @@ func (s *Server) GetPinnedExcerpts(roomIDs []string) map[string]string {
 	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
-		var roomID, content string
-		if err := rows.Scan(&roomID, &content); err != nil {
+		var roomID, content, retractedBy string
+		var retractedAt sql.NullTime
+		if err := rows.Scan(&roomID, &content, &retractedAt, &retractedBy); err != nil {
 			continue
 		}
+		content = DisplayContent(Message{Content: content, RetractedAt: retractedAt, RetractedBy: retractedBy})
 		content = strings.ReplaceAll(content, "\n", " ")
-		if len(content) > 60 {
-			truncated := content[:60]
-			if i := strings.LastIndex(truncated, " "); i > 40 {
-				truncated = truncated[:i]
-			}
-			content = truncated + "..."
-		}
+		content = TruncateRunes(content, 60, " ", 40)
 		excerpts[roomID] = content
 	}
 	return excerpts

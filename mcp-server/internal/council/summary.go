@@ -107,7 +107,7 @@ func (s *Server) ArchiveRoom(roomID string) (string, error) {
 		return "", fmt.Errorf("failed to read transcript: %w", err)
 	}
 
-	epitaph := buildEpitaph(room, messages)
+	epitaph := buildEpitaph(messages)
 	transcript := epitaph + FormatTranscript(room, messages)
 
 	archivePath, err := s.archivePathFor(roomID)
@@ -122,11 +122,19 @@ func (s *Server) ArchiveRoom(roomID string) (string, error) {
 		return "", fmt.Errorf("failed to write archive: %w", err)
 	}
 
+	cleanTags := removeTag(removeTag(removeTag(removeTag(removeTag(removeTag(room.Tags, "needs-synthesis"), "stale"), "stale-pin"), "stale-plan"), "unpinned-synthesis"), "incoherent")
+	s.Mu.Lock()
+	_, err = s.DB.Exec(`UPDATE rooms SET status = 'resolved', tags = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, cleanTags, roomID)
+	s.Mu.Unlock()
+	if err != nil {
+		return "", fmt.Errorf("failed to mark room archived: %w", err)
+	}
+
 	return archivePath, nil
 }
 
 // buildEpitaph generates a brief summary block from the last decision and action messages.
-func buildEpitaph(room Room, messages []Message) string {
+func buildEpitaph(messages []Message) string {
 	var lastDecision, lastAction *Message
 	for i := range messages {
 		m := &messages[i]
@@ -142,28 +150,16 @@ func buildEpitaph(room Room, messages []Message) string {
 		return ""
 	}
 
+	// DisplayContent, not .Content: the archive is permanent, so a retracted
+	// decision/action must render as its tombstone, never leak the withdrawn body.
 	var b strings.Builder
 	fmt.Fprintf(&b, "## Summary\n\n")
 	if lastDecision != nil {
-		excerpt := lastDecision.Content
-		if len(excerpt) > 300 {
-			excerpt = excerpt[:300]
-			if i := strings.LastIndex(excerpt, "\n"); i > 200 {
-				excerpt = excerpt[:i]
-			}
-			excerpt += "..."
-		}
+		excerpt := TruncateRunes(DisplayContent(*lastDecision), 300, "\n", 200)
 		fmt.Fprintf(&b, "**Last decision** (%s by %s):\n%s\n\n", lastDecision.Timestamp.Format("2006-01-02"), lastDecision.Author, excerpt)
 	}
 	if lastAction != nil {
-		excerpt := lastAction.Content
-		if len(excerpt) > 300 {
-			excerpt = excerpt[:300]
-			if i := strings.LastIndex(excerpt, "\n"); i > 200 {
-				excerpt = excerpt[:i]
-			}
-			excerpt += "..."
-		}
+		excerpt := TruncateRunes(DisplayContent(*lastAction), 300, "\n", 200)
 		fmt.Fprintf(&b, "**Last action** (%s by %s):\n%s\n\n", lastAction.Timestamp.Format("2006-01-02"), lastAction.Author, excerpt)
 	}
 	b.WriteString("---\n\n")

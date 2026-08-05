@@ -20,10 +20,18 @@ const transport = new StdioServerTransport();
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
 
+let shuttingDown = false;
 function shutdown() {
+  if (shuttingDown) return;
+  shuttingDown = true;
   poller.stop();
   process.exit(0);
 }
+
+// Claude Code exiting closes stdin/stdout without necessarily sending a signal
+// first — without this, the poller kept running (and its interval timers kept
+// the process alive) as an orphan after the parent was long gone.
+server.onclose = shutdown;
 
 await server.connect(transport);
 poller.start();
