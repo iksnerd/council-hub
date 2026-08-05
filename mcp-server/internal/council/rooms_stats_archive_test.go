@@ -74,6 +74,13 @@ func TestArchiveRoom(t *testing.T) {
 	if !strings.Contains(string(data), "Test message") {
 		t.Error("archive missing message content")
 	}
+	room, err := s.GetRoom("archive-room")
+	if err != nil {
+		t.Fatalf("archived room should remain readable: %v", err)
+	}
+	if room.Status != "resolved" {
+		t.Errorf("archive should mark room resolved, got %q", room.Status)
+	}
 
 	os.RemoveAll("archives")
 }

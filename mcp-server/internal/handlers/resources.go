@@ -365,7 +365,7 @@ read_transcript(room_ids=a,b,c)                              # batch-read multip
 
 ### Knowledge linting
 ` + "```" + `
-check_room_health                     # flags stale / needs-synthesis / stale-pin / stale-plan / incoherent rooms
+check_room_health                     # flags stale / needs-synthesis / stale-pin / stale-plan / unpinned-synthesis / incoherent rooms
 list_rooms(tag=needs-synthesis)       # rooms with decisions but no synthesis
 list_rooms(tag=stale)                 # abandoned active rooms (7+ days silent)
 list_rooms(tag=incoherent)            # live contradiction or duplicate synthesis (coherence linter)
@@ -403,11 +403,12 @@ A periodic hygiene pass over one project's rooms. The built-in Knowledge Linter
 already tags rooms ` + "`stale`" + `, ` + "`needs-synthesis`" + `, ` + "`stale-pin`" + `
 (an active room whose pinned summary predates 5+ recent decision/action updates),
 ` + "`stale-plan`" + ` (an active room with a ` + "`plan`" + ` but no follow-on ` + "`action`" + ` — an
-unexecuted handoff), and ` + "`incoherent`" + ` (the coherence linter: a live ` + "`contradicts`" + `
+unexecuted handoff), ` + "`unpinned-synthesis`" + ` (a room has a synthesis but no pinned living TL;DR),
+and ` + "`incoherent`" + ` (the coherence linter: a live ` + "`contradicts`" + `
 edge with no reconciling synthesis, or a ` + "`duplicates`" + ` edge between two un-superseded
 syntheses) every 6h; this playbook acts on those flags. The linter auto-clears a
 flag once its condition no longer holds — ` + "`stale`" + ` on the next non-system post,
-` + "`needs-synthesis`" + ` on a synthesis, ` + "`stale-pin`" + ` on a re-pin, ` + "`stale-plan`" + ` on an action,
+` + "`needs-synthesis`" + ` on a synthesis, ` + "`stale-pin`" + `/` + "`unpinned-synthesis`" + ` on a re-pin, ` + "`stale-plan`" + ` on an action,
 ` + "`incoherent`" + ` on a synthesis or superseding post.
 
 **Hard rule:** never destroy signal. The ledger is append-only — edits post a new
@@ -425,6 +426,7 @@ list_rooms(project="<proj>", tag="needs-synthesis")   # concluded but uncompiled
 list_rooms(project="<proj>", tag="stale")             # gone quiet
 list_rooms(project="<proj>", tag="stale-pin")         # busy, but pin drifted from live state
 list_rooms(project="<proj>", tag="stale-plan")        # a plan with no follow-on action
+list_rooms(project="<proj>", tag="unpinned-synthesis") # synthesis exists, but nothing is pinned
 list_rooms(project="<proj>", tag="incoherent")        # live contradiction / duplicate synthesis
 list_rooms(project="<proj>", status="active")         # still open
 ` + "```" + `

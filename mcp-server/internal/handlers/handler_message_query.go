@@ -11,30 +11,30 @@ import (
 
 // SearchMessagesInput represents the parameters for searching messages.
 type SearchMessagesInput struct {
-	Query          string `json:"query"`
-	Author         string `json:"author"`
-	MessageType    string `json:"message_type"`
-	RoomID         string `json:"room_id"`
-	RoomIDs        string `json:"room_ids"`
-	IncludeRelated string `json:"include_related"`
-	Project        string `json:"project"`
-	Limit          string `json:"limit"`
-	Since          string `json:"since"`
-	Until          string `json:"until"`
-	SummaryOnly    string `json:"summary_only"`
-	FullContent    string `json:"full_content"`
-	ClusterWide    string `json:"cluster_wide"`
-	Semantic       string `json:"semantic"`
+	Query          string     `json:"query"`
+	Author         string     `json:"author"`
+	MessageType    string     `json:"message_type"`
+	RoomID         string     `json:"room_id"`
+	RoomIDs        string     `json:"room_ids"`
+	IncludeRelated string     `json:"include_related"`
+	Project        string     `json:"project"`
+	Limit          string     `json:"limit"`
+	Since          string     `json:"since"`
+	Until          string     `json:"until"`
+	SummaryOnly    string     `json:"summary_only"`
+	FullContent    string     `json:"full_content"`
+	ClusterWide    StringBool `json:"cluster_wide"`
+	Semantic       string     `json:"semantic"`
 }
 
 // GetMessagesInput represents the parameters for fetching messages by ID or by room.
 type GetMessagesInput struct {
-	MessageIDs  string `json:"message_ids"`
-	RoomID      string `json:"room_id"`
-	LastN       string `json:"last_n"`
-	AfterID     string `json:"after_id"`
-	ClusterWide string `json:"cluster_wide"`
-	History     string `json:"history"`
+	MessageIDs  string     `json:"message_ids"`
+	RoomID      string     `json:"room_id"`
+	LastN       string     `json:"last_n"`
+	AfterID     string     `json:"after_id"`
+	ClusterWide StringBool `json:"cluster_wide"`
+	History     string     `json:"history"`
 }
 
 // GetMentionsInput represents the parameters for querying messages that mention an agent.

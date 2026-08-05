@@ -49,10 +49,10 @@ func (s *Server) PinMessage(roomID string, messageID string) (bool, error) {
 		_, _ = s.DB.Exec(`UPDATE messages SET supersedes = ? WHERE id = ?`, oldPinID, messageID)
 	}
 
-	// A fresh pin clears any `stale-pin` flag the linter set on the room.
+	// A fresh pin clears pin-related linter flags.
 	var tags string
 	if err := s.DB.QueryRow(`SELECT COALESCE(tags, '') FROM rooms WHERE id = ?`, roomID).Scan(&tags); err == nil {
-		if newTags := removeTag(tags, "stale-pin"); newTags != tags {
+		if newTags := removeTag(removeTag(tags, "stale-pin"), "unpinned-synthesis"); newTags != tags {
 			_, _ = s.DB.Exec(`UPDATE rooms SET tags = ? WHERE id = ?`, newTags, roomID)
 		}
 	}

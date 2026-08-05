@@ -50,6 +50,55 @@ func TestHandleListRoomsCluster(t *testing.T) {
 	}
 }
 
+func TestHandleListRoomsClusterForwardsAllFilters(t *testing.T) {
+	var got map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"results":  []map[string]any{},
+			"warnings": []string{},
+		})
+	}))
+	defer server.Close()
+
+	reg := &Registry{
+		HTTPClient: &http.Client{Timeout: 5 * time.Second},
+		PhoenixURL: server.URL,
+	}
+
+	_, _, err := reg.handleListRoomsCluster(ListRoomsInput{
+		Project:      "keep",
+		ProjectNotIn: "old,graveyard",
+		RelatedTo:    "root-room",
+		Tag:          "meta",
+		Status:       "active",
+		Search:       "council",
+		Limit:        "25",
+		Offset:       "5",
+	})
+	if err != nil {
+		t.Fatalf("handleListRoomsCluster failed: %v", err)
+	}
+
+	for key, want := range map[string]string{
+		"project":        "keep",
+		"project_not_in": "old,graveyard",
+		"related_to":     "root-room",
+		"tag":            "meta",
+		"status":         "active",
+		"search":         "council",
+		"limit":          "25",
+		"offset":         "5",
+	} {
+		if got[key] != want {
+			t.Fatalf("expected %s=%q, got %#v in %#v", key, want, got[key], got)
+		}
+	}
+}
+
 func TestHandleReadRoomCluster(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -194,15 +243,15 @@ func TestHandleListRoomsBranching(t *testing.T) {
 		t.Errorf("expected local result, got: %s", text)
 	}
 
-	// Cluster path (no Phoenix running, should get error message)
+	// Cluster path includes local results even when Phoenix fan-out is unavailable.
 	args.ClusterWide = "true"
 	result, _, err = reg.handleListRooms(nil, nil, args)
 	if err != nil {
 		t.Fatalf("cluster list rooms should not return error: %v", err)
 	}
 	text = resultText(result)
-	if !strings.Contains(text, "Error: cluster list rooms failed") {
-		t.Errorf("expected cluster error, got: %s", text)
+	if !strings.Contains(text, "branch-list-room") || !strings.Contains(text, "peer fan-out unavailable") {
+		t.Errorf("expected local result plus peer warning, got: %s", text)
 	}
 }
 

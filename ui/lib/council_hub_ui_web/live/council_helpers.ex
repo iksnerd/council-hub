@@ -313,6 +313,7 @@ defmodule CouncilHubUiWeb.CouncilHelpers do
       needs_synthesis: "needs-synthesis" in tags,
       stale_pin: "stale-pin" in tags,
       stale_plan: "stale-plan" in tags,
+      unpinned_synthesis: "unpinned-synthesis" in tags,
       incoherent: "incoherent" in tags
     }
   end

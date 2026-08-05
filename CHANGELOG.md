@@ -4,6 +4,19 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.52.0] - 2026-08-05
+
+Cluster query coverage and knowledge-linter improvements, with corresponding UI and test hardening.
+
+### Added
+- **Cluster-wide read handlers now cover the full query surface.** Search, room listings, room stats, message reads, digests, room reads, and transcripts share structured cluster result mapping and report partial-node failures without dropping successful results.
+- **Knowledge-linter guidance for unpinned syntheses.** Active rooms with a live synthesis but no pinned message are flagged so cold-start readers can find the current summary.
+
+### Fixed
+- **Cluster and local reads consistently collapse edited and retracted messages** and preserve the relevant metadata when results cross the Phoenix internal API boundary.
+- **Room and transcript query paths now handle string/boolean inputs and related-room data consistently**, with expanded coverage for batch reads, pagination, and cluster responses.
+- **Live room views refresh in-place changes and preserve annotations** while polling, with UI rendering and helper coverage updated alongside the server changes.
+
 ## [0.51.0] - 2026-07-19
 
 Two targeted reliability/privacy fixes found in live use after v0.50.0.

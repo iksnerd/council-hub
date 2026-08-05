@@ -130,3 +130,75 @@ func mapClusterRoom(r ClusterRoomResult) council.Room {
 		UpdatedAt:    parseClusterTime(r.UpdatedAt),
 	}
 }
+
+func localSourceNode() string {
+	return "local"
+}
+
+func clusterMessageFromLocal(m council.Message) ClusterSearchResult {
+	retractedAt := ""
+	if m.RetractedAt.Valid {
+		retractedAt = m.RetractedAt.Time.Format("2006-01-02T15:04:05")
+	}
+	return ClusterSearchResult{
+		ID:          m.ID,
+		RoomID:      m.RoomID,
+		Author:      m.Author,
+		Content:     m.Content,
+		MessageType: m.MessageType,
+		IsSummary:   m.IsSummary,
+		ReplyTo:     m.ReplyTo,
+		Pinned:      m.Pinned,
+		Timestamp:   m.Timestamp.Format("2006-01-02T15:04:05"),
+		RetractedAt: retractedAt,
+		RetractedBy: m.RetractedBy,
+		SourceNode:  localSourceNode(),
+	}
+}
+
+func clusterRoomFromLocal(r council.Room) ClusterRoomResult {
+	return ClusterRoomResult{
+		ID:           r.ID,
+		Description:  r.Description,
+		Status:       r.Status,
+		Project:      r.Project,
+		TechStack:    r.TechStack,
+		Tags:         r.Tags,
+		SystemPrompt: r.SystemPrompt,
+		RelatedRooms: r.RelatedRooms,
+		Repo:         r.Repo,
+		CreatedAt:    r.CreatedAt.Format("2006-01-02T15:04:05"),
+		UpdatedAt:    r.UpdatedAt.Format("2006-01-02T15:04:05"),
+		SourceNode:   localSourceNode(),
+	}
+}
+
+func clusterStatsFromLocal(s council.RoomStats) ClusterStatsResult {
+	return ClusterStatsResult{
+		RoomID:          s.RoomID,
+		Status:          s.Status,
+		MessageCount:    s.MessageCount,
+		Participants:    s.Participants,
+		TypeCounts:      s.TypeCounts,
+		FirstMessage:    s.FirstMessage.Format("2006-01-02T15:04:05"),
+		LastMessage:     s.LastMessage.Format("2006-01-02T15:04:05"),
+		LatestMessageID: s.LatestMessageID,
+		SourceNode:      localSourceNode(),
+	}
+}
+
+func clusterDigestFromLocal(d council.DigestEntry) ClusterDigestResult {
+	return ClusterDigestResult{
+		RoomID:               d.RoomID,
+		NewMessageCount:      d.NewMessages,
+		LatestMessageExcerpt: d.LatestExcerpt,
+		SourceNode:           localSourceNode(),
+	}
+}
+
+func clusterNotebookFromLocal(e council.NotebookEntry) ClusterNotebookResult {
+	return ClusterNotebookResult{
+		ClusterSearchResult: clusterMessageFromLocal(e.Message),
+		Repo:                e.Repo,
+	}
+}

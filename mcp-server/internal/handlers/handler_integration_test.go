@@ -367,7 +367,10 @@ func TestIntegration_KnowledgeLint(t *testing.T) {
 	// Room with a decision AND synthesis — should NOT be flagged
 	mustCreateRoom(t, reg.Server, "integ-lint-ok")
 	mustPostTyped(t, reg.Server, "integ-lint-ok", "Claude", "We chose Redis", "decision")
-	mustPostTyped(t, reg.Server, "integ-lint-ok", "Claude", "Compiled: Redis chosen for caching", "synthesis")
+	okSynth := mustPostTyped(t, reg.Server, "integ-lint-ok", "Claude", "Compiled: Redis chosen for caching", "synthesis")
+	if _, err := reg.Server.PinMessage("integ-lint-ok", okSynth); err != nil {
+		t.Fatal(err)
+	}
 
 	result := callTool(t, cs, "check_room_health", map[string]any{})
 	text := resultText(result)
@@ -380,6 +383,25 @@ func TestIntegration_KnowledgeLint(t *testing.T) {
 	}
 	if !strings.Contains(text, "Needs synthesis") {
 		t.Errorf("expected 'Needs synthesis' label in output: %s", text)
+	}
+}
+
+func TestIntegration_CheckRoomHealthDryRunExcludeStale(t *testing.T) {
+	cs, reg := setupIntegrationTest(t)
+	mustCreateRoom(t, reg.Server, "integ-dry-stale", withTags("stale"))
+	mustCreateRoom(t, reg.Server, "integ-dry-unpinned", withTags("unpinned-synthesis"))
+
+	result := callTool(t, cs, "check_room_health", map[string]any{
+		"dry_run":       "true",
+		"exclude_stale": "true",
+	})
+	text := resultText(result)
+
+	if strings.Contains(text, "integ-dry-stale") {
+		t.Errorf("exclude_stale should hide stale room: %s", text)
+	}
+	if !strings.Contains(text, "integ-dry-unpinned") || !strings.Contains(text, "Unpinned synthesis") {
+		t.Errorf("expected unpinned synthesis in dry-run output: %s", text)
 	}
 }
 

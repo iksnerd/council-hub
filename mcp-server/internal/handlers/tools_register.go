@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"council-hub/internal/council"
 	"fmt"
 	"strings"
 	"time"
@@ -349,20 +350,27 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "archive_room",
-		Description: "Export a room's transcript to a markdown file in the archives directory, with an auto-generated Summary section. Use when a room is fully resolved and no longer needs active participation — archiving preserves the record while keeping the active room list clean. Set delete=true to remove the room after archiving (common for completed sprints or resolved bugs).",
+		Description: "Export a room's transcript to a markdown file in the archives directory, with an auto-generated Summary section. Use when a room is fully resolved and no longer needs active participation — archiving preserves the record and marks the room resolved so it leaves the active work list. Set delete=true to remove the room after archiving (common for completed sprints or resolved bugs).",
 		InputSchema: schema([]string{"room_id"}, map[string]map[string]any{
 			"room_id": prop("string", "Target room ID"),
 			"delete":  prop("string", "Set to 'true' to delete room after archiving"),
 		}),
 	}, r.handleArchiveRoom)
 
-	type KnowledgeLintInput struct{}
+	type KnowledgeLintInput struct {
+		DryRun       string `json:"dry_run"`
+		ExcludeStale string `json:"exclude_stale"`
+	}
 	roomHealthHandler := func(ctx context.Context, req *mcp.CallToolRequest, args KnowledgeLintInput) (*mcp.CallToolResult, ToolOutput, error) {
-		// Run the sweep for its side effects (tag + post a notice on anything newly
-		// crossing a threshold this cycle), but report the live tag state below —
-		// the sweep's own return value is only "newly flagged this sweep", which
-		// would hide a room flagged by an earlier sweep that hasn't changed since.
-		sweep := r.Server.JanitorSweep()
+		// Run the sweep for its side effects unless this is an explicit dry run.
+		// Report the live tag state below — the sweep's own return value is only
+		// "newly flagged this sweep", which would hide older active flags.
+		sweep := council.LintResult{}
+		if args.DryRun == "true" {
+			sweep.NeedsNotebook = r.Server.LintProjectsNeedingNotebookPreview()
+		} else {
+			sweep = r.Server.JanitorSweep()
+		}
 
 		// One room-table scan for all five flags, rendered in fixed order.
 		categories := []struct{ tag, label string }{
@@ -370,6 +378,7 @@ func (r *Registry) RegisterTools() {
 			{"stale", "Stale"},
 			{"stale-pin", "Stale pin"},
 			{"stale-plan", "Stale plan"},
+			{"unpinned-synthesis", "Unpinned synthesis"},
 			{"incoherent", "Incoherent"},
 		}
 		tags := make([]string, len(categories))
@@ -379,8 +388,11 @@ func (r *Registry) RegisterTools() {
 		flagged := r.Server.FlaggedRooms(tags...)
 
 		anyFlagged := false
-		for _, ids := range flagged {
-			if len(ids) > 0 {
+		for _, c := range categories {
+			if args.ExcludeStale == "true" && c.tag == "stale" {
+				continue
+			}
+			if len(flagged[c.tag]) > 0 {
 				anyFlagged = true
 				break
 			}
@@ -391,6 +403,9 @@ func (r *Registry) RegisterTools() {
 			b.WriteString("All clear — no rooms need attention.")
 		} else {
 			for _, c := range categories {
+				if args.ExcludeStale == "true" && c.tag == "stale" {
+					continue
+				}
 				if ids := flagged[c.tag]; len(ids) > 0 {
 					fmt.Fprintf(&b, "**%s** (%d rooms): %s\n", c.label, len(ids), strings.Join(ids, ", "))
 				}
@@ -408,8 +423,11 @@ func (r *Registry) RegisterTools() {
 	}
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "check_room_health",
-		Description: "Check all active rooms for attention signals. Flags: 'needs-synthesis' (rooms with decisions but no synthesis article — write one!), 'stale' (active rooms with no activity for 7+ days — resolve or revive), 'stale-pin' (active rooms whose pinned summary predates 5+ recent decision/action updates — post a fresh synthesis and re-pin), 'stale-plan' (active rooms with a plan but no follow-on action — an unexecuted handoff), 'incoherent' (the coherence linter: a live `contradicts` edge with no reconciling synthesis, or a `duplicates` edge between two un-superseded syntheses — supersede the loser or post a reconciling synthesis). Also reports projects with lots of decided work but no curated notebook (a nudge to compile one). Posts system warnings into flagged rooms. Call periodically or when reviewing project health. Runs automatically every 6h in the background.",
-		InputSchema: schema(nil, map[string]map[string]any{}),
+		Description: "Check all active rooms for attention signals. Flags: 'needs-synthesis' (rooms with decisions but no synthesis article — write one!), 'stale' (active rooms with no activity for 7+ days — resolve or revive), 'stale-pin' (active rooms whose pinned summary predates 5+ recent decision/action updates — post a fresh synthesis and re-pin), 'stale-plan' (active rooms with a plan but no follow-on action — an unexecuted handoff), 'unpinned-synthesis' (a synthesis exists but no message is pinned — pin the living TL;DR), 'incoherent' (the coherence linter: a live `contradicts` edge with no reconciling synthesis, or a `duplicates` edge between two un-superseded syntheses — supersede the loser or post a reconciling synthesis). Also reports projects with lots of decided work but no curated notebook. By default this posts system warnings into newly flagged rooms; pass dry_run=true to report current flags without writing. Pass exclude_stale=true to hide the inactive-room graveyard from the rendered list. Runs automatically every 6h in the background.",
+		InputSchema: schema(nil, map[string]map[string]any{
+			"dry_run":       prop("string", "Set to 'true' to report current health tags without running the mutating linter sweep."),
+			"exclude_stale": prop("string", "Set to 'true' to hide rooms flagged only as stale from the rendered result."),
+		}),
 	}, roomHealthHandler)
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name: "read_transcript",

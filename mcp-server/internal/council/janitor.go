@@ -27,6 +27,7 @@ type LintResult struct {
 	Stale          []string
 	StalePin       []string
 	StalePlan      []string
+	UnpinnedSynth  []string
 	Incoherent     []string
 	NeedsNotebook  []string // projects with lots of decided work but no curated notebook
 }
@@ -53,6 +54,7 @@ func (s *Server) JanitorSweep() LintResult {
 	st := s.lintStaleRooms()
 	sp := s.lintStalePins()
 	spl := s.lintStalePlans()
+	us := s.lintUnpinnedSyntheses()
 	inc := s.lintIncoherent()
 	nn := s.lintProjectsNeedingNotebook()
 	healed, err := healIndexes(s.DB, s.Logger)
@@ -67,7 +69,7 @@ func (s *Server) JanitorSweep() LintResult {
 	s.LastJanitorScan = now
 	s.LastIntegrityCheck = now
 	s.Mu.Unlock()
-	return LintResult{NeedsSynthesis: ns, Stale: st, StalePin: sp, StalePlan: spl, Incoherent: inc, NeedsNotebook: nn}
+	return LintResult{NeedsSynthesis: ns, Stale: st, StalePin: sp, StalePlan: spl, UnpinnedSynth: us, Incoherent: inc, NeedsNotebook: nn}
 }
 
 // FlaggedRooms returns the IDs of active rooms currently carrying each of the
@@ -194,7 +196,7 @@ func (s *Server) flagRooms(query string, args []any, tag, content, queryErrConte
 func (s *Server) lintNeedsSynthesis() []string {
 	query := `
 		SELECT id, tags FROM rooms
-		WHERE status = 'active'
+		WHERE status IN ('active', 'resolved')
 		  AND created_at < datetime('now', '-1 day')
 		  AND NOT EXISTS (SELECT 1 FROM messages WHERE room_id = rooms.id AND message_type = 'synthesis')
 		  AND (
@@ -307,6 +309,29 @@ func (s *Server) lintStalePlans() []string {
 		"follow-on `action`. If the work is done, post an `action` referencing it; if it's been dropped, " +
 		"note that and resolve the room."
 	return s.flagRooms(query, nil, "stale-plan", content, "stale-plan rooms")
+}
+
+func (s *Server) lintUnpinnedSyntheses() []string {
+	query := `
+		SELECT r.id, COALESCE(r.tags, '')
+		FROM rooms r
+		WHERE r.status = 'active'
+		  AND EXISTS (
+		    SELECT 1 FROM messages m
+		    WHERE m.room_id = r.id
+		      AND m.message_type = 'synthesis'
+		      AND ` + liveClause("m") + `
+		  )
+		  AND NOT EXISTS (
+		    SELECT 1 FROM messages p
+		    WHERE p.room_id = r.id
+		      AND p.pinned = 1
+		      AND ` + headClause("p") + `
+		  )
+	`
+	content := "### Knowledge Linter\nThis room has a `synthesis` message, but nothing is pinned. " +
+		"Pin the current synthesis so cold-start readers see the living TL;DR immediately."
+	return s.flagRooms(query, nil, "unpinned-synthesis", content, "rooms with unpinned synthesis")
 }
 
 // lintIncoherent is the Coherence linter (Engelbart's CoDIAK Integration leg): it
@@ -493,4 +518,10 @@ func (s *Server) lintProjectsNeedingNotebook() []string {
 		s.Logger.Info("Linter: projects with decided work but no notebook", "projects", projects)
 	}
 	return projects
+}
+
+// LintProjectsNeedingNotebookPreview exposes the report-only notebook nudge for
+// dry-run health checks. It has no side effects.
+func (s *Server) LintProjectsNeedingNotebookPreview() []string {
+	return s.lintProjectsNeedingNotebook()
 }

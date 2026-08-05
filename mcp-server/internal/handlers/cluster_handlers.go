@@ -14,6 +14,35 @@ import (
 func (r *Registry) handleGetMessagesCluster(args GetMessagesInput) (*mcp.CallToolResult, ToolOutput, error) {
 	msg := textResult
 
+	var results []ClusterSearchResult
+	if r.Server != nil {
+		var local []council.Message
+		var err error
+		switch {
+		case args.MessageIDs != "":
+			ids := splitIDList(args.MessageIDs)
+			ids, err = r.resolveIDList(ids)
+			if err == nil {
+				local, err = r.Server.GetMessagesByIDs(ids)
+			}
+		case args.RoomID != "" && args.AfterID != "":
+			local, err = r.Server.GetMessagesAfterID(args.RoomID, args.AfterID)
+		case args.RoomID != "":
+			limit := 10
+			if args.LastN != "" {
+				if _, scanErr := fmt.Sscanf(args.LastN, "%d", &limit); scanErr != nil {
+					limit = 10
+				}
+			}
+			local, err = r.Server.GetRecentMessages(args.RoomID, limit)
+		}
+		if err == nil {
+			for _, m := range local {
+				results = append(results, clusterMessageFromLocal(m))
+			}
+		}
+	}
+
 	params := map[string]any{
 		"message_ids": args.MessageIDs,
 		"room_id":     args.RoomID,
@@ -23,13 +52,19 @@ func (r *Registry) handleGetMessagesCluster(args GetMessagesInput) (*mcp.CallToo
 
 	raw, warnings, err := r.clusterCall("get_messages", params)
 	if err != nil {
+		if len(results) > 0 {
+			warnings = append(warnings, fmt.Sprintf("peer fan-out unavailable: %s", err.Error()))
+			return r.renderClusterMessages(results, warnings)
+		}
 		return msg(fmt.Sprintf("Error: cluster get_messages failed: %s", err.Error()))
 	}
 
-	var results []ClusterSearchResult
-	if err := json.Unmarshal(raw, &results); err != nil {
+	var remote []ClusterSearchResult
+	if err := json.Unmarshal(raw, &remote); err != nil {
 		return nil, ToolOutput{}, fmt.Errorf("decode cluster message results: %w", err)
 	}
+	results = append(results, remote...)
+	results = dedupeClusterMessages(results)
 
 	if len(results) == 0 {
 		var b strings.Builder
@@ -38,6 +73,11 @@ func (r *Registry) handleGetMessagesCluster(args GetMessagesInput) (*mcp.CallToo
 		return msg(b.String())
 	}
 
+	return r.renderClusterMessages(results, warnings)
+}
+
+func (r *Registry) renderClusterMessages(results []ClusterSearchResult, warnings []string) (*mcp.CallToolResult, ToolOutput, error) {
+	msg := textResult
 	var b strings.Builder
 	fmt.Fprintf(&b, "Found %d message(s) across cluster:\n\n", len(results))
 	for _, m := range results {
@@ -59,6 +99,16 @@ func (r *Registry) handleGetDigestCluster(args DigestInput) (*mcp.CallToolResult
 		return msg("Error: since is required (ISO timestamp, e.g. 2026-03-31T12:00:00).")
 	}
 
+	results := []ClusterDigestResult{}
+	if r.Server != nil {
+		local, err := r.Server.GetDigest(args.Project, args.Since)
+		if err == nil {
+			for _, d := range local {
+				results = append(results, clusterDigestFromLocal(d))
+			}
+		}
+	}
+
 	params := map[string]any{
 		"project": args.Project,
 		"since":   args.Since,
@@ -66,13 +116,33 @@ func (r *Registry) handleGetDigestCluster(args DigestInput) (*mcp.CallToolResult
 
 	raw, warnings, err := r.clusterCall("get_digest", params)
 	if err != nil {
-		return msg(fmt.Sprintf("Error: cluster get_digest failed: %s", err.Error()))
+		if len(results) == 0 {
+			return msg(fmt.Sprintf("Error: cluster get_digest failed: %s", err.Error()))
+		}
+		warnings = append(warnings, fmt.Sprintf("peer fan-out unavailable: %s", err.Error()))
+	} else {
+		var remote []ClusterDigestResult
+		if err := json.Unmarshal(raw, &remote); err != nil {
+			return nil, ToolOutput{}, fmt.Errorf("decode cluster digest results: %w", err)
+		}
+		results = append(results, remote...)
 	}
 
-	var results []ClusterDigestResult
-	if err := json.Unmarshal(raw, &results); err != nil {
-		return nil, ToolOutput{}, fmt.Errorf("decode cluster digest results: %w", err)
+	byRoom := map[string]ClusterDigestResult{}
+	for _, d := range results {
+		if existing, ok := byRoom[d.RoomID]; ok {
+			if d.NewMessageCount > existing.NewMessageCount || existing.LatestMessageExcerpt == "" {
+				byRoom[d.RoomID] = d
+			}
+		} else {
+			byRoom[d.RoomID] = d
+		}
 	}
+	results = results[:0]
+	for _, d := range byRoom {
+		results = append(results, d)
+	}
+	sort.Slice(results, func(i, j int) bool { return results[i].NewMessageCount > results[j].NewMessageCount })
 
 	outMap := map[string]any{
 		"results":  results,
@@ -90,6 +160,24 @@ func (r *Registry) handleGetDigestCluster(args DigestInput) (*mcp.CallToolResult
 func (r *Registry) handleReadNotebookCluster(args ReadNotebookInput) (*mcp.CallToolResult, ToolOutput, error) {
 	msg := textResult
 
+	types, _ := parseNotebookTypes(args.Types)
+	limit := 100
+	if args.Limit != "" {
+		if _, err := fmt.Sscanf(args.Limit, "%d", &limit); err != nil {
+			limit = 100
+		}
+	}
+
+	var results []ClusterNotebookResult
+	if r.Server != nil {
+		local, err := r.Server.GetNotebookEntries(args.Project, types, args.Since, args.Until, args.AfterID, limit)
+		if err == nil {
+			for _, e := range local {
+				results = append(results, clusterNotebookFromLocal(e))
+			}
+		}
+	}
+
 	params := map[string]any{
 		"project":  args.Project,
 		"types":    args.Types,
@@ -101,12 +189,27 @@ func (r *Registry) handleReadNotebookCluster(args ReadNotebookInput) (*mcp.CallT
 
 	raw, warnings, err := r.clusterCall("read_notebook", params)
 	if err != nil {
-		return msg(fmt.Sprintf("Error: cluster read_notebook failed: %s", err.Error()))
+		if len(results) == 0 {
+			return msg(fmt.Sprintf("Error: cluster read_notebook failed: %s", err.Error()))
+		}
+		warnings = append(warnings, fmt.Sprintf("peer fan-out unavailable: %s", err.Error()))
+	} else {
+		var remote []ClusterNotebookResult
+		if err := json.Unmarshal(raw, &remote); err != nil {
+			return nil, ToolOutput{}, fmt.Errorf("decode cluster notebook results: %w", err)
+		}
+		results = append(results, remote...)
 	}
 
-	var results []ClusterNotebookResult
-	if err := json.Unmarshal(raw, &results); err != nil {
-		return nil, ToolOutput{}, fmt.Errorf("decode cluster notebook results: %w", err)
+	byID := map[string]ClusterNotebookResult{}
+	for _, e := range results {
+		if existing, ok := byID[e.ID]; !ok || existing.SourceNode != localSourceNode() {
+			byID[e.ID] = e
+		}
+	}
+	results = results[:0]
+	for _, e := range byID {
+		results = append(results, e)
 	}
 
 	if len(results) == 0 {
@@ -119,8 +222,9 @@ func (r *Registry) handleReadNotebookCluster(args ReadNotebookInput) (*mcp.CallT
 	// Phoenix merges and sorts by UUIDv7 ID (lexicographic == chronological,
 	// valid across nodes); re-sort defensively in case of mixed peer versions.
 	sort.Slice(results, func(i, j int) bool { return results[i].ID < results[j].ID })
-
-	types, _ := parseNotebookTypes(args.Types)
+	if limit > 0 && len(results) > limit {
+		results = results[len(results)-limit:]
+	}
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Notebook — %s (cluster-wide)\n", args.Project)
@@ -159,14 +263,25 @@ func (r *Registry) handleReadRoomCluster(args ReadRoomInput) (*mcp.CallToolResul
 		"search": args.RoomID,
 	}
 
-	raw, warnings, err := r.clusterCall("list_rooms", params)
-	if err != nil {
-		return msg(fmt.Sprintf("Error: cluster read room failed: %s", err.Error()))
+	var results []ClusterRoomResult
+	if r.Server != nil {
+		if room, err := r.Server.GetRoom(args.RoomID); err == nil {
+			results = append(results, clusterRoomFromLocal(room))
+		}
 	}
 
-	var results []ClusterRoomResult
-	if err := json.Unmarshal(raw, &results); err != nil {
-		return nil, ToolOutput{}, fmt.Errorf("decode cluster room results: %w", err)
+	raw, warnings, err := r.clusterCall("list_rooms", params)
+	if err != nil {
+		if len(results) == 0 {
+			return msg(fmt.Sprintf("Error: cluster read room failed: %s", err.Error()))
+		}
+		warnings = append(warnings, fmt.Sprintf("peer fan-out unavailable: %s", err.Error()))
+	} else {
+		var remote []ClusterRoomResult
+		if err := json.Unmarshal(raw, &remote); err != nil {
+			return nil, ToolOutput{}, fmt.Errorf("decode cluster room results: %w", err)
+		}
+		results = append(results, remote...)
 	}
 
 	// Pick the copy with the most recent UpdatedAt — the local node may hold a
@@ -235,24 +350,31 @@ func (r *Registry) handleReadRoomClusterWithMessages(args ReadRoomInput) (*mcp.C
 		"room_id": args.RoomID,
 	}
 
+	localResult := r.localTranscriptClusterResult(args.RoomID)
 	raw, warnings, err := r.clusterCall("read_transcript", params)
 	if err != nil {
-		return msg(fmt.Sprintf("Error: cluster read room failed: %s", err.Error()))
+		if localResult == nil {
+			return msg(fmt.Sprintf("Error: cluster read room failed: %s", err.Error()))
+		}
+		warnings = append(warnings, fmt.Sprintf("peer fan-out unavailable: %s", err.Error()))
+	} else {
+		var remote *ClusterReadTranscriptResult
+		if err := json.Unmarshal(raw, &remote); err != nil {
+			return nil, ToolOutput{}, fmt.Errorf("decode cluster room results: %w", err)
+		}
+		if remote != nil && (localResult == nil || len(remote.Messages) > len(localResult.Messages)) {
+			localResult = remote
+		}
 	}
 
-	var result *ClusterReadTranscriptResult
-	if err := json.Unmarshal(raw, &result); err != nil {
-		return nil, ToolOutput{}, fmt.Errorf("decode cluster room results: %w", err)
-	}
-
-	if result == nil {
+	if localResult == nil {
 		var b strings.Builder
 		fmt.Fprintf(&b, "Error: room '%s' not found on any cluster node.", args.RoomID)
 		formatClusterWarnings(&b, warnings)
 		return msg(b.String())
 	}
 
-	room := result.Room
+	room := localResult.Room
 	var b strings.Builder
 	writeClusterRoomHeader(&b, room)
 
@@ -263,7 +385,7 @@ func (r *Registry) handleReadRoomClusterWithMessages(args ReadRoomInput) (*mcp.C
 		lastN = 50
 	}
 	if lastN > 0 {
-		messages := result.Messages
+		messages := localResult.Messages
 		if len(messages) > lastN {
 			messages = messages[len(messages)-lastN:]
 		}
@@ -290,14 +412,21 @@ func (r *Registry) handleReadTranscriptCluster(args ReadTranscriptInput, roomID 
 		"room_id": roomID,
 	}
 
+	result := r.localTranscriptClusterResult(roomID)
 	raw, warnings, err := r.clusterCall("read_transcript", params)
 	if err != nil {
-		return msg(fmt.Sprintf("Error: cluster read_transcript failed: %s", err.Error()))
-	}
-
-	var result *ClusterReadTranscriptResult
-	if err := json.Unmarshal(raw, &result); err != nil {
-		return nil, ToolOutput{}, fmt.Errorf("decode cluster read_transcript: %w", err)
+		if result == nil {
+			return msg(fmt.Sprintf("Error: cluster read_transcript failed: %s", err.Error()))
+		}
+		warnings = append(warnings, fmt.Sprintf("peer fan-out unavailable: %s", err.Error()))
+	} else {
+		var remote *ClusterReadTranscriptResult
+		if err := json.Unmarshal(raw, &remote); err != nil {
+			return nil, ToolOutput{}, fmt.Errorf("decode cluster read_transcript: %w", err)
+		}
+		if remote != nil && (result == nil || len(remote.Messages) > len(result.Messages)) {
+			result = remote
+		}
 	}
 
 	if result == nil {
@@ -373,8 +502,55 @@ func (r *Registry) handleReadTranscriptCluster(args ReadTranscriptInput, roomID 
 	return msg(b.String())
 }
 
+func (r *Registry) localTranscriptClusterResult(roomID string) *ClusterReadTranscriptResult {
+	if r.Server == nil {
+		return nil
+	}
+	room, err := r.Server.GetRoom(roomID)
+	if err != nil {
+		return nil
+	}
+	messages, err := r.Server.GetTranscript(roomID)
+	if err != nil {
+		return nil
+	}
+	result := &ClusterReadTranscriptResult{
+		Room:     clusterRoomFromLocal(room),
+		Messages: make([]ClusterSearchResult, 0, len(messages)),
+	}
+	for _, m := range messages {
+		cm := clusterMessageFromLocal(m)
+		result.Messages = append(result.Messages, cm)
+		if m.Pinned {
+			pinned := cm
+			result.Pinned = &pinned
+		}
+	}
+	return result
+}
+
 func (r *Registry) handleSearchMessagesCluster(args SearchMessagesInput) (*mcp.CallToolResult, ToolOutput, error) {
 	msg := textResult
+
+	var results []ClusterSearchResult
+	if r.Server != nil {
+		effectiveRoomIDs := args.RoomIDs
+		if args.RoomID != "" && args.RoomIDs == "" {
+			effectiveRoomIDs = args.RoomID
+		}
+		limit := 20
+		if args.Limit != "" {
+			if _, err := fmt.Sscanf(args.Limit, "%d", &limit); err != nil {
+				limit = 20
+			}
+		}
+		local, err := r.Server.SearchMessages(args.Query, args.Author, args.MessageType, effectiveRoomIDs, args.Project, args.Since, args.Until, limit)
+		if err == nil {
+			for _, m := range local {
+				results = append(results, clusterMessageFromLocal(m))
+			}
+		}
+	}
 
 	params := map[string]any{
 		"query":        args.Query,
@@ -391,13 +567,20 @@ func (r *Registry) handleSearchMessagesCluster(args SearchMessagesInput) (*mcp.C
 
 	raw, warnings, err := r.clusterCall("search_messages", params)
 	if err != nil {
+		if len(results) > 0 {
+			warnings = append(warnings, fmt.Sprintf("peer fan-out unavailable: %s", err.Error()))
+			return r.renderClusterSearch(args, results, warnings)
+		}
 		return msg(fmt.Sprintf("Error: cluster search failed: %s", err.Error()))
 	}
 
-	var results []ClusterSearchResult
-	if err := json.Unmarshal(raw, &results); err != nil {
+	var remote []ClusterSearchResult
+	if err := json.Unmarshal(raw, &remote); err != nil {
 		return nil, ToolOutput{}, fmt.Errorf("decode cluster search results: %w", err)
 	}
+	results = append(results, remote...)
+	results = dedupeClusterMessages(results)
+	sort.Slice(results, func(i, j int) bool { return results[i].ID > results[j].ID })
 
 	if len(results) == 0 {
 		var b strings.Builder
@@ -407,6 +590,26 @@ func (r *Registry) handleSearchMessagesCluster(args SearchMessagesInput) (*mcp.C
 		return msg(b.String())
 	}
 
+	return r.renderClusterSearch(args, results, warnings)
+}
+
+func dedupeClusterMessages(results []ClusterSearchResult) []ClusterSearchResult {
+	byID := map[string]ClusterSearchResult{}
+	for _, m := range results {
+		if existing, ok := byID[m.ID]; !ok || existing.SourceNode != localSourceNode() {
+			byID[m.ID] = m
+		}
+	}
+	out := make([]ClusterSearchResult, 0, len(byID))
+	for _, m := range byID {
+		out = append(out, m)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out
+}
+
+func (r *Registry) renderClusterSearch(args SearchMessagesInput, results []ClusterSearchResult, warnings []string) (*mcp.CallToolResult, ToolOutput, error) {
+	msg := textResult
 	var b strings.Builder
 	fmt.Fprintf(&b, "Found %d message(s) across cluster:\n\n", len(results))
 
@@ -437,24 +640,90 @@ func (r *Registry) handleSearchMessagesCluster(args SearchMessagesInput) (*mcp.C
 func (r *Registry) handleListRoomsCluster(args ListRoomsInput) (*mcp.CallToolResult, ToolOutput, error) {
 	msg := textResult
 
+	var results []ClusterRoomResult
+	if r.Server != nil {
+		limit := 50
+		if args.Limit != "" {
+			if _, err := fmt.Sscanf(args.Limit, "%d", &limit); err != nil {
+				limit = 50
+			}
+		}
+		offset := 0
+		if args.Offset != "" {
+			if _, err := fmt.Sscanf(args.Offset, "%d", &offset); err != nil {
+				offset = 0
+			}
+		}
+		var projectNotIn []string
+		if args.ProjectNotIn != "" {
+			for _, p := range strings.Split(args.ProjectNotIn, ",") {
+				if p = strings.TrimSpace(p); p != "" {
+					projectNotIn = append(projectNotIn, p)
+				}
+			}
+		}
+		localRooms, err := r.Server.ListRoomsFiltered(council.ListRoomsOptions{
+			Project:      args.Project,
+			ProjectNotIn: projectNotIn,
+			Tag:          args.Tag,
+			Status:       args.Status,
+			Search:       args.Search,
+			RelatedTo:    args.RelatedTo,
+			Limit:        limit,
+			Offset:       offset,
+		})
+		if err == nil {
+			for _, rm := range localRooms {
+				results = append(results, clusterRoomFromLocal(rm))
+			}
+		}
+	}
+
 	params := map[string]any{
-		"project": args.Project,
-		"tag":     args.Tag,
-		"status":  args.Status,
-		"search":  args.Search,
-		"limit":   args.Limit,
-		"offset":  args.Offset,
+		"project":        args.Project,
+		"project_not_in": args.ProjectNotIn,
+		"tag":            args.Tag,
+		"status":         args.Status,
+		"search":         args.Search,
+		"related_to":     args.RelatedTo,
+		"limit":          args.Limit,
+		"offset":         args.Offset,
 	}
 
 	raw, warnings, err := r.clusterCall("list_rooms", params)
 	if err != nil {
+		if len(results) > 0 {
+			warnings = append(warnings, fmt.Sprintf("peer fan-out unavailable: %s", err.Error()))
+			return r.renderClusterRooms(args, results, warnings)
+		}
 		return msg(fmt.Sprintf("Error: cluster list rooms failed: %s", err.Error()))
 	}
 
-	var results []ClusterRoomResult
-	if err := json.Unmarshal(raw, &results); err != nil {
+	var remote []ClusterRoomResult
+	if err := json.Unmarshal(raw, &remote); err != nil {
 		return nil, ToolOutput{}, fmt.Errorf("decode cluster room results: %w", err)
 	}
+	results = append(results, remote...)
+
+	byID := map[string]ClusterRoomResult{}
+	for _, rm := range results {
+		if existing, ok := byID[rm.ID]; !ok || parseClusterTime(rm.UpdatedAt).After(parseClusterTime(existing.UpdatedAt)) {
+			byID[rm.ID] = rm
+		}
+	}
+	results = results[:0]
+	for _, rm := range byID {
+		results = append(results, rm)
+	}
+	sort.Slice(results, func(i, j int) bool {
+		return parseClusterTime(results[i].UpdatedAt).After(parseClusterTime(results[j].UpdatedAt))
+	})
+
+	return r.renderClusterRooms(args, results, warnings)
+}
+
+func (r *Registry) renderClusterRooms(args ListRoomsInput, results []ClusterRoomResult, warnings []string) (*mcp.CallToolResult, ToolOutput, error) {
+	msg := textResult
 
 	if len(results) == 0 {
 		var b strings.Builder
@@ -507,6 +776,17 @@ func (r *Registry) handleListRoomsCluster(args ListRoomsInput) (*mcp.CallToolRes
 func (r *Registry) handleRoomStatsCluster(args RoomStatsInput) (*mcp.CallToolResult, ToolOutput, error) {
 	msg := textResult
 
+	var localStats []ClusterStatsResult
+	if r.Server != nil {
+		ids := splitRoomIDArgs(args.RoomID, args.RoomIDs)
+		for _, id := range ids {
+			stats, err := r.Server.GetRoomStats(id)
+			if err == nil {
+				localStats = append(localStats, clusterStatsFromLocal(stats))
+			}
+		}
+	}
+
 	params := map[string]any{
 		"room_id":  args.RoomID,
 		"room_ids": args.RoomIDs,
@@ -514,6 +794,10 @@ func (r *Registry) handleRoomStatsCluster(args RoomStatsInput) (*mcp.CallToolRes
 
 	raw, warnings, err := r.clusterCall("room_stats", params)
 	if err != nil {
+		if len(localStats) > 0 {
+			warnings = append(warnings, fmt.Sprintf("peer fan-out unavailable: %s", err.Error()))
+			return r.renderClusterStats(localStats, warnings)
+		}
 		return msg(fmt.Sprintf("Error: cluster room stats failed: %s", err.Error()))
 	}
 
@@ -522,40 +806,86 @@ func (r *Registry) handleRoomStatsCluster(args RoomStatsInput) (*mcp.CallToolRes
 		return nil, ToolOutput{}, fmt.Errorf("decode cluster stats: %w", err)
 	}
 
-	if stats == nil {
+	results := localStats
+	if stats != nil {
+		results = append(results, *stats)
+	}
+	if len(results) == 0 {
 		var b strings.Builder
 		fmt.Fprintf(&b, "Error: room '%s' not found on any cluster node.", args.RoomID)
 		formatClusterWarnings(&b, warnings)
 		return msg(b.String())
 	}
+	return r.renderClusterStats(bestClusterStats(results), warnings)
+}
 
+func splitRoomIDArgs(roomID, roomIDs string) []string {
+	seen := map[string]bool{}
+	var ids []string
+	if roomIDs != "" {
+		for _, id := range strings.Split(roomIDs, ",") {
+			id = strings.TrimSpace(id)
+			if id != "" && !seen[id] {
+				seen[id] = true
+				ids = append(ids, id)
+			}
+		}
+	}
+	if roomID != "" && !seen[roomID] {
+		ids = append(ids, roomID)
+	}
+	return ids
+}
+
+func bestClusterStats(results []ClusterStatsResult) []ClusterStatsResult {
+	byID := map[string]ClusterStatsResult{}
+	for _, stats := range results {
+		if existing, ok := byID[stats.RoomID]; !ok || stats.MessageCount > existing.MessageCount {
+			byID[stats.RoomID] = stats
+		}
+	}
+	out := make([]ClusterStatsResult, 0, len(byID))
+	for _, stats := range byID {
+		out = append(out, stats)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].RoomID < out[j].RoomID })
+	return out
+}
+
+func (r *Registry) renderClusterStats(results []ClusterStatsResult, warnings []string) (*mcp.CallToolResult, ToolOutput, error) {
+	msg := textResult
 	var b strings.Builder
-	fmt.Fprintf(&b, "[%s] **%s** [%s]\n", stats.SourceNode, stats.RoomID, stats.Status)
-	fmt.Fprintf(&b, "**Messages:** %d\n", stats.MessageCount)
-	if stats.LatestMessageID != "" {
-		fmt.Fprintf(&b, "**Latest message ID:** %.8s\n", stats.LatestMessageID)
-	}
+	for i, stats := range results {
+		if i > 0 {
+			b.WriteString("\n---\n")
+		}
+		fmt.Fprintf(&b, "[%s] **%s** [%s]\n", stats.SourceNode, stats.RoomID, stats.Status)
+		fmt.Fprintf(&b, "**Messages:** %d\n", stats.MessageCount)
+		if stats.LatestMessageID != "" {
+			fmt.Fprintf(&b, "**Latest message ID:** %.8s\n", stats.LatestMessageID)
+		}
 
-	if len(stats.Participants) > 0 {
-		var parts []string
-		for author, count := range stats.Participants {
-			parts = append(parts, fmt.Sprintf("%s (%d)", author, count))
+		if len(stats.Participants) > 0 {
+			var parts []string
+			for author, count := range stats.Participants {
+				parts = append(parts, fmt.Sprintf("%s (%d)", author, count))
+			}
+			fmt.Fprintf(&b, "**Participants:** %s\n", strings.Join(parts, ", "))
+			if stats.FirstMessage != "" {
+				fmt.Fprintf(&b, "**First message:** %s\n", stats.FirstMessage)
+			}
+			if stats.LastMessage != "" {
+				fmt.Fprintf(&b, "**Last message:** %s\n", stats.LastMessage)
+			}
 		}
-		fmt.Fprintf(&b, "**Participants:** %s\n", strings.Join(parts, ", "))
-		if stats.FirstMessage != "" {
-			fmt.Fprintf(&b, "**First message:** %s\n", stats.FirstMessage)
-		}
-		if stats.LastMessage != "" {
-			fmt.Fprintf(&b, "**Last message:** %s\n", stats.LastMessage)
-		}
-	}
 
-	if len(stats.TypeCounts) > 0 {
-		var types []string
-		for msgType, count := range stats.TypeCounts {
-			types = append(types, fmt.Sprintf("%s: %d", msgType, count))
+		if len(stats.TypeCounts) > 0 {
+			var types []string
+			for msgType, count := range stats.TypeCounts {
+				types = append(types, fmt.Sprintf("%s: %d", msgType, count))
+			}
+			fmt.Fprintf(&b, "**Types:** %s\n", strings.Join(types, ", "))
 		}
-		fmt.Fprintf(&b, "**Types:** %s\n", strings.Join(types, ", "))
 	}
 
 	formatClusterWarnings(&b, warnings)

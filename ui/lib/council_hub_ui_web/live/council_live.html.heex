@@ -28,7 +28,12 @@
 
     <%!-- Cluster Nodes --%>
     <div class="px-3 py-2 border-b border-[var(--ch-border)]">
-      <div class="flex items-center gap-1.5 mb-1.5">
+      <div
+        id="cluster-node-sound"
+        phx-hook="ClusterNodeSound"
+        data-nodes={@nodes |> Enum.map(&to_string/1) |> Enum.sort() |> Enum.join("|")}
+        class="flex items-center gap-1.5 mb-1.5"
+      >
         <span class="w-1.5 h-1.5 rounded-full bg-[var(--ch-text-lo)] animate-pulse"></span>
         <span class="text-[10px] font-medium text-[var(--ch-text-lo)] uppercase tracking-[0.15em]">
           Nodes
@@ -70,6 +75,14 @@
             manage
           </.link>
         <% end %>
+        <button
+          type="button"
+          data-sound-toggle
+          title="Toggle node connect/disconnect sound"
+          class="w-4 h-4 inline-flex items-center justify-center rounded text-[var(--ch-text-xs)] hover:text-[var(--ch-text-hi)] hover:bg-[var(--ch-hover-bg)]"
+        >
+          <span data-sound-icon class="hero-speaker-x-mark w-3 h-3"></span>
+        </button>
         <span class="text-[10px] text-[var(--ch-text-xs)] font-mono">
           {length(@nodes)}
         </span>

@@ -13,12 +13,12 @@ import (
 
 // DigestInput represents the parameters for the project digest tool.
 type DigestInput struct {
-	Project      string `json:"project"`
-	Since        string `json:"since"`
-	UnreadOnly   string `json:"unread_only"`
-	Agent        string `json:"agent"`
-	ClusterWide  string `json:"cluster_wide"`
-	ExcludeStale string `json:"exclude_stale"`
+	Project      string     `json:"project"`
+	Since        string     `json:"since"`
+	UnreadOnly   string     `json:"unread_only"`
+	Agent        string     `json:"agent"`
+	ClusterWide  StringBool `json:"cluster_wide"`
+	ExcludeStale string     `json:"exclude_stale"`
 }
 
 // digestSummary is the at-a-glance health header prepended to the digest so an
@@ -30,6 +30,7 @@ type digestSummary struct {
 	Stale          int `json:"stale"`
 	NeedsSynthesis int `json:"needs_synthesis"`
 	StalePin       int `json:"stale_pin"`
+	UnpinnedSynth  int `json:"unpinned_synthesis"`
 	Incoherent     int `json:"incoherent"`
 	HiddenStale    int `json:"hidden_stale,omitempty"`
 }
@@ -69,6 +70,9 @@ func summarizeDigest(entries []council.DigestEntry) digestSummary {
 		}
 		if digestHasTag(e.Tags, "stale-pin") {
 			s.StalePin++
+		}
+		if digestHasTag(e.Tags, "unpinned-synthesis") {
+			s.UnpinnedSynth++
 		}
 		if digestHasTag(e.Tags, "incoherent") {
 			s.Incoherent++

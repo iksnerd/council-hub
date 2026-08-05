@@ -390,6 +390,13 @@ defmodule CouncilHubUiWeb.CouncilHelpersTest do
     refute flags.stale_pin
   end
 
+  test "room_health_flags detects unpinned-synthesis" do
+    flags = CouncilHelpers.room_health_flags(%{tags: "unpinned-synthesis,auth"})
+    assert flags.unpinned_synthesis
+    refute flags.stale
+    refute flags.stale_pin
+  end
+
   test "room_health_flags detects both flags" do
     flags = CouncilHelpers.room_health_flags(%{tags: "stale,needs-synthesis"})
     assert flags.stale
