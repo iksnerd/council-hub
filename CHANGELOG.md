@@ -4,6 +4,20 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.53.0] - 2026-08-09
+
+Cluster self-heal for host IP drift, an on-demand embeddings control, and a channel-plugin hardening pass.
+
+### Added
+- **The node self-heals a stale `RELEASE_NODE` instead of needing a restart.** DHCP can reassign a long-lived container's host IP without a restart (`entrypoint.sh`'s IP auto-detect only runs on `docker run`), leaving the node advertising a dead address with zero visible symptoms — no crash, `/health` green, MCP tools fine, just unreachable to peers. `ClusterManager`'s existing ~10s reconnect tick now also compares the registered address against the host's current outbound interface IP (a local-only UDP `connect`+`sockname`, the same trick `ip route get 1` uses) and, on drift, live-rebinds distribution under the corrected name (`:net_kernel` stop/restart, cookie preserved, rate-limited to one attempt per 60s) before re-dialing known peers. Surfaced on `/status` (badge + config-doctor line) and Go's `/health` (`node_identity`/`node_identity_warning`).
+- **`regenerate_embeddings` MCP tool + `/status` UI buttons.** The only prior on-demand trigger was a container-exec CLI flag; this adds an in-session/browser path. Default mode backfills only missing vectors (the same thing the startup/10-min ticker already does); `full=true` clears every vector first and re-embeds everything — needed after switching `COUNCIL_EMBED_MODEL`, since a missing-only scan would otherwise skip already-indexed-but-wrong-dimension vectors. All entry points (ticker, CLI flag, MCP tool, UI button) share one guard so at most one embed job ever runs at once. Coverage now also surfaced on `/health` (`embedding_coverage`). 38 tools total.
+
+### Fixed
+- **Channel plugin: `COUNCIL_ROOMS` set to an empty or whitespace string now falls back to watching every room** instead of silently watching none (`??` only catches `undefined`, not a blank string — e.g. an unset template variable resolving to `""`).
+- **Channel plugin: a room can no longer be pruned mid-delivery.** `refreshRooms()` now defers while a poll tick's delivery loop is in flight; pruning during it could compute a stale delivered-through floor and replay history on a later re-watch.
+- **Channel plugin: a pre-UUIDv7 legacy message row could wedge the cursor forever.** `seedCursor()` now only considers canonical UUIDv7-shaped ids — a malformed id sorts as an ordinary string (`-` is below every hex digit), so one stray row from before the ID migration could sort as the lexicographic maximum and silently block delivery. Root-caused from a row found live in production.
+- **Channel plugin: `council_reply` no longer trusts a 200 + session header as proof of a working session.** The Go MCP SDK sets `Mcp-Session-Id` before the `initialize` handler runs, so a JSON-RPC-level error could still arrive with the header present; the handshake now checks the response body too. Concurrent `council_reply` calls needing a fresh session now share one in-flight handshake instead of racing separate ones.
+
 ## [0.52.0] - 2026-08-05
 
 Cluster query coverage and knowledge-linter improvements, with corresponding UI and test hardening.
