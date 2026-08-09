@@ -121,9 +121,12 @@ make test            # CGO_ENABLED=1 go test -tags sqlite_fts5 -v -count=1 ./...
 make run             # build + run locally
 make fmt             # go fmt
 make vet             # go vet
+make embed-backfill  # one-shot embedding backfill for messages/rooms missing a vector (requires COUNCIL_OLLAMA_URL)
 ```
 
 Single test: `cd mcp-server && CGO_ENABLED=1 go test -tags sqlite_fts5 -v -count=1 -run TestName ./...`
+
+**Embedding backfill:** normally automatic — `RunEmbedBackfill` runs on startup and every 10 minutes (`main.go`). `make embed-backfill` (the binary's `-backfill-embeddings` flag) runs it once on demand and exits, for when you don't want to wait out the cycle (e.g. right after enabling `COUNCIL_OLLAMA_URL`, or after a data-hygiene fix that could've disturbed coverage). Safe to run against a live server's DB — WAL mode, and it only fills *missing* vectors, never touches existing ones. Against the Docker container: `docker exec council-hub council-hub -backfill-embeddings` (inherits the container's `COUNCIL_DB`/`COUNCIL_OLLAMA_URL`).
 
 **Note:** `CGO_ENABLED=1` is required — the SQLite driver uses cgo.
 

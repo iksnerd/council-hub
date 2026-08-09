@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
 	"log/slog"
@@ -117,6 +118,10 @@ func loggingMiddleware(logger *slog.Logger) mcp.Middleware {
 }
 
 func main() {
+	backfillEmbeddings := flag.Bool("backfill-embeddings", false,
+		"Run a one-shot embedding backfill for any messages/rooms missing a vector, then exit. Requires COUNCIL_OLLAMA_URL. Safe to run against a live server's DB (WAL mode).")
+	flag.Parse()
+
 	logLevel := slog.LevelInfo
 	if os.Getenv("COUNCIL_DEBUG") == "1" {
 		logLevel = slog.LevelDebug
@@ -144,6 +149,20 @@ func main() {
 		logger.Info("Semantic search enabled", "provider", "ollama", "url", ollamaURL, "model", embedder.Model)
 	} else {
 		logger.Info("Semantic search disabled (set COUNCIL_OLLAMA_URL to enable)")
+	}
+
+	if *backfillEmbeddings {
+		if cs.Embedder == nil {
+			log.Fatal("-backfill-embeddings requires COUNCIL_OLLAMA_URL to be set")
+		}
+		ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+		defer cancel()
+		logger.Info("Embedding backfill: coverage before", "db", dbPath)
+		cs.LogEmbeddingStatus()
+		cs.BackfillEmbeddings(ctx)
+		logger.Info("Embedding backfill: coverage after")
+		cs.LogEmbeddingStatus()
+		return
 	}
 
 	phoenixURL := os.Getenv("COUNCIL_PHOENIX_URL")
