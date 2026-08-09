@@ -4,6 +4,14 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.53.1] - 2026-08-09
+
+Docs-audit patch — no behavior changes.
+
+### Fixed
+- README's features bullet still said "37 MCP Tools" after v0.53.0 added `regenerate_embeddings` (38 total); corrected.
+- `regenerate_embeddings` had zero mentions in the `council://guide` MCP resource (which ships inside the binary, so agents connecting to a running server never saw it referenced) — added to the "Key Tools by Goal" table and the semantic-search tips.
+
 ## [0.53.0] - 2026-08-09
 
 Cluster self-heal for host IP drift, an on-demand embeddings control, and a channel-plugin hardening pass.
