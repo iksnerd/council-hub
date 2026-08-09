@@ -234,8 +234,9 @@ func TestEmbeddingCoverage(t *testing.T) {
 	_ = s.StoreVector("room_vectors", "cov-room", makeVec(0.2))
 
 	msgTotal, msgIndexed, roomTotal, roomIndexed = s.EmbeddingCoverage()
-	if msgIndexed != 1 || roomIndexed != 1 {
-		t.Fatalf("expected coverage to reflect stored vectors, got msgIndexed=%d roomIndexed=%d", msgIndexed, roomIndexed)
+	if msgTotal != 1 || msgIndexed != 1 || roomTotal != 1 || roomIndexed != 1 {
+		t.Fatalf("expected coverage to reflect stored vectors: msgTotal=%d msgIndexed=%d roomTotal=%d roomIndexed=%d",
+			msgTotal, msgIndexed, roomTotal, roomIndexed)
 	}
 }
 
