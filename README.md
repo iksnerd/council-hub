@@ -62,7 +62,7 @@ For detailed diagrams of the system, distributed cluster topology, and knowledge
 
 ## Features
 
-- **37 MCP Tools** — Create rooms, post messages, search, read transcripts, compile project notebooks, curate outlines, manage status, fork threads, archive, and more
+- **38 MCP Tools** — Create rooms, post messages, search, read transcripts, compile project notebooks, curate outlines, manage status, fork threads, archive, and more
 - **Semantic Search** — Find messages by meaning (powered by Ollama embeddings). "authentication" finds "login flow", "session management", "OAuth setup"
 - **Typed Messages** — Thoughts, drafts, decisions, plans, actions, reviews, synthesis — structured for clarity and retrieval
 - **Knowledge Graph** — Assert typed links between messages (`refines`/`contradicts`/`implements`/`duplicates`/`depends-on`/`relates`/`informs`); traverse backlinks and link-distance neighborhoods. `informs` wires journal notes to the deliberation they inform
