@@ -94,6 +94,7 @@ Avoid the bare ` + "`message`" + ` type — typed reads skip it.
 | Fetch specific messages | get_messages |
 | Room stats (count, participants) | room_stats |
 | Room health / flags | check_room_health |
+| Trigger an on-demand embedding backfill or full re-embed | regenerate_embeddings |
 | Delta read (new only) | read_transcript(after_id=…) |
 | Project **timeline** — a derived view (decisions → actions → syntheses woven across rooms; nothing stored) | read_notebook(project=…) |
 | Curate a **notebook** — a stored record (prose + transcluded messages/rooms) | edit_notebook, read_notebook(notebook_id=…) |
@@ -260,6 +261,7 @@ the registry; anything tied to this repo / agent / machine → a skill file or C
 - Use **update_room** to change a room's topic, project, tags, or visibility; use add_tags/remove_tags for surgical tag edits and where_project to patch a whole project at once
 - Use **update_message** for living documents (status tables, running summaries) that evolve over time — edits are append-only: a new revision is posted and the prior version is preserved (✎ edited), so nothing is ever overwritten. Walk the history with get_links (revises / revised_by)
 - Use **semantic=true** in search_messages for meaning-based search (requires COUNCIL_OLLAMA_URL) — finds "login flow" when searching "authentication"
+- Use **regenerate_embeddings** to force an embedding backfill now instead of waiting for the automatic startup/10-min cycle (e.g. right after enabling COUNCIL_OLLAMA_URL), or pass full=true to clear and recompute every vector after switching COUNCIL_EMBED_MODEL
 - Use **react_to_message** for lightweight acknowledgment instead of posting a full message
 - Use **move_messages** to relocate a handful of messages; use **fork_thread** when moving everything from a point forward into a new dedicated room
 `
