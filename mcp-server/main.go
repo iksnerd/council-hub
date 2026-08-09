@@ -25,9 +25,20 @@ type clusterNodeInfo struct {
 	Version string `json:"version"`
 }
 
+// nodeIdentityInfo mirrors CouncilHubUi.NodeIdentity.status/0 (a Phoenix-side
+// check, since only the Elixir side has a distribution node name to compare
+// against the host's current interface IP). Registered/Current are empty
+// when Phoenix isn't running distributed.
+type nodeIdentityInfo struct {
+	Registered string `json:"registered"`
+	Current    string `json:"current"`
+	Drifted    bool   `json:"drifted?"`
+}
+
 type clusterNodesResult struct {
 	Nodes           []clusterNodeInfo
 	VersionMismatch bool
+	NodeIdentity    *nodeIdentityInfo
 }
 
 // clusterNodes queries Phoenix for the list of connected Erlang nodes with
@@ -53,6 +64,7 @@ func clusterNodes(phoenixURL string, client *http.Client) *clusterNodesResult {
 	var payload struct {
 		Nodes           []clusterNodeInfo `json:"nodes"`
 		VersionMismatch bool              `json:"version_mismatch"`
+		NodeIdentity    *nodeIdentityInfo `json:"node_identity"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
 		return nil
@@ -60,6 +72,7 @@ func clusterNodes(phoenixURL string, client *http.Client) *clusterNodesResult {
 	return &clusterNodesResult{
 		Nodes:           payload.Nodes,
 		VersionMismatch: payload.VersionMismatch,
+		NodeIdentity:    payload.NodeIdentity,
 	}
 }
 
@@ -82,6 +95,13 @@ func healthHandler(cs *council.Server, phoenixURL string, httpClient *http.Clien
 			body["cluster_nodes"] = result.Nodes
 			if result.VersionMismatch {
 				body["cluster_warning"] = "version mismatch detected across cluster nodes — upgrade all nodes to the same version"
+			}
+			if result.NodeIdentity != nil && result.NodeIdentity.Drifted {
+				body["node_identity"] = result.NodeIdentity
+				body["node_identity_warning"] = fmt.Sprintf(
+					"node identity stale: registered as %s, host is now %s — self-heal rebind retries automatically",
+					result.NodeIdentity.Registered, result.NodeIdentity.Current,
+				)
 			}
 		}
 		w.Header().Set("Content-Type", "application/json")

@@ -26,5 +26,13 @@ defmodule CouncilHubUiWeb.StatusLiveTest do
       {:ok, _view, html} = live(conn, "/status")
       assert html =~ "Not available"
     end
+
+    test "no identity-drift badge or warning when not distributed", %{conn: conn} do
+      # mix test runs as :nonode@nohost, so NodeIdentity.status/0 never
+      # reports drift — the badge/doctor line must not render.
+      {:ok, _view, html} = live(conn, "/status")
+      refute html =~ "identity drifted"
+      refute html =~ "Node identity stale"
+    end
   end
 end

@@ -60,6 +60,14 @@
         ]}>
           {if @cookie_set?, do: "cookie set ✓", else: "no RELEASE_COOKIE"}
         </span>
+        <%= if @ip_status.drifted? do %>
+          <span
+            class="text-[10px] font-mono rounded px-2 py-1 border bg-red-500/10 text-red-300 border-red-500/20"
+            title={"registered #{@ip_status.registered}, host now #{@ip_status.current}"}
+          >
+            identity drifted — self-healing
+          </span>
+        <% end %>
       </div>
     </div>
 
