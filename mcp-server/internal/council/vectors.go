@@ -249,14 +249,14 @@ func (s *Server) RunEmbedBackfill(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			s.logEmbeddingStatus()
+			s.LogEmbeddingStatus()
 			s.BackfillEmbeddings(ctx)
 		}
 	}
 }
 
-// logEmbeddingStatus logs total vs indexed counts for messages and rooms.
-func (s *Server) logEmbeddingStatus() {
+// LogEmbeddingStatus logs total vs indexed counts for messages and rooms.
+func (s *Server) LogEmbeddingStatus() {
 	var msgTotal, msgIndexed, roomTotal, roomIndexed int
 	_ = s.DB.QueryRow(`SELECT COUNT(*) FROM messages`).Scan(&msgTotal)
 	_ = s.DB.QueryRow(`SELECT COUNT(*) FROM message_vectors`).Scan(&msgIndexed)

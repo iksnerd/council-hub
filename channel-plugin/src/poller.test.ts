@@ -50,8 +50,30 @@ function addMsg(db: Database, id: string, room: string, author: string): void {
   ).run(id, room, author, `content ${id}`);
 }
 
-// Sortable stand-ins for UUIDv7 ids (the cursor relies on lexicographic order).
-const ID = (n: number) => String(n).padStart(4, "0");
+// Sortable stand-ins for UUIDv7 ids, shaped like the real thing (36 chars,
+// dashes at the standard positions) so they pass seedCursor()'s UUID-shape
+// filter — the cursor relies on lexicographic order.
+const ID = (n: number) => `00000000-0000-7000-8000-${String(n).padStart(12, "0")}`;
+
+test("seedCursor ignores a malformed legacy id instead of wedging the cursor at it", () => {
+  const { path, db } = makeDb();
+  addRoom(db, "r1");
+  addMsg(db, ID(1), "r1", "other"); // real UUIDv7-shaped id
+  // Pre-migration message with a non-UUID id — no dashes, so '-' (0x2D, below
+  // every hex digit) never appears where the shape check expects it. Sorts
+  // as the lexicographic maximum, which is exactly what wedged cursor
+  // seeding permanently in production (found live: one message survived
+  // council-hub's UUIDv7 migration with its original id format, and — since
+  // seedCursor used a bare `ORDER BY id DESC LIMIT 1` — pinned the cursor at
+  // that id forever, silently blocking delivery for every room).
+  addMsg(db, "ffffffffffffffffffffffffffffffff", "r1", "legacy-agent");
+
+  const p = new Poller(cfg(path), async () => {});
+  (p as any).init();
+  expect((p as any).cursor).toBe(ID(1));
+  expect((p as any).sessionFloor).toBe(ID(1));
+  p.stop();
+});
 
 test("delivers new messages, skips self, and never replays history", async () => {
   const { path, db } = makeDb();
@@ -177,6 +199,44 @@ test("a room added mid-tick is not promoted before its catch-up query runs", asy
 
   await (p as any).poll(); // r2's catch-up query finally runs
   expect(got.sort()).toEqual([ID(1), ID(2)]);
+  p.stop();
+});
+
+test("a room resolving mid-delivery is not pruned until the tick's rows finish, so its remembered floor isn't stale", async () => {
+  const { path, db } = makeDb();
+  addRoom(db, "r1");
+  const got: string[] = [];
+  let resolveMidNotify = false;
+  const p = new Poller(cfg(path), async (n) => {
+    got.push(n.meta.message_id);
+    if (resolveMidNotify) {
+      resolveMidNotify = false;
+      // Simulates the room-refresh timer firing while poll() is suspended on
+      // this notify, before the still-queued ID(2) row has been delivered.
+      db.query("UPDATE rooms SET status = 'resolved' WHERE id = 'r1'").run();
+      (p as any).refreshRooms();
+    }
+  });
+  (p as any).init(); // r1 starts in catch-up mode (no messages exist yet)
+
+  addMsg(db, ID(1), "r1", "other");
+  addMsg(db, ID(2), "r1", "other");
+  resolveMidNotify = true;
+  await (p as any).poll();
+  expect(got).toEqual([ID(1), ID(2)]); // both rows in the tick still deliver
+  // The mid-tick refreshRooms() call must have deferred rather than pruning
+  // with a floor that predates ID(2)'s delivery.
+  expect(p.listWatched()).toEqual(["r1"]);
+
+  // Now the prune actually happens, with the cursor already reflecting ID(2).
+  (p as any).refreshRooms();
+  expect(p.listWatched()).toEqual([]);
+
+  // Rediscovering r1 must resume past both already-delivered messages.
+  db.query("UPDATE rooms SET status = 'active' WHERE id = 'r1'").run();
+  (p as any).refreshRooms();
+  await (p as any).poll();
+  expect(got).toEqual([ID(1), ID(2)]); // no replay
   p.stop();
 });
 

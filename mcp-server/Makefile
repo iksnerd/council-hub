@@ -1,4 +1,4 @@
-.PHONY: help build test fmt vet lint clean run all
+.PHONY: help build test fmt vet lint clean run embed-backfill all
 
 BINARY = council-hub
 BUILD_DIR = build
@@ -30,5 +30,8 @@ clean: ## Remove build artifacts
 
 run: build ## Build and run locally
 	./$(BUILD_DIR)/$(BINARY)
+
+embed-backfill: build ## One-shot backfill of any messages/rooms missing an embedding vector (requires COUNCIL_OLLAMA_URL)
+	./$(BUILD_DIR)/$(BINARY) -backfill-embeddings
 
 all: fmt vet lint test build ## Format, vet, lint, test, and build

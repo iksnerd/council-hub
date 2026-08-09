@@ -110,7 +110,8 @@ export function createServer(config: Config, poller: Poller): Server {
     const { name } = req.params;
 
     if (name === "watch_room") {
-      const { room_id } = req.params.arguments as { room_id: string };
+      const { room_id } = (req.params.arguments ?? {}) as { room_id?: string };
+      if (!room_id) return textResult("Error: room_id is required", true);
       return textResult(poller.watchRoom(room_id));
     }
 
@@ -119,7 +120,8 @@ export function createServer(config: Config, poller: Poller): Server {
     }
 
     if (name === "unwatch_room") {
-      const { room_id } = req.params.arguments as { room_id: string };
+      const { room_id } = (req.params.arguments ?? {}) as { room_id?: string };
+      if (!room_id) return textResult("Error: room_id is required", true);
       return textResult(poller.unwatchRoom(room_id));
     }
 
@@ -156,6 +158,23 @@ export function createServer(config: Config, poller: Poller): Server {
 // (e.g. the server restarted). Posting a bare tools/call — as this plugin used
 // to — fails with `method "tools/call" is invalid during session initialization`.
 let mcpSession: string | null = null;
+// Single-flight guard: concurrent council_reply calls that both need a fresh
+// session (e.g. two tool calls dispatched before either resolves) await the
+// same in-flight handshake instead of racing separate ones and stomping on
+// `mcpSession` with whichever happens to resolve last.
+let handshakeInFlight: Promise<string> | null = null;
+
+async function getSession(config: Config, forceNew: boolean): Promise<string> {
+  if (forceNew) mcpSession = null;
+  if (mcpSession) return mcpSession;
+  if (!handshakeInFlight) {
+    handshakeInFlight = mcpHandshake(config).finally(() => {
+      handshakeInFlight = null;
+    });
+  }
+  mcpSession = await handshakeInFlight;
+  return mcpSession;
+}
 
 type RpcResponse = { result?: unknown; error?: { message: string } };
 
@@ -166,7 +185,11 @@ async function parseRpcResponse(resp: Response): Promise<RpcResponse> {
   if (contentType.includes("text/event-stream")) {
     const text = await resp.text();
     for (const line of text.split("\n")) {
-      if (line.startsWith("data: ")) return JSON.parse(line.slice(6)) as RpcResponse;
+      if (!line.startsWith("data: ")) continue;
+      // Skip frames that are notifications rather than the RPC response —
+      // only one is expected today, but this is what distinguishes them.
+      const parsed = JSON.parse(line.slice(6)) as RpcResponse;
+      if (parsed.result !== undefined || parsed.error !== undefined) return parsed;
     }
     return {};
   }
@@ -195,8 +218,14 @@ async function mcpHandshake(config: Config): Promise<string> {
   if (!resp.ok) {
     throw new Error(`MCP initialize failed: HTTP ${resp.status}: ${await resp.text()}`);
   }
+  // The Go SDK sets Mcp-Session-Id as soon as a session is assigned, before the
+  // initialize handler runs — so a JSON-RPC-level error can still arrive with
+  // the header present and HTTP 200. Check the body, not just the header.
   const sessionId = resp.headers.get("mcp-session-id");
-  await resp.text(); // drain the SSE body so the stream completes
+  const rpc = await parseRpcResponse(resp);
+  if (rpc.error) {
+    throw new Error(`MCP initialize failed: ${rpc.error.message}`);
+  }
   if (!sessionId) {
     throw new Error("MCP initialize returned no Mcp-Session-Id header");
   }
@@ -209,7 +238,14 @@ async function mcpHandshake(config: Config): Promise<string> {
       "Mcp-Session-Id": sessionId,
     },
     body: JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }),
-  }).catch(() => {});
+  }).catch((err) => {
+    // Not fatal here — postToRoom's 404/error-message retry recovers if the
+    // server ends up treating the session as unregistered — but this was
+    // previously swallowed with no trace, making that failure mode invisible.
+    process.stderr.write(
+      `[council-hub-channel] notifications/initialized failed (session may not be fully registered): ${err}\n`
+    );
+  });
   return sessionId;
 }
 
@@ -234,23 +270,28 @@ async function postToRoom(
   };
 
   // Two attempts: the second forces a fresh session if the first failed because
-  // the cached session was missing or stale (e.g. the server restarted).
+  // the cached session was missing or stale (e.g. the server restarted). Each
+  // attempt captures its own `session` value rather than re-reading the shared
+  // `mcpSession` — safe even if a concurrent call invalidates/replaces it
+  // between attempts.
+  let needsFreshSession = false;
   for (let attempt = 0; attempt < 2; attempt++) {
-    if (!mcpSession) mcpSession = await mcpHandshake(config);
+    const session = await getSession(config, needsFreshSession);
+    needsFreshSession = false;
 
     const resp = await fetch(config.mcpUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Accept: "application/json, text/event-stream",
-        "Mcp-Session-Id": mcpSession,
+        "Mcp-Session-Id": session,
       },
       body: JSON.stringify(body),
     });
 
     // 404/400 means the session is unknown/expired — drop it and retry once.
     if ((resp.status === 404 || resp.status === 400) && attempt === 0) {
-      mcpSession = null;
+      needsFreshSession = true;
       continue;
     }
     if (!resp.ok) {
@@ -262,7 +303,7 @@ async function postToRoom(
       const m = json.error.message ?? "";
       // Session lost mid-flight (e.g. server restarted): re-handshake once.
       if (attempt === 0 && /session|initializ/i.test(m)) {
-        mcpSession = null;
+        needsFreshSession = true;
         continue;
       }
       throw new Error(m);

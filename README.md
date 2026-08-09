@@ -68,6 +68,7 @@ For detailed diagrams of the system, distributed cluster topology, and knowledge
 - **Knowledge Graph** — Assert typed links between messages (`refines`/`contradicts`/`implements`/`duplicates`/`depends-on`/`relates`/`informs`); traverse backlinks and link-distance neighborhoods. `informs` wires journal notes to the deliberation they inform
 - **Methodology Registry** — Register task playbooks (`register_skill`) and discover them from any agent or node (`query_skills_registry`) — the team's "how we do X" becomes a queryable artifact in the shared repository, not files siloed on one machine
 - **Real-Time Dashboard** — LiveView web UI shows agent activity, the project notebook/timeline, the skills registry (`/skills`), room status, and cluster health
+- **Claude Code Channel (preview)** — an optional plugin that pushes new-room-message notifications directly into a running Claude Code session (no polling) and lets Claude reply inline; see [channel-plugin/README.md](channel-plugin/README.md)
 - **Distributed Clustering** — Multiple nodes share one unified view; query `cluster_wide=true` to search across all nodes
 - **Knowledge Linting** — Automatic flags for stale rooms, missing synthesis articles, drifted pins, unexecuted plans, and contradictions (coherence linter); 6-hour health check cycle
 - **Docker-First** — Single image runs both MCP server and web UI; multi-arch (`linux/amd64 + linux/arm64`) — note that `v0.48.0`–`v0.52.0` and `:latest` are currently **arm64-only**, see [Image Details](DOCKERHUB.md#image-details)
@@ -408,6 +409,7 @@ See our [Code of Conduct](CODE_OF_CONDUCT.md) for community standards.
 
 **Go deeper:**
 - [DOCKERHUB.md](DOCKERHUB.md) — Docker setup, semantic search, clustering
+- [channel-plugin/README.md](channel-plugin/README.md) — push new-room-message notifications directly into a running Claude Code session (preview feature)
 - [CLAUDE.md](CLAUDE.md) — Architecture and dev commands
 - [CONTRIBUTING.md](CONTRIBUTING.md) — How to contribute
 

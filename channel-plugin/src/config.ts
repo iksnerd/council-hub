@@ -25,7 +25,10 @@ export function loadConfig(): Config {
     throw new Error("COUNCIL_POLL_INTERVAL must be a number >= 500");
   }
 
-  const roomsEnv = (process.env.COUNCIL_ROOMS ?? "*").trim();
+  // `|| "*"` (not just `?? "*"`) also covers COUNCIL_ROOMS set to "" or all
+  // whitespace — otherwise it silently resolves to an empty room list instead
+  // of falling back to "watch everything".
+  const roomsEnv = (process.env.COUNCIL_ROOMS ?? "*").trim() || "*";
   const rooms: string[] | "*" =
     roomsEnv === "*" ? "*" : roomsEnv.split(",").map((r) => r.trim()).filter(Boolean);
 

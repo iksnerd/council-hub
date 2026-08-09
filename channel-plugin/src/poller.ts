@@ -56,6 +56,13 @@ export class Poller {
   private pollTimer: Timer | null = null;
   private roomRefreshTimer: Timer | null = null;
   private polling = false;
+  // True only while this tick's row-delivery loop is running (an `await
+  // notify()` can yield mid-loop). refreshRooms() must not prune a room while
+  // this is true — pruning reads `this.cursor` to remember how far delivery
+  // got, and mid-loop it doesn't yet reflect rows still queued for delivery,
+  // producing a stale floor that replays already-delivered messages on a
+  // later re-watch.
+  private delivering = false;
 
   constructor(
     private config: Config,
@@ -106,11 +113,28 @@ export class Poller {
   }
 
   // Seed the cursor at the newest message so we never replay history on startup.
+  //
+  // Restricted to canonical UUIDv7-shaped ids (36 chars, dashes at the
+  // standard positions): a pre-migration or otherwise malformed id sorts as
+  // a plain string like any other, and since '-' (0x2D) is below every hex
+  // digit, an id lacking a dash where a real one has one can sort as the
+  // lexicographic maximum forever — wedging the cursor at a stale value and
+  // silently blocking delivery for every room. One such row was found live
+  // in production (a pre-UUIDv7-migration message) during this feature's
+  // rollout. Every id this plugin's own advanceCursor() ever writes is a
+  // real UUIDv7 from the Go server, so this filter only ever excludes
+  // historical outliers, never legitimate new messages.
   private seedCursor(): void {
     if (this.cursorSeeded || !this.db) return;
     try {
       const latest = this.db
-        .query<{ id: string }, []>("SELECT id FROM messages ORDER BY id DESC LIMIT 1")
+        .query<{ id: string }, []>(
+          `SELECT id FROM messages
+           WHERE length(id) = 36
+             AND substr(id, 9, 1) = '-' AND substr(id, 14, 1) = '-'
+             AND substr(id, 19, 1) = '-' AND substr(id, 24, 1) = '-'
+           ORDER BY id DESC LIMIT 1`
+        )
         .get();
       this.cursor = latest?.id ?? "";
       this.sessionFloor = this.cursor;
@@ -128,12 +152,18 @@ export class Poller {
           .query<{ id: string }, [string]>("SELECT id FROM rooms WHERE id = ? LIMIT 1")
           .get(id) !== null
       );
-    } catch {
+    } catch (err) {
+      this.logError(`roomExists query error: ${err}`);
       return false;
     }
   }
 
   private refreshRooms(): void {
+    // Deferring is safe: the timer fires again in ROOM_REFRESH_INTERVAL, and
+    // this is the only path that mutates the watch set outside of poll()'s
+    // own cold-start call (which never overlaps a delivery loop). See the
+    // `delivering` field comment.
+    if (this.delivering) return;
     if (!this.db) {
       this.db = this.openDb();
       if (!this.db) return;
@@ -243,6 +273,7 @@ export class Poller {
         return;
       }
 
+      this.delivering = true;
       for (const row of rows) {
         // Skip our own messages, but still advance past them.
         if (row.author === this.config.author) {
@@ -277,6 +308,7 @@ export class Poller {
 
         this.advanceCursor(row);
       }
+      this.delivering = false;
 
       // End-of-tick promotion. Only rooms whose catch-up query actually ran
       // this tick (the catchupIds snapshot) are candidates — a room added to
