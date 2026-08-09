@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	sqlite_vec "github.com/asg017/sqlite-vec-go-bindings/cgo"
@@ -255,13 +256,18 @@ func (s *Server) RunEmbedBackfill(ctx context.Context) {
 	}
 }
 
-// LogEmbeddingStatus logs total vs indexed counts for messages and rooms.
-func (s *Server) LogEmbeddingStatus() {
-	var msgTotal, msgIndexed, roomTotal, roomIndexed int
+// EmbeddingCoverage returns total vs. indexed counts for messages and rooms.
+func (s *Server) EmbeddingCoverage() (msgTotal, msgIndexed, roomTotal, roomIndexed int) {
 	_ = s.DB.QueryRow(`SELECT COUNT(*) FROM messages`).Scan(&msgTotal)
 	_ = s.DB.QueryRow(`SELECT COUNT(*) FROM message_vectors`).Scan(&msgIndexed)
 	_ = s.DB.QueryRow(`SELECT COUNT(*) FROM rooms`).Scan(&roomTotal)
 	_ = s.DB.QueryRow(`SELECT COUNT(*) FROM room_vectors`).Scan(&roomIndexed)
+	return
+}
+
+// LogEmbeddingStatus logs total vs indexed counts for messages and rooms.
+func (s *Server) LogEmbeddingStatus() {
+	msgTotal, msgIndexed, roomTotal, roomIndexed := s.EmbeddingCoverage()
 
 	missing := (msgTotal - msgIndexed) + (roomTotal - roomIndexed)
 	if missing > 0 {
@@ -276,13 +282,66 @@ func (s *Server) LogEmbeddingStatus() {
 	}
 }
 
-// BackfillEmbeddings embeds any messages and rooms that don't have vectors yet.
-// No-op when all vectors are present.
+// TriggerEmbedJob starts a backfill (missing vectors only) or a full
+// re-embed (clears every vector first — e.g. after switching
+// COUNCIL_EMBED_MODEL, where old vectors are the wrong dimension/space and a
+// missing-only scan would skip them) in the background. Returns false
+// without starting anything if no embedder is configured or a job (this one,
+// the startup/10-min ticker, or a concurrent trigger) is already running —
+// the guard is shared across all of them, so at most one ever runs at once.
+// Non-blocking: intended for on-demand callers (the MCP tool, the UI button)
+// that need to report "started" vs "already running" immediately rather than
+// wait out a backfill that can take minutes to hours cold.
+func (s *Server) TriggerEmbedJob(ctx context.Context, full bool) bool {
+	if s.Embedder == nil {
+		return false
+	}
+	if !atomic.CompareAndSwapInt32(&s.EmbedJobRunning, 0, 1) {
+		return false
+	}
+	go func() {
+		defer atomic.StoreInt32(&s.EmbedJobRunning, 0)
+		if full {
+			s.runFullReembed(ctx)
+		} else {
+			s.runBackfill(ctx)
+		}
+	}()
+	return true
+}
+
+// runFullReembed clears every stored vector, then re-embeds everything from
+// scratch via runBackfill (now that nothing is indexed, it embeds all of
+// it). Caller must hold the EmbedJobRunning guard.
+func (s *Server) runFullReembed(ctx context.Context) {
+	s.Mu.Lock()
+	_, _ = s.DB.Exec(`DELETE FROM message_vectors`)
+	_, _ = s.DB.Exec(`DELETE FROM room_vectors`)
+	s.Mu.Unlock()
+	s.Logger.Info("Cleared all vectors — starting full re-embed")
+	s.runBackfill(ctx)
+}
+
+// BackfillEmbeddings embeds any messages and rooms that don't have vectors
+// yet. No-op when all vectors are present or a job is already running (the
+// startup call, the 10-min ticker, and TriggerEmbedJob all share one guard).
+// Blocking — used by the startup/ticker loop and the -backfill-embeddings
+// CLI flag, both of which want to wait for completion.
 func (s *Server) BackfillEmbeddings(ctx context.Context) {
 	if s.Embedder == nil {
 		return
 	}
+	if !atomic.CompareAndSwapInt32(&s.EmbedJobRunning, 0, 1) {
+		s.Logger.Info("Embedding job already running, skipping")
+		return
+	}
+	defer atomic.StoreInt32(&s.EmbedJobRunning, 0)
+	s.runBackfill(ctx)
+}
 
+// runBackfill is the actual pending-vector embed loop. Caller must hold the
+// EmbedJobRunning guard.
+func (s *Server) runBackfill(ctx context.Context) {
 	// Backfill messages
 	msgCount := 0
 	rows, err := s.DB.Query(

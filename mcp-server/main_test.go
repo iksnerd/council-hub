@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -10,6 +11,14 @@ import (
 
 	"council-hub/internal/council"
 )
+
+// stubEmbedder returns a fixed vector for any input — enough to make
+// cs.Embedder non-nil for /health's embedding_coverage passthrough.
+type stubEmbedder struct{}
+
+func (stubEmbedder) Embed(_ context.Context, _ string) ([]float32, error) {
+	return make([]float32, council.EmbedDim), nil
+}
 
 func testServer(t *testing.T) *council.Server {
 	t.Helper()
@@ -105,6 +114,45 @@ func TestHealthHandlerOmitsNodeIdentityWhenNotDrifted(t *testing.T) {
 	}
 	if _, ok := body["node_identity"]; ok {
 		t.Fatalf("did not expect node_identity in body: %+v", body)
+	}
+}
+
+func TestHealthHandlerOmitsEmbeddingCoverageWithoutEmbedder(t *testing.T) {
+	cs := testServer(t)
+	handler := healthHandler(cs, "", nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	rec := httptest.NewRecorder()
+	handler(rec, req)
+
+	var body map[string]any
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if _, ok := body["embedding_coverage"]; ok {
+		t.Fatal("did not expect embedding_coverage when no embedder is configured")
+	}
+}
+
+func TestHealthHandlerIncludesEmbeddingCoverage(t *testing.T) {
+	cs := testServer(t)
+	cs.Embedder = &stubEmbedder{}
+	handler := healthHandler(cs, "", nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	rec := httptest.NewRecorder()
+	handler(rec, req)
+
+	var body map[string]any
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	coverage, ok := body["embedding_coverage"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected embedding_coverage to be present, got body: %+v", body)
+	}
+	if coverage["messages"] != "0/0" || coverage["rooms"] != "0/0" {
+		t.Fatalf("expected 0/0 coverage on an empty DB, got: %+v", coverage)
 	}
 }
 

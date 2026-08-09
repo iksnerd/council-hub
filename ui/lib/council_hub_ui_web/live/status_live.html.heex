@@ -155,6 +155,23 @@
           <div class="h-full bg-emerald-400/70" style={"width: #{@stats.coverage_pct || 0}%"}>
           </div>
         </div>
+        <div class="flex gap-2 mt-3">
+          <button
+            phx-click="regenerate_embeddings"
+            phx-value-full="false"
+            class="text-[10px] font-mono rounded px-2 py-1 border bg-[var(--ch-raised)] border-[var(--ch-border)] text-[var(--ch-text-mid)] hover:text-[var(--ch-text-hi)] hover:border-emerald-500/40"
+          >
+            Backfill missing
+          </button>
+          <button
+            phx-click="regenerate_embeddings"
+            phx-value-full="true"
+            data-confirm="Clear every existing vector and re-embed everything from scratch? Only needed after switching COUNCIL_EMBED_MODEL."
+            class="text-[10px] font-mono rounded px-2 py-1 border bg-[var(--ch-raised)] border-[var(--ch-border)] text-[var(--ch-text-mid)] hover:text-[var(--ch-text-hi)] hover:border-amber-500/40"
+          >
+            Full re-embed
+          </button>
+        </div>
       <% end %>
     </div>
   </div>

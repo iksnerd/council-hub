@@ -7,8 +7,9 @@ defmodule CouncilHubUiWeb.StatusLive do
   peers) stays gated at `/settings`.
   """
   use CouncilHubUiWeb, :live_view
+  require Logger
 
-  alias CouncilHubUi.{ClusterManager, HealthStats}
+  alias CouncilHubUi.{ClusterManager, HealthStats, McpClient}
   import CouncilHubUiWeb.CouncilHelpers, only: [short_node: 1]
 
   @refresh_interval 5_000
@@ -23,6 +24,36 @@ defmodule CouncilHubUiWeb.StatusLive do
   def handle_info(:refresh, socket) do
     Process.send_after(self(), :refresh, @refresh_interval)
     {:noreply, assign_state(socket)}
+  end
+
+  @impl true
+  def handle_event("regenerate_embeddings", params, socket) do
+    full = Map.get(params, "full") == "true"
+
+    case McpClient.backfill_embeddings(full) do
+      {:ok, %{"started" => true} = result} ->
+        mode = if full, do: "full re-embed", else: "backfill"
+
+        msg =
+          "Started #{mode} — #{result["msg_indexed"]}/#{result["msg_total"]} messages, " <>
+            "#{result["room_indexed"]}/#{result["room_total"]} rooms indexed so far."
+
+        {:noreply, put_flash(socket, :info, msg)}
+
+      {:ok, %{"started" => false}} ->
+        {:noreply,
+         put_flash(socket, :error, "A backfill/re-embed is already running — try again shortly.")}
+
+      {:error, reason} ->
+        Logger.warning("regenerate_embeddings failed: #{inspect(reason)}")
+
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "Regenerate failed — is COUNCIL_OLLAMA_URL set and the MCP server running in HTTP mode?"
+         )}
+    end
   end
 
   ## Components

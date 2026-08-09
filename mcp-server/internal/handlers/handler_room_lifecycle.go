@@ -38,6 +38,43 @@ type BulkVisibilityInput struct {
 	RoomIDs    string `json:"room_ids"`
 }
 
+// RegenerateEmbeddingsInput represents the parameters for triggering an
+// on-demand embedding backfill or full re-embed.
+type RegenerateEmbeddingsInput struct {
+	Full string `json:"full"`
+}
+
+func (r *Registry) handleRegenerateEmbeddings(ctx context.Context, req *mcp.CallToolRequest, args RegenerateEmbeddingsInput) (*mcp.CallToolResult, ToolOutput, error) {
+	msg := textResult
+
+	if r.Server.Embedder == nil {
+		return msg("Error: semantic search is not enabled (COUNCIL_OLLAMA_URL not set) — nothing to embed.")
+	}
+
+	full := args.Full == "true"
+	msgTotal, msgIndexed, roomTotal, roomIndexed := r.Server.EmbeddingCoverage()
+
+	// A context tied to this request would be canceled the moment the tool
+	// call returns; the job runs in the background well past that.
+	if !r.Server.TriggerEmbedJob(context.Background(), full) {
+		return msg(fmt.Sprintf(
+			"A backfill/re-embed is already running — try again shortly. Current coverage: %d/%d messages, %d/%d rooms.",
+			msgIndexed, msgTotal, roomIndexed, roomTotal,
+		))
+	}
+
+	mode := "backfill (missing vectors only)"
+	if full {
+		mode = "full re-embed (clearing all existing vectors first, then recomputing everything)"
+	}
+	r.Server.Logger.Info("Embedding regeneration triggered on demand", "full", full)
+	return msg(fmt.Sprintf(
+		"Started a %s in the background. Coverage before: %d/%d messages, %d/%d rooms. "+
+			"Check again shortly, or watch server logs / GET /health for progress.",
+		mode, msgIndexed, msgTotal, roomIndexed, roomTotal,
+	))
+}
+
 func (r *Registry) handleSignalStatus(ctx context.Context, req *mcp.CallToolRequest, args SignalStatusInput) (*mcp.CallToolResult, ToolOutput, error) {
 	msg := textResult
 

@@ -34,5 +34,17 @@ defmodule CouncilHubUiWeb.StatusLiveTest do
       refute html =~ "identity drifted"
       refute html =~ "Node identity stale"
     end
+
+    test "regenerate_embeddings shows an error flash when the MCP server is unreachable", %{
+      conn: conn
+    } do
+      # The test env has no live Go MCP server on the configured port, so
+      # McpClient.backfill_embeddings/1 hits its error path regardless of the
+      # "Backfill missing"/"Full re-embed" buttons being in the DOM (they're
+      # hidden here anyway — no message_vectors table, see the test above).
+      {:ok, view, _html} = live(conn, "/status")
+      html = render_click(view, "regenerate_embeddings", %{"full" => "false"})
+      assert html =~ "Regenerate failed"
+    end
   end
 end

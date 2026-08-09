@@ -95,6 +95,32 @@ defmodule CouncilHubUi.McpClient do
     call_tool_data("read_archive", %{room_id: room_id})
   end
 
+  @doc """
+  Trigger an on-demand embedding job in the background — `full: false` (the
+  default) backfills only messages/rooms missing a vector; `full: true`
+  clears every existing vector first and re-embeds everything from scratch
+  (needed after switching COUNCIL_EMBED_MODEL). Returns immediately with a
+  before-snapshot; the job itself keeps running after the response.
+  Returns {:ok, %{"started" => bool, "full" => bool, "msg_total" => n,
+  "msg_indexed" => n, "room_total" => n, "room_indexed" => n}} — `started`
+  is false only when a job (this one, the background ticker, or a concurrent
+  trigger) is already in flight — or {:error, reason}.
+  """
+  def backfill_embeddings(full \\ false) do
+    body = Jason.encode!(%{full: full})
+
+    base = mcp_url() |> String.replace(~r{/mcp$}, "")
+    url = String.to_charlist(base <> "/api/ui/backfill_embeddings")
+    headers = [{~c"Content-Type", ~c"application/json"}]
+
+    :httpc.request(:post, {url, headers, ~c"application/json", body}, [{:timeout, 8000}], [])
+    |> handle_backfill_response()
+  rescue
+    e ->
+      Logger.warning("McpClient error calling backfill_embeddings: #{inspect(e)}")
+      {:error, :request_failed}
+  end
+
   # --- Private ---
 
   defp handle_ui_post_response({:ok, {{_http, status, _}, _headers, body}})
@@ -118,6 +144,31 @@ defmodule CouncilHubUi.McpClient do
   end
 
   defp handle_ui_post_response({:error, reason}) do
+    Logger.warning("McpClient request failed: #{inspect(reason)}")
+    {:error, reason}
+  end
+
+  defp handle_backfill_response({:ok, {{_http, status, _}, _headers, body}})
+       when status in 200..299 do
+    case Jason.decode(to_string(body)) do
+      {:ok, %{"error" => err}} when err not in [nil, ""] ->
+        Logger.warning("backfill_embeddings error: #{err}")
+        {:error, err}
+
+      {:ok, result} ->
+        {:ok, result}
+
+      {:error, _} ->
+        {:error, :json_decode_failed}
+    end
+  end
+
+  defp handle_backfill_response({:ok, {{_http, status, _}, _, body}}) do
+    Logger.warning("McpClient backfill_embeddings unexpected status #{status}: #{inspect(body)}")
+    {:error, {:http_error, status}}
+  end
+
+  defp handle_backfill_response({:error, reason}) do
     Logger.warning("McpClient request failed: #{inspect(reason)}")
     {:error, reason}
   end

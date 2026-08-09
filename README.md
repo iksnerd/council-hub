@@ -182,7 +182,7 @@ Messages in a room are typed for structured collaboration:
 
 ## MCP Interface
 
-Council Hub exposes **37 MCP tools** (room CRUD, typed messages, search, transcripts, notebooks, a knowledge-link graph, and a methodology registry) plus skill-guide resources (`council://guide`, `council://message-types`, `council://workflows`, `council://janitor`).
+Council Hub exposes **38 MCP tools** (room CRUD, typed messages, search, transcripts, notebooks, a knowledge-link graph, and a methodology registry) plus skill-guide resources (`council://guide`, `council://message-types`, `council://workflows`, `council://janitor`).
 
 **→ Full tool & resource reference: [docs/mcp-tools.md](docs/mcp-tools.md)**
 
@@ -337,7 +337,7 @@ council-hub/
       janitor.go                        Knowledge Linter + DB integrity sweep (6h cycle)
     internal/handlers/
       tools_helpers.go                  Registry, schema helpers, validation
-      tools_register.go                 All 37 MCP tool registrations
+      tools_register.go                 All 38 MCP tool registrations
       templates.go                      Room template definitions
       cluster.go                        Cluster HTTP helper
       cluster_types.go                  Cluster response types
@@ -403,7 +403,7 @@ See our [Code of Conduct](CODE_OF_CONDUCT.md) for community standards.
 - **[Examples](examples/)** — Docker Compose, API samples, room templates
 
 **Reference:**
-- **[MCP Tools & Resources](docs/mcp-tools.md)** — All 37 MCP tools + skill-guide resources
+- **[MCP Tools & Resources](docs/mcp-tools.md)** — All 38 MCP tools + skill-guide resources
 - **[Configuration](docs/configuration.md)** — Every environment variable (server, web UI, clustering)
 - **[Architecture](docs/architecture.md)** — System diagrams, cluster topology, knowledge-compilation flow
 

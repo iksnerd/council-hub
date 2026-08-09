@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
@@ -320,5 +321,60 @@ func (r *Registry) UINotebookEntryHandler() http.HandlerFunc {
 
 		r.Server.Logger.Info("UI notebook entry added", "notebook_id", in.NotebookID, "entry_id", entryID, "kind", kind)
 		writeJSON(uiNotebookEntryResponse{EntryID: entryID, NotebookID: in.NotebookID})
+	}
+}
+
+// uiBackfillEmbeddingsRequest is the payload for the /status "regenerate" button.
+type uiBackfillEmbeddingsRequest struct {
+	Full bool `json:"full"`
+}
+
+type uiBackfillEmbeddingsResponse struct {
+	Started     bool   `json:"started"`
+	Full        bool   `json:"full"`
+	MsgTotal    int    `json:"msg_total"`
+	MsgIndexed  int    `json:"msg_indexed"`
+	RoomTotal   int    `json:"room_total"`
+	RoomIndexed int    `json:"room_indexed"`
+	Error       string `json:"error,omitempty"`
+}
+
+// UIBackfillEmbeddingsHandler lets the Phoenix dashboard's /status page
+// trigger an on-demand embedding backfill (or, with full=true, a full
+// clear-and-recompute) without going through an MCP session. Same trust
+// model as the other /api/ui/* endpoints: localhost-only. Coverage counts
+// in the response are a "before" snapshot — the job itself runs in the
+// background and reports completion only via server logs / GET /health.
+// Mounted at POST /api/ui/backfill_embeddings.
+func (r *Registry) UIBackfillEmbeddingsHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		if !requireLocalhostPost(w, req) {
+			return
+		}
+
+		writeJSON := func(v uiBackfillEmbeddingsResponse) {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(v)
+		}
+
+		if r.Server.Embedder == nil {
+			writeJSON(uiBackfillEmbeddingsResponse{Error: "semantic search is not enabled (COUNCIL_OLLAMA_URL not set)"})
+			return
+		}
+
+		var in uiBackfillEmbeddingsRequest
+		_ = json.NewDecoder(req.Body).Decode(&in) // an empty/absent body just means full=false
+
+		msgTotal, msgIndexed, roomTotal, roomIndexed := r.Server.EmbeddingCoverage()
+		// A context tied to this request would be canceled the moment the
+		// handler returns; the job runs in the background well past that.
+		started := r.Server.TriggerEmbedJob(context.Background(), in.Full)
+
+		r.Server.Logger.Info("UI embedding regeneration triggered", "full", in.Full, "started", started)
+		writeJSON(uiBackfillEmbeddingsResponse{
+			Started: started, Full: in.Full,
+			MsgTotal: msgTotal, MsgIndexed: msgIndexed,
+			RoomTotal: roomTotal, RoomIndexed: roomIndexed,
+		})
 	}
 }

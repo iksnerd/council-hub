@@ -430,6 +430,16 @@ func (r *Registry) RegisterTools() {
 		}),
 	}, roomHealthHandler)
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
+		Name: "regenerate_embeddings",
+		Description: "Trigger an on-demand semantic-search embedding job in the background (returns immediately — a backfill can take minutes to hours cold). Requires COUNCIL_OLLAMA_URL to be configured. " +
+			"Default mode backfills only messages/rooms missing a vector (the same thing that already runs automatically on startup and every 10 minutes — use this to force it now instead of waiting, e.g. right after enabling COUNCIL_OLLAMA_URL or after a data-hygiene fix). " +
+			"Pass full=true to clear every existing vector first and re-embed everything from scratch — needed after switching COUNCIL_EMBED_MODEL, since old vectors are the wrong dimension/space and a missing-only scan would skip them. " +
+			"At most one embedding job (this, the background ticker, or another trigger) runs at a time; triggering while one is in flight reports that instead of starting a second.",
+		InputSchema: schema(nil, map[string]map[string]any{
+			"full": prop("string", "Set to 'true' to clear and recompute every vector instead of only filling in missing ones."),
+		}),
+	}, r.handleRegenerateEmbeddings)
+	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name: "read_transcript",
 		Description: "Read one or more room transcripts. Pass room_ids (comma-separated) to batch-read multiple rooms in one call — each is rendered with the same mode/last_n settings. " +
 			"For a single room use room_id. Modes: " +
