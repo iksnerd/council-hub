@@ -1,7 +1,7 @@
 defmodule CouncilHubUiWeb.ClusterController do
   use CouncilHubUiWeb, :controller
 
-  alias CouncilHubUi.{Cluster, Params}
+  alias CouncilHubUi.{Cluster, ClusterManager, Params}
   require Logger
 
   def nodes(conn, _params) do
@@ -36,7 +36,12 @@ defmodule CouncilHubUiWeb.ClusterController do
     versions = all |> Enum.map(& &1.version) |> Enum.uniq()
     mismatch = length(versions) > 1
 
-    json(conn, %{nodes: all, count: length(all), version_mismatch: mismatch})
+    json(conn, %{
+      nodes: all,
+      count: length(all),
+      version_mismatch: mismatch,
+      node_identity: ClusterManager.ip_status()
+    })
   end
 
   def search_messages(conn, params) do

@@ -95,4 +95,25 @@ defmodule CouncilHubUi.ClusterManagerTest do
       assert "council_hub@10.0.0.9" in ClusterManager.known_peers(name)
     end
   end
+
+  describe "own-identity drift" do
+    test "ip_status/1 reports no drift when not distributed", %{name: name} do
+      # mix test runs as :nonode@nohost, so NodeIdentity.status/0 short-circuits
+      # to a non-drifted status without ever comparing addresses.
+      assert ClusterManager.ip_status(name) == %{registered: nil, current: nil, drifted?: false}
+    end
+
+    test "the reconnect tick keeps ip_status fresh without attempting a rebind", %{path: path} do
+      name = :"clmgr_ip_tick_#{System.unique_integer([:positive])}"
+      {:ok, pid} = ClusterManager.start_link(name: name, path: path, reconnect_interval: 20)
+      Process.sleep(60)
+
+      # Still alive and still non-distributed — a real self-heal rebind would
+      # attempt to start distribution, which is unsafe to trigger in the test
+      # VM, so this asserts the tick correctly treats "not distributed" as
+      # "not drifted" and never reaches that path.
+      assert Process.alive?(pid)
+      assert ClusterManager.ip_status(name) == %{registered: nil, current: nil, drifted?: false}
+    end
+  end
 end

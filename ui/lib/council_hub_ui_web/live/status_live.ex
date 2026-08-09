@@ -8,7 +8,7 @@ defmodule CouncilHubUiWeb.StatusLive do
   """
   use CouncilHubUiWeb, :live_view
 
-  alias CouncilHubUi.HealthStats
+  alias CouncilHubUi.{ClusterManager, HealthStats}
   import CouncilHubUiWeb.CouncilHelpers, only: [short_node: 1]
 
   @refresh_interval 5_000
@@ -49,6 +49,7 @@ defmodule CouncilHubUiWeb.StatusLive do
     cookie_set? = present?(System.get_env("RELEASE_COOKIE"))
     seeds = System.get_env("COUNCIL_SEEDS")
     peers = Node.list() |> Enum.map(&to_string/1) |> Enum.sort()
+    ip_status = ClusterManager.ip_status()
 
     socket
     |> assign(:page_title, "Status")
@@ -60,9 +61,10 @@ defmodule CouncilHubUiWeb.StatusLive do
     |> assign(:db_path, System.get_env("COUNCIL_DB_PATH") || "—")
     |> assign(:seeds, seeds)
     |> assign(:peers, peers)
+    |> assign(:ip_status, ip_status)
     |> assign(:stats, HealthStats.db_stats())
     |> assign(:short_node_fun, &short_node/1)
-    |> assign(:warnings, doctor(self_node, distributed?, cookie_set?, seeds, peers))
+    |> assign(:warnings, doctor(self_node, distributed?, cookie_set?, seeds, peers, ip_status))
   end
 
   defp version do
@@ -74,7 +76,7 @@ defmodule CouncilHubUiWeb.StatusLive do
 
   # A small "config doctor": surfaces the foot-guns that otherwise only show up
   # as silent cluster failures.
-  defp doctor(self_node, distributed?, cookie_set?, seeds, peers) do
+  defp doctor(self_node, distributed?, cookie_set?, seeds, peers, ip_status) do
     []
     |> maybe(not distributed?, "Not distributed — set RELEASE_NODE so peers can reach this node.")
     |> maybe(distributed? and not cookie_set?, "RELEASE_COOKIE not set — clustering is disabled.")
@@ -85,6 +87,11 @@ defmodule CouncilHubUiWeb.StatusLive do
     |> maybe(
       present?(seeds) and peers == [],
       "Seeds are configured but no peers are connected yet — check the cookie matches and ports are reachable."
+    )
+    |> maybe(
+      ip_status.drifted?,
+      "Node identity stale: registered as #{self_node}, host is now #{ip_status.current} — " <>
+        "a self-heal rebind is retried automatically (~60s cooldown)."
     )
     |> Enum.reverse()
   end

@@ -28,15 +28,36 @@ defmodule CouncilHubUi.ClusterManager do
       `Node.list/0`.
 
   Explicit UI disconnect removes a peer from `known`, so the loop won't undo it.
+
+  ## Own-identity drift
+
+  The above only fixes a *peer* going stale — it assumes this node's own
+  `RELEASE_NODE` is still valid. It isn't always: DHCP can reassign the host's
+  LAN IP out from under a long-lived `--restart always` container without a
+  restart (`entrypoint.sh`'s IP auto-detect only runs on `docker run`), which
+  leaves this node advertising a dead address with zero visible symptoms.
+
+  The same `~10s` tick also runs `CouncilHubUi.NodeIdentity.status/0`. On
+  detected drift (rate-limited to one attempt per `@rebind_cooldown`) it calls
+  `NodeIdentity.rebind/1` to restart distribution under the corrected
+  address, then immediately re-dials `known` peers under the new identity.
+  The latest status is cached in state and exposed via `ip_status/1` for
+  `/health` and the `/status` config doctor.
   """
   use GenServer
   require Logger
 
+  alias CouncilHubUi.NodeIdentity
+
   # name@host — host may be an IP, hostname, or Tailscale MagicDNS name.
   @node_re ~r/^[^@\s]+@[^@\s]+$/
 
-  # How often to re-dial known-but-disconnected peers.
+  # How often to re-dial known-but-disconnected peers / re-check own identity.
   @reconnect_interval :timer.seconds(10)
+
+  # Minimum gap between self-heal rebind attempts, so a persistent failure
+  # (e.g. no route to the "current" IP either) doesn't retry every tick.
+  @rebind_cooldown :timer.seconds(60)
 
   ## Client API
 
@@ -63,6 +84,15 @@ defmodule CouncilHubUi.ClusterManager do
   @doc "List every peer the self-heal loop keeps alive (persisted ∪ seeds ∪ seen), as strings."
   def known_peers(server \\ __MODULE__) do
     GenServer.call(server, :known_peers)
+  end
+
+  @doc """
+  This node's own address-drift status, as last computed by the reconnect
+  tick: `%{registered:, current:, drifted?:}`. `registered`/`current` are nil
+  when not distributed.
+  """
+  def ip_status(server \\ __MODULE__) do
+    GenServer.call(server, :ip_status)
   end
 
   ## Server callbacks
@@ -99,7 +129,16 @@ defmodule CouncilHubUi.ClusterManager do
     end
 
     schedule_reconnect(interval)
-    {:ok, %{path: path, peers: peers, known: known, interval: interval}}
+
+    {:ok,
+     %{
+       path: path,
+       peers: peers,
+       known: known,
+       interval: interval,
+       ip_status: NodeIdentity.status(),
+       last_rebind_attempt: nil
+     }}
   end
 
   @impl true
@@ -149,7 +188,14 @@ defmodule CouncilHubUi.ClusterManager do
   end
 
   @impl true
+  def handle_call(:ip_status, _from, state) do
+    {:reply, state.ip_status, state}
+  end
+
+  @impl true
   def handle_info(:reconnect, state) do
+    state = maybe_self_heal(state)
+
     for node <- state.known, node != Node.self(), node not in Node.list() do
       # Re-dial quietly: a peer that's simply down shouldn't spam the log every tick.
       safe_connect(node)
@@ -175,6 +221,50 @@ defmodule CouncilHubUi.ClusterManager do
   def handle_info(_msg, state), do: {:noreply, state}
 
   ## Helpers
+
+  # Re-checks address drift every tick; attempts a self-heal rebind when
+  # drifted and not cooling down from a prior attempt. Always returns state
+  # with a fresh `ip_status`.
+  defp maybe_self_heal(state) do
+    status = NodeIdentity.status()
+
+    cond do
+      not status.drifted? ->
+        %{state | ip_status: status}
+
+      cooling_down?(state.last_rebind_attempt) ->
+        %{state | ip_status: status}
+
+      true ->
+        Logger.error(
+          "ClusterManager: node identity stale — registered as #{Node.self()}, " <>
+            "host is now #{status.current}. Attempting self-heal rebind."
+        )
+
+        state = %{state | last_rebind_attempt: monotonic_ms()}
+
+        case NodeIdentity.rebind(status.current) do
+          {:ok, new_node} ->
+            Logger.info("ClusterManager: rebound to #{new_node} — re-dialing known peers")
+
+            for node <- state.known, node != new_node do
+              safe_connect(node)
+            end
+
+            %{state | ip_status: NodeIdentity.status()}
+
+          {:error, _reason} ->
+            # Logged inside NodeIdentity.rebind/1; keep the pre-heal status so
+            # the doctor still shows "drifted" rather than silently clearing.
+            %{state | ip_status: status}
+        end
+    end
+  end
+
+  defp cooling_down?(nil), do: false
+  defp cooling_down?(last_attempt_ms), do: monotonic_ms() - last_attempt_ms < @rebind_cooldown
+
+  defp monotonic_ms, do: System.monotonic_time(:millisecond)
 
   defp schedule_reconnect(interval), do: Process.send_after(self(), :reconnect, interval)
 
