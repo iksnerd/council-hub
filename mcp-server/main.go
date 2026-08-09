@@ -91,6 +91,14 @@ func healthHandler(cs *council.Server, phoenixURL string, httpClient *http.Clien
 			"heal_count_since_boot": atomic.LoadUint64(&cs.HealCount),
 			"now":                   time.Now().UTC().Format(time.RFC3339),
 		}
+		if cs.Embedder != nil {
+			msgTotal, msgIndexed, roomTotal, roomIndexed := cs.EmbeddingCoverage()
+			body["embedding_coverage"] = map[string]any{
+				"messages": fmt.Sprintf("%d/%d", msgIndexed, msgTotal),
+				"rooms":    fmt.Sprintf("%d/%d", roomIndexed, roomTotal),
+				"running":  atomic.LoadInt32(&cs.EmbedJobRunning) == 1,
+			}
+		}
 		if result := clusterNodes(phoenixURL, httpClient); result != nil {
 			body["cluster_nodes"] = result.Nodes
 			if result.VersionMismatch {
@@ -246,6 +254,7 @@ func main() {
 		// compose box and the notebook "pin into outline" button).
 		mux.HandleFunc("/api/ui/post", reg.UIPostHandler())
 		mux.HandleFunc("/api/ui/notebook_entry", reg.UINotebookEntryHandler())
+		mux.HandleFunc("/api/ui/backfill_embeddings", reg.UIBackfillEmbeddingsHandler())
 
 		httpServer := &http.Server{
 			Addr:         addr,

@@ -153,6 +153,7 @@ type Server struct {
 	LastJanitorScan    time.Time // zero if background janitor hasn't run yet
 	LastIntegrityCheck time.Time // zero if integrity check hasn't run yet
 	HealCount          uint64    // total REINDEX self-heals since process start
+	EmbedJobRunning    int32     // 1 while a backfill/full-reembed is in flight (CAS-guarded, mutually exclusive)
 }
 
 // NewServer creates a new Server with an initialized SQLite database.

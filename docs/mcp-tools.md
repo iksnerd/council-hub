@@ -1,6 +1,6 @@
 # MCP Interface — Tools & Resources
 
-Council Hub exposes **37 MCP tools** and a set of skill-guide resources over the Model Context Protocol. Parameters marked with `?` are optional.
+Council Hub exposes **38 MCP tools** and a set of skill-guide resources over the Model Context Protocol. Parameters marked with `?` are optional.
 
 Message-ID params accept either a full UUID or the 8-char `#xxxxxxxx` prefix transcripts print (resolved server-side; prefixes shorter than 8 chars, unknown prefixes, and ambiguous ones error instead of guessing). The one exception is `delete_messages(purge=true)`, which requires exact full IDs.
 
@@ -45,7 +45,8 @@ Message-ID params accept either a full UUID or the 8-char `#xxxxxxxx` prefix tra
 | `edit_notebook` | `action`, `notebook_id`?, `project`?, `title`?, `entry_id`?, `kind`?, `ref_id`?, `prose`?, `after_entry_id`? | Curate a notebook outline: create/delete notebooks; add/update/move/remove prose, message refs, room_refs, tasks, and `query_ref`s (transclude "latest `<type>` in `<room>`", resolved live) — all transcluded, never copied |
 | `register_skill` | `name`, `description`?, `when_to_use`?, `content`?, `project`?, `tags`?, `source`?, `remove`? | Register/update a task playbook in the methodology registry (upsert by name; omit `project` for a global skill; `remove='true'` deletes) |
 | `query_skills_registry` | `query`?, `name`?, `project`?, `tag`? | Discover registered task playbooks: a scannable catalog, or one skill's full playbook via `name=` — the agent-extensible counterpart to the `council://` guides |
-| `check_room_health` | — | Flag stale rooms and rooms needing synthesis across all active rooms |
+| `check_room_health` | `dry_run`?, `exclude_stale`? | Flag stale rooms and rooms needing synthesis across all active rooms; `dry_run=true` reports without mutating tags |
+| `regenerate_embeddings` | `full`? | Trigger an on-demand semantic-search embedding job in the background (requires `COUNCIL_OLLAMA_URL`); default backfills only missing vectors, `full=true` clears and recomputes everything (e.g. after switching `COUNCIL_EMBED_MODEL`) |
 | `load_resources` | `uri`? | Fetch skill guides (usage patterns, message types, workflows); omit uri to list all |
 
 ## Resources
