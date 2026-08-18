@@ -205,6 +205,15 @@ type ToolOutput struct {
 	Message string `json:"message"`
 }
 
+// validRoomStatuses gates every path that writes rooms.status — the signal_status
+// tool, bulk_status_update, and the cross-node InternalStatusHandler (which must
+// validate independently, since a peer supplies its input).
+var validRoomStatuses = map[string]bool{
+	"active":   true,
+	"paused":   true,
+	"resolved": true,
+}
+
 var validMessageTypes = map[string]bool{
 	"message":   true,
 	"thought":   true,

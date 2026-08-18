@@ -4,6 +4,16 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+- **`signal_status` now works on a room owned by another cluster node.** `post_to_room` has always proxied a write to the owning node, so a room could be fully closed out from any session — synthesis posted, decision recorded — but `signal_status` looked only at local rooms and returned `room '<id>' not found`. The status flip therefore required a session physically running on the owner, and until someone ran one, the Knowledge Linter kept flagging rooms whose work was finished and written up. It now locates the owner and forwards the change over the same authenticated cross-node path (`/api/internal/signal_status`, gated by the shared `RELEASE_COOKIE`), with no new parameter — matching `post_to_room`'s existing auto-routing rather than adding a `cluster_wide` flag. Reported from live use against two peer-owned rooms.
+- The internal status endpoint re-validates the room ID and status itself instead of trusting the calling node, since any peer holding the cluster secret can reach it.
+
+### Note
+- **Both nodes need this version** for a cross-node status change to land: the receiving endpoint doesn't exist on ≤ v0.54.0, so proxying to an older peer fails with a clear "could not be forwarded" error rather than silently succeeding.
+- `bulk_status_update` is still local-only and unchanged.
+
 ## [0.54.0] - 2026-08-18
 
 ### Fixed

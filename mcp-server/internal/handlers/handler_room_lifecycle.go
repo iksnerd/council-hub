@@ -78,9 +78,25 @@ func (r *Registry) handleRegenerateEmbeddings(ctx context.Context, req *mcp.Call
 func (r *Registry) handleSignalStatus(ctx context.Context, req *mcp.CallToolRequest, args SignalStatusInput) (*mcp.CallToolResult, ToolOutput, error) {
 	msg := textResult
 
-	validStatuses := map[string]bool{"active": true, "paused": true, "resolved": true}
-	if !validStatuses[args.Status] {
+	if !validRoomStatuses[args.Status] {
 		return msg(fmt.Sprintf("Error: Invalid status '%s'. Must be one of: active, paused, resolved.", args.Status))
+	}
+
+	// Status is room metadata, so it has to land on the node that owns the room.
+	// If it isn't here and we're clustered, locate the owner and forward — the same
+	// thing post_to_room does for a write. Without this a room could be closed out
+	// from any node (synthesis posted, decision recorded) while the status flip
+	// 404'd, leaving the Knowledge Linter flagging work that was already finished.
+	if _, err := r.Server.GetRoom(args.RoomID); err != nil {
+		if owner, lerr := r.locateRoomOwner(args.RoomID); lerr == nil && owner != "" {
+			if perr := r.proxyStatusUpdate(owner, args.RoomID, args.Status); perr != nil {
+				return msg(fmt.Sprintf("Error: room '%s' is owned by cluster node '%s' but the status change could not be forwarded: %s", args.RoomID, owner, perr.Error()))
+			}
+			r.Server.Logger.Info("Status change proxied to owner", "room_id", args.RoomID, "owner", owner, "status", args.Status)
+			return msg(fmt.Sprintf("Room '%s' status \u2192 **%s** (on cluster node %s).", args.RoomID, args.Status, owner))
+		}
+		// No owner found — fall through so the caller gets the canonical
+		// "room not found" error from the local update.
 	}
 
 	if err := r.Server.UpdateStatus(args.RoomID, args.Status); err != nil {
@@ -105,8 +121,7 @@ func (r *Registry) handleSignalStatus(ctx context.Context, req *mcp.CallToolRequ
 func (r *Registry) handleBulkStatusUpdate(ctx context.Context, req *mcp.CallToolRequest, args BulkStatusInput) (*mcp.CallToolResult, ToolOutput, error) {
 	msg := textResult
 
-	validStatuses := map[string]bool{"active": true, "paused": true, "resolved": true}
-	if !validStatuses[args.Status] {
+	if !validRoomStatuses[args.Status] {
 		return msg(fmt.Sprintf("Error: Invalid status '%s'. Must be one of: active, paused, resolved.", args.Status))
 	}
 
