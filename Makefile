@@ -2,6 +2,11 @@
 
 IMAGE    = iksnerd/council-hub
 VERSION ?= latest
+# Platforms for docker-push. arm64 only by default: the amd64 leg cannot build
+# on an Apple Silicon Mac (the BEAM dies under QEMU — see CLAUDE.md), so listing
+# it here only buys a long build that fails at the end. Override deliberately:
+#   make docker-push PLATFORMS=linux/amd64,linux/arm64   (needs a native amd64 builder)
+PLATFORMS ?= linux/arm64
 DATA_DIR = $(HOME)/.council-hub
 
 # Clustering defaults (override with e.g. make docker-run SEEDS=other@10.0.0.1)
@@ -40,11 +45,12 @@ docker-stop: ## Stop council-hub container
 docker-logs: ## Tail container logs
 	docker logs -f council-hub
 
-docker-push: ## Build and push multi-arch image (amd64 + arm64) to Docker Hub
-	docker buildx build --platform linux/amd64,linux/arm64 \
+docker-push: ## Build and push image to Docker Hub (VERSION=vX.Y.Z; arm64 only, see PLATFORMS)
+	docker buildx build --platform $(PLATFORMS) \
 		-t $(IMAGE):latest -t $(IMAGE):$(VERSION) \
 		--push .
-	@echo "Pushed: $(IMAGE):latest + $(IMAGE):$(VERSION) (amd64 + arm64)"
+	@echo "Pushed: $(IMAGE):latest + $(IMAGE):$(VERSION) ($(PLATFORMS))"
+	@echo "NOTE: this overwrote :latest. On $(PLATFORMS) alone, x86 users cannot run it."
 
 test-all: ## Run Go + Elixir tests
 	cd mcp-server && make test
