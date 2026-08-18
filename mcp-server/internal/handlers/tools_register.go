@@ -80,7 +80,7 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "signal_status",
-		Description: "Update a room's status. Use 'paused' when blocked or waiting (not done, just on hold). Use 'resolved' when the goal is complete — typically after posting a synthesis and pinning it. Use 'active' to reopen a paused or mistakenly closed room.",
+		Description: "Update a room's status. Use 'paused' when blocked or waiting (not done, just on hold). Use 'resolved' when the goal is complete — typically after posting a synthesis and pinning it. Use 'active' to reopen a paused or mistakenly closed room. Works on rooms owned by another cluster node: the change is transparently forwarded to the owner, the same way post_to_room proxies a write, so a room can be closed out from any node.",
 		InputSchema: schema([]string{"room_id", "status"}, map[string]map[string]any{
 			"room_id": prop("string", "Target room ID"),
 			"status":  prop("string", "One of: active, paused, resolved"),

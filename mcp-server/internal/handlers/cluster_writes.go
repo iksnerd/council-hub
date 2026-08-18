@@ -19,6 +19,13 @@ import (
 // new secret needs provisioning.
 const clusterSecretHeader = "X-Council-Cluster-Secret"
 
+// Internal cross-node endpoint paths, shared by the proxy helpers here and the
+// route table in main.go.
+const (
+	internalPostPath   = "/api/internal/post_to_room"
+	internalStatusPath = "/api/internal/signal_status"
+)
+
 // internalPostRequest is the body forwarded to a peer node's internal write endpoint.
 type internalPostRequest struct {
 	RoomID      string `json:"room_id"`
@@ -28,6 +35,19 @@ type internalPostRequest struct {
 	ReplyTo     string `json:"reply_to"`
 	Mentions    string `json:"mentions"`
 	Supersedes  string `json:"supersedes"`
+}
+
+// internalStatusRequest is the body forwarded to a peer node's internal status endpoint.
+type internalStatusRequest struct {
+	RoomID string `json:"room_id"`
+	Status string `json:"status"`
+}
+
+// internalStatusResponse is the peer node's reply after applying the status change.
+type internalStatusResponse struct {
+	RoomID string `json:"room_id"`
+	Status string `json:"status"`
+	Error  string `json:"error"`
 }
 
 // internalPostResponse is the peer node's reply after writing the message locally.
@@ -78,9 +98,10 @@ func (r *Registry) locateRoomOwner(roomID string) (string, error) {
 	return "", nil
 }
 
-// peerMCPURL turns a node name like "council_hub@10.0.0.5" into the URL of that
-// node's internal write endpoint, e.g. "http://10.0.0.5:3001/api/internal/post_to_room".
-func (r *Registry) peerMCPURL(node string) (string, error) {
+// peerMCPURL turns a node name like "council_hub@10.0.0.5" plus an internal
+// endpoint path into that node's URL, e.g.
+// "http://10.0.0.5:3001/api/internal/post_to_room".
+func (r *Registry) peerMCPURL(node, path string) (string, error) {
 	at := strings.LastIndex(node, "@")
 	if at < 0 || at == len(node)-1 {
 		return "", fmt.Errorf("cannot derive host from node name %q", node)
@@ -90,12 +111,12 @@ func (r *Registry) peerMCPURL(node string) (string, error) {
 	if port == "" {
 		port = "3001"
 	}
-	return fmt.Sprintf("http://%s:%s/api/internal/post_to_room", host, port), nil
+	return fmt.Sprintf("http://%s:%s%s", host, port, path), nil
 }
 
 // proxyPostToRoom forwards a post_to_room write to the node that owns the room.
 func (r *Registry) proxyPostToRoom(owner string, args PostToRoomInput) (string, error) {
-	url, err := r.peerMCPURL(owner)
+	url, err := r.peerMCPURL(owner, internalPostPath)
 	if err != nil {
 		return "", err
 	}
@@ -139,6 +160,100 @@ func (r *Registry) proxyPostToRoom(owner string, args PostToRoomInput) (string, 
 		return "", fmt.Errorf("owner node %s: %s", owner, out.Error)
 	}
 	return out.MessageID, nil
+}
+
+// proxyStatusUpdate forwards a signal_status change to the node that owns the room.
+// Status is a room-metadata write, so it must land on the owner the same way a
+// message does — otherwise a room can be closed out from any node (post_to_room
+// already proxies) while its status flip silently 404s, leaving the Knowledge
+// Linter flagging a room whose work is finished and recorded.
+func (r *Registry) proxyStatusUpdate(owner, roomID, status string) error {
+	url, err := r.peerMCPURL(owner, internalStatusPath)
+	if err != nil {
+		return err
+	}
+
+	reqBody, err := json.Marshal(internalStatusRequest{RoomID: roomID, Status: status})
+	if err != nil {
+		return err
+	}
+
+	httpReq, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(reqBody))
+	if err != nil {
+		return err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set(clusterSecretHeader, r.ClusterSecret)
+
+	resp, err := r.HTTPClient.Do(httpReq)
+	if err != nil {
+		return fmt.Errorf("proxy to %s: %w", owner, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		msg, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("owner node %s returned %d: %s", owner, resp.StatusCode, strings.TrimSpace(string(msg)))
+	}
+
+	var out internalStatusResponse
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return fmt.Errorf("decode owner response: %w", err)
+	}
+	if out.Error != "" {
+		return fmt.Errorf("owner node %s: %s", owner, out.Error)
+	}
+	return nil
+}
+
+// InternalStatusHandler receives a cross-node status change proxied from a peer
+// Go server and applies it locally. Authenticated by the shared cluster secret,
+// exactly like InternalPostHandler. Mounted at POST /api/internal/signal_status.
+func (r *Registry) InternalStatusHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		if req.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		got := req.Header.Get(clusterSecretHeader)
+		if r.ClusterSecret == "" || subtle.ConstantTimeCompare([]byte(got), []byte(r.ClusterSecret)) != 1 {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+
+		var in internalStatusRequest
+		if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+
+		writeJSON := func(v internalStatusResponse) {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(v)
+		}
+
+		if in.RoomID == "" || in.Status == "" {
+			writeJSON(internalStatusResponse{Error: "room_id and status are required"})
+			return
+		}
+		// Re-validate here rather than trusting the calling node: this endpoint is
+		// reachable by any peer holding the cluster secret, not only by our own
+		// signal_status handler.
+		if !validRoomStatuses[in.Status] {
+			writeJSON(internalStatusResponse{Error: fmt.Sprintf("invalid status '%s'", in.Status)})
+			return
+		}
+
+		if err := r.Server.UpdateStatus(in.RoomID, in.Status); err != nil {
+			r.Server.Logger.Error("Cross-node status change failed", "room_id", in.RoomID, "error", err)
+			writeJSON(internalStatusResponse{Error: err.Error()})
+			return
+		}
+
+		r.Server.Logger.Info("Cross-node status change applied", "room_id", in.RoomID, "status", in.Status)
+		writeJSON(internalStatusResponse{RoomID: in.RoomID, Status: in.Status})
+	}
 }
 
 // InternalPostHandler receives a cross-node write proxied from a peer Go server

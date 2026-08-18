@@ -24,17 +24,240 @@ func portOf(t *testing.T, url string) string {
 func TestPeerMCPURL(t *testing.T) {
 	reg := &Registry{PeerMCPPort: "3001"}
 
-	got, err := reg.peerMCPURL("council_hub@10.0.0.5")
-	if err != nil {
-		t.Fatalf("peerMCPURL error: %v", err)
-	}
-	want := "http://10.0.0.5:3001/api/internal/post_to_room"
-	if got != want {
-		t.Errorf("expected %q, got %q", want, got)
+	for _, tc := range []struct{ path, want string }{
+		{internalPostPath, "http://10.0.0.5:3001/api/internal/post_to_room"},
+		{internalStatusPath, "http://10.0.0.5:3001/api/internal/signal_status"},
+	} {
+		got, err := reg.peerMCPURL("council_hub@10.0.0.5", tc.path)
+		if err != nil {
+			t.Fatalf("peerMCPURL(%s) error: %v", tc.path, err)
+		}
+		if got != tc.want {
+			t.Errorf("expected %q, got %q", tc.want, got)
+		}
 	}
 
-	if _, err := reg.peerMCPURL("no-at-sign"); err == nil {
+	if _, err := reg.peerMCPURL("no-at-sign", internalPostPath); err == nil {
 		t.Error("expected error for malformed node name")
+	}
+}
+
+func TestInternalStatusHandlerRequiresSecret(t *testing.T) {
+	reg := setupHandlerTest(t)
+	reg.ClusterSecret = "topsecret"
+	if err := reg.Server.CreateRoom("owned", "Owner room", "", "", "", "", ""); err != nil {
+		t.Fatalf("create room: %v", err)
+	}
+
+	handler := reg.InternalStatusHandler()
+	body, _ := json.Marshal(internalStatusRequest{RoomID: "owned", Status: "resolved"})
+
+	for _, tc := range []struct{ name, secret string }{
+		{"no secret", ""},
+		{"wrong secret", "wrong"},
+	} {
+		req := httptest.NewRequest(http.MethodPost, internalStatusPath, bytes.NewReader(body))
+		if tc.secret != "" {
+			req.Header.Set(clusterSecretHeader, tc.secret)
+		}
+		rec := httptest.NewRecorder()
+		handler(rec, req)
+		if rec.Code != http.StatusForbidden {
+			t.Errorf("%s: expected 403, got %d", tc.name, rec.Code)
+		}
+	}
+
+	// The room must be untouched by the rejected calls.
+	room, err := reg.Server.GetRoom("owned")
+	if err != nil {
+		t.Fatalf("get room: %v", err)
+	}
+	if room.Status == "resolved" {
+		t.Error("rejected request still applied the status change")
+	}
+}
+
+func TestInternalStatusHandlerAppliesLocally(t *testing.T) {
+	reg := setupHandlerTest(t)
+	reg.ClusterSecret = "topsecret"
+	if err := reg.Server.CreateRoom("owned", "Owner room", "", "", "", "", ""); err != nil {
+		t.Fatalf("create room: %v", err)
+	}
+
+	handler := reg.InternalStatusHandler()
+	body, _ := json.Marshal(internalStatusRequest{RoomID: "owned", Status: "resolved"})
+	req := httptest.NewRequest(http.MethodPost, internalStatusPath, bytes.NewReader(body))
+	req.Header.Set(clusterSecretHeader, "topsecret")
+	rec := httptest.NewRecorder()
+	handler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var out internalStatusResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if out.Error != "" || out.Status != "resolved" {
+		t.Errorf("expected success, got %+v", out)
+	}
+
+	room, err := reg.Server.GetRoom("owned")
+	if err != nil {
+		t.Fatalf("get room: %v", err)
+	}
+	if room.Status != "resolved" {
+		t.Errorf("expected room resolved, got %q", room.Status)
+	}
+}
+
+func TestInternalStatusHandlerValidatesInput(t *testing.T) {
+	reg := setupHandlerTest(t)
+	reg.ClusterSecret = "topsecret"
+	if err := reg.Server.CreateRoom("owned", "Owner room", "", "", "", "", ""); err != nil {
+		t.Fatalf("create room: %v", err)
+	}
+	handler := reg.InternalStatusHandler()
+
+	// A peer holding the cluster secret is still not trusted to send a valid
+	// status or an existing room ID — this endpoint validates independently of
+	// whatever the calling node's signal_status handler checked.
+	for _, tc := range []struct{ name, room, status, wantErr string }{
+		{"unknown status", "owned", "banana", "invalid status"},
+		{"missing fields", "", "", "required"},
+		{"unknown room", "nope", "resolved", "not found"},
+	} {
+		body, _ := json.Marshal(internalStatusRequest{RoomID: tc.room, Status: tc.status})
+		req := httptest.NewRequest(http.MethodPost, internalStatusPath, bytes.NewReader(body))
+		req.Header.Set(clusterSecretHeader, "topsecret")
+		rec := httptest.NewRecorder()
+		handler(rec, req)
+
+		var out internalStatusResponse
+		if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+			t.Fatalf("%s: decode: %v", tc.name, err)
+		}
+		if !strings.Contains(out.Error, tc.wantErr) {
+			t.Errorf("%s: expected error containing %q, got %q", tc.name, tc.wantErr, out.Error)
+		}
+	}
+
+	room, err := reg.Server.GetRoom("owned")
+	if err != nil {
+		t.Fatalf("get room: %v", err)
+	}
+	if room.Status == "banana" {
+		t.Error("invalid status was written")
+	}
+}
+
+// The friction this fixes: a room owned by a peer could be closed out with
+// post_to_room (which proxies) but signal_status 404'd, so the Knowledge Linter
+// kept flagging rooms whose work was finished and recorded.
+func TestSignalStatusProxiesToOwner(t *testing.T) {
+	reg := setupHandlerTest(t)
+	reg.ClusterSecret = "topsecret"
+
+	var received *internalStatusRequest
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/cluster/locate_room"):
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{"nodes": []string{"peer@127.0.0.1"}, "warnings": []string{}})
+		case strings.HasSuffix(r.URL.Path, internalStatusPath):
+			if r.Header.Get(clusterSecretHeader) != "topsecret" {
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
+			var in internalStatusRequest
+			_ = json.NewDecoder(r.Body).Decode(&in)
+			received = &in
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(internalStatusResponse{RoomID: in.RoomID, Status: in.Status})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	reg.PhoenixURL = server.URL
+	reg.HTTPClient = &http.Client{Timeout: 5 * time.Second}
+	reg.PeerMCPPort = portOf(t, server.URL)
+
+	res, _, err := reg.handleSignalStatus(context.Background(), nil, SignalStatusInput{
+		RoomID: "remote-room", Status: "resolved",
+	})
+	if err != nil {
+		t.Fatalf("handleSignalStatus error: %v", err)
+	}
+
+	if received == nil {
+		t.Fatal("expected status change to be forwarded to owner")
+	}
+	if received.RoomID != "remote-room" || received.Status != "resolved" {
+		t.Errorf("forwarded wrong payload: %+v", received)
+	}
+	if text := resultText(res); !strings.Contains(text, "peer@127.0.0.1") {
+		t.Errorf("expected owner node in response, got: %s", text)
+	}
+}
+
+func TestSignalStatusLocalRoomDoesNotProxy(t *testing.T) {
+	reg := setupHandlerTest(t)
+	reg.ClusterSecret = "topsecret"
+	if err := reg.Server.CreateRoom("mine", "Local room", "", "", "", "", ""); err != nil {
+		t.Fatalf("create room: %v", err)
+	}
+
+	// Any call to the cluster locator would be a bug: the room is right here.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("unexpected cluster call to %s for a local room", r.URL.Path)
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer server.Close()
+	reg.PhoenixURL = server.URL
+	reg.HTTPClient = &http.Client{Timeout: 5 * time.Second}
+
+	if _, _, err := reg.handleSignalStatus(context.Background(), nil, SignalStatusInput{
+		RoomID: "mine", Status: "paused",
+	}); err != nil {
+		t.Fatalf("handleSignalStatus error: %v", err)
+	}
+
+	room, err := reg.Server.GetRoom("mine")
+	if err != nil {
+		t.Fatalf("get room: %v", err)
+	}
+	if room.Status != "paused" {
+		t.Errorf("expected paused, got %q", room.Status)
+	}
+}
+
+func TestSignalStatusUnknownRoomWithNoOwnerStillErrors(t *testing.T) {
+	reg := setupHandlerTest(t)
+
+	// No owner reported → the caller must still get the plain not-found error,
+	// not a cluster-flavoured one.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"nodes": []string{}, "warnings": []string{}})
+	}))
+	defer server.Close()
+	reg.PhoenixURL = server.URL
+	reg.HTTPClient = &http.Client{Timeout: 5 * time.Second}
+
+	res, _, err := reg.handleSignalStatus(context.Background(), nil, SignalStatusInput{
+		RoomID: "ghost", Status: "resolved",
+	})
+	if err != nil {
+		t.Fatalf("handleSignalStatus error: %v", err)
+	}
+	text := resultText(res)
+	if !strings.Contains(text, "not found") {
+		t.Errorf("expected not-found error, got: %s", text)
+	}
+	if strings.Contains(text, "cluster node") {
+		t.Errorf("should not mention a cluster owner when none was found: %s", text)
 	}
 }
 
