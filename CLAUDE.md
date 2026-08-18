@@ -42,13 +42,15 @@ Docker Hub image: `iksnerd/council-hub` ([hub.docker.com/r/iksnerd/council-hub](
 3. **Run tests locally, then commit & push**: `make test` (mcp-server) + `mix test` (ui). The suites no longer run in CI on a main push — `ci.yml` is tags-only to conserve Actions minutes — so verify locally first. Then `git commit -m "vX.Y.Z: <summary>" && git push`. The push triggers only the gitleaks Secret Scan.
 4. **Tag & push tag**: `git tag vX.Y.Z && git push origin vX.Y.Z`
 5. **Wait for CI + release notes**: the tag auto-triggers `ci.yml` (Go + Elixir tests/lint) and `release.yml` (GitHub release) in parallel. Watch with `gh run list --limit 3` + `gh run watch <id>`.
-6. **Publish the Docker image (manual)**: the multi-arch build is heavy, so `docker.yml` does **not** auto-run on the tag — trigger it on demand: `gh workflow run docker.yml -f tag=vX.Y.Z` (or Actions → Docker → Run workflow). It builds `linux/amd64 + linux/arm64` on native runners (no emulation) → multi-arch manifest `:vX.Y.Z` + `:latest`. **This workflow is the only way to publish amd64** — see below.
+6. **Publish the Docker image (local, manual)**: CI is for *tests*; images are built and pushed from the dev machine. Run `make docker-push VERSION=vX.Y.Z` — it publishes `:vX.Y.Z` + `:latest` as **`linux/arm64` only** (`PLATFORMS` default), because the amd64 leg cannot build here (see below). Then extend the amd64-unavailable window in `README.md` + `DOCKERHUB.md` through the new tag, as every release since v0.48.0 has done.
+
+   To publish **amd64**, the only path is the `docker.yml` workflow on native runners: `gh workflow run docker.yml -f tag=vX.Y.Z` (or Actions → Docker → Run workflow) → multi-arch manifest `:vX.Y.Z` + `:latest`. It does not run on a tag; trigger it deliberately when you want to close the amd64 gap.
 
 **Important:** Never move tags. If a fix is needed after tagging, bump to vX.Y.Z+1.
 
 #### amd64 cannot be built on an Apple Silicon Mac
 
-`make docker-push` is an **arm64-only** local fallback. Don't reach for it as a substitute for `docker.yml` — an image pushed that way silently drops amd64 support, and `make docker-push` also overwrites `:latest`, so one local push can leave every x86 user unable to pull the project at all.
+`make docker-push` publishes **arm64 only**, and this is the standing release path — but know exactly what it costs: it overwrites `:latest`, so every x86 user is left unable to pull the project until a multi-arch build is republished. That is why each release also extends the amd64-unavailable notice in `README.md` and `DOCKERHUB.md`. `PLATFORMS=linux/amd64,linux/arm64` exists as an override but cannot succeed on this machine.
 
 The blocker is the BEAM under x86 emulation, not the Dockerfile and not a cross-compile flag. Under Docker Desktop's QEMU emulation, the `prim_tty` NIF fails to load, so *any* BEAM process dies at startup — the whole `elixir-builder` stage is unreachable:
 
@@ -66,7 +68,7 @@ Verified dead ends (2026-07-25, Apple Silicon / macOS 26 / Docker Desktop engine
 
 Earlier revisions of this file blamed "QEMU cross-compile fails on OTP 28." The OTP version is incidental; the JIT is not involved.
 
-**If the Docker workflow fails, fix the workflow — do not fall back to a local push.** Its usual failure is an expired `DOCKERHUB_TOKEN` (a Docker Hub PAT, which expires on a schedule Docker Hub picks). Symptom in the run log:
+**If you run the Docker workflow and it fails, fix the workflow rather than assuming amd64 is unfixable** — a local push cannot substitute for it, since local builds are arm64-only by construction. Its usual failure is an expired `DOCKERHUB_TOKEN` (a Docker Hub PAT, which expires on a schedule Docker Hub picks). Symptom in the run log:
 
 ```
 Error response from daemon: Get "https://registry-1.docker.io/v2/": unauthorized: personal access token is expired
