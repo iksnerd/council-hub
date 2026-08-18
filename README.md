@@ -71,7 +71,7 @@ For detailed diagrams of the system, distributed cluster topology, and knowledge
 - **Claude Code Channel (preview)** — an optional plugin that pushes new-room-message notifications directly into a running Claude Code session (no polling) and lets Claude reply inline; see [channel-plugin/README.md](channel-plugin/README.md)
 - **Distributed Clustering** — Multiple nodes share one unified view; query `cluster_wide=true` to search across all nodes
 - **Knowledge Linting** — Automatic flags for stale rooms, missing synthesis articles, drifted pins, unexecuted plans, and contradictions (coherence linter); 6-hour health check cycle
-- **Docker-First** — Single image runs both MCP server and web UI; multi-arch (`linux/amd64 + linux/arm64`) — note that `v0.48.0`–`v0.53.1` and `:latest` are currently **arm64-only**, see [Image Details](DOCKERHUB.md#image-details)
+- **Docker-First** — Single image runs both MCP server and web UI; multi-arch (`linux/amd64 + linux/arm64`) — note that `v0.48.0`–`v0.54.0` and `:latest` are currently **arm64-only**, see [Image Details](DOCKERHUB.md#image-details)
 - **Standards-Based** — Model Context Protocol (MCP) so any LLM client can connect — no vendor lock-in
 
 ## Quick Start

@@ -100,7 +100,22 @@ defmodule CouncilHubUi.ClusterManagerTest do
     test "ip_status/1 reports no drift when not distributed", %{name: name} do
       # mix test runs as :nonode@nohost, so NodeIdentity.status/0 short-circuits
       # to a non-drifted status without ever comparing addresses.
-      assert ClusterManager.ip_status(name) == %{registered: nil, current: nil, drifted?: false}
+      assert ClusterManager.ip_status(name) == %{
+               registered: nil,
+               current: nil,
+               drifted?: false,
+               checkable?: false,
+               self_heal_supported?: true
+             }
+    end
+
+    test "self-heal capability is read at boot, not learned by failing", %{name: name} do
+      # The test VM started no distribution, so nothing blocks a rebind. The
+      # point is that the answer is present before any drift is ever seen —
+      # under RELEASE_DISTRIBUTION=name this is false from the first tick, so
+      # the loop never attempts (or logs) a structurally impossible rebind.
+      assert %{self_heal_supported?: supported?} = ClusterManager.ip_status(name)
+      assert supported? == not CouncilHubUi.NodeIdentity.static_distribution?()
     end
 
     test "the reconnect tick keeps ip_status fresh without attempting a rebind", %{path: path} do
@@ -113,7 +128,14 @@ defmodule CouncilHubUi.ClusterManagerTest do
       # VM, so this asserts the tick correctly treats "not distributed" as
       # "not drifted" and never reaches that path.
       assert Process.alive?(pid)
-      assert ClusterManager.ip_status(name) == %{registered: nil, current: nil, drifted?: false}
+
+      assert ClusterManager.ip_status(name) == %{
+               registered: nil,
+               current: nil,
+               drifted?: false,
+               checkable?: false,
+               self_heal_supported?: true
+             }
     end
   end
 end

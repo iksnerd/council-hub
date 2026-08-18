@@ -40,9 +40,21 @@ defmodule CouncilHubUi.ClusterManager do
   The same `~10s` tick also runs `CouncilHubUi.NodeIdentity.status/0`. On
   detected drift (rate-limited to one attempt per `@rebind_cooldown`) it calls
   `NodeIdentity.rebind/1` to restart distribution under the corrected
-  address, then immediately re-dials `known` peers under the new identity.
-  The latest status is cached in state and exposed via `ip_status/1` for
-  `/health` and the `/status` config doctor.
+  address, then immediately re-dials `known` peers under the new identity —
+  *when* this boot allows it.
+
+  Two guards keep that from being noise. `NodeIdentity` only reports drift
+  where the comparison is meaningful at all (see its moduledoc — under
+  bridge networking the measured address is the container's, not the host's,
+  and would otherwise read as permanent drift on a healthy node). And every
+  normal boot uses static distribution (`RELEASE_DISTRIBUTION=name`), which
+  `rebind/1` cannot tear down: `init/1` reads that once via
+  `NodeIdentity.static_distribution?/0` and records
+  `self_heal_supported?: false`, so this loop never attempts a call that can
+  only ever fail — it logs the situation once, on the first drift it sees,
+  and keeps reporting. The latest status (including `self_heal_supported?`)
+  is cached in state and exposed via `ip_status/1` for `/health` and the
+  `/status` config doctor.
   """
   use GenServer
   require Logger
@@ -88,8 +100,10 @@ defmodule CouncilHubUi.ClusterManager do
 
   @doc """
   This node's own address-drift status, as last computed by the reconnect
-  tick: `%{registered:, current:, drifted?:}`. `registered`/`current` are nil
-  when not distributed.
+  tick: `%{registered:, current:, drifted?:, checkable?:, self_heal_supported?:}`.
+  `registered`/`current` are nil when not distributed; `checkable?` is false
+  when the comparison isn't meaningful in this deployment (see
+  `CouncilHubUi.NodeIdentity`), in which case `drifted?` is never true.
   """
   def ip_status(server \\ __MODULE__) do
     GenServer.call(server, :ip_status)
@@ -137,7 +151,10 @@ defmodule CouncilHubUi.ClusterManager do
        known: known,
        interval: interval,
        ip_status: NodeIdentity.status(),
-       last_rebind_attempt: nil
+       last_rebind_attempt: nil,
+       # Knowable at boot, so don't learn it by failing a rebind first.
+       self_heal_supported?: not NodeIdentity.static_distribution?(),
+       self_heal_warned?: false
      }}
   end
 
@@ -189,7 +206,7 @@ defmodule CouncilHubUi.ClusterManager do
 
   @impl true
   def handle_call(:ip_status, _from, state) do
-    {:reply, state.ip_status, state}
+    {:reply, Map.put(state.ip_status, :self_heal_supported?, state.self_heal_supported?), state}
   end
 
   @impl true
@@ -232,6 +249,12 @@ defmodule CouncilHubUi.ClusterManager do
       not status.drifted? ->
         %{state | ip_status: status}
 
+      not state.self_heal_supported? ->
+        # This boot can never rebind (static distribution, read at init). Keep
+        # surfacing drift on /health and /status, but say so once rather than
+        # attempting — and logging — a guaranteed failure every tick.
+        warn_self_heal_unavailable(state, status)
+
       cooling_down?(state.last_rebind_attempt) ->
         %{state | ip_status: status}
 
@@ -253,12 +276,34 @@ defmodule CouncilHubUi.ClusterManager do
 
             %{state | ip_status: NodeIdentity.status()}
 
+          {:error, :static_distribution} ->
+            # init/1 read this wrong (older OTP, no :net_kernel.get_state/0) —
+            # correct it now so the next tick takes the branch above instead of
+            # retrying a structurally impossible call.
+            %{state | ip_status: status, self_heal_supported?: false, self_heal_warned?: true}
+
           {:error, _reason} ->
             # Logged inside NodeIdentity.rebind/1; keep the pre-heal status so
             # the doctor still shows "drifted" rather than silently clearing.
             %{state | ip_status: status}
         end
     end
+  end
+
+  # Report a drift this boot can't heal — once, not every tick.
+  defp warn_self_heal_unavailable(%{self_heal_warned?: true} = state, status) do
+    %{state | ip_status: status}
+  end
+
+  defp warn_self_heal_unavailable(state, status) do
+    Logger.error(
+      "ClusterManager: node identity stale — registered as #{Node.self()}, " <>
+        "host is now #{status.current}. Self-heal is unavailable on this boot " <>
+        "(distribution was started statically); restart the container to re-detect " <>
+        "the address. This is logged once per boot."
+    )
+
+    %{state | ip_status: status, self_heal_warned?: true}
   end
 
   defp cooling_down?(nil), do: false

@@ -4,6 +4,17 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.54.0] - 2026-08-18
+
+### Fixed
+- **v0.53.0's node-identity drift check reported permanent drift on healthy clustered nodes.** It compared `RELEASE_NODE` against the address measured from *this process's* network namespace — which under Docker's default bridge networking (every `-p`-publishing deployment in the docs, the Makefile, and `docker-compose.yml`) is the container's `172.x.y.z`, while `RELEASE_NODE` is deliberately the *host's* LAN IP so peers can reach the published port. Those never match. A node clustered fine with its peers still logged an error every 60s, showed a red "identity drifted" badge on `/status`, and carried `node_identity_warning` on `/health` forever. Same false positive for a tailnet `RELEASE_NODE` (`alice@100.x.y.z` — the route to the probe target leaves via the physical interface) and for any hostname/MagicDNS node name, which never string-equals an IP. The check now runs only where the comparison is like-for-like: `entrypoint.sh` exports `COUNCIL_NODE_AUTODETECTED=1` when *it* derived the node name from this namespace's default route, and `COUNCIL_NODE_DRIFT_CHECK=1` opts in an explicitly-set `RELEASE_NODE` on a `--network host` container. Otherwise `status/0` reports `checkable?: false` and never claims drift.
+- **That drift, once claimed, would have moved a working node onto an unreachable address if the self-heal had ever fired.** `rebind/1` targets the measured address, so a bridge-networked node would have rebound from `council_hub@192.168.0.5` to `council_hub@172.25.0.2`, dropping every peer. Only OTP refusing the rebind prevented it (see below), so the bug was latent rather than live — but it made "just switch to dynamic distribution" a cluster-breaking fix. The gating above is the prerequisite; `rebind/1` now documents it.
+- **The self-heal rebind could never work in the shipped image, and learned that by failing.** `RELEASE_DISTRIBUTION=name` (the `mix release` default, set in the Dockerfile) starts distribution via `erl -name`, which `:net_kernel.stop/0` refuses to tear down — `{:error, :not_allowed}`, every time, no timing or retry fixes it. `ClusterManager` now reads `NodeIdentity.static_distribution?/0` once at boot, so it never attempts the impossible call, reports the situation once per boot instead of every 60s, and tells `/status` and `/health` that a restart (not a retry) is the remedy. `:net_kernel.stop/0` returning `:not_allowed` is also now mapped to the same structural verdict, and `static_distribution?/0` fails safe on OTP without `:net_kernel.get_state/0` (25+).
+- **Go `/health` now reports the real remedy.** `node_identity` gained `checkable?` and `self_heal_supported?`, and `node_identity_warning` no longer promises an automatic rebind that isn't coming.
+
+### Added
+- `COUNCIL_NODE_DRIFT_CHECK` — force the node-identity drift check on (`1`) or off (`0`). Only needed for an explicitly-set `RELEASE_NODE` on a container sharing the host's network namespace; auto-detected node names enable it by themselves.
+
 ## [0.53.1] - 2026-08-09
 
 Docs-audit patch — no behavior changes.
