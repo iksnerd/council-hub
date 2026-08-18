@@ -120,9 +120,16 @@ defmodule CouncilHubUiWeb.StatusLive do
       "Seeds are configured but no peers are connected yet — check the cookie matches and ports are reachable."
     )
     |> maybe(
-      ip_status.drifted?,
+      ip_status.drifted? and ip_status.self_heal_supported?,
       "Node identity stale: registered as #{self_node}, host is now #{ip_status.current} — " <>
         "a self-heal rebind is retried automatically (~60s cooldown)."
+    )
+    |> maybe(
+      ip_status.drifted? and not ip_status.self_heal_supported?,
+      "Node identity stale: registered as #{self_node}, host is now #{ip_status.current} — " <>
+        "self-heal is unavailable on this boot (distribution was started statically). " <>
+        "Restart the container to re-detect the address, or set " <>
+        "RELEASE_NODE/COUNCIL_NODE_NAME to the correct one."
     )
     |> Enum.reverse()
   end

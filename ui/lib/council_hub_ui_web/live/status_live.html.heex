@@ -65,7 +65,11 @@
             class="text-[10px] font-mono rounded px-2 py-1 border bg-red-500/10 text-red-300 border-red-500/20"
             title={"registered #{@ip_status.registered}, host now #{@ip_status.current}"}
           >
-            identity drifted — self-healing
+            <%= if @ip_status.self_heal_supported? do %>
+              identity drifted — self-healing
+            <% else %>
+              identity drifted — restart required
+            <% end %>
           </span>
         <% end %>
       </div>

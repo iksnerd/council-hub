@@ -19,6 +19,13 @@ if [ "${RELEASE_NODE}" = "council_hub@127.0.0.1" ]; then
   DETECTED_IP=$(ip route get 1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src") {print $(i+1); exit}}')
   if [ -n "$DETECTED_IP" ] && [ "$DETECTED_IP" != "127.0.0.1" ]; then
     export RELEASE_NODE="council_hub@${DETECTED_IP}"
+    # Tells the Phoenix side (CouncilHubUi.NodeIdentity) that the node name came
+    # from *this* namespace's default route, so its later re-measurement of that
+    # same route is a like-for-like comparison and a mismatch really does mean
+    # the address moved. With an explicitly-set RELEASE_NODE it isn't: under
+    # bridge networking RELEASE_NODE is the host's IP while the container
+    # measures its own, which would read as permanent drift.
+    export COUNCIL_NODE_AUTODETECTED=1
     echo "WARN: RELEASE_NODE not set — auto-detected as ${RELEASE_NODE}"
     echo "      Set RELEASE_NODE explicitly to suppress this warning."
   else

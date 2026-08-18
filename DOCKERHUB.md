@@ -309,6 +309,7 @@ docker compose up -d
 | `RELEASE_NODE` | `council_hub@127.0.0.1` | Unique node name (e.g. `council_hub@10.0.0.5`) for distributed Erlang |
 | `COUNCIL_SEEDS` | — | Peers to connect to — bare IPs (`192.168.0.5`), hostnames (`bob`, MagicDNS), or full `node@ip`. Resolved via `:3001/health`. Omit for LAN auto-discovery. |
 | `COUNCIL_NO_DISCOVER` | `0` | Set to `1` to skip the LAN subnet scan on startup (useful on VPN where the scan is unnecessary) |
+| `COUNCIL_NODE_DRIFT_CHECK` | — | Set to `1` to watch for this node's `RELEASE_NODE` going stale (DHCP moved the host IP). Off by default: with published ports the container sees its own bridge address, not the host's, so the check would always misfire. Only useful with `--network host` and an explicitly-set `RELEASE_NODE`; an auto-detected node name enables it automatically. |
 | `COUNCIL_OLLAMA_URL` | — | Ollama API endpoint (e.g. `http://host.docker.internal:11434`). Required for semantic search. |
 | `COUNCIL_EMBED_MODEL` | `embeddinggemma:300m` | Ollama embedding model name |
 | `COUNCIL_CLUSTER_ADMIN_TOKEN` | — | Enables the UI Cluster Settings page (`/settings`) for live peer connect/disconnect with no restart. Unlock by visiting `/settings?token=<token>` once. Unset = page disabled (404) |
@@ -341,7 +342,7 @@ docker compose up -d
 | Healthcheck | `wget` to `:4000` every 30s, 10s timeout, 3 retries |
 | Entrypoint | `entrypoint.sh` — manages both Go and Elixir processes |
 
-> **⚠️ amd64 is temporarily unavailable (v0.48.0 – v0.53.1).** A publishing-pipeline failure (the `docker.yml` workflow's Docker Hub token keeps expiring) meant these tags, and `:latest`, went out as `linux/arm64` only. On an x86 host the pull will fail or the container won't start. **`v0.47.0` is the most recent tag with `linux/amd64`** — use `iksnerd/council-hub:v0.47.0` there until a multi-arch build is republished. arm64 hosts (Apple Silicon, Ampere, Raspberry Pi 4/5 64-bit) are unaffected.
+> **⚠️ amd64 is temporarily unavailable (v0.48.0 – v0.54.0).** A publishing-pipeline failure (the `docker.yml` workflow's Docker Hub token keeps expiring) meant these tags, and `:latest`, went out as `linux/arm64` only. On an x86 host the pull will fail or the container won't start. **`v0.47.0` is the most recent tag with `linux/amd64`** — use `iksnerd/council-hub:v0.47.0` there until a multi-arch build is republished. arm64 hosts (Apple Silicon, Ampere, Raspberry Pi 4/5 64-bit) are unaffected.
 
 
 ## MCP Tools

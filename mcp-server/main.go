@@ -25,14 +25,21 @@ type clusterNodeInfo struct {
 	Version string `json:"version"`
 }
 
-// nodeIdentityInfo mirrors CouncilHubUi.NodeIdentity.status/0 (a Phoenix-side
-// check, since only the Elixir side has a distribution node name to compare
-// against the host's current interface IP). Registered/Current are empty
-// when Phoenix isn't running distributed.
+// nodeIdentityInfo mirrors CouncilHubUi.NodeIdentity.status/0 merged with the
+// ClusterManager's self-heal capability (a Phoenix-side check, since only the
+// Elixir side has a distribution node name to compare against the host's
+// current interface IP). Registered/Current are empty when Phoenix isn't
+// running distributed. Checkable is false where the comparison isn't
+// meaningful (e.g. bridge networking, where the container measures its own
+// address rather than the host's), in which case Drifted is never true.
+// SelfHealSupported is false when distribution was started statically, so a
+// live rebind is impossible and only a restart clears the drift.
 type nodeIdentityInfo struct {
-	Registered string `json:"registered"`
-	Current    string `json:"current"`
-	Drifted    bool   `json:"drifted?"`
+	Registered        string `json:"registered"`
+	Current           string `json:"current"`
+	Drifted           bool   `json:"drifted?"`
+	Checkable         bool   `json:"checkable?"`
+	SelfHealSupported bool   `json:"self_heal_supported?"`
 }
 
 type clusterNodesResult struct {
@@ -105,10 +112,14 @@ func healthHandler(cs *council.Server, phoenixURL string, httpClient *http.Clien
 				body["cluster_warning"] = "version mismatch detected across cluster nodes — upgrade all nodes to the same version"
 			}
 			if result.NodeIdentity != nil && result.NodeIdentity.Drifted {
+				remedy := "a self-heal rebind retries automatically (~60s cooldown)"
+				if !result.NodeIdentity.SelfHealSupported {
+					remedy = "self-heal is unavailable on this boot (distribution was started statically) — restart the container to re-detect the address"
+				}
 				body["node_identity"] = result.NodeIdentity
 				body["node_identity_warning"] = fmt.Sprintf(
-					"node identity stale: registered as %s, host is now %s — self-heal rebind retries automatically",
-					result.NodeIdentity.Registered, result.NodeIdentity.Current,
+					"node identity stale: registered as %s, host is now %s — %s",
+					result.NodeIdentity.Registered, result.NodeIdentity.Current, remedy,
 				)
 			}
 		}
