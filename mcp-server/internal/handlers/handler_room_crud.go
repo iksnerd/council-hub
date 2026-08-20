@@ -483,7 +483,7 @@ func (r *Registry) handleReadRoom(ctx context.Context, req *mcp.CallToolRequest,
 
 	room, err := r.Server.GetRoom(args.RoomID)
 	if err != nil {
-		return msg(fmt.Sprintf("Error: Room '%s' not found.", args.RoomID))
+		return msg(fmt.Sprintf("Error: Room '%s' not found.%s", args.RoomID, r.remoteRoomNote(args.RoomID, remedyClusterRead)))
 	}
 
 	var b strings.Builder
@@ -644,7 +644,9 @@ func (r *Registry) handleDeleteRoom(ctx context.Context, req *mcp.CallToolReques
 	}
 
 	if err := r.Server.DeleteRoom(args.RoomID); err != nil {
-		return msg(fmt.Sprintf("Error: %s", err.Error()))
+		// Deliberately not proxied: deleting a peer's room on an agent's say-so is
+		// a different risk class from posting to it. Name the owner instead.
+		return msg(fmt.Sprintf("Error: %s%s", err.Error(), r.remoteRoomNote(args.RoomID, remedyLocalOnly)))
 	}
 
 	r.Server.Logger.Info("Room deleted", "room_id", args.RoomID)

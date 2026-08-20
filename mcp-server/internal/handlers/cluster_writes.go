@@ -35,6 +35,7 @@ type internalPostRequest struct {
 	ReplyTo     string `json:"reply_to"`
 	Mentions    string `json:"mentions"`
 	Supersedes  string `json:"supersedes"`
+	Pin         string `json:"pin"`
 }
 
 // internalStatusRequest is the body forwarded to a peer node's internal status endpoint.
@@ -54,7 +55,11 @@ type internalStatusResponse struct {
 type internalPostResponse struct {
 	MessageID string `json:"message_id"`
 	RoomID    string `json:"room_id"`
-	Error     string `json:"error"`
+	// Pinned reports whether a requested pin actually landed on the owner. A
+	// failed pin doesn't fail the write (the message is already stored), so the
+	// caller needs this to avoid claiming a pin that didn't happen.
+	Pinned bool   `json:"pinned"`
+	Error  string `json:"error"`
 }
 
 // locateRoomOwner asks Phoenix which cluster node owns a (public) room. Returns
@@ -115,10 +120,11 @@ func (r *Registry) peerMCPURL(node, path string) (string, error) {
 }
 
 // proxyPostToRoom forwards a post_to_room write to the node that owns the room.
-func (r *Registry) proxyPostToRoom(owner string, args PostToRoomInput) (string, error) {
+// Returns the new message ID and whether a requested pin landed there.
+func (r *Registry) proxyPostToRoom(owner string, args PostToRoomInput) (string, bool, error) {
 	url, err := r.peerMCPURL(owner, internalPostPath)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 
 	reqBody, err := json.Marshal(internalPostRequest{
@@ -129,37 +135,61 @@ func (r *Registry) proxyPostToRoom(owner string, args PostToRoomInput) (string, 
 		ReplyTo:     args.ReplyTo,
 		Mentions:    args.Mentions,
 		Supersedes:  args.Supersedes,
+		Pin:         args.Pin,
 	})
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 
 	httpReq, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(reqBody))
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set(clusterSecretHeader, r.ClusterSecret)
 
 	resp, err := r.HTTPClient.Do(httpReq)
 	if err != nil {
-		return "", fmt.Errorf("proxy to %s: %w", owner, err)
+		return "", false, fmt.Errorf("proxy to %s: %w", owner, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		msg, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("owner node %s returned %d: %s", owner, resp.StatusCode, strings.TrimSpace(string(msg)))
+		return "", false, fmt.Errorf("owner node %s returned %d: %s", owner, resp.StatusCode, strings.TrimSpace(string(msg)))
 	}
 
 	var out internalPostResponse
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return "", fmt.Errorf("decode owner response: %w", err)
+		return "", false, fmt.Errorf("decode owner response: %w", err)
 	}
 	if out.Error != "" {
-		return "", fmt.Errorf("owner node %s: %s", owner, out.Error)
+		return "", false, fmt.Errorf("owner node %s: %s", owner, out.Error)
 	}
-	return out.MessageID, nil
+	return out.MessageID, out.Pinned, nil
+}
+
+// Remedies for remoteRoomNote, matching what the calling tool can actually offer.
+const (
+	remedyClusterRead = "retry with cluster_wide=true"
+	remedyLocalOnly   = "this tool is local-only — run it from a session on that node"
+)
+
+// remoteRoomNote turns "room not found" into the truth when a cluster peer owns
+// the room. Left un-annotated, that error is indistinguishable from "this room
+// does not exist", so the reasonable next move is to create it — producing
+// exactly the local shadow room that create_room's conflict guard exists to
+// prevent. Returns "" when no peer owns it (genuinely missing) or the cluster
+// isn't configured, so non-clustered deployments see no change.
+//
+// Costs one locate_room round trip, so call it only on the error path, and
+// never in a loop over many room IDs.
+func (r *Registry) remoteRoomNote(roomID, remedy string) string {
+	owner, err := r.locateRoomOwner(roomID)
+	if err != nil || owner == "" {
+		return ""
+	}
+	return fmt.Sprintf(" It lives on cluster node '%s' — %s.", owner, remedy)
 }
 
 // proxyStatusUpdate forwards a signal_status change to the node that owns the room.
@@ -308,8 +338,23 @@ func (r *Registry) InternalPostHandler() http.HandlerFunc {
 			return
 		}
 
-		r.Server.Logger.Info("Cross-node write applied", "room_id", in.RoomID, "author", in.Author, "msg_id", msgID)
-		writeJSON(internalPostResponse{MessageID: msgID, RoomID: in.RoomID})
+		// Apply pin here rather than dropping it: the close-out workflow is
+		// post synthesis -> pin -> resolve, and a pin that silently vanished on
+		// the proxy path left peer-owned rooms permanently flagged stale-pin with
+		// no way to fix them from another node.
+		pinned := false
+		if in.Pin == "true" {
+			if _, perr := r.Server.PinMessage(in.RoomID, msgID); perr != nil {
+				// The write already succeeded — report the partial outcome instead
+				// of failing the whole call.
+				r.Server.Logger.Warn("Cross-node pin failed", "room_id", in.RoomID, "msg_id", msgID, "error", perr)
+			} else {
+				pinned = true
+			}
+		}
+
+		r.Server.Logger.Info("Cross-node write applied", "room_id", in.RoomID, "author", in.Author, "msg_id", msgID, "pinned", pinned)
+		writeJSON(internalPostResponse{MessageID: msgID, RoomID: in.RoomID, Pinned: pinned})
 	}
 }
 

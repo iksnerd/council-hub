@@ -127,7 +127,7 @@ func (r *Registry) readSingleTranscript(args ReadTranscriptInput) (*mcp.CallTool
 
 	room, err := r.Server.GetRoom(args.RoomID)
 	if err != nil {
-		return msg(fmt.Sprintf("Error: Room '%s' not found.", args.RoomID))
+		return msg(fmt.Sprintf("Error: Room '%s' not found.%s", args.RoomID, r.remoteRoomNote(args.RoomID, remedyClusterRead)))
 	}
 
 	// Mode: summary \u2014 return system_prompt + latest message per type
@@ -384,7 +384,7 @@ func (r *Registry) handleArchiveRoom(ctx context.Context, req *mcp.CallToolReque
 
 	archivePath, err := r.Server.ArchiveRoom(args.RoomID)
 	if err != nil {
-		return msg(fmt.Sprintf("Error: %s", err.Error()))
+		return msg(fmt.Sprintf("Error: %s%s", err.Error(), r.remoteRoomNote(args.RoomID, remedyLocalOnly)))
 	}
 
 	result := fmt.Sprintf("Room '%s' archived to %s.", args.RoomID, archivePath)

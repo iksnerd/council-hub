@@ -438,3 +438,196 @@ func TestCreateRoomNoConflictCreatesNormally(t *testing.T) {
 		t.Error("expected room to be created when no peer owns the ID")
 	}
 }
+
+// clusterStub serves locate_room (reporting `owner`, or nobody when owner is "")
+// plus the internal write endpoints, so a handler's cluster path can be driven
+// without a real peer.
+func clusterStub(t *testing.T, owner string, onPost func(internalPostRequest)) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/cluster/locate_room"):
+			nodes := []string{}
+			if owner != "" {
+				nodes = append(nodes, owner)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{"nodes": nodes, "warnings": []string{}})
+		case strings.HasSuffix(r.URL.Path, internalPostPath):
+			var in internalPostRequest
+			_ = json.NewDecoder(r.Body).Decode(&in)
+			if onPost != nil {
+				onPost(in)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(internalPostResponse{MessageID: "deadbeef-0000", RoomID: in.RoomID, Pinned: in.Pin == "true"})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+}
+
+// The close-out workflow is post synthesis -> pin -> resolve. Pin used to be
+// dropped on the proxy path, so a peer-owned room could never get its pin
+// updated from here and stayed flagged stale-pin forever.
+func TestPostToRoomForwardsPinToOwner(t *testing.T) {
+	reg := setupHandlerTest(t)
+	reg.ClusterSecret = "topsecret"
+
+	var got *internalPostRequest
+	server := clusterStub(t, "peer@127.0.0.1", func(in internalPostRequest) { got = &in })
+	defer server.Close()
+	reg.PhoenixURL = server.URL
+	reg.HTTPClient = &http.Client{Timeout: 5 * time.Second}
+	reg.PeerMCPPort = portOf(t, server.URL)
+
+	res, _, err := reg.handlePostToRoom(context.Background(), nil, PostToRoomInput{
+		RoomID: "remote-room", Author: "Local", Message: "closing synthesis",
+		MessageType: "synthesis", Pin: "true",
+	})
+	if err != nil {
+		t.Fatalf("handlePostToRoom error: %v", err)
+	}
+	if got == nil {
+		t.Fatal("write was not forwarded")
+	}
+	if got.Pin != "true" {
+		t.Errorf("pin not forwarded: %+v", got)
+	}
+	if text := resultText(res); !strings.Contains(text, "pinned") {
+		t.Errorf("expected the response to report the pin, got: %s", text)
+	}
+}
+
+func TestPostToRoomReportsPinFailureOnOwner(t *testing.T) {
+	reg := setupHandlerTest(t)
+	reg.ClusterSecret = "topsecret"
+
+	// Owner accepts the write but reports the pin did not land.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/cluster/locate_room"):
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{"nodes": []string{"peer@127.0.0.1"}, "warnings": []string{}})
+		default:
+			var in internalPostRequest
+			_ = json.NewDecoder(r.Body).Decode(&in)
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(internalPostResponse{MessageID: "deadbeef-0000", RoomID: in.RoomID, Pinned: false})
+		}
+	}))
+	defer server.Close()
+	reg.PhoenixURL = server.URL
+	reg.HTTPClient = &http.Client{Timeout: 5 * time.Second}
+	reg.PeerMCPPort = portOf(t, server.URL)
+
+	res, _, err := reg.handlePostToRoom(context.Background(), nil, PostToRoomInput{
+		RoomID: "remote-room", Author: "Local", Message: "hi", MessageType: "synthesis", Pin: "true",
+	})
+	if err != nil {
+		t.Fatalf("handlePostToRoom error: %v", err)
+	}
+	// Must not claim a pin that didn't happen.
+	if text := resultText(res); !strings.Contains(text, "pin failed") {
+		t.Errorf("expected an honest pin-failure note, got: %s", text)
+	}
+}
+
+func TestInternalPostHandlerAppliesPin(t *testing.T) {
+	reg := setupHandlerTest(t)
+	reg.ClusterSecret = "topsecret"
+	if err := reg.Server.CreateRoom("owned", "Owner room", "", "", "", "", ""); err != nil {
+		t.Fatalf("create room: %v", err)
+	}
+
+	handler := reg.InternalPostHandler()
+	body, _ := json.Marshal(internalPostRequest{
+		RoomID: "owned", Author: "Remote", Message: "pin me", MessageType: "synthesis", Pin: "true",
+	})
+	req := httptest.NewRequest(http.MethodPost, internalPostPath, bytes.NewReader(body))
+	req.Header.Set(clusterSecretHeader, "topsecret")
+	rec := httptest.NewRecorder()
+	handler(rec, req)
+
+	var out internalPostResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !out.Pinned {
+		t.Errorf("expected pinned=true, got %+v", out)
+	}
+
+	pinned, err := reg.Server.GetPinnedMessage("owned")
+	if err != nil {
+		t.Fatalf("get pinned message: %v", err)
+	}
+	if pinned == nil || pinned.ID != out.MessageID {
+		t.Errorf("expected pinned message %q, got %+v", out.MessageID, pinned)
+	}
+}
+
+// A room on a peer must not report as "not found" — that reads as "does not
+// exist" and invites recreating it as a local shadow.
+func TestLocalOnlyToolsNameTheOwningNode(t *testing.T) {
+	server := clusterStub(t, "peer@127.0.0.1", nil)
+	defer server.Close()
+
+	cases := []struct {
+		name   string
+		call   func(reg *Registry) string
+		expect string
+	}{
+		{"read_transcript", func(reg *Registry) string {
+			res, _, _ := reg.handleReadTranscript(context.Background(), nil, ReadTranscriptInput{RoomID: "remote-room"})
+			return resultText(res)
+		}, "cluster_wide=true"},
+		{"read_room", func(reg *Registry) string {
+			res, _, _ := reg.handleReadRoom(context.Background(), nil, ReadRoomInput{RoomID: "remote-room"})
+			return resultText(res)
+		}, "cluster_wide=true"},
+		{"archive_room", func(reg *Registry) string {
+			res, _, _ := reg.handleArchiveRoom(context.Background(), nil, ArchiveRoomInput{RoomID: "remote-room"})
+			return resultText(res)
+		}, "local-only"},
+		{"delete_room", func(reg *Registry) string {
+			res, _, _ := reg.handleDeleteRoom(context.Background(), nil, DeleteRoomInput{RoomID: "remote-room"})
+			return resultText(res)
+		}, "local-only"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			reg := setupHandlerTest(t)
+			reg.PhoenixURL = server.URL
+			reg.HTTPClient = &http.Client{Timeout: 5 * time.Second}
+
+			text := tc.call(reg)
+			if !strings.Contains(text, "peer@127.0.0.1") {
+				t.Errorf("expected the owning node to be named, got: %s", text)
+			}
+			if !strings.Contains(text, tc.expect) {
+				t.Errorf("expected remedy %q, got: %s", tc.expect, text)
+			}
+		})
+	}
+}
+
+// With no peer owning the room, the error must stay exactly as it was — a
+// non-clustered deployment should see no change at all.
+func TestRoomMissWithNoOwnerIsUnannotated(t *testing.T) {
+	server := clusterStub(t, "", nil)
+	defer server.Close()
+
+	reg := setupHandlerTest(t)
+	reg.PhoenixURL = server.URL
+	reg.HTTPClient = &http.Client{Timeout: 5 * time.Second}
+
+	res, _, _ := reg.handleReadRoom(context.Background(), nil, ReadRoomInput{RoomID: "ghost"})
+	text := resultText(res)
+	if !strings.Contains(text, "not found") {
+		t.Errorf("expected not-found, got: %s", text)
+	}
+	if strings.Contains(text, "cluster node") {
+		t.Errorf("must not mention a cluster node when none owns it: %s", text)
+	}
+}

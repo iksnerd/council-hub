@@ -30,6 +30,9 @@ func (r *Registry) handleMarkRead(ctx context.Context, req *mcp.CallToolRequest,
 
 	if err := r.Server.MarkRead(agent, args.RoomID, args.Cursor); err != nil {
 		r.Server.Logger.Error("Failed to mark read", "agent", agent, "room_id", args.RoomID, "error", err)
+		if note := r.remoteRoomNote(args.RoomID, "read cursors are node-local, so mark it read there"); note != "" {
+			return msg(fmt.Sprintf("Error: %s%s", err.Error(), note))
+		}
 		return nil, ToolOutput{}, err
 	}
 

@@ -204,6 +204,15 @@ func (r *Registry) handleBulkStatusUpdate(ctx context.Context, req *mcp.CallTool
 			b.WriteString("\n")
 		}
 		fmt.Fprintf(&b, "Not found: %s", strings.Join(notFound, ", "))
+		// No per-room owner lookup here: that would be one locate_room round trip
+		// per missing ID. bulk_status_update is local-only by design — a batch
+		// spanning several owners has no single target and would need per-room
+		// routing plus a partial-success report.
+		if r.PhoenixURL != "" {
+			b.WriteString("\n(Any of these owned by another cluster node cannot be updated from here — " +
+				"bulk_status_update is local-only. Check with list_rooms(cluster_wide=true), then use " +
+				"signal_status per room, which routes to the owner automatically.)")
+		}
 	}
 	if b.Len() == 0 {
 		return msg("No valid room IDs provided.")

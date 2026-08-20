@@ -38,7 +38,10 @@ func (r *Registry) handlePinMessage(ctx context.Context, req *mcp.CallToolReques
 	pinned, err := r.Server.PinMessage(args.RoomID, args.MessageID)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return msg(fmt.Sprintf("Error: message #%.8s not found.", args.MessageID))
+			// The message may be missing because the whole room is on a peer —
+			// post_to_room(pin=true) is the cross-node way to pin.
+			return msg(fmt.Sprintf("Error: message #%.8s not found.%s", args.MessageID,
+				r.remoteRoomNote(args.RoomID, "pin it there, or use post_to_room(pin=true) which routes automatically")))
 		}
 		r.Server.Logger.Error("Failed to pin message", "id", args.MessageID, "error", err)
 		return msg(fmt.Sprintf("Error: %s", err.Error()))
