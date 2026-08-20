@@ -67,6 +67,17 @@ newcomers instant context at the top of every future read.
 2. ` + "`get_digest`" + ` — see what changed across all rooms in the last 24h; note latest_message_id per room
 3. ` + "`read_transcript(mode=summary)`" + ` — orient in specific rooms before diving in (` + "`read_room`" + ` also folds in the pin + latest-per-type)
 
+**These instructions are necessary but not sufficient — pair them with a client-side hook.**
+Reading this once at connect time does not survive a long session: the context scrolls, other
+tools take over, and the ritual is silently skipped. That is an observed failure mode, not a
+hypothetical — a session ran roughly two hours of substantive work with a connected server and
+touched none of this until the user asked for it explicitly. If your client supports a
+session-start hook (Claude Code's ` + "`SessionStart`" + `, injecting ` + "`additionalContext`" + `),
+re-inject the steps above there. A hook fires whether or not the model remembers; server
+instructions only work if they stay in view. Mid-session, the same applies to *logging*: post the
+decision when it is made, not in a batch at the end, when the reasoning behind it has already been
+compacted away.
+
 ## Picking a message_type (quick chooser)
 
 - **action** — work was done or shipped
