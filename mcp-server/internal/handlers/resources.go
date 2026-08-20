@@ -156,8 +156,23 @@ behaves exactly like a local one. (Network exposure — who can open the dashboa
 - **Reads are local by default.** Pass ` + "`cluster_wide=true`" + ` on search_messages, list_rooms,
   read_room, room_stats, get_messages, read_transcript, read_notebook, or get_digest to fan out
   across all nodes. Results are tagged with the owning node; unreachable nodes produce a warning, not an error.
-- **Writes route to the owning node automatically** — post_to_room to a room owned by a peer is
-  proxied transparently (authenticated by the shared cluster cookie).
+- **Some writes route to the owning node automatically**, no parameter needed:
+  post_to_room (including ` + "`pin=true`" + `, which is applied on the owner) and signal_status.
+  Together those close a peer-owned room out end to end from any node: post the synthesis with
+  ` + "`pin=true`" + `, then ` + "`signal_status(resolved)`" + `. Proxied writes are authenticated
+  by the shared cluster cookie.
+- **Every other room-scoped tool is local-only** — pin_message, mark_read, archive_room,
+  fork_thread, update_room, move_messages, and the bulk_* tools act only on rooms this node owns.
+  When you aim one at a peer's room the error **names the owning node and the remedy**. Read that
+  as "run it there", never as "the room is gone": creating it locally would fork the room into a
+  shadow copy that never reconciles.
+- **Deliberately not proxied:** delete_room and rename_project refuse and name the owner
+  (destroying a peer's data across a node boundary is a different risk class from posting to it);
+  bulk_status_update and bulk_visibility stay local-only, since a batch spanning several owners
+  has no single target. For a batch, find the remote rooms with
+  ` + "`list_rooms(cluster_wide=true)`" + ` and use signal_status per room — that one routes.
+- **Node-local by design:** notebooks (read_notebook outlines, edit_notebook), the skills registry,
+  and read cursors (mark_read) — these never cross a node boundary at all.
 - **Make a node private-by-default before sharing a cluster:**
   ` + "`bulk_visibility(all=true, visibility=private)`" + `, then re-publish the few rooms a peer
   should see with ` + "`bulk_visibility(room_ids=…, visibility=public)`" + `.
