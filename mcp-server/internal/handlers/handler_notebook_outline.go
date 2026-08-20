@@ -19,6 +19,7 @@ type EditNotebookInput struct {
 	EntryID      string `json:"entry_id"`
 	Kind         string `json:"kind"`
 	RefID        string `json:"ref_id"`
+	RefIDs       string `json:"ref_ids"`
 	Prose        string `json:"prose"`
 	AfterEntryID string `json:"after_entry_id"`
 }
@@ -57,15 +58,77 @@ func (r *Registry) handleEditNotebook(ctx context.Context, req *mcp.CallToolRequ
 		if err := validateSize("prose", args.Prose, maxContentLen); err != nil {
 			return msg(fmt.Sprintf("Error: %s", err.Error()))
 		}
+		if args.RefID != "" && args.RefIDs != "" {
+			return msg("Error: pass ref_id or ref_ids, not both.")
+		}
 		kind := args.Kind
 		if kind == "" {
-			// Infer: a ref_id means a ref, prose means a prose section.
-			if args.RefID != "" {
+			// Infer: a ref means a ref, prose means a prose section.
+			if args.RefID != "" || args.RefIDs != "" {
 				kind = "ref"
 			} else {
 				kind = "prose"
 			}
 		}
+
+		// Batch add: one call per target was four round trips to put four
+		// room_refs in a notebook. Mirrors update_room's room_ids convention.
+		if args.RefIDs != "" {
+			if args.Prose != "" {
+				return msg("Error: ref_ids adds transcluding entries; prose belongs to a single add.")
+			}
+			refs := splitIDList(args.RefIDs)
+			if len(refs) == 0 {
+				return msg("Error: ref_ids contained no usable IDs.")
+			}
+
+			var added, skipped, failed []string
+			// Each insert anchors after the previous one, so the batch lands in
+			// the order given — anchoring them all to the same entry would
+			// reverse it.
+			anchor := args.AfterEntryID
+			for _, ref := range refs {
+				if kind == "ref" {
+					if err := r.resolveInto(&ref); err != nil {
+						failed = append(failed, fmt.Sprintf("%s (%s)", ref, err.Error()))
+						continue
+					}
+				}
+				entryID, err := r.Server.AddOutlineEntry(args.NotebookID, kind, ref, "", anchor)
+				if err != nil {
+					var dup *council.ErrAlreadyReferenced
+					if errors.As(err, &dup) {
+						skipped = append(skipped, fmt.Sprintf("%s (already entry %s)", ref, dup.EntryID))
+						continue
+					}
+					failed = append(failed, fmt.Sprintf("%s (%s)", ref, err.Error()))
+					continue
+				}
+				added = append(added, entryID)
+				anchor = entryID
+			}
+
+			var b strings.Builder
+			fmt.Fprintf(&b, "Batch add to notebook '%s' (kind: %s): %d added", args.NotebookID, kind, len(added))
+			if len(skipped) > 0 {
+				fmt.Fprintf(&b, ", %d already referenced", len(skipped))
+			}
+			if len(failed) > 0 {
+				fmt.Fprintf(&b, ", %d failed", len(failed))
+			}
+			b.WriteString(".")
+			if len(added) > 0 {
+				fmt.Fprintf(&b, "\n**Added:** %s", strings.Join(added, ", "))
+			}
+			if len(skipped) > 0 {
+				fmt.Fprintf(&b, "\n**Skipped:** %s", strings.Join(skipped, ", "))
+			}
+			if len(failed) > 0 {
+				fmt.Fprintf(&b, "\n**Failed:** %s", strings.Join(failed, ", "))
+			}
+			return msg(b.String())
+		}
+
 		// Only kind="ref" points at a message ID (room_ref/query_ref point at a
 		// room, task has no ref_id) — resolve a possibly-truncated prefix.
 		if kind == "ref" {

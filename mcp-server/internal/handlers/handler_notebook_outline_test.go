@@ -368,3 +368,78 @@ func TestRenderOutlineLevelClip(t *testing.T) {
 		t.Errorf("level=0 should render the full body, got: %s", text)
 	}
 }
+
+// Batch add: four room_refs used to cost four round trips.
+func TestHandleEditNotebookBatchAddRoomRefs(t *testing.T) {
+	reg, _ := setupOutlineHandler(t)
+	for _, id := range []string{"batch-a", "batch-b", "batch-c"} {
+		mustCreateRoom(t, reg.Server, id, withProject("ol-proj"))
+	}
+
+	text := editNotebook(t, reg, EditNotebookInput{
+		Action: "add", NotebookID: "rel-notes", Kind: "room_ref",
+		RefIDs: "batch-a, batch-b ,batch-c",
+	})
+	if !strings.Contains(text, "3 added") {
+		t.Fatalf("expected 3 added, got: %s", text)
+	}
+
+	// Order given must be the order rendered — each insert anchors after the
+	// previous one, otherwise the batch comes out reversed.
+	res, _, _ := reg.handleReadNotebook(context.Background(), nil, ReadNotebookInput{NotebookID: "rel-notes"})
+	out := resultText(res)
+	ia, ib, ic := strings.Index(out, "batch-a"), strings.Index(out, "batch-b"), strings.Index(out, "batch-c")
+	if ia < 0 || ib < 0 || ic < 0 {
+		t.Fatalf("not all refs rendered: %s", out)
+	}
+	if !(ia < ib && ib < ic) {
+		t.Errorf("batch order not preserved (a=%d b=%d c=%d):\n%s", ia, ib, ic, out)
+	}
+}
+
+func TestHandleEditNotebookBatchAddReportsPerTarget(t *testing.T) {
+	reg, _ := setupOutlineHandler(t)
+	mustCreateRoom(t, reg.Server, "batch-dup", withProject("ol-proj"))
+
+	// Pre-add one target so the batch has something to skip.
+	editNotebook(t, reg, EditNotebookInput{
+		Action: "add", NotebookID: "rel-notes", Kind: "room_ref", RefID: "batch-dup",
+	})
+
+	// One good, one already referenced, one that doesn't exist — a bad ID must
+	// not abort the rest.
+	mustCreateRoom(t, reg.Server, "batch-new", withProject("ol-proj"))
+	text := editNotebook(t, reg, EditNotebookInput{
+		Action: "add", NotebookID: "rel-notes", Kind: "room_ref",
+		RefIDs: "batch-new,batch-dup,batch-ghost",
+	})
+
+	for _, want := range []string{"1 added", "1 already referenced", "1 failed"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("expected %q in: %s", want, text)
+		}
+	}
+}
+
+func TestHandleEditNotebookBatchAddRejectsBadCombinations(t *testing.T) {
+	reg, msgID := setupOutlineHandler(t)
+
+	cases := []struct {
+		name, want string
+		args       EditNotebookInput
+	}{
+		{"both ref_id and ref_ids", "not both", EditNotebookInput{
+			Action: "add", NotebookID: "rel-notes", RefID: msgID, RefIDs: "a,b"}},
+		{"prose with ref_ids", "prose belongs to a single add", EditNotebookInput{
+			Action: "add", NotebookID: "rel-notes", RefIDs: "a,b", Prose: "hi"}},
+		{"empty ref_ids", "no usable IDs", EditNotebookInput{
+			Action: "add", NotebookID: "rel-notes", Kind: "room_ref", RefIDs: " , , "}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if text := editNotebook(t, reg, tc.args); !strings.Contains(text, tc.want) {
+				t.Errorf("expected %q, got: %s", tc.want, text)
+			}
+		})
+	}
+}
