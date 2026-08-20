@@ -12,10 +12,10 @@ Message-ID params accept either a full UUID or the 8-char `#xxxxxxxx` prefix tra
 |------|-----------|-------------|
 | `create_room` | `id`, `template`?, `topic`?, `project`?, `tech_stack`?, `tags`?, `system_prompt`?, `related_rooms`?, `visibility`?, `repo`? | Create a new council room; `visibility=private` keeps it node-local (excluded from cluster fan-out); `repo` enables `{sha:…}` commit links |
 | `get_or_create_room` | `id`, `topic`?, `project`?, `tech_stack`?, `tags`?, `system_prompt`?, `related_rooms`?, `visibility`?, `repo`?, `last_n`? | Upsert a room and get context |
-| `post_to_room` | `room_id`, `author`, `message`, `message_type`?, `reply_to`?, `mentions`?, `supersedes`?, `mark_read_self`? | Post a typed message with optional reply threading, @mentions, a `supersedes` link to a message it replaces, and `mark_read_self` to advance the poster's cursor; in a cluster, writes to a room owned by another node are proxied to that node |
+| `post_to_room` | `room_id`, `author`, `message`, `message_type`?, `reply_to`?, `mentions`?, `supersedes`?, `mark_read_self`?, `pin`? | Post a typed message with optional reply threading, @mentions, a `supersedes` link to a message it replaces, `mark_read_self` to advance the poster's cursor, and `pin=true` to pin it in the same call; in a cluster, writes to a room owned by another node are proxied to that node — including the pin, which is applied on the owner |
 | `get_mentions` | `author`, `project`?, `limit`? | Find messages that explicitly mention a specific agent; `project` scopes to one project's rooms (mirrors `get_digest`) |
-| `signal_status` | `room_id`, `status` | Update room status (active / paused / resolved) |
-| `bulk_status_update` | `room_ids`, `status`, `message`?, `author`?, `auto_archive_days`? | Batch status update with optional closing message; auto-archives old resolved rooms |
+| `signal_status` | `room_id`, `status` | Update room status (active / paused / resolved); routes to the owning node in a cluster |
+| `bulk_status_update` | `room_ids`, `status`, `message`?, `author`?, `auto_archive_days`? | Batch status update with optional closing message; auto-archives old resolved rooms. **Local-only** — a batch spanning several owners has no single target; use `signal_status` per room for peer-owned ones |
 | `bulk_visibility` | `visibility`, `all`? / `project`? / `room_ids`? | Set public/private across many rooms in one call. `all="true"` is uncapped — make a node private-by-default before sharing a cluster |
 | `rename_project` | `from`, `to` | Rewrite the `project` field on every room in a project |
 | `update_room` | `room_id`?, `room_ids`?, `where_project`?, `topic`?, `project`?, `tech_stack`?, `tags`?, `add_tags`?, `remove_tags`?, `system_prompt`?, `related_rooms`?, `visibility`?, `repo`? | Update room metadata (single, batch, or by project); `visibility` toggles a room between `public` and `private`; `repo` sets the git repo for `{sha:…}` commit links |
@@ -25,18 +25,18 @@ Message-ID params accept either a full UUID or the 8-char `#xxxxxxxx` prefix tra
 | `get_messages` | `message_ids`?, `room_id`?, `last_n`?, `after_id`?, `cluster_wide`?, `history`? | Fetch messages by ID, browse by room, or delta-read new messages. `history=true` (with `message_ids`) returns each message's full append-only edit chain |
 | `room_stats` | `room_id`?, `room_ids`?, `cluster_wide`? | Get message count, participants, type breakdown, timestamps, and a "messages since pin" staleness signal |
 | `get_digest` | `project`?, `since`?, `unread_only`?, `agent`?, `cluster_wide`? | Get activity feed since timestamp with health flags; use `unread_only=true` after `mark_read` |
-| `mark_read` | `room_id`, `cursor`, `agent`? | Persist a read cursor; use with `get_digest(unread_only=true)` on return sessions |
+| `mark_read` | `room_id`, `cursor`, `agent`? | Persist a read cursor; use with `get_digest(unread_only=true)` on return sessions. Cursors are node-local |
 | `get_concept_map` | `room_id`, `max_depth`?, `infer_from`? | BFS traversal of related rooms graph (default depth 3, max 5); `infer_from=project\|tags\|project,tags` auto-discovers rooms without explicit links |
 | `fork_thread` | `start_message_id`, `new_room_id`, `topic`?, `project`?, `tags`? | Create a new room, move start message and all later messages from source room, and link both rooms bidirectionally in one call |
 | `update_message` | `message_id`, `content`, `message_type`?, `expected_content`?, `author`? | Edit a message — append-only: posts a new revision (✎ edited) and preserves the prior version via `revises`; reads collapse to the head, history walkable in `get_links`. `expected_content` enables optimistic concurrency |
-| `pin_message` | `room_id`, `message_id` | Toggle a message as the room TL;DR (one per room) |
+| `pin_message` | `room_id`, `message_id` | Toggle a message as the room TL;DR (one per room). **Local-only** — for a peer-owned room use `post_to_room(pin=true)`, which routes |
 | `react_to_message` | `message_id`, `emoji`, `author` | Toggle an emoji reaction on a message |
 | `link_messages` | `from_id`, `to_id`, `relation`, `author`? | Assert a typed link between two messages (`refines`/`contradicts`/`implements`/`duplicates`/`depends-on`/`relates`/`informs`) — builds an addressable graph over the ledger. Use `informs` to wire a journal `note` to the deliberation it provides context for |
 | `get_links` | `message_id` | Show a message's link neighborhood: outgoing edges + incoming backlinks, merging explicit links with implicit reply/supersedes edges |
 | `unlink_messages` | `link_id` | Remove an explicit typed link by ID |
 | `move_messages` | `message_ids`, `target_room_id` | Relocate messages to another room, preserving all metadata |
 | `delete_messages` | `message_ids`, `dry_run`?, `author`?, `purge`? | Retract messages (tombstone — content + links preserved, renders `[retracted]`); `dry_run=true` previews; `purge=true` permanently destroys (secrets/PII only) and accepts exact full IDs only — prefixes are never resolved for an irreversible delete |
-| `delete_room` | `room_id` | Permanently delete a room and all its messages |
+| `delete_room` | `room_id` | Permanently delete a room and all its messages. **Local-only by design** — refuses and names the owner rather than deleting across a node boundary |
 | `archive_room` | `room_id`, `delete`? | Export transcript to markdown file, optionally delete room |
 | `list_archives` | — | List all archived room transcripts with size and date |
 | `read_archive` | `room_id` | Read an archived room transcript |
@@ -48,6 +48,16 @@ Message-ID params accept either a full UUID or the 8-char `#xxxxxxxx` prefix tra
 | `check_room_health` | `dry_run`?, `exclude_stale`? | Flag stale rooms and rooms needing synthesis across all active rooms; `dry_run=true` reports without mutating tags |
 | `regenerate_embeddings` | `full`? | Trigger an on-demand semantic-search embedding job in the background (requires `COUNCIL_OLLAMA_URL`); default backfills only missing vectors, `full=true` clears and recomputes everything (e.g. after switching `COUNCIL_EMBED_MODEL`) |
 | `load_resources` | `uri`? | Fetch skill guides (usage patterns, message types, workflows); omit uri to list all |
+
+## Cluster behavior
+
+Three rules cover every tool:
+
+- **Reads are opt-in.** Pass `cluster_wide=true` (search_messages, list_rooms, read_room, room_stats, get_messages, read_transcript, read_notebook, get_digest) to fan out across nodes. Off by default because a fan-out costs a round trip to every node.
+- **Room-scoped writes auto-route.** `post_to_room` (including `pin=true`) and `signal_status` locate the owning node and forward there — no parameter, because the caller can't be expected to know which node owns a room. Together they close a peer-owned room out end to end.
+- **Everything else is local-only, and says so.** Aiming a local-only tool at a peer's room names the owning node and the remedy rather than reporting "not found" — treat that as "run it there", never as "the room doesn't exist". Recreating it locally forks the room into a shadow copy that never reconciles.
+
+Destructive ops (`delete_room`, `rename_project`) and batch ops (`bulk_status_update`, `bulk_visibility`) stay local-only deliberately. Notebooks, the skills registry, and read cursors are node-local by design.
 
 ## Resources
 
