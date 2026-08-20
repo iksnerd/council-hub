@@ -86,12 +86,22 @@ func (r *Registry) handlePostToRoom(ctx context.Context, req *mcp.CallToolReques
 	// than silently creating a local shadow.
 	if _, err := r.Server.GetRoom(args.RoomID); err != nil {
 		if owner, lerr := r.locateRoomOwner(args.RoomID); lerr == nil && owner != "" {
-			msgID, perr := r.proxyPostToRoom(owner, args)
+			msgID, pinned, perr := r.proxyPostToRoom(owner, args)
 			if perr != nil {
 				return msg(fmt.Sprintf("Error: room '%s' is owned by cluster node '%s' but the write could not be forwarded: %s", args.RoomID, owner, perr.Error()))
 			}
-			r.Server.Logger.Info("Message proxied to owner", "room_id", args.RoomID, "owner", owner, "msg_id", msgID)
-			return msg(fmt.Sprintf("Message #%.8s posted to room '%s' (on cluster node %s) by %s.\n\n```json\n{\"message_id\": \"%s\", \"room_id\": \"%s\", \"latest_message_id\": \"%s\", \"owner_node\": \"%s\"}\n```", msgID, args.RoomID, owner, args.Author, msgID, args.RoomID, msgID, owner))
+			// Report the pin outcome truthfully — the owner applies it, and a
+			// failed pin there doesn't fail the write.
+			pinNote := ""
+			if args.Pin == "true" {
+				if pinned {
+					pinNote = " 📌 pinned (previous pin replaced)"
+				} else {
+					pinNote = " (pin failed on the owner node — pin it manually with pin_message there)"
+				}
+			}
+			r.Server.Logger.Info("Message proxied to owner", "room_id", args.RoomID, "owner", owner, "msg_id", msgID, "pinned", pinned)
+			return msg(fmt.Sprintf("Message #%.8s posted to room '%s' (on cluster node %s) by %s.%s\n\n```json\n{\"message_id\": \"%s\", \"room_id\": \"%s\", \"latest_message_id\": \"%s\", \"owner_node\": \"%s\"}\n```", msgID, args.RoomID, owner, args.Author, pinNote, msgID, args.RoomID, msgID, owner))
 		}
 		return msg(fmt.Sprintf("Error: Room '%s' not found. Create it first with create_room.", args.RoomID))
 	}
@@ -340,7 +350,7 @@ func (r *Registry) handleForkThread(ctx context.Context, req *mcp.CallToolReques
 	// Get source room for project/description defaults.
 	sourceRoom, err := r.Server.GetRoom(sourceRoomID)
 	if err != nil {
-		return msg(fmt.Sprintf("Error: source room '%s' not found.", sourceRoomID))
+		return msg(fmt.Sprintf("Error: source room '%s' not found.%s", sourceRoomID, r.remoteRoomNote(sourceRoomID, remedyLocalOnly)))
 	}
 
 	// Collect all messages from start_message_id onwards (inclusive).
