@@ -4,7 +4,9 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.55.0] - 2026-08-21
+
+Cross-node room lifecycle: a room owned by a peer can now be closed out end to end from any node, and the tools that still can't say so instead of lying.
 
 ### Fixed
 - **`signal_status` now works on a room owned by another cluster node.** `post_to_room` has always proxied a write to the owning node, so a room could be fully closed out from any session — synthesis posted, decision recorded — but `signal_status` looked only at local rooms and returned `room '<id>' not found`. The status flip therefore required a session physically running on the owner, and until someone ran one, the Knowledge Linter kept flagging rooms whose work was finished and written up. It now locates the owner and forwards the change over the same authenticated cross-node path (`/api/internal/signal_status`, gated by the shared `RELEASE_COOKIE`), with no new parameter — matching `post_to_room`'s existing auto-routing rather than adding a `cluster_wide` flag. Reported from live use against two peer-owned rooms.
@@ -17,6 +19,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 ### Added
 - **`edit_notebook(action=add)` takes `ref_ids` for a batch add.** Adding four `room_ref`s cost four round trips; `ref_ids` mirrors `update_room`'s existing `room_ids` convention. Entries land in the order given (each insert anchors after the previous one, or the batch would come out reversed), and the per-target outcome is reported — an already-referenced target is skipped as a no-op and one bad ID doesn't abort the rest. Mutually exclusive with `ref_id`. Last open item from the 2026-07-26 janitor-pass handoff.
 - **`council://guide` now says the session-start ritual needs a client-side hook to be reliable.** Server instructions are read once at connect time and don't survive a long session — observed, not hypothetical: a session ran ~2h of substantive work with a connected server and skipped the ritual entirely until asked. The guide now recommends re-injecting the steps from a session-start hook where the client has one, and posting decisions as they're made rather than batching them at the end.
+
+- **`make docker-push` no longer claims a multi-arch build it cannot do.** It declared `--platform linux/amd64,linux/arm64` while CLAUDE.md described it as an arm64-only fallback, so it burned a full build before dying on the amd64 leg. Now `PLATFORMS ?= linux/arm64`, overridable for a native amd64 builder, and the target prints that it overwrote `:latest`. CLAUDE.md and the release skill now document local publish as the standing path with `docker.yml` as a deliberate amd64-gap-closing step.
+- **`make help` printed `Makefile` instead of each target name** — `-include Makefile.local` put a second file in `MAKEFILE_LIST`, so `grep` began prefixing matches with the filename and the `awk` read `$1` as the file. Fixed with `grep -h`.
 
 ### Deliberately unchanged
 - **`delete_room` and `rename_project` still refuse rather than proxy.** Deleting a peer's room on an agent's say-so is a different risk class from posting to it — the refusal, now naming the owner, is the honest answer.
