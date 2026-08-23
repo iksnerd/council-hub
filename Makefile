@@ -56,6 +56,14 @@ docker-push: ## Build and push image to Docker Hub (VERSION=vX.Y.Z; arm64 only, 
 	@echo "Pushed: $(IMAGE):latest + $(IMAGE):$(VERSION) ($(PLATFORMS))"
 	@echo "NOTE: this overwrote :latest. On $(PLATFORMS) alone, x86 users cannot run it."
 
+ledger-check: ## List commits since the last tag with no council-hub ledger entry
+	@python3 scripts/ledger-check.py $(if $(SINCE),--since $(SINCE))
+
+install-hooks: ## Enable the Council-Room commit trailer (per-clone, opt-in)
+	git config core.hooksPath .githooks
+	@echo "Hooks enabled. Add 'Council-Room: <room-id>' to a commit message to log it."
+	@echo "Disable with: git config --unset core.hooksPath"
+
 test-all: ## Run Go + Elixir tests
 	cd mcp-server && make test
 

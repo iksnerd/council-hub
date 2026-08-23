@@ -1,0 +1,77 @@
+#!/bin/sh
+# Turn a `Council-Room:` commit trailer into a council-hub `action` post.
+#
+# Why this exists: the ledger entry for a piece of work is a *second* action
+# after committing it, and second actions get skipped under load. Three release
+# cycles running (v0.53.0, v0.55.0, v0.56.0) shipped commits with no room record,
+# each caught only by the git-log-vs-ledger cross-check at changelog time — with
+# a session-start reminder live in context the whole time. Reminders were tried
+# and did not work. This makes the entry a byproduct of the commit instead.
+#
+# Opt-in per commit: no trailer, no post. A dependabot bump stays out of the room.
+#
+# Install (per clone, not committed):
+#   git config core.hooksPath .githooks
+#
+# Trailers:
+#   Council-Room:   <room-id>          required — without it this exits silently
+#   Council-Type:   <message-type>     optional, default `action`
+#   Council-Author: <name>             optional, default git config user.name
+#
+# Posts over the MCP endpoint via scripts/council-post.py rather than the simpler
+# /api/ui/post: that one is loopback-gated, and behind Docker's bridge NAT the
+# container sees the gateway address for host traffic, so it always answers
+# `forbidden`. The gate is correct; the caller had to change.
+#
+# Never blocks a commit: every failure path warns and exits 0. A commit that
+# succeeded must not be reported as failed because a side-channel was down.
+
+set -u
+
+MSG=$(git log -1 --format=%B)
+
+trailer() {
+  printf '%s\n' "$MSG" | sed -n "s/^$1:[[:space:]]*//p" | head -1 | tr -d '\r'
+}
+
+ROOM=$(trailer 'Council-Room')
+[ -z "$ROOM" ] && exit 0
+
+TYPE=$(trailer 'Council-Type')
+[ -z "$TYPE" ] && TYPE=action
+
+AUTHOR=$(trailer 'Council-Author')
+[ -z "$AUTHOR" ] && AUTHOR=$(git config user.name 2>/dev/null)
+[ -z "$AUTHOR" ] && AUTHOR=git
+
+SHA=$(git rev-parse --short HEAD)
+SUBJECT=$(git log -1 --format=%s)
+PARENT=$(git rev-parse --short HEAD^ 2>/dev/null || echo root)
+
+# `git commit --amend` re-fires post-commit, so a commit revised three times would
+# post three near-identical entries for one piece of work. An amend keeps the same
+# parent and almost always the same subject, so remember that pair and skip a
+# repeat. Deliberately not clever: a genuine second commit with an identical
+# subject on the same parent is rare, and losing that entry costs a manual post
+# while duplicate entries cost the room's signal-to-noise, which is the thing this
+# whole mechanism exists to protect.
+MARKER="$(git rev-parse --git-dir)/council-last-post"
+FINGERPRINT="$ROOM $PARENT $SUBJECT"
+if [ -f "$MARKER" ] && [ "$(cat "$MARKER")" = "$FINGERPRINT" ]; then
+  echo "council-hub: already logged this commit (amend) — skipping duplicate" >&2
+  exit 0
+fi
+HOOKS_DIR=$(git rev-parse --show-toplevel)/scripts
+
+# Body only (%b, not %B) so the subject is not repeated under its own heading,
+# minus the Council-* trailers, which are plumbing and would be noise in the room.
+# The character class avoids BRE alternation (\|), which GNU sed accepts and BSD
+# sed silently ignores — on macOS that made the trailer-stripping a no-op.
+BODY=$(git log -1 --format=%b | sed '/^Council-[A-Za-z]*:/d')
+
+printf '## %s ({sha:%s})\n\n%s\n' "$SUBJECT" "$SHA" "$BODY" \
+  | python3 "$HOOKS_DIR/council-post.py" --room "$ROOM" --author "$AUTHOR" --type "$TYPE" \
+  && printf '%s' "$FINGERPRINT" > "$MARKER" \
+  || echo "council-hub: ledger entry skipped — the commit itself is fine" >&2
+
+exit 0
