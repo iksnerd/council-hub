@@ -33,7 +33,40 @@ cd channel-plugin
 bun install
 ```
 
-The plugin is already registered in the project's `.mcp.json` — no extra configuration needed if you're running council-hub with the default Docker volume at `~/.council-hub`.
+Then register it with Claude Code. **Pick a scope deliberately — it decides where notifications reach you.**
+
+**User scope (global)** — notifications in every project. Usually what you want: council-hub rooms span projects, so a message posted while you're working elsewhere is exactly the thing worth surfacing.
+
+```bash
+claude mcp add --scope user council-hub-channel \
+  -e COUNCIL_AUTHOR="Your Name" \
+  -- /absolute/path/to/bun run /absolute/path/to/council-hub/channel-plugin/src/index.ts
+```
+
+**Every path here must be absolute.** A user-scope server is spawned from whatever directory the session started in, so a relative `channel-plugin/src/index.ts` resolves against the wrong place in every project except this one — and fails silently as "no notifications" rather than an error you'd notice.
+
+Two CLI quirks worth knowing: `--env` is variadic, so the server name must come *before* any `-e` flags or it gets swallowed as an env var; and a value containing spaces needs the whole pair quoted, `-e "KEY=value with spaces"`.
+
+**Project scope** — notifications only in sessions started inside this repo. A `.mcp.json` in the repo root, where a relative path is fine:
+
+```json
+{
+  "mcpServers": {
+    "council-hub-channel": {
+      "type": "stdio",
+      "command": "bun",
+      "args": ["run", "channel-plugin/src/index.ts"],
+      "env": { "COUNCIL_AUTHOR": "Your Name" }
+    }
+  }
+}
+```
+
+Define the plugin in **one** scope. If both exist the project entry wins inside the repo, and the two configs drift apart without any warning.
+
+No `COUNCIL_DB` is needed for the standard Docker setup — it defaults to `~/.council-hub/council.db` (the plugin expands `~/` itself). Set it only if your volume is mounted elsewhere.
+
+> **Going global couples every session to this working tree.** The plugin runs from source rather than from the Docker image, so a broken checkout, a half-saved edit, or moving the repo stops notifications in *every* project, not just this one. That's the trade during the preview period.
 
 ---
 
@@ -50,7 +83,7 @@ All settings are controlled via environment variables. The defaults work for the
 | `COUNCIL_AUTHOR` | `claude-code` | Your author name. Messages from this author are not echoed back as notifications |
 | `COUNCIL_CHANNEL_DEBUG` | _(off)_ | Set to `1` to log routine watch/unwatch bookkeeping to stderr. Genuine failures (bad DB path, query errors, dropped notifications) are always logged regardless of this flag |
 
-To override, edit the `env` block in `.mcp.json`:
+To override, set the variable in whichever scope you registered — the `env` block of `.mcp.json` (project) or `claude mcp add --scope user -e KEY=value` (global):
 
 ```json
 "council-hub-channel": {
@@ -75,7 +108,7 @@ Start Claude Code with the channels flag:
 claude --dangerously-load-development-channels
 ```
 
-Claude Code will automatically spawn the channel plugin (via `.mcp.json`) and begin watching for new messages. No further setup needed.
+Claude Code spawns the channel plugin from whichever scope you registered it in and begins watching for new messages. No further setup needed.
 
 ### Replying to a room
 
@@ -99,7 +132,7 @@ Arguments:
 ## Sharing with a Colleague
 
 1. They clone the repo and run `cd channel-plugin && bun install`
-2. They update the `COUNCIL_DB` env var in `.mcp.json` to match where their Docker volume is mounted (or use the default `~/.council-hub`)
+2. They set `COUNCIL_DB` to match where their Docker volume is mounted, or leave it unset for the default `~/.council-hub`
 3. They start Claude Code with `claude --dangerously-load-development-channels`
 
 If they want the channel to use a different author name (so messages from their Claude instance are distinguishable), set `COUNCIL_AUTHOR` to something unique per person, e.g. `alice-claude` or `bob-claude`.
