@@ -81,18 +81,22 @@ def main() -> int:
                   AND m.message_type IN (?, ?, ?, ?)
                   AND m.timestamp >= ?
                   AND m.revised = 0
+                  AND m.retracted_at IS NULL
                 ORDER BY m.id"""
     params = (args.project, *LEDGER_TYPES, tag_utc)
 
-    # A read-only connection that opens mid-WAL-checkpoint can see an inconsistent
-    # snapshot and raise "database disk image is malformed" against a database that
-    # is perfectly fine -- observed live, with PRAGMA integrity_check returning ok
-    # moments later. Retry before believing it, so this tool never cries corruption
-    # at a healthy server.
+    # NOT opened with mode=ro, despite this being a read-only tool. WAL coordination
+    # needs write access to the -shm file; a mode=ro connection cannot get it and
+    # silently falls back to a stale snapshot of the main database file -- so recent
+    # posts are invisible and the tool reports false gaps. Observed live: a post made
+    # seconds earlier was missing, and the same fallback produced a spurious
+    # "database disk image is malformed" against a database whose integrity_check
+    # returned ok moments later. A plain connection that only ever SELECTs is both
+    # safer in practice and honest about what WAL requires.
     rows = None
     for attempt in range(3):
         try:
-            con = sqlite3.connect(f"file:{args.db}?mode=ro", uri=True)
+            con = sqlite3.connect(args.db)
             rows = con.execute(query, params).fetchall()
             con.close()
             break
