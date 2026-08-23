@@ -58,24 +58,17 @@ func (r *Registry) RegisterTools() {
 			"room_id": prop("string", "Target room ID"),
 			"author":  prop("string", "Name of the posting agent"),
 			"message": prop("string", "Message content (markdown supported)"),
-			"message_type": prop("string", "Type of message — pick the one that matches your intent:\n"+
-				"  thought   — internal reasoning, exploratory, not ready for peer feedback\n"+
-				"  draft     — analysis or proposal ready for review/critique from peers\n"+
-				"  critique  — pushback, concerns, or risks about a prior message or approach\n"+
-				"  decision  — a choice has been made; include rationale; this is the permanent record\n"+
-				"  plan      — specified work awaiting execution; a handoff for another agent, who should reply with an `action` referencing it\n"+
-				"  action    — work shipped or in-flight; links a decision to a concrete outcome\n"+
-				"  review    — structured feedback on someone else's work (a design, proposal, document, or change)\n"+
-				"  synthesis — compiled knowledge article distilling the room's conclusions; write after deliberation, then pin it\n"+
-				"  note      — journal entry: an observation or context worth keeping, outside the deliberation lifecycle; shows in read_notebook by default\n"+
-				"  message   — last-resort catch-all; avoid it. Almost every post is really a thought, draft, decision, action, or note\n"+
-				"Lifecycle: thought → draft → critique → decision → plan → action → synthesis. If you set no type it defaults to 'message' — but typed reads (read_notebook, search_messages(message_type=…), read_transcript(mode=changelog)) skip 'message', so an untyped post goes uncounted in the project notebook and decision log. Pick the real type."),
+			"message_type": prop("string", "Lifecycle: thought → draft → critique → decision → plan → action → synthesis. "+
+				"Also review (feedback on someone else's work) and note (a journal entry outside the lifecycle). "+
+				"Defaults to 'message', the untyped catch-all — avoid it: typed reads (read_notebook, search_messages(message_type=…), "+
+				"read_transcript(mode=changelog)) skip it, so an untyped post goes uncounted in the project notebook and decision log. "+
+				"Per-type when-to-use guidance: load_resources(uri=council://message-types)."),
 			"reply_to":       prop("string", "Message ID this is a reply to — full UUID or a transcript's 8-char #prefix (resolved; unknown or ambiguous refs error). Renders as 're: #…' in transcripts"),
 			"mentions":       prop("string", "Comma-separated agent names to explicitly notify (e.g. 'claude,gemini-cli'). Mentioned agents can call get_mentions on startup to find threads awaiting their input."),
 			"supersedes":     prop("string", "Message ID this one replaces (e.g. an earlier synthesis) — full UUID or an 8-char #prefix (resolved; unknown or ambiguous refs error). Renders as 'supersedes #x' so tooling can dim the dead version. Pinning a new synthesis over an old one sets this automatically."),
 			"mark_read_self": prop("string", "Set 'true' to advance your own read cursor to this new message — folds the end-of-session mark_read into the post (uses author as the agent identity)."),
 			"pin":            prop("string", "Set 'true' to pin this message as the room's current pin (auto-unpins the previous one), folding the post→pin dance into one call. Use for the synthesis/decision you want surfaced as the room's living abstract — no separate pin_message round-trip or message_id plumbing. Works cross-node too: on a room owned by a peer the pin is applied on the owner, and the response says whether it landed."),
-			"workspace":      prop("string", "Absolute path of the working tree you are operating in (your cwd). Optional, and used only to warn you when another participant is in the same tree: disjoint file edits are safe, but a shared git index is not — `git add -A` from either session stages the other's in-progress work. The warning is returned with your post and shown in read_room. Matched on the literal path, and node-local by design (a shared tree implies a shared filesystem). Note the identity used is `author`, so two sessions posting under one name look like one participant — give them distinct author names if you want the warning between them."),
+			"workspace":      prop("string", "Absolute path of the working tree you are in (your cwd). Optional. If another participant posted from the same tree in the last 24h, the response warns you — disjoint file edits are safe, a shared git index is not. Limits and rationale: council://guide → Sharing a Working Tree."),
 		}),
 	}, r.handlePostToRoom)
 
@@ -467,11 +460,10 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name: "read_notebook",
-		Description: "Read a project's dev notebook. Two modes — a derived view vs. a stored record. " +
-			"Pass project for the compiled TIMELINE (a derived view: a live query over the ledger, nothing stored) — typed messages (decision, plan, action, synthesis, note by default) from every room in the project woven chronologically, grouped by day, with {sha:...} commit refs resolved per room. " +
-			"Pass notebook_id for a curated NOTEBOOK (a stored record you assemble with edit_notebook) — prose sections interleaved with transcluded ledger messages and rooms (refs resolve live; nothing is copied). Its work items self-sort: room_refs grouped In flight / Done by each room's live status, and tasks (lightweight checklist items) grouped In progress / Open / Done by their own status — so a global notebook like current-work is a dev-task cockpit that stays true without hand-editing. " +
-			"Use the timeline to see how a project unfolded (standups, retros, onboarding); use a notebook for a hand-curated document (release notes, a design digest) or a standing work list (current-work). " +
-			"Timeline options: types widens/narrows the view (a ViewSpec toggle), after_id does delta reads (the JSON footer carries latest_message_id), cluster_wide=true weaves in all cluster nodes. The timeline footer lists the project's curated notebooks. Notebooks are node-local.",
+		Description: "Read a project's dev notebook — which of two things you get depends on the param you pass. " +
+			"project=… → the TIMELINE: a live query over the ledger, nothing stored. Typed messages (decision, plan, action, synthesis, note) from every room in the project, woven chronologically and grouped by day, with {sha:…} refs resolved. Use it to see how a project unfolded — standups, retros, onboarding. " +
+			"notebook_id=… → a curated NOTEBOOK: a stored outline you assemble with edit_notebook, interleaving prose with transcluded messages and rooms (refs resolve live; nothing is copied). Work items self-sort — room_refs by their room's status, tasks by their own — so a standing list like current-work stays true without hand-editing. Use it for a hand-curated document or a work list. " +
+			"Timeline-only params: types, since, until, after_id (delta reads — the JSON footer carries latest_message_id), limit, cluster_wide. Notebook-only: level. The timeline footer lists the project's notebooks. Notebooks are node-local.",
 		InputSchema: schema(nil, map[string]map[string]any{
 			"project":      prop("string", "Project whose rooms are compiled into the timeline (use this OR notebook_id)."),
 			"notebook_id":  prop("string", "Curated notebook outline to read (use this OR project). Created via edit_notebook(action=create)."),
@@ -487,12 +479,19 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name: "edit_notebook",
-		Description: "Curate a notebook outline — the hand-assembled counterpart to read_notebook's automatic timeline. An outline is an ordered list of entries: prose sections (markdown you write), refs (pointers to ledger messages, transcluded live at read time — never copied, so the outline can't drift from the ledger), room_refs (a room's live status, the self-sorting work list), and tasks (first-class checklist items with their own done state). " +
-			"Actions: create (notebook_id, project, title?) — new empty notebook; add (notebook_id, ref_id OR prose, kind?, after_entry_id? — omit to append) — add an entry; update (entry_id, prose) — rewrite a prose section or a task's label; start / check / uncheck (entry_id) — move a task to in-progress / done / open; move (entry_id, after_entry_id — empty for top) — reorder; remove (entry_id) — drop an entry; delete (notebook_id) — remove the whole notebook (referenced messages are untouched). " +
-			"Entry IDs appear in read_notebook(notebook_id=...) output as *(entry #...)*. Typical flow: spot a pin-worthy timeline slice → edit_notebook(action=add, ref_id=<message_id>) → weave prose around it. Create without a project for a GLOBAL notebook (cross-project TODOs and standing lists). " +
-			"Two ways to track work, both self-sorting: a room_ref tracks a whole thread of work (signal_status(resolved) on the room checks it off — never hand-edited); a task is a lightweight checklist item for work that doesn't warrant its own room (edit_notebook(action=add, kind=task, prose='…'), then start/check it). The 'current-work' global notebook is the canonical place to drive dev tasks from — tasks render grouped 🔄 In progress / ☐ Open / ☑ Done, room_refs grouped 🔄 In flight / ✅ Done, prose/refs keep their authored positions. Notebooks are node-local.",
+		Description: "Curate a notebook outline — the hand-assembled counterpart to read_notebook's timeline. An outline is an ordered list of entries: prose (markdown you write), ref (a ledger message, transcluded live so the outline can't drift from it), room_ref (a room's live status), query_ref (the latest <type> in a room, resolved live), and task (a checklist item with its own state). " +
+			"Two ways to track work, both self-sorting: a room_ref tracks a whole thread (signal_status(resolved) checks it off — never hand-edited); a task is a checklist item for work not worth its own room. The 'current-work' global notebook is the canonical place to drive dev tasks from. " +
+			"Entry IDs appear in read_notebook(notebook_id=…) as *(entry #…)* — pass the full ID, since UUIDv7 prefixes collide within a millisecond. Create without a project for a GLOBAL notebook. Notebooks are node-local. See the action param for what each action needs.",
 		InputSchema: schema([]string{"action"}, map[string]map[string]any{
-			"action":         enumProp("string", "What to do: create/delete operate on notebooks; add/update/start/check/uncheck/move/remove operate on entries.", []string{"create", "add", "update", "start", "check", "uncheck", "move", "remove", "delete"}),
+			"action": enumProp("string", "What to do, and what each needs:\n"+
+				"  create   (notebook_id, project?, title?) — new empty notebook; omit project for a global one\n"+
+				"  add      (notebook_id, ref_id|ref_ids|prose, kind?, after_entry_id?) — omit after_entry_id to append\n"+
+				"  update   (entry_id, prose) — rewrite a prose section or a task's label\n"+
+				"  start / check / uncheck (entry_id) — move a task to in-progress / done / open\n"+
+				"  move     (entry_id, after_entry_id) — reorder; empty after_entry_id means the top\n"+
+				"  remove   (entry_id) — drop one entry\n"+
+				"  delete   (notebook_id) — remove the whole notebook; referenced messages are untouched",
+				[]string{"create", "add", "update", "start", "check", "uncheck", "move", "remove", "delete"}),
 			"notebook_id":    prop("string", "Notebook identifier (required for create, delete, add). E.g. 'release-notes-v1'."),
 			"project":        prop("string", "Project the notebook belongs to (create only). Omit for a GLOBAL notebook — e.g. cross-project TODOs or standing checklists: it can ref messages from any room and is listed in every project's timeline footer and /notebook view."),
 			"title":          prop("string", "Human-readable title (create only)."),
