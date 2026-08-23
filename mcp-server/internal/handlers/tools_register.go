@@ -75,6 +75,7 @@ func (r *Registry) RegisterTools() {
 			"supersedes":     prop("string", "Message ID this one replaces (e.g. an earlier synthesis) — full UUID or an 8-char #prefix (resolved; unknown or ambiguous refs error). Renders as 'supersedes #x' so tooling can dim the dead version. Pinning a new synthesis over an old one sets this automatically."),
 			"mark_read_self": prop("string", "Set 'true' to advance your own read cursor to this new message — folds the end-of-session mark_read into the post (uses author as the agent identity)."),
 			"pin":            prop("string", "Set 'true' to pin this message as the room's current pin (auto-unpins the previous one), folding the post→pin dance into one call. Use for the synthesis/decision you want surfaced as the room's living abstract — no separate pin_message round-trip or message_id plumbing. Works cross-node too: on a room owned by a peer the pin is applied on the owner, and the response says whether it landed."),
+			"workspace":      prop("string", "Absolute path of the working tree you are operating in (your cwd). Optional, and used only to warn you when another participant is in the same tree: disjoint file edits are safe, but a shared git index is not — `git add -A` from either session stages the other's in-progress work. The warning is returned with your post and shown in read_room. Matched on the literal path, and node-local by design (a shared tree implies a shared filesystem). Note the identity used is `author`, so two sessions posting under one name look like one participant — give them distinct author names if you want the warning between them."),
 		}),
 	}, r.handlePostToRoom)
 
@@ -167,7 +168,7 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "read_room",
-		Description: "Read a room's metadata (topic, project, tech_stack, tags, status, system_prompt) plus a quick orient: by default it folds in the pinned message + latest-per-type (the read_transcript(mode=summary) view) so one call shows you the room, not just its header. For the full sequential history use read_transcript; pass include_last_n to inline the raw last N messages instead of the summary. Use include_related_summaries=true to also fetch the topic, system_prompt, and pinned message of each related room — lateral context in one call.",
+		Description: "Read a room's metadata (topic, project, tech_stack, tags, status, system_prompt) plus a quick orient: by default it folds in the pinned message + latest-per-type (the read_transcript(mode=summary) view) so one call shows you the room, not just its header. For the full sequential history use read_transcript; pass include_last_n to inline the raw last N messages instead of the summary. Use include_related_summaries=true to also fetch the topic, system_prompt, and pinned message of each related room — lateral context in one call. Also warns when two participants have declared the same working tree (see post_to_room's workspace param) — they share a git index even when talking in different rooms.",
 		InputSchema: schema([]string{"room_id"}, map[string]map[string]any{
 			"room_id":                   prop("string", "Target room ID"),
 			"include_related_summaries": prop("string", "Set to 'true' to append topic, system_prompt, and pinned message from each related room."),

@@ -513,6 +513,16 @@ func (r *Registry) handleReadRoom(ctx context.Context, req *mcp.CallToolRequest,
 	fmt.Fprintf(&b, "**Created:** %s\n", room.CreatedAt.Format("2006-01-02 15:04:05"))
 	fmt.Fprintf(&b, "**Updated:** %s\n", room.UpdatedAt.Format("2006-01-02 15:04:05"))
 
+	// Shared-checkout hazard, if any participant declared a working tree another is
+	// also in. Surfaced on the read side too, not only to the agent that posted:
+	// the one who needs the warning is often the one about to run git, who may not
+	// have posted at all.
+	if groups, werr := r.Server.SharedWorkspacesInRoom(args.RoomID); werr == nil {
+		b.WriteString(council.SharedWorkspacesNote(groups))
+	} else {
+		r.Server.Logger.Warn("shared-workspace lookup failed", "room_id", args.RoomID, "error", werr)
+	}
+
 	// Content. include_last_n requests the raw recent feed; otherwise read_room
 	// orients by default — folding in the pinned message + latest-per-type (the
 	// read_transcript(mode=summary) view) so the call shows the room, not just its

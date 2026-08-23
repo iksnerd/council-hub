@@ -105,6 +105,22 @@ if [ -n "$COUNCIL_SEEDS" ]; then
   export COUNCIL_SEEDS="$RESOLVED"
 fi
 
+# ── Warn on the default cluster cookie ──
+# The image ships RELEASE_COOKIE=council (Dockerfile). A cookie is not a password
+# on a door: Erlang distribution grants code execution on this node, so a node
+# running the published default with 4369/9000 reachable is remotely executable by
+# anyone who can connect. Fine on a trusted LAN, not on a network you don't own.
+# This warns rather than refuses — a single-node deployment that never publishes
+# the cluster ports is unaffected, and the container cannot see how it was
+# published (-p is host-side).
+if [ -z "$RELEASE_COOKIE" ] || [ "$RELEASE_COOKIE" = "council" ]; then
+  echo "WARN: RELEASE_COOKIE is the image default ('council'), which is published in the docs."
+  echo "      Anyone who can reach ports 4369/9000 on this host can run code on this node."
+  echo "      Set your own: -e RELEASE_COOKIE=\"\$(openssl rand -hex 32)\" (identical on every peer),"
+  echo "      and on an untrusted network publish the cluster ports to one interface"
+  echo "      (-p <lan-ip>:4369:4369) rather than all of them."
+fi
+
 echo "=== Council Hub ==="
 echo "  MCP server: http://0.0.0.0:${COUNCIL_HTTP_ADDR#:}/mcp"
 if [ "${COUNCIL_UI:-on}" != "off" ]; then

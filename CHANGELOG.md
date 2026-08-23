@@ -4,6 +4,27 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.56.0] - 2026-08-24
+
+Shared-checkout detection: the one filesystem hazard between two agents that needs no cooperation to happen, and none to notice. Plus a security pass on the clustering defaults, prompted by taking a node onto a network we don't own.
+
+### Added
+- **`post_to_room(workspace=…)` warns when another participant is in the same working tree.** Council Hub coordinates conversation, not the filesystem, and it deliberately does not try to: two agents editing disjoint files are safe. What is not safe is the one piece of state they unavoidably share — **the git index**. Whichever agent runs `git add -A` first stages the other's in-progress work and commits it. Pass your working directory and, if another participant has posted from the same tree in the last 24h, the warning comes back with your post. Advisory by design: the post always succeeds. Omitting the parameter changes nothing, and writes no row.
+- **`read_room` surfaces the same warning**, so it reaches a reader who never posted — often the one about to run git. Participants are counted across every room, not just the one being read: two agents share an index whether or not they are talking in the same place.
+- The detection is **node-local, which is correct rather than a limitation** — a shared tree implies a shared filesystem, so participants on two cluster nodes are on two machines and cannot be in one tree. Nothing is proxied, including when the message itself is posted to a peer-owned room: the tree is a fact about the poster's machine, and replaying it onto the owner's would describe nothing there.
+- Known limit, stated in the tool description rather than left to be discovered: the identity is `author`, so two sessions posting under one name look like one participant. Give concurrent sessions distinct author names if you want the warning between them.
+- `council://guide` gains a "Sharing a Working Tree" section (it ships in the binary, so it reaches agents that never read repo docs).
+
+### Security
+- **The default cluster cookie is now warned about at startup.** The image ships `RELEASE_COOKIE=council`, which is published in the docs — and Erlang distribution grants *code execution* on the node to whoever holds the cookie, not merely read access to rooms. Combined with the documented `-p 4369:4369 -p 9000:9000` (which publishes on every interface, VPN adapters included), a node following the quickstart on an untrusted network is remotely executable by anyone who can reach it. The entrypoint now warns when the cookie is unset or still the default, and states the two fixes. It warns rather than refuses: a single-node deployment that never publishes the cluster ports is unaffected, and the container cannot see how it was published (`-p` is host-side).
+- **`make docker-run` publishes the cluster ports to the LAN address only**, not `0.0.0.0`. Peers reach that address anyway, so clustering is unchanged; the distribution port simply stops listening on every other interface. `3001`/`4000` are untouched — they carry data, not code execution, and binding them would break localhost access.
+- **Documented what the `/24` startup scan looks like from outside.** With `COUNCIL_SEEDS` unset, the entrypoint probes all 254 addresses of the local `/24` on port 4369 — indistinguishable from host reconnaissance to network monitoring, and it runs on *every* container start, so a reboot triggers it unprompted. `COUNCIL_NO_DISCOVER=1` was already the off switch; nothing said why you would want it. README, DOCKERHUB.md, and the getting-started clustering section now carry the untrusted-network guidance together.
+
+### Changed
+- Channel-plugin registration is documented at **user scope** (`claude mcp add --scope user`), with the reason every path in it must be absolute: a user-scope server is spawned from whatever directory the session started in, so a relative script path fails silently as "no notifications" in every project but the one it was written in. Register in one scope only — a project `.mcp.json` entry wins inside the repo and the two configs drift apart unnoticed.
+- Bumped `github.com/mattn/go-sqlite3` (#58).
+- **`_txlock=immediate` on the SQLite DSN.** Every `Begin()` now takes the write lock up front rather than upgrading from a read mid-transaction — the shape that hits `SQLITE_BUSY` once more than one writer exists. All four existing transactions were already write-first, so this changes no behaviour today; it is what keeps that true if the single-connection pool is ever widened. That pool (`SetMaxOpenConns(1)`) is what serializes writers in-process, and nothing previously said so — a comment now marks it as load-bearing rather than a throughput tweak.
+
 ## [0.55.0] - 2026-08-21
 
 Cross-node room lifecycle: a room owned by a peer can now be closed out end to end from any node, and the tools that still can't say so instead of lying.

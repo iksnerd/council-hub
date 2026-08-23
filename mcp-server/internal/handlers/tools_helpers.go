@@ -153,10 +153,11 @@ func healthTagHint(tags string) string {
 
 // Input size limits to prevent DoS and unbounded database growth.
 const (
-	maxIDLen       = 255
-	maxAuthorLen   = 255
-	maxContentLen  = 100_000 // ~100KB
-	maxMetadataLen = 10_000  // topic, project, tech_stack, tags, system_prompt
+	maxIDLen        = 255
+	maxAuthorLen    = 255
+	maxContentLen   = 100_000 // ~100KB
+	maxMetadataLen  = 10_000  // topic, project, tech_stack, tags, system_prompt
+	maxWorkspaceLen = 1024    // working-tree path; PATH_MAX on the platforms clients run on
 )
 
 // validateSize returns an error if value exceeds max characters.

@@ -127,6 +127,9 @@ func (r *Registry) proxyPostToRoom(owner string, args PostToRoomInput) (string, 
 		return "", false, err
 	}
 
+	// Workspace is deliberately absent: a shared working tree is a fact about the
+	// *poster's* machine, so it is recorded on this node before the proxy and must
+	// not be replayed onto the owner's, where that path describes nothing.
 	reqBody, err := json.Marshal(internalPostRequest{
 		RoomID:      args.RoomID,
 		Author:      args.Author,

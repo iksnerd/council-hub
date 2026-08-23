@@ -21,6 +21,7 @@ type PostToRoomInput struct {
 	Supersedes   string `json:"supersedes"`
 	MarkReadSelf string `json:"mark_read_self"`
 	Pin          string `json:"pin"`
+	Workspace    string `json:"workspace"`
 }
 
 // UpdateMessageInput represents the parameters for editing a message. The edit is
@@ -81,6 +82,27 @@ func (r *Registry) handlePostToRoom(ctx context.Context, req *mcp.CallToolReques
 		return msg(fmt.Sprintf("Error: Invalid message_type '%s'. Must be one of: message, thought, draft, decision, plan, review, action, critique, synthesis, note.", args.MessageType))
 	}
 
+	// Shared-checkout detection. A working tree is a property of this machine, not
+	// of the room, so this is recorded locally even when the message itself is
+	// proxied to an owner on another node — the poster is here either way. Peers are
+	// read before recording self, which is the order the note describes: who else is
+	// in this tree, then note that we are too.
+	workspaceNote := ""
+	if args.Workspace != "" {
+		if err := validateSize("workspace", args.Workspace, maxWorkspaceLen); err != nil {
+			return msg("Error: " + err.Error())
+		}
+		peers, werr := r.Server.SharedWorkspacePeers(args.Author, args.Workspace)
+		if werr != nil {
+			r.Server.Logger.Warn("shared-workspace lookup failed", "author", args.Author, "error", werr)
+		} else {
+			workspaceNote = council.SharedWorkspaceWarning(council.NormalizeWorkspace(args.Workspace), peers)
+		}
+		if werr := r.Server.RecordWorkspace(args.Author, args.RoomID, args.Workspace); werr != nil {
+			r.Server.Logger.Warn("workspace record failed", "author", args.Author, "error", werr)
+		}
+	}
+
 	// Verify room exists locally. If it doesn't and we're clustered, the room may
 	// be owned by a peer node — locate the owner and proxy the write there rather
 	// than silently creating a local shadow.
@@ -101,7 +123,7 @@ func (r *Registry) handlePostToRoom(ctx context.Context, req *mcp.CallToolReques
 				}
 			}
 			r.Server.Logger.Info("Message proxied to owner", "room_id", args.RoomID, "owner", owner, "msg_id", msgID, "pinned", pinned)
-			return msg(fmt.Sprintf("Message #%.8s posted to room '%s' (on cluster node %s) by %s.%s\n\n```json\n{\"message_id\": \"%s\", \"room_id\": \"%s\", \"latest_message_id\": \"%s\", \"owner_node\": \"%s\"}\n```", msgID, args.RoomID, owner, args.Author, pinNote, msgID, args.RoomID, msgID, owner))
+			return msg(fmt.Sprintf("Message #%.8s posted to room '%s' (on cluster node %s) by %s.%s\n\n```json\n{\"message_id\": \"%s\", \"room_id\": \"%s\", \"latest_message_id\": \"%s\", \"owner_node\": \"%s\"}\n```", msgID, args.RoomID, owner, args.Author, pinNote, msgID, args.RoomID, msgID, owner) + workspaceNote)
 		}
 		return msg(fmt.Sprintf("Error: Room '%s' not found. Create it first with create_room.", args.RoomID))
 	}
@@ -164,7 +186,7 @@ func (r *Registry) handlePostToRoom(ctx context.Context, req *mcp.CallToolReques
 	}
 
 	r.Server.Logger.Info("Message posted", "room_id", args.RoomID, "author", args.Author, "type", args.MessageType, "msg_id", msgID, "pinned", args.Pin == "true")
-	return msg(fmt.Sprintf("Message #%.8s posted to room '%s' by %s.%s\n\n```json\n{\"message_id\": \"%s\", \"room_id\": \"%s\", \"latest_message_id\": \"%s\"}\n```%s", msgID, args.RoomID, args.Author, pinNote, msgID, args.RoomID, msgID, healthHint))
+	return msg(fmt.Sprintf("Message #%.8s posted to room '%s' by %s.%s\n\n```json\n{\"message_id\": \"%s\", \"room_id\": \"%s\", \"latest_message_id\": \"%s\"}\n```%s", msgID, args.RoomID, args.Author, pinNote, msgID, args.RoomID, msgID, healthHint) + workspaceNote)
 }
 
 func (r *Registry) handleUpdateMessage(ctx context.Context, req *mcp.CallToolRequest, args UpdateMessageInput) (*mcp.CallToolResult, ToolOutput, error) {
