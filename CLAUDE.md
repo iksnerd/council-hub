@@ -164,6 +164,22 @@ Reference skills for the project's two stacks are installed from [`iksnerd/skill
 
 Add more with `npx skills add iksnerd/skills --skill <name> --agent '*' --yes` (list available with `--list`). Review a skill before relying on it — they run with full agent permissions.
 
+## Keeping the ledger honest (the `Council-Room:` trailer)
+
+Three release cycles running (v0.53.0, v0.55.0, v0.56.0) shipped commits with **no room record**, each caught only by the `git log`-vs-ledger cross-check while compiling the CHANGELOG. Naming the problem twice did not stop it happening a third time, and the session-start reminder was live in context throughout. The failure is structural, not motivational: **the ledger entry is a second action after the commit, and second actions get skipped under load.**
+
+So make it a byproduct instead. Add a trailer to the commit message:
+
+```
+Council-Room: council-hub-mcp-feedback
+Council-Type: action          # optional, default `action`
+Council-Author: claude-code   # optional, default git config user.name
+```
+
+`.githooks/post-commit` turns it into a post via the Go server's localhost-only `/api/ui/post`. Enable per clone with `make install-hooks` (sets `core.hooksPath`; undo with `git config --unset core.hooksPath`). Opt-in per commit — no trailer, no post, so a dependabot bump stays out of the room. The hook **never blocks a commit**: every failure path warns to stderr and exits 0, because a commit that succeeded must not look failed when a side-channel is down.
+
+The trailer is not sufficient on its own — a trailer you forget is the same failure in a new coat — so `make ledger-check` remains the backstop. It lists commits since the last tag that no ledger post cites by sha, and it deliberately makes no semantic guess: matching subjects to prose by keyword produces confident nonsense, and a coverage report that is wrong is worse than one that admits what it cannot see. Run it as a **release preflight**, not at changelog time — the point is to find the gap before the version bump, not while writing release notes.
+
 ## Capturing learnings
 
 After a non-trivial task, fold what you learned back into the place that surfaces it next time — don't let it die with the session:
