@@ -158,7 +158,12 @@ type Server struct {
 
 // NewServer creates a new Server with an initialized SQLite database.
 func NewServer(dbPath string, logger *slog.Logger) (*Server, error) {
-	dsn := dbPath + "?_journal=WAL&_busy_timeout=5000"
+	// _txlock=immediate makes every Begin() take the write lock up front instead of
+	// upgrading from a read mid-transaction — the shape that hits SQLITE_BUSY once
+	// more than one writer exists. Every transaction here is already write-first, so
+	// this changes no behaviour today; it is what keeps that true if the single-
+	// connection pool below is ever widened, which nothing else marks as load-bearing.
+	dsn := dbPath + "?_journal=WAL&_busy_timeout=5000&_txlock=immediate"
 	if dbPath == ":memory:" {
 		dsn = ":memory:"
 	}
@@ -170,6 +175,9 @@ func NewServer(dbPath string, logger *slog.Logger) (*Server, error) {
 
 	// SQLite handles concurrency via WAL mode, but we still configure
 	// the pool to avoid "database is locked" under heavy concurrent reads.
+	// This single connection is also what serializes writers in-process: a second
+	// Begin() blocks on the first. Widening it is a real concurrency change, not a
+	// throughput tweak — see the _txlock note above.
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
 	db.SetConnMaxLifetime(0)
@@ -312,6 +320,14 @@ func initSchema(db *sql.DB) error {
 		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
 
+	CREATE TABLE IF NOT EXISTS workspaces (
+		author TEXT NOT NULL,
+		workspace TEXT NOT NULL,
+		room_id TEXT NOT NULL DEFAULT '',
+		last_seen DATETIME DEFAULT CURRENT_TIMESTAMP,
+		PRIMARY KEY (author, workspace, room_id)
+	);
+
 	CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
 		content,
 		author UNINDEXED,
@@ -377,6 +393,7 @@ func initSchema(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_message_links_from ON message_links(from_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_message_links_to ON message_links(to_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_skills_project ON skills(project)`,
+		`CREATE INDEX IF NOT EXISTS idx_workspaces_workspace ON workspaces(workspace)`,
 	}
 	for _, idx := range indexes {
 		if _, err := db.Exec(idx); err != nil {

@@ -230,6 +230,13 @@ docker run -d --name council-hub \
 - **`COUNCIL_PEER_MCP_PORT`** (optional): Port used to reach peer nodes' MCP servers for cross-node writes. Defaults to the port from `COUNCIL_HTTP_ADDR` (`3001`); only set it if peers serve MCP on a different port.
 - **Ports**: `4369` (epmd) and `9000` (Erlang distribution) must be mapped and accessible between machines. For cross-node writes, the MCP port (`3001`) must also be reachable between machines.
 
+> **⚠️ Untrusted networks (coworking wifi, a corporate LAN, anything you don't own).** Erlang distribution grants **code execution** on the node to anyone holding the cookie — it is not a read-only data channel. Two defaults combine badly off a trusted LAN:
+>
+> 1. **The image ships `RELEASE_COOKIE=council`**, which is documented publicly (below). Override it with a real secret — `-e RELEASE_COOKIE="$(openssl rand -hex 32)"`, identical on every peer.
+> 2. **`-p 4369:4369` publishes on every interface**, VPN adapters included. Bind the cluster ports to one address instead: `-p 192.168.0.5:4369:4369 -p 192.168.0.5:9000:9000`. Peers reach that address anyway, so clustering is unaffected.
+>
+> Also set **`COUNCIL_NO_DISCOVER=1`**. With `COUNCIL_SEEDS` unset, the entrypoint probes all 254 addresses of your `/24` on port 4369 at startup — to network monitoring that is indistinguishable from host reconnaissance. It runs on every container start, so a reboot triggers it without you doing anything.
+
 > **VPN / Tailscale:** Pass the peer's VPN IP or MagicDNS hostname as a bare value in `COUNCIL_SEEDS` — e.g. `-e COUNCIL_SEEDS=bob` (resolved via MagicDNS) or `-e COUNCIL_SEEDS=100.x.y.z`. The entrypoint probes `:3001/health` to resolve the Erlang node name automatically. Set `COUNCIL_NO_DISCOVER=1` to skip the LAN subnet scan when running on a VPN where the scan is unnecessary.
 
 For cross-machine clusters over Tailscale (different networks, behind NAT, Docker Desktop on macOS) see the **[Tailscale clustering guide](https://github.com/iksnerd/council-hub/blob/main/docs/clustering-tailscale.md)** — it covers the sidecar pattern, MagicDNS setup, and a diagnostic runbook.
@@ -304,7 +311,7 @@ docker compose up -d
 | `SECRET_KEY_BASE` | auto-generated | Phoenix session signing key |
 | `PHX_HOST` | `localhost` | Phoenix hostname |
 | `PORT` | `4000` | Phoenix HTTP port |
-| `RELEASE_COOKIE` | `council` | Shared secret cookie for clustering multiple nodes; also authenticates cross-node write proxies |
+| `RELEASE_COOKIE` | `council` | Shared secret cookie for clustering multiple nodes; also authenticates cross-node write proxies. **The default is public — override it before publishing ports `4369`/`9000` anywhere untrusted**, since distribution grants code execution to whoever holds it |
 | `COUNCIL_PEER_MCP_PORT` | `3001` | Port used to reach peer nodes' MCP servers for cross-node writes |
 | `RELEASE_NODE` | `council_hub@127.0.0.1` | Unique node name (e.g. `council_hub@10.0.0.5`) for distributed Erlang |
 | `COUNCIL_SEEDS` | — | Peers to connect to — bare IPs (`192.168.0.5`), hostnames (`bob`, MagicDNS), or full `node@ip`. Resolved via `:3001/health`. Omit for LAN auto-discovery. |
@@ -342,7 +349,7 @@ docker compose up -d
 | Healthcheck | `wget` to `:4000` every 30s, 10s timeout, 3 retries |
 | Entrypoint | `entrypoint.sh` — manages both Go and Elixir processes |
 
-> **⚠️ amd64 is temporarily unavailable (v0.48.0 – v0.55.0).** A publishing-pipeline failure (the `docker.yml` workflow's Docker Hub token keeps expiring) meant these tags, and `:latest`, went out as `linux/arm64` only. On an x86 host the pull will fail or the container won't start. **`v0.47.0` is the most recent tag with `linux/amd64`** — use `iksnerd/council-hub:v0.47.0` there until a multi-arch build is republished. arm64 hosts (Apple Silicon, Ampere, Raspberry Pi 4/5 64-bit) are unaffected.
+> **⚠️ amd64 is temporarily unavailable (v0.48.0 – v0.56.0).** A publishing-pipeline failure (the `docker.yml` workflow's Docker Hub token keeps expiring) meant these tags, and `:latest`, went out as `linux/arm64` only. On an x86 host the pull will fail or the container won't start. **`v0.47.0` is the most recent tag with `linux/amd64`** — use `iksnerd/council-hub:v0.47.0` there until a multi-arch build is republished. arm64 hosts (Apple Silicon, Ampere, Raspberry Pi 4/5 64-bit) are unaffected.
 
 
 ## MCP Tools

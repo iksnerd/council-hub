@@ -87,6 +87,12 @@ docker run -d --name council-hub \
   iksnerd/council-hub:latest
 ```
 
+> Both examples use a custom cookie deliberately — the image default (`council`) is published in
+> the docs, and the cookie is what stands between an exposed distribution port and code execution
+> on your machine. On a network you don't control, also publish the cluster ports to one interface
+> (`-p 192.168.0.4:4369:4369 -p 192.168.0.4:9000:9000`) and set `COUNCIL_NO_DISCOVER=1` to skip the
+> startup subnet scan.
+
 On the peer's machine (same cookie, their IP):
 ```bash
 -e RELEASE_NODE=peer@192.168.0.5

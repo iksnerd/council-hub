@@ -26,9 +26,13 @@ docker-build: ## Build unified Docker image (native arch)
 	@echo "Built: $(IMAGE):latest"
 
 docker-run: ## Run council-hub (MCP on :3001, UI on :4000, cluster on :4369/:9000)
+# Cluster ports are published to $(LOCAL_IP) only, not 0.0.0.0: Erlang distribution
+# grants code execution to anyone holding the cookie, so it has no business listening
+# on a VPN or guest interface. Peers reach the LAN address anyway, so nothing is lost.
 	@mkdir -p $(DATA_DIR)
 	docker run -d --name council-hub --restart always \
-		-p 4000:4000 -p 3001:3001 -p 4369:4369 -p 9000:9000 \
+		-p 4000:4000 -p 3001:3001 \
+		-p $(LOCAL_IP):4369:4369 -p $(LOCAL_IP):9000:9000 \
 		-v $(DATA_DIR):/data \
 		-e COUNCIL_TRANSPORT=http \
 		-e COUNCIL_OLLAMA_URL=http://host.docker.internal:11434 \

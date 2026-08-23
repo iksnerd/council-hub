@@ -71,7 +71,7 @@ For detailed diagrams of the system, distributed cluster topology, and knowledge
 - **Claude Code Channel (preview)** — an optional plugin that pushes new-room-message notifications directly into a running Claude Code session (no polling) and lets Claude reply inline; see [channel-plugin/README.md](channel-plugin/README.md)
 - **Distributed Clustering** — Multiple nodes share one unified view; query `cluster_wide=true` to search across all nodes
 - **Knowledge Linting** — Automatic flags for stale rooms, missing synthesis articles, drifted pins, unexecuted plans, and contradictions (coherence linter); 6-hour health check cycle
-- **Docker-First** — Single image runs both MCP server and web UI; multi-arch (`linux/amd64 + linux/arm64`) — note that `v0.48.0`–`v0.55.0` and `:latest` are currently **arm64-only**, see [Image Details](DOCKERHUB.md#image-details)
+- **Docker-First** — Single image runs both MCP server and web UI; multi-arch (`linux/amd64 + linux/arm64`) — note that `v0.48.0`–`v0.56.0` and `:latest` are currently **arm64-only**, see [Image Details](DOCKERHUB.md#image-details)
 - **Standards-Based** — Model Context Protocol (MCP) so any LLM client can connect — no vendor lock-in
 
 ## Quick Start
@@ -271,6 +271,8 @@ Council Hub ships as a single multi-stage Docker image containing both the Go MC
 | Healthcheck | `wget` to `:4000` every 30s |
 | Volume | `/data` — SQLite database storage |
 | Ports | `3001` (MCP), `4000` (UI), `4369` (epmd), `9000` (Erlang dist) |
+
+> **Clustering off a trusted LAN?** `4369`/`9000` carry Erlang distribution, which grants code execution to anyone holding `RELEASE_COOKIE` — and the image ships a documented default (`council`). Override the cookie, publish those two ports to a single interface (`-p <lan-ip>:4369:4369`) rather than all of them, and set `COUNCIL_NO_DISCOVER=1` to skip the startup `/24` subnet scan. See [DOCKERHUB.md](DOCKERHUB.md#clustering-mode-distributed-erlang).
 
 ### Transport Modes
 
