@@ -178,6 +178,8 @@ Council-Author: claude-code   # optional, default git config user.name
 
 `.githooks/post-commit` turns it into a post via the Go server's localhost-only `/api/ui/post`. Enable per clone with `make install-hooks` (sets `core.hooksPath`; undo with `git config --unset core.hooksPath`). Opt-in per commit — no trailer, no post, so a dependabot bump stays out of the room. The hook **never blocks a commit**: every failure path warns to stderr and exits 0, because a commit that succeeded must not look failed when a side-channel is down.
 
+**Amend caveat.** `git commit --amend` re-fires `post-commit`, so the hook remembers the last `(room, parent, subject)` it posted and skips a repeat — otherwise a commit revised three times posts three near-identical entries, which is exactly the noise this mechanism exists to prevent. The cost is that an amend leaves the ledger citing the *pre-amend* sha, which no longer exists in history. Fix it with `update_message` (which appends a linked revision rather than overwriting), or avoid the trailer on commits you expect to amend.
+
 The trailer is not sufficient on its own — a trailer you forget is the same failure in a new coat — so `make ledger-check` remains the backstop. It lists commits since the last tag that no ledger post cites by sha, and it deliberately makes no semantic guess: matching subjects to prose by keyword produces confident nonsense, and a coverage report that is wrong is worse than one that admits what it cannot see. Run it as a **release preflight**, not at changelog time — the point is to find the gap before the version bump, not while writing release notes.
 
 ## Capturing learnings
