@@ -27,7 +27,11 @@ import subprocess
 import sys
 import time
 
-LEDGER_TYPES = ("action", "decision", "synthesis")
+# Matches read_notebook's default type set. `note` counts: the question here is
+# "did this work reach the ledger at all", and a note is a real record even though
+# it is not changelog material. Excluding it produced a false positive on the first
+# commit that used the hook with Council-Type: note.
+LEDGER_TYPES = ("action", "decision", "synthesis", "note")
 
 
 def git(*args: str) -> str:
@@ -74,7 +78,7 @@ def main() -> int:
     query = """SELECT m.id, m.room_id, m.message_type, m.content
                  FROM messages m JOIN rooms r ON r.id = m.room_id
                 WHERE r.project = ?
-                  AND m.message_type IN (?, ?, ?)
+                  AND m.message_type IN (?, ?, ?, ?)
                   AND m.timestamp >= ?
                   AND m.revised = 0
                 ORDER BY m.id"""
