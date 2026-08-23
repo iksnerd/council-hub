@@ -56,7 +56,7 @@ docker-push: ## Build and push image to Docker Hub (VERSION=vX.Y.Z; arm64 only, 
 	@echo "Pushed: $(IMAGE):latest + $(IMAGE):$(VERSION) ($(PLATFORMS))"
 	@echo "NOTE: this overwrote :latest. On $(PLATFORMS) alone, x86 users cannot run it."
 
-ledger-check: ## List commits since the last tag with no council-hub ledger entry
+ledger-check: ## List commits since the last tag with no council-hub ledger entry (exits 1 if any — it is a gate)
 	@python3 scripts/ledger-check.py $(if $(SINCE),--since $(SINCE))
 
 install-hooks: ## Enable the Council-Room commit trailer (per-clone, opt-in)
