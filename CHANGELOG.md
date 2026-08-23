@@ -4,6 +4,22 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.57.0] - 2026-08-24
+
+Two dev-experience changes, no runtime behaviour change: the ledger records itself now, and four tool descriptions stopped getting in the way.
+
+### Added
+- **A `Council-Room:` commit trailer turns a commit into a room post.** Three release cycles running (v0.53.0, v0.55.0, v0.56.0) shipped commits with no ledger record, each caught only by the `git log`-vs-ledger cross-check while compiling the CHANGELOG — with a session-start reminder live in context the whole time. Naming the problem twice did not stop the third. The failure is structural, not motivational: the ledger entry is a *second action* after the commit, and second actions get skipped under load, so this makes it a byproduct instead. `.githooks/post-commit`, enabled per clone with `make install-hooks`. Opt-in per commit, so a dependabot bump stays out of the room, and it never blocks a commit — every failure path warns and exits 0, because a commit that succeeded must not look failed when a side-channel is down.
+- **`make ledger-check`** — the backstop, since a trailer you forget is the same failure in a new coat. It lists commits since the last tag that no ledger post cites by sha, and it deliberately makes **no semantic guess**: matching commit subjects to prose by keyword produces confident nonsense, and a coverage report that is wrong is worse than one that admits what it cannot see. Run it as a release preflight rather than at changelog time. Validated by finding, unprompted, the same two unrecorded commits the manual cross-check had found during v0.56.0 — and used as the preflight for this release, which is the first to need no manual cross-check at all.
+
+### Changed
+- **Four tool descriptions clarified.** `read_notebook` led with "Two modes" and buried the param that decides which one you get; it now opens with the choice. `edit_notebook`'s nine per-action signatures moved onto the `action` param they qualify, leaving the description to say what an outline *is* (1,765 → 911 chars). `post_to_room`'s `message_type` carried a ten-line type table that also lives in `council://message-types` and `council://guide` — one fact in three places, only one of which is paid on every connect — and now points at the canonical resource. The `workspace` param added in v0.56.0 was the longest in the file; its rationale moved to `council://guide` alongside the rest of that feature's caveats.
+- Measured before and after: **46,907 → 44,984 chars of schema text, ~480 tokens saved per connect (4%)**. Much less than expected, and that is the useful result: the bloat is spread evenly across all 38 tools rather than concentrated in the worst four. A real reduction would be a uniform policy — schemas carry only what you need to choose and call a tool, everything else moves to a `council://` resource — not a hunt for outliers. Recorded rather than banked as a win.
+
+### Fixed
+- `ledger-check` opened the database with `mode=ro`, which cannot get the write access to the `-shm` file that WAL coordination requires — so SQLite silently fell back to a stale snapshot and the tool reported false gaps. The same fallback produced a spurious `database disk image is malformed` against a database whose `integrity_check` returned `ok` seconds later. It now opens a plain connection that only ever SELECTs: less superficially safe, actually correct. Worth knowing for any other read-only reader of this database.
+- `ledger-check` counted retracted messages as coverage (it filtered `revised = 0` but not `retracted_at`), and did not count `note` posts, which `read_notebook`'s default type set does include.
+
 ## [0.56.0] - 2026-08-24
 
 Shared-checkout detection: the one filesystem hazard between two agents that needs no cooperation to happen, and none to notice. Plus a security pass on the clustering defaults, prompted by taking a node onto a network we don't own.
