@@ -4,6 +4,14 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.58.1] - 2026-09-13
+
+Two fixes found by the v0.58.0 smoke test.
+
+### Fixed
+- `search_messages(semantic=true, project=...)` always failed with `fetch messages: ambiguous column name: id`. The project filter joined `rooms`, which also has an `id` column, while the selected columns were unqualified. It now filters with a subquery. The bug predates v0.58.0; the existing filter test ignored errors and never covered `project`.
+- The `post_to_room(pin=true)` note added in v0.58.0 printed the replaced pin as an 8-character prefix. UUIDv7 IDs share those characters for about a minute, so the prefix usually matched the new message as well. It now prints the full ID.
+
 ## [0.58.0] - 2026-09-13
 
 The release pipeline works end to end again: amd64 images are back, tagged releases publish themselves once tests pass, and commits are checked locally before they exist. Plus two small fixes and a docs pass.
