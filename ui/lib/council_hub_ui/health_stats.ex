@@ -15,6 +15,7 @@ defmodule CouncilHubUi.HealthStats do
   """
   def db_stats do
     message_count = Repo.aggregate(Message, :count)
+    embeddable = Repo.aggregate(live_messages(), :count)
     embedded = embedded_count()
 
     %{
@@ -23,8 +24,17 @@ defmodule CouncilHubUi.HealthStats do
       private_rooms: Repo.aggregate(from(r in Room, where: r.visibility == "private"), :count),
       last_message_at: Repo.one(from m in Message, select: max(m.timestamp)),
       embedded: embedded,
-      coverage_pct: coverage_pct(embedded, message_count)
+      embeddable: embeddable,
+      coverage_pct: coverage_pct(embedded, embeddable)
     }
+  end
+
+  # Coverage is measured against what semantic search can return: live heads.
+  # Superseded revisions and retractions are never embedded by design, so
+  # counting them made a fully indexed node report a permanent gap. Mirrors the
+  # Go server's EmbeddingCoverage (liveClause).
+  defp live_messages do
+    from m in Message, where: m.revised == false and is_nil(m.retracted_at)
   end
 
   defp coverage_pct(embedded, total)
@@ -41,8 +51,16 @@ defmodule CouncilHubUi.HealthStats do
   # `message_vectors_rowids` instead — a plain table (one row per stored vector)
   # that any connection can read, so the count is accurate without the extension.
   # A genuine failure (table absent → semantic search not enabled) still → nil.
+  # Only vectors of live messages count: a vector left over from before an edit
+  # or retraction isn't searchable.
   defp embedded_count do
-    case Ecto.Adapters.SQL.query(Repo, "SELECT count(*) FROM message_vectors_rowids", []) do
+    sql = """
+    SELECT count(*) FROM message_vectors_rowids v
+    JOIN messages m ON m.id = v.id
+    WHERE m.revised = 0 AND m.retracted_at IS NULL
+    """
+
+    case Ecto.Adapters.SQL.query(Repo, sql, []) do
       {:ok, %{rows: [[n]]}} -> n
       _ -> nil
     end
