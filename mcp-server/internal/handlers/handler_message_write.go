@@ -108,7 +108,7 @@ func (r *Registry) handlePostToRoom(ctx context.Context, req *mcp.CallToolReques
 	// than silently creating a local shadow.
 	if _, err := r.Server.GetRoom(args.RoomID); err != nil {
 		if owner, lerr := r.locateRoomOwner(args.RoomID); lerr == nil && owner != "" {
-			msgID, pinned, perr := r.proxyPostToRoom(owner, args)
+			msgID, pinned, replaced, perr := r.proxyPostToRoom(owner, args)
 			if perr != nil {
 				return msg(fmt.Sprintf("Error: room '%s' is owned by cluster node '%s' but the write could not be forwarded: %s", args.RoomID, owner, perr.Error()))
 			}
@@ -117,7 +117,7 @@ func (r *Registry) handlePostToRoom(ctx context.Context, req *mcp.CallToolReques
 			pinNote := ""
 			if args.Pin == "true" {
 				if pinned {
-					pinNote = " 📌 pinned (previous pin replaced)"
+					pinNote = pinConfirmation(replaced)
 				} else {
 					pinNote = " (pin failed on the owner node — pin it manually with pin_message there)"
 				}
@@ -168,11 +168,11 @@ func (r *Registry) handlePostToRoom(ctx context.Context, req *mcp.CallToolReques
 	// then pin it" — this saves a round-trip and the manual message_id plumbing.
 	pinNote := ""
 	if args.Pin == "true" {
-		if _, perr := r.Server.PinMessage(args.RoomID, msgID); perr != nil {
+		if _, replaced, perr := r.Server.PinMessageReplacing(args.RoomID, msgID); perr != nil {
 			r.Server.Logger.Warn("pin-on-post failed", "room_id", args.RoomID, "msg_id", msgID, "error", perr)
 			pinNote = " (pin failed — pin it manually with pin_message)"
 		} else {
-			pinNote = " 📌 pinned (previous pin replaced)"
+			pinNote = pinConfirmation(replaced)
 		}
 	}
 
@@ -417,4 +417,14 @@ func (r *Registry) handleForkThread(ctx context.Context, req *mcp.CallToolReques
 		"Forked %d message(s) from '%s' into new room '%s'. Both rooms are now linked.\n\n```json\n{\"source_room\": \"%s\", \"new_room\": \"%s\", \"messages_moved\": %d}\n```",
 		moved, sourceRoomID, args.NewRoomID, sourceRoomID, args.NewRoomID, moved,
 	))
+}
+
+// pinConfirmation renders the pin-on-post note. It names the displaced pin only
+// when there was one: a first pin replaced nothing, and saying otherwise sends
+// the caller looking for a pin it never overwrote.
+func pinConfirmation(replacedPin string) string {
+	if replacedPin == "" {
+		return " 📌 pinned"
+	}
+	return fmt.Sprintf(" 📌 pinned (replaced #%.8s)", replacedPin)
 }

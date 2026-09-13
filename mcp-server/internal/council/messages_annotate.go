@@ -5,7 +5,17 @@ import (
 	"fmt"
 )
 
+// PinMessage toggles a message as the room's pin and reports whether it is now
+// pinned. Use PinMessageReplacing when the caller also needs to know which pin,
+// if any, was displaced.
 func (s *Server) PinMessage(roomID string, messageID string) (bool, error) {
+	pinned, _, err := s.PinMessageReplacing(roomID, messageID)
+	return pinned, err
+}
+
+// PinMessageReplacing is PinMessage plus the ID of the pin it replaced, or ""
+// when the room had no pin (or the call unpinned the message instead).
+func (s *Server) PinMessageReplacing(roomID string, messageID string) (bool, string, error) {
 	s.Mu.Lock()
 	defer s.Mu.Unlock()
 
@@ -15,16 +25,16 @@ func (s *Server) PinMessage(roomID string, messageID string) (bool, error) {
 	err := s.DB.QueryRow(`SELECT room_id, pinned, message_type, COALESCE(supersedes, '') FROM messages WHERE id = ?`, messageID).
 		Scan(&actualRoomID, &currentlyPinned, &targetType, &targetSupersedes)
 	if err != nil {
-		return false, err
+		return false, "", err
 	}
 	if actualRoomID != roomID {
-		return false, fmt.Errorf("message %.8s belongs to room '%s', not '%s'", messageID, actualRoomID, roomID)
+		return false, "", fmt.Errorf("message %.8s belongs to room '%s', not '%s'", messageID, actualRoomID, roomID)
 	}
 
 	if currentlyPinned {
 		// Toggle off
 		_, err := s.DB.Exec(`UPDATE messages SET pinned = 0 WHERE id = ?`, messageID)
-		return false, err
+		return false, "", err
 	}
 
 	// Capture the currently pinned message (if any) before we unpin it — used to
@@ -39,7 +49,7 @@ func (s *Server) PinMessage(roomID string, messageID string) (bool, error) {
 	// Pin the target
 	_, err = s.DB.Exec(`UPDATE messages SET pinned = 1 WHERE id = ?`, messageID)
 	if err != nil {
-		return false, err
+		return false, "", err
 	}
 
 	// Pin-replacement chaining: when a synthesis replaces a previously pinned
@@ -57,7 +67,7 @@ func (s *Server) PinMessage(roomID string, messageID string) (bool, error) {
 		}
 	}
 
-	return true, nil
+	return true, oldPinID, nil
 }
 
 // ReactToMessage toggles an emoji reaction by an author on a message.
