@@ -421,10 +421,12 @@ func (r *Registry) handleForkThread(ctx context.Context, req *mcp.CallToolReques
 
 // pinConfirmation renders the pin-on-post note. It names the displaced pin only
 // when there was one: a first pin replaced nothing, and saying otherwise sends
-// the caller looking for a pin it never overwrote.
+// the caller looking for a pin it never overwrote. The ID is printed in full:
+// UUIDv7 IDs share their first 8 hex characters for about a minute, so a short
+// prefix usually matches the new message too.
 func pinConfirmation(replacedPin string) string {
 	if replacedPin == "" {
 		return " 📌 pinned"
 	}
-	return fmt.Sprintf(" 📌 pinned (replaced #%.8s)", replacedPin)
+	return fmt.Sprintf(" 📌 pinned (replaced #%s)", replacedPin)
 }

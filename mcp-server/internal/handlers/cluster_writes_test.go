@@ -665,7 +665,7 @@ func TestPostToRoomProxyPinNoteFollowsOwnerReport(t *testing.T) {
 		name, replaced, want, wantAbsent string
 	}{
 		{"first pin on owner", "", "📌 pinned", "replaced"},
-		{"owner replaced a pin", "0123abcd-ffff", "replaced #0123abcd", ""},
+		{"owner replaced a pin", "0123abcd-ffff", "replaced #0123abcd-ffff)", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			reg := setupHandlerTest(t)

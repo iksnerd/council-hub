@@ -433,7 +433,7 @@ func TestHandlePostToRoomPinNoteNamesOnlyARealReplacement(t *testing.T) {
 	second, _, _ := reg.handlePostToRoom(context.Background(), nil, PostToRoomInput{
 		RoomID: "h-pin-note", Author: "Claude", Message: "second synthesis", MessageType: "synthesis", Pin: "true",
 	})
-	if text := resultText(second); !strings.Contains(text, "replaced #"+old.ID[:8]) {
-		t.Errorf("second pin should name the pin it replaced (#%.8s), got: %s", old.ID, text)
+	if text := resultText(second); !strings.Contains(text, "replaced #"+old.ID+")") {
+		t.Errorf("second pin should name the full ID of the pin it replaced (#%s), got: %s", old.ID, text)
 	}
 }
