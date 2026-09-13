@@ -235,3 +235,32 @@ func TestSharedWorkspacesNoteRendering(t *testing.T) {
 		}
 	}
 }
+
+func TestDeleteRoomForgetsItsWorkspaceRows(t *testing.T) {
+	s := setupTestServer(t)
+	s.CreateRoom("gone", "To be deleted", "", "", "", "", "")
+	s.CreateRoom("kept", "Survives", "", "", "", "", "")
+
+	for _, rec := range []struct{ author, room string }{
+		{"smoke-agent", "gone"},
+		{"codex", "kept"},
+	} {
+		if err := s.RecordWorkspace(rec.author, rec.room, "/work/repo"); err != nil {
+			t.Fatalf("RecordWorkspace: %v", err)
+		}
+	}
+
+	if err := s.DeleteRoom("gone"); err != nil {
+		t.Fatalf("DeleteRoom: %v", err)
+	}
+
+	// A peer must never be reported "in" a room that no longer exists. Rows for
+	// other rooms in the same tree are untouched.
+	peers, err := s.SharedWorkspacePeers("claude", "/work/repo")
+	if err != nil {
+		t.Fatalf("SharedWorkspacePeers: %v", err)
+	}
+	if len(peers) != 1 || peers[0].Author != "codex" || peers[0].RoomID != "kept" {
+		t.Fatalf("expected only codex in kept, got %+v", peers)
+	}
+}
