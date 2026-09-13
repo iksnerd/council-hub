@@ -71,7 +71,7 @@ For detailed diagrams of the system, distributed cluster topology, and knowledge
 - **Claude Code Channel (preview)** — an optional plugin that pushes new-room-message notifications directly into a running Claude Code session (no polling) and lets Claude reply inline; see [channel-plugin/README.md](channel-plugin/README.md)
 - **Distributed Clustering** — Multiple nodes share one unified view; query `cluster_wide=true` to search across all nodes
 - **Knowledge Linting** — Automatic flags for stale rooms, missing synthesis articles, drifted pins, unexecuted plans, and contradictions (coherence linter); 6-hour health check cycle
-- **Docker-First** — Single image runs both MCP server and web UI; multi-arch (`linux/amd64 + linux/arm64`) — note that `v0.48.0`–`v0.57.0` and `:latest` are currently **arm64-only**, see [Image Details](DOCKERHUB.md#image-details)
+- **Docker-First** — Single image runs both MCP server and web UI; multi-arch (`linux/amd64 + linux/arm64`); tags `v0.48.0`–`v0.56.0` are arm64-only, see [Image Details](DOCKERHUB.md#image-details)
 - **Standards-Based** — Model Context Protocol (MCP) so any LLM client can connect — no vendor lock-in
 
 ## Quick Start
@@ -318,7 +318,7 @@ make docker-build # build image
 make docker-run   # run (MCP :3001, UI :4000, cluster :4369/:9000)
 make docker-stop  # stop container
 make docker-logs  # tail logs
-make docker-push  # push to Docker Hub (arm64 only from a Mac)
+make docker-push  # arm64-only fallback; releases publish via the docker.yml workflow
 
 # Ledger
 make install-hooks # post commits carrying a `Council-Room:` trailer to that room

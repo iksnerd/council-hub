@@ -344,7 +344,7 @@ docker compose up -d
 | Detail | Value |
 |--------|-------|
 | Base image | `debian:trixie-slim` |
-| Architecture | `linux/arm64` — see the note below ⚠️ |
+| Architecture | `linux/amd64`, `linux/arm64` |
 | Image size | ~298 MB |
 | Compressed | ~73 MB |
 | Build | Multi-stage (Go 1.25 + Elixir 1.19/OTP 28 + slim runtime) |
@@ -352,7 +352,7 @@ docker compose up -d
 | Healthcheck | `wget` to `:4000` every 30s, 10s timeout, 3 retries (`:3001/health` when `COUNCIL_UI=off`; always passes in stdio mode) |
 | Entrypoint | `entrypoint.sh` — manages both Go and Elixir processes |
 
-> **⚠️ amd64 is temporarily unavailable (v0.48.0 – v0.57.0).** A publishing-pipeline failure (the `docker.yml` workflow's Docker Hub token keeps expiring) meant these tags, and `:latest`, went out as `linux/arm64` only. On an x86 host the pull will fail or the container won't start. **`v0.47.0` is the most recent tag with `linux/amd64`** — use `iksnerd/council-hub:v0.47.0` there until a multi-arch build is republished. arm64 hosts (Apple Silicon, Ampere, Raspberry Pi 4/5 64-bit) are unaffected.
+> **Older tags on x86:** `v0.48.0` through `v0.56.0` were published as `linux/arm64` only, after a publishing-pipeline failure. On an x86 host those tags won't pull. `:latest` and `v0.57.0` onward are multi-arch again, so pin one of those (or `v0.47.0` and earlier).
 
 
 ## MCP Tools
