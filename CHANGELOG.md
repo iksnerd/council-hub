@@ -4,7 +4,9 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.58.0] - 2026-09-13
+
+The release pipeline works end to end again: amd64 images are back, tagged releases publish themselves once tests pass, and commits are checked locally before they exist. Plus two small fixes and a docs pass.
 
 ### Changed
 - **CI/CD runs only for version tags.** The secret scan moved from PRs and main pushes to `v*.*.*` tags, alongside tests and the GitHub release, and `docker.yml` now publishes automatically when a tag's CI run succeeds (a failing tag publishes nothing; manual dispatch still republishes an old tag). `main` no longer has a required status check.
