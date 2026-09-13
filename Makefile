@@ -18,6 +18,16 @@ COOKIE    ?= council
 
 -include Makefile.local
 
+# Where docker-run publishes the Erlang cluster ports (4369/9000). Distribution
+# grants code execution to anyone holding the cookie, so the default depends on it:
+#   - the image default cookie ('council', published in the docs): bind to
+#     $(LOCAL_IP) only, so a public secret never listens on VPN or guest interfaces.
+#   - your own cookie: bind to all interfaces. A specific LAN IP goes stale across
+#     DHCP renewals, and `--restart always` relaunches the container with the old
+#     address baked in, so it fails to start and takes :3001/:4000 down with it.
+# Override with e.g. CLUSTER_BIND=10.0.0.5 or CLUSTER_BIND=0.0.0.0.
+CLUSTER_BIND ?= $(if $(filter council,$(COOKIE)),$(LOCAL_IP),0.0.0.0)
+
 help: ## Show available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-18s %s\n", $$1, $$2}'
 
@@ -25,14 +35,11 @@ docker-build: ## Build unified Docker image (native arch)
 	docker build -t $(IMAGE):latest .
 	@echo "Built: $(IMAGE):latest"
 
-docker-run: ## Run council-hub (MCP on :3001, UI on :4000, cluster on :4369/:9000)
-# Cluster ports are published to $(LOCAL_IP) only, not 0.0.0.0: Erlang distribution
-# grants code execution to anyone holding the cookie, so it has no business listening
-# on a VPN or guest interface. Peers reach the LAN address anyway, so nothing is lost.
+docker-run: ## Run council-hub (MCP on :3001, UI on :4000, cluster on :4369/:9000 — see CLUSTER_BIND)
 	@mkdir -p $(DATA_DIR)
 	docker run -d --name council-hub --restart always \
 		-p 4000:4000 -p 3001:3001 \
-		-p $(LOCAL_IP):4369:4369 -p $(LOCAL_IP):9000:9000 \
+		-p $(CLUSTER_BIND):4369:4369 -p $(CLUSTER_BIND):9000:9000 \
 		-v $(DATA_DIR):/data \
 		-e COUNCIL_TRANSPORT=http \
 		-e COUNCIL_OLLAMA_URL=http://host.docker.internal:11434 \

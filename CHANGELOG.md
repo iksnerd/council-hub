@@ -4,6 +4,15 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+- **`make docker-run` picks where the cluster ports listen from the cookie** (new `CLUSTER_BIND` variable). With the image default cookie (`council`, published in the docs) it keeps v0.56.0's binding to the LAN address. With your own cookie it publishes `4369`/`9000` on all interfaces. Why: a container bound to a specific LAN IP fails to start once DHCP hands out a different one, and `--restart always` relaunches it with the old address, so `:3001` and `:4000` go down with it until someone recreates the container. Override with `CLUSTER_BIND=<ip>`.
+- Dependencies: go-sqlite3 1.14.52, phoenix_live_view 1.2.11, dns_cluster 0.3.0, telemetry_metrics 1.2.0, html_sanitize_ex 1.5.5.
+
+### Fixed
+- `delete_room` now removes the room's `workspaces` rows, as it already did for read cursors and links. Before, the shared-checkout warning could name a deleted room for up to 24h. Found by the v0.56.0 smoke test.
+
 ## [0.57.0] - 2026-08-24
 
 Two dev-experience changes, no runtime behaviour change: the ledger records itself now, and four tool descriptions stopped getting in the way.
