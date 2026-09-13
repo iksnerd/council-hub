@@ -362,6 +362,9 @@ func (s *Server) runBackfill(ctx context.Context) {
 	for rows.Next() {
 		var id, content string
 		if err := rows.Scan(&id, &content); err != nil {
+			// An unreadable row is never embedded and would otherwise vanish from
+			// every cycle without a trace (e.g. a message with a NULL id).
+			s.Logger.Warn("backfill skipped unreadable message row", "error", err)
 			continue
 		}
 		pending = append(pending, struct{ id, content string }{id, content})
@@ -404,6 +407,7 @@ func (s *Server) runBackfill(ctx context.Context) {
 	for rows.Next() {
 		var id, desc, prompt string
 		if err := rows.Scan(&id, &desc, &prompt); err != nil {
+			s.Logger.Warn("backfill skipped unreadable room row", "error", err)
 			continue
 		}
 		roomPending = append(roomPending, struct{ id, desc, prompt string }{id, desc, prompt})

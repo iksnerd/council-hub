@@ -192,6 +192,11 @@ func NewServer(dbPath string, logger *slog.Logger) (*Server, error) {
 		return nil, fmt.Errorf("failed to migrate message IDs to UUID: %w", err)
 	}
 
+	if err := healNullMessageIDs(db, logger); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("failed to assign ids to messages without one: %w", err)
+	}
+
 	healed, err := healIndexes(db, logger)
 	if err != nil {
 		_ = db.Close()
@@ -536,6 +541,65 @@ func isIndexOnlyCorruption(issues []string) bool {
 		}
 	}
 	return true
+}
+
+// healNullMessageIDs gives an id to every message that lacks one. messages.id is
+// a TEXT PRIMARY KEY, which SQLite lets be NULL, and a row written straight to
+// the database rather than through PostMessage can end up that way. Such a row
+// can't be fetched, linked, pinned, retracted or embedded, and every read that
+// scans ids into a string skips it silently.
+//
+// The new id is a UUIDv7 whose time field is the message's own timestamp, so it
+// keeps its place in id-ordered reads (transcripts, the notebook weave, delta
+// cursors) instead of jumping to the end. Idempotent: a clean table is a no-op.
+func healNullMessageIDs(db *sql.DB, logger *slog.Logger) error {
+	rows, err := db.Query(`SELECT rowid, COALESCE(CAST(strftime('%s', timestamp) AS INTEGER), 0) FROM messages WHERE id IS NULL`)
+	if err != nil {
+		return err
+	}
+	type pending struct{ rowid, unix int64 }
+	var todo []pending
+	for rows.Next() {
+		var p pending
+		if err := rows.Scan(&p.rowid, &p.unix); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		todo = append(todo, p)
+	}
+	_ = rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	for _, p := range todo {
+		at := time.Unix(p.unix, 0)
+		if p.unix == 0 {
+			at = time.Now()
+		}
+		id, err := uuidV7At(at)
+		if err != nil {
+			return err
+		}
+		if _, err := db.Exec(`UPDATE messages SET id = ? WHERE rowid = ? AND id IS NULL`, id, p.rowid); err != nil {
+			return err
+		}
+		logger.Warn("Assigned an id to a message that had none", "rowid", p.rowid, "id", id)
+	}
+	return nil
+}
+
+// uuidV7At returns a random UUIDv7 whose 48-bit millisecond time field is t.
+func uuidV7At(t time.Time) (string, error) {
+	u, err := uuid.NewV7()
+	if err != nil {
+		return "", err
+	}
+	ms := uint64(t.UnixMilli())
+	for i := 0; i < 6; i++ {
+		u[i] = byte(ms >> (40 - 8*i))
+	}
+	return u.String(), nil
 }
 
 // migrateMessagesToUUIDs detects an old integer-ID messages schema and converts it to UUID v7.
