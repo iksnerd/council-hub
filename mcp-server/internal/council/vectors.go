@@ -258,9 +258,13 @@ func (s *Server) RunEmbedBackfill(ctx context.Context) {
 }
 
 // EmbeddingCoverage returns total vs. indexed counts for messages and rooms.
+// Messages count only live heads (liveClause), on both sides: superseded
+// revisions and retractions are never embedded by design, and a vector left
+// over from before an edit or retraction isn't searchable, so counting either
+// made a fully indexed node report a permanent gap.
 func (s *Server) EmbeddingCoverage() (msgTotal, msgIndexed, roomTotal, roomIndexed int) {
-	_ = s.DB.QueryRow(`SELECT COUNT(*) FROM messages`).Scan(&msgTotal)
-	_ = s.DB.QueryRow(`SELECT COUNT(*) FROM message_vectors`).Scan(&msgIndexed)
+	_ = s.DB.QueryRow(`SELECT COUNT(*) FROM messages m WHERE ` + liveClause("m")).Scan(&msgTotal)
+	_ = s.DB.QueryRow(`SELECT COUNT(*) FROM message_vectors v JOIN messages m ON m.id = v.message_id WHERE ` + liveClause("m")).Scan(&msgIndexed)
 	_ = s.DB.QueryRow(`SELECT COUNT(*) FROM rooms`).Scan(&roomTotal)
 	_ = s.DB.QueryRow(`SELECT COUNT(*) FROM room_vectors`).Scan(&roomIndexed)
 	return

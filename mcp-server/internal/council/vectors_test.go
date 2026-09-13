@@ -392,3 +392,35 @@ func TestBackfillEmbeddingsRoomWithoutDescription(t *testing.T) {
 		}
 	}
 }
+
+// Coverage is about what semantic search can return: live heads only. A
+// superseded revision or a retraction is deliberately never embedded, and a
+// vector left over from before an edit or retraction isn't searchable either,
+// so neither may count toward the total or the indexed figure.
+func TestEmbeddingCoverageCountsOnlyLiveMessages(t *testing.T) {
+	s := setupTestServer(t)
+	s.CreateRoom("cov-live", "Coverage room", "proj", "", "", "", "")
+
+	live, _ := s.PostMessage("cov-live", "alice", "still live", "thought", "")
+	edited, _ := s.PostMessage("cov-live", "alice", "original wording", "thought", "")
+	retracted, _ := s.PostMessage("cov-live", "bob", "withdrawn", "thought", "")
+
+	// Embedded before the edit and the retraction, so both leave a stale vector.
+	for _, id := range []string{live, edited, retracted} {
+		if err := s.StoreVector("message_vectors", id, makeVec(0.1)); err != nil {
+			t.Fatalf("StoreVector: %v", err)
+		}
+	}
+	if _, err := s.UpdateMessageWithExpected(edited, "new wording", "", "", "alice"); err != nil {
+		t.Fatalf("UpdateMessageWithExpected: %v", err)
+	}
+	if _, err := s.RetractMessages([]string{retracted}, "bob"); err != nil {
+		t.Fatalf("RetractMessages: %v", err)
+	}
+
+	// Live messages: `live` and the new revision head. Only `live` has a vector.
+	msgTotal, msgIndexed, _, _ := s.EmbeddingCoverage()
+	if msgTotal != 2 || msgIndexed != 1 {
+		t.Fatalf("expected messages 1/2 (live heads only), got %d/%d", msgIndexed, msgTotal)
+	}
+}

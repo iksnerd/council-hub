@@ -4,6 +4,11 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+- Message embedding coverage reported a permanent gap on a fully indexed node. `/health`, the backfill status log, `regenerate_embeddings` and the `/status` page counted every message row, including superseded revisions and retractions, which are never embedded by design. The indexed figure could also include vectors left from before an edit or retraction. Both sides now count live messages only; `/status` labels the figure "live messages embedded" and keeps the plain message total separate.
+
 ## [0.58.2] - 2026-09-13
 
 ### Fixed
