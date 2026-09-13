@@ -1,11 +1,16 @@
 name: Docker
 
-# Manual only. The multi-arch build is heavy, so it does NOT run automatically on
-# a tag — tags trigger just the tests (ci.yml) and the GitHub release (release.yml).
-# Publish a Docker image on demand: Actions → Docker → Run workflow (pick the tag),
-# or `gh workflow run docker.yml -f tag=vX.Y.Z`. Builds natively on amd64 + arm64
-# runners (no QEMU), so amd64 support is preserved without burning minutes per tag.
+# Publishes the multi-arch image for a version tag, and only after that tag's CI
+# run passed: a tag push runs ci.yml, and its successful completion triggers this.
+# An image is never published from a tag whose tests failed.
+#
+# Manual republish of an existing tag: Actions → Docker → Run workflow, or
+# `gh workflow run docker.yml -f tag=vX.Y.Z`. Builds natively on amd64 + arm64
+# runners (no QEMU); amd64 cannot be built on an Apple Silicon Mac at all.
 on:
+  workflow_run:
+    workflows: [ "CI" ]
+    types: [ completed ]
   workflow_dispatch:
     inputs:
       tag:
@@ -15,11 +20,20 @@ on:
 
 env:
   IMAGE: iksnerd/council-hub
+  # A workflow_run for a tag push carries the tag name as head_branch.
+  TAG: ${{ inputs.tag || github.event.workflow_run.head_branch }}
 
 jobs:
   build:
     name: Build ${{ matrix.platform }}
     runs-on: ${{ matrix.runner }}
+    # CI only runs on version tags, but guard anyway: publish only for a
+    # successful run on a vX.Y.Z ref, or a manual dispatch.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       startsWith(github.event.workflow_run.head_branch, 'v'))
     strategy:
       fail-fast: false
       matrix:
@@ -32,7 +46,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.tag }}
+          ref: ${{ env.TAG }}
 
       - uses: docker/setup-buildx-action@v4
 
@@ -87,9 +101,9 @@ jobs:
         working-directory: /tmp/digests
         run: |
           docker buildx imagetools create \
-            -t ${{ env.IMAGE }}:${{ inputs.tag }} \
+            -t ${{ env.IMAGE }}:${{ env.TAG }} \
             -t ${{ env.IMAGE }}:latest \
             $(printf '${{ env.IMAGE }}@sha256:%s ' *)
 
       - name: Inspect manifest
-        run: docker buildx imagetools inspect ${{ env.IMAGE }}:${{ inputs.tag }}
+        run: docker buildx imagetools inspect ${{ env.IMAGE }}:${{ env.TAG }}

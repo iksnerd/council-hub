@@ -39,10 +39,10 @@ Docker Hub image: `iksnerd/council-hub` ([hub.docker.com/r/iksnerd/council-hub](
    - `mcp-server/internal/council/version.go` — `const Version = "X.Y.Z"` (`db.go` passes it to `mcp.NewServer`)
    - `ui/mix.exs` — `version: "X.Y.Z"`
 2. **Update docs**: `DOCKERHUB.md` version refs, `CHANGELOG.md` entry
-3. **Run tests locally, then commit & push**: `make test` (mcp-server) + `mix test` (ui). The suites no longer run in CI on a main push — `ci.yml` is tags-only to conserve Actions minutes — so verify locally first. Then `git commit -m "vX.Y.Z: <summary>" && git push`. The push triggers only the gitleaks Secret Scan.
+3. **Run tests locally, then commit & push**: `make test` (mcp-server) + `mix test` (ui). The suites no longer run in CI on a main push — `ci.yml` is tags-only to conserve Actions minutes — so verify locally first. Then `git commit -m "vX.Y.Z: <summary>" && git push`. A push to main triggers no workflow at all; the pre-commit hook (`make install-hooks`) is the only gate before a tag.
 4. **Tag & push tag**: `git tag vX.Y.Z && git push origin vX.Y.Z`
-5. **Wait for CI + release notes**: the tag auto-triggers `ci.yml` (Go + Elixir tests/lint) and `release.yml` (GitHub release) in parallel. Watch with `gh run list --limit 3` + `gh run watch <id>`.
-6. **Publish the Docker image via the `docker.yml` workflow**: `gh workflow run docker.yml -f tag=vX.Y.Z`, then `gh run watch <id> --exit-status`. It builds natively on amd64 and arm64 runners and publishes the multi-arch manifest `:vX.Y.Z` + `:latest`. It does not run on a tag push, so trigger it after step 5. Verify both platforms with `docker buildx imagetools inspect`.
+5. **Wait for CI + release notes**: the tag triggers `ci.yml` (Go + Elixir tests/lint), `secret-scan.yml` (full-history gitleaks) and `release.yml` (GitHub release) in parallel. Watch with `gh run list --limit 4` + `gh run watch <id>`.
+6. **The Docker image publishes itself once CI passes**: `docker.yml` runs on the successful completion of the tag's `ci.yml` run, builds natively on amd64 and arm64 runners, and publishes the multi-arch manifest `:vX.Y.Z` + `:latest`. A red CI run publishes nothing. Watch it with `gh run list --workflow=docker.yml --limit 1`, then verify both platforms with `docker buildx imagetools inspect`. To republish an existing tag by hand: `gh workflow run docker.yml -f tag=vX.Y.Z`.
 
    **Do not also run `make docker-push`.** It publishes `linux/arm64` only (the amd64 leg cannot build on this Mac, see below) and overwrites `:latest`, which breaks every x86 user. Use it only as a fallback when the workflow cannot run, and if you do, add an amd64-unavailable notice to `README.md` + `DOCKERHUB.md` for that tag. This fallback was the standing practice for v0.48.0–v0.56.0 while `DOCKERHUB_TOKEN` was expired; the token was replaced (no expiry) and v0.57.0 republished multi-arch on 2026-09-13.
 
@@ -176,7 +176,7 @@ Council-Type: action          # optional, default `action`
 Council-Author: claude-code   # optional, default git config user.name
 ```
 
-`.githooks/post-commit` turns it into a post via the Go server's localhost-only `/api/ui/post`. Enable per clone with `make install-hooks` (sets `core.hooksPath`; undo with `git config --unset core.hooksPath`). Opt-in per commit — no trailer, no post, so a dependabot bump stays out of the room. The hook **never blocks a commit**: every failure path warns to stderr and exits 0, because a commit that succeeded must not look failed when a side-channel is down.
+`.githooks/post-commit` turns it into a post via the Go server's localhost-only `/api/ui/post`. Enable per clone with `make install-hooks` (sets `core.hooksPath`, which also enables the pre-commit checks; undo with `git config --unset core.hooksPath`). Opt-in per commit — no trailer, no post, so a dependabot bump stays out of the room. The hook **never blocks a commit**: every failure path warns to stderr and exits 0, because a commit that succeeded must not look failed when a side-channel is down.
 
 **Amend caveat.** `git commit --amend` re-fires `post-commit`, so the hook remembers the last `(room, parent, subject)` it posted and skips a repeat — otherwise a commit revised three times posts three near-identical entries, which is exactly the noise this mechanism exists to prevent. The cost is that an amend leaves the ledger citing the *pre-amend* sha, which no longer exists in history. Fix it with `update_message` (which appends a linked revision rather than overwriting), or avoid the trailer on commits you expect to amend.
 
@@ -265,10 +265,14 @@ The `Dockerfile` is a 3-stage build: Go builder → Elixir builder → debian:tr
 ### CI/CD
 
 Workflows (all in `.github/workflows/`):
-- `ci.yml` — Go + Elixir tests + lint. Runs **only on `v*.*.*` tags** (not on main pushes or PRs) to conserve Actions minutes, so run `make test` / `mix test` locally before pushing.
-- `secret-scan.yml` — gitleaks. Runs on PRs and main pushes; it is the only required status check on PRs (so dependabot can still auto-merge).
-- `docker.yml` — multi-arch build (`linux/amd64 + linux/arm64`, native runners) + Docker Hub publish. **Manual (`workflow_dispatch`)** — the heavy build does not run on a tag; publish on demand with `gh workflow run docker.yml -f tag=vX.Y.Z`.
-- `release.yml` — GitHub release, on tags.
+**CI/CD runs only for version tags.** Nothing runs on a push to main or on a PR, to conserve Actions minutes; `main` has no required status checks.
+- `ci.yml` — Go + Elixir tests + lint, on `v*.*.*` tags. Run `make test` / `mix test` locally before pushing.
+- `secret-scan.yml` — full-history gitleaks, on `v*.*.*` tags. Commits are gated earlier by `.githooks/pre-commit`.
+- `release.yml` — GitHub release, on `v*.*.*` tags.
+- `docker.yml` — multi-arch build (`linux/amd64 + linux/arm64`, native runners) + Docker Hub publish. Triggered by a **successful** `ci.yml` run on a tag (`workflow_run`), so a failing tag never publishes; `workflow_dispatch` with `-f tag=vX.Y.Z` republishes an existing tag.
+- `dependabot-automerge.yml` — not CI: enables auto-merge on Dependabot patch/minor PRs. With no required checks those merge straight away, and their tests first run at the next tag.
+
+**Git hooks** (`make install-hooks`, per clone): `.githooks/pre-commit` runs gitleaks on the staged diff, rejects added lines that look like personal data (home paths, Tailscale `100.64/10` IPs, plus any regexes in the untracked `.git/info/private-patterns`), and runs gofmt + `go vet` / `mix format --check-formatted` when Go / Elixir files are staged. It skips tests to stay fast (~1–2s). `.githooks/post-commit` handles the `Council-Room:` trailer (below). Bypass once with `--no-verify`.
 
 ### Data Flow
 

@@ -66,9 +66,10 @@ docker-push: ## Build and push image to Docker Hub (VERSION=vX.Y.Z; arm64 only, 
 ledger-check: ## List commits since the last tag with no council-hub ledger entry (exits 1 if any — it is a gate)
 	@python3 scripts/ledger-check.py $(if $(SINCE),--since $(SINCE))
 
-install-hooks: ## Enable the Council-Room commit trailer (per-clone, opt-in)
+install-hooks: ## Enable git hooks: pre-commit checks + Council-Room commit trailer (per-clone)
 	git config core.hooksPath .githooks
-	@echo "Hooks enabled. Add 'Council-Room: <room-id>' to a commit message to log it."
+	@echo "Hooks enabled. pre-commit: gitleaks, personal-data scan, gofmt/vet, mix format (skip once: --no-verify)."
+	@echo "post-commit: add 'Council-Room: <room-id>' to a commit message to log it."
 	@echo "Disable with: git config --unset core.hooksPath"
 
 test-all: ## Run Go + Elixir tests

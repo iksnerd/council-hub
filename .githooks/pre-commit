@@ -1,0 +1,87 @@
+#!/bin/sh
+# Fast checks on what is being committed. The test suites no longer run in CI on
+# a main push (ci.yml is tags-only), so this is the first gate a change meets.
+#
+#   1. gitleaks on the staged diff: this is a public repo, and a secret caught
+#      after the push is already published.
+#   2. Personal data in added lines: absolute home paths and Tailscale addresses
+#      (CLAUDE.md -> Privacy & OSS Hygiene). Extra patterns can go in
+#      .git/info/private-patterns, one extended regex per line; that file is
+#      never committed, so it can name real hostnames or people.
+#   3. gofmt + go vet when Go files under mcp-server/ are staged.
+#   4. mix format --check-formatted when Elixir files under ui/ are staged.
+#
+# Tests are deliberately not run here: they take long enough that people reach
+# for --no-verify. Run `make test` / `mix test` before pushing.
+#
+# Install (per clone): make install-hooks. Skip once: git commit --no-verify.
+
+fail=0
+note() { printf '%s\n' "$*" >&2; }
+
+staged=$(git diff --cached --name-only --diff-filter=ACMR)
+[ -z "$staged" ] && exit 0
+
+# ── 1. Secrets ──
+if command -v gitleaks >/dev/null 2>&1; then
+  if ! leaks=$(gitleaks git --staged --no-banner --no-color --redact --verbose --exit-code 1 . 2>&1); then
+    note "pre-commit: gitleaks found a possible secret in the staged changes:"
+    printf '%s\n' "$leaks" | tail -20 >&2
+    note "  If it is a false positive, add its fingerprint to .gitleaksignore."
+    fail=1
+  fi
+else
+  note "pre-commit: gitleaks not installed, skipping the secret scan (brew install gitleaks)."
+fi
+
+# ── 2. Personal data in added lines ──
+added=$(git diff --cached -U0 --diff-filter=ACMR -- . ':!CHANGELOG.md' | grep '^+' | grep -v '^+++')
+patterns='/Users/[a-z][a-z0-9._-]*/|/home/[a-z][a-z0-9._-]*/|(^|[^0-9.])100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.[0-9]{1,3}\.[0-9]{1,3}'
+private_file="$(git rev-parse --git-dir)/info/private-patterns"
+if [ -f "$private_file" ]; then
+  extra=$(grep -v '^[[:space:]]*\(#\|$\)' "$private_file" | paste -sd '|' -)
+  [ -n "$extra" ] && patterns="$patterns|$extra"
+fi
+hits=$(printf '%s\n' "$added" | grep -nE "$patterns")
+if [ -n "$hits" ]; then
+  note "pre-commit: staged lines look like personal data (home path, Tailscale IP, or a private pattern):"
+  printf '%s\n' "$hits" | head -10 | cut -c1-160 >&2
+  note "  Use placeholders such as /Users/<name>/ or council_hub@10.0.0.5 instead."
+  fail=1
+fi
+
+# ── 3. Go ──
+go_files=$(printf '%s\n' "$staged" | grep '^mcp-server/.*\.go$')
+if [ -n "$go_files" ]; then
+  unformatted=$(printf '%s\n' "$go_files" | while read -r f; do [ -f "$f" ] && gofmt -l "$f"; done)
+  if [ -n "$unformatted" ]; then
+    note "pre-commit: gofmt needed (run: cd mcp-server && make fmt):"
+    printf '  %s\n' $unformatted >&2
+    fail=1
+  fi
+  if ! vet=$(cd mcp-server && CGO_ENABLED=1 go vet -tags sqlite_fts5 ./... 2>&1); then
+    note "pre-commit: go vet failed:"
+    printf '%s\n' "$vet" | head -20 >&2
+    fail=1
+  fi
+fi
+
+# ── 4. Elixir ──
+ex_files=$(printf '%s\n' "$staged" | grep -E '^ui/.*\.(ex|exs|heex)$' | sed 's#^ui/##')
+if [ -n "$ex_files" ]; then
+  if command -v mix >/dev/null 2>&1; then
+    # shellcheck disable=SC2086
+    if ! (cd ui && mix format --check-formatted $ex_files >/dev/null 2>&1); then
+      note "pre-commit: mix format needed (run: cd ui && mix format):"
+      printf '  ui/%s\n' $ex_files >&2
+      fail=1
+    fi
+  else
+    note "pre-commit: mix not installed, skipping the Elixir format check."
+  fi
+fi
+
+if [ "$fail" -ne 0 ]; then
+  note "pre-commit: commit blocked. Fix the above, or bypass once with --no-verify."
+fi
+exit "$fail"
