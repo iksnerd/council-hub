@@ -2,6 +2,8 @@ package council
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -352,5 +354,41 @@ func TestRunFullReembedRecomputesAlreadyIndexedVectors(t *testing.T) {
 	if msgIndexed != 1 || roomIndexed != 1 {
 		t.Fatalf("expected exactly 1 indexed message and 1 indexed room after full re-embed, got msgIndexed=%d roomIndexed=%d",
 			msgIndexed, roomIndexed)
+	}
+}
+
+// blankRejectingEmbedder mimics Ollama, which returns no embedding for blank
+// input, and records what it was asked to embed.
+type blankRejectingEmbedder struct {
+	vec    []float32
+	inputs []string
+}
+
+func (b *blankRejectingEmbedder) Embed(_ context.Context, text string) ([]float32, error) {
+	b.inputs = append(b.inputs, text)
+	if strings.TrimSpace(text) == "" {
+		return nil, fmt.Errorf("no embeddings returned")
+	}
+	return b.vec, nil
+}
+
+// A room with no description or system prompt used to embed "", fail, and be
+// retried by every backfill forever. Its ID is still meaningful text.
+func TestBackfillEmbeddingsRoomWithoutDescription(t *testing.T) {
+	s := setupTestServer(t)
+	s.CreateRoom("adeloc-standalone-cli", "", "proj", "", "", "", "")
+
+	emb := &blankRejectingEmbedder{vec: makeVec(0.3)}
+	s.Embedder = emb
+	s.BackfillEmbeddings(context.Background())
+
+	_, _, roomTotal, roomIndexed := s.EmbeddingCoverage()
+	if roomTotal != 1 || roomIndexed != 1 {
+		t.Fatalf("expected the description-less room embedded, coverage %d/%d (inputs %q)", roomIndexed, roomTotal, emb.inputs)
+	}
+	for _, in := range emb.inputs {
+		if strings.TrimSpace(in) == "" {
+			t.Errorf("embedder was asked to embed blank text: %q", emb.inputs)
+		}
 	}
 }
