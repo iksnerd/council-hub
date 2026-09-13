@@ -4,6 +4,12 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.58.4] - 2026-09-13
+
+### Fixed
+- **A message with no id is repaired at startup.** `messages.id` is a `TEXT PRIMARY KEY`, which SQLite allows to be NULL, and a row written straight to the database (not through `post_to_room`) could end up that way. Such a message could not be fetched, linked, pinned, retracted or embedded, and every read that scans ids skipped it silently. The server now assigns it a UUIDv7 carrying the message's own timestamp, so it keeps its chronological place, and logs each repair. A clean database is unaffected.
+- The embedding backfill logs rows it cannot read instead of skipping them without a trace.
+
 ## [0.58.3] - 2026-09-13
 
 ### Fixed
