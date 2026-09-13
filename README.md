@@ -265,10 +265,10 @@ Council Hub ships as a single multi-stage Docker image containing both the Go MC
 | Detail | Value |
 |--------|-------|
 | Base image | `debian:trixie-slim` |
-| Image size | ~287 MB |
+| Image size | ~298 MB |
 | Compressed | ~73 MB |
 | User | `council` (UID 1000, non-root) |
-| Healthcheck | `wget` to `:4000` every 30s |
+| Healthcheck | `wget` to `:4000` every 30s (`:3001/health` when `COUNCIL_UI=off`) |
 | Volume | `/data` — SQLite database storage |
 | Ports | `3001` (MCP), `4000` (UI), `4369` (epmd), `9000` (Erlang dist) |
 
@@ -335,8 +335,16 @@ council-hub/
     main.go                             Entry point, transport selection (stdio / HTTP)
     internal/council/
       db.go                             Server struct, schema, indexes, UUID migration
-      rooms.go                          Room CRUD and listing
-      messages.go                       Message CRUD, search, pin
+      version.go                        Server version (bumped on release)
+      rooms_core.go                     Room CRUD (delete cascades dependent rows)
+      rooms_query.go                    Room listing and filters
+      rooms_lifecycle.go                Room status changes
+      rooms_links.go                    Bidirectional related-room links
+      rooms_graph.go                    Concept-map traversal
+      messages_write.go                 Post, revise, retract, restore, purge
+      messages_query.go                 Search, recent, delta reads, revision history
+      messages_annotate.go              Pin, reactions
+      messages_sync.go                  Mentions, read cursors
       stats.go                          Room stats, digest, message counts
       summary.go                        Transcript data, summaries, archive
       transcript.go                     Transcript formatting
@@ -350,18 +358,21 @@ council-hub/
       cluster.go                        Cluster HTTP helper
       cluster_types.go                  Cluster response types
       cluster_handlers.go               Cluster-wide tool variants
+      cluster_writes.go                 Cross-node write/status proxies
       handler_message_query.go          search_messages, get_messages, get_mentions
       handler_message_write.go          post_to_room, update_message, delete_messages, move_messages, fork_thread
       handler_message_annotate.go       pin_message, react_to_message
+      handler_message_links.go          link_messages, get_links, unlink_messages
       handler_message_sync.go           mark_read
       handler_room_crud.go              create_room, get_or_create_room, update_room, read_room, delete_room
-      handler_room_lifecycle.go         signal_status, bulk_status_update, bulk_visibility, rename_project
+      handler_room_lifecycle.go         signal_status, bulk_status_update, bulk_visibility, rename_project, regenerate_embeddings
       handler_room_query.go             list_rooms, room_stats
       handler_room_graph.go             get_concept_map
       handler_transcript.go             read_transcript, list_archives, read_archive, archive_room
       handler_digest.go                 get_digest
       handler_notebook.go               read_notebook (timeline + outline modes)
       handler_notebook_outline.go       edit_notebook, outline rendering
+      handler_skills.go                 register_skill, query_skills_registry
       resources.go                      MCP resource handler (skill guides)
 
   ui/
