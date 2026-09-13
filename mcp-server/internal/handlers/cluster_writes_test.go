@@ -631,3 +631,71 @@ func TestRoomMissWithNoOwnerIsUnannotated(t *testing.T) {
 		t.Errorf("must not mention a cluster node when none owns it: %s", text)
 	}
 }
+
+// The owner reports which pin (if any) the forwarded pin displaced, and the
+// proxying node passes that through instead of guessing.
+func TestInternalPostHandlerReportsReplacedPin(t *testing.T) {
+	reg := setupHandlerTest(t)
+	reg.ClusterSecret = "topsecret"
+	mustCreateRoom(t, reg.Server, "owned-repin")
+	old := mustPostTyped(t, reg.Server, "owned-repin", "Remote", "old synthesis", "synthesis")
+	if _, err := reg.Server.PinMessage("owned-repin", old); err != nil {
+		t.Fatalf("seed pin: %v", err)
+	}
+
+	body, _ := json.Marshal(internalPostRequest{
+		RoomID: "owned-repin", Author: "Remote", Message: "new synthesis", MessageType: "synthesis", Pin: "true",
+	})
+	req := httptest.NewRequest(http.MethodPost, internalPostPath, bytes.NewReader(body))
+	req.Header.Set(clusterSecretHeader, "topsecret")
+	rec := httptest.NewRecorder()
+	reg.InternalPostHandler()(rec, req)
+
+	var out internalPostResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !out.Pinned || out.ReplacedPin != old {
+		t.Errorf("expected pinned=true replaced_pin=%q, got %+v", old, out)
+	}
+}
+
+func TestPostToRoomProxyPinNoteFollowsOwnerReport(t *testing.T) {
+	for _, tc := range []struct {
+		name, replaced, want, wantAbsent string
+	}{
+		{"first pin on owner", "", "📌 pinned", "replaced"},
+		{"owner replaced a pin", "0123abcd-ffff", "replaced #0123abcd", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			reg := setupHandlerTest(t)
+			reg.ClusterSecret = "topsecret"
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				if strings.HasSuffix(r.URL.Path, "/cluster/locate_room") {
+					json.NewEncoder(w).Encode(map[string]any{"nodes": []string{"peer@127.0.0.1"}, "warnings": []string{}})
+					return
+				}
+				json.NewEncoder(w).Encode(internalPostResponse{MessageID: "deadbeef-0000", RoomID: "remote-room", Pinned: true, ReplacedPin: tc.replaced})
+			}))
+			defer server.Close()
+			reg.PhoenixURL = server.URL
+			reg.HTTPClient = &http.Client{Timeout: 5 * time.Second}
+			reg.PeerMCPPort = portOf(t, server.URL)
+
+			res, _, err := reg.handlePostToRoom(context.Background(), nil, PostToRoomInput{
+				RoomID: "remote-room", Author: "Local", Message: "hi", MessageType: "synthesis", Pin: "true",
+			})
+			if err != nil {
+				t.Fatalf("handlePostToRoom error: %v", err)
+			}
+			text := resultText(res)
+			if !strings.Contains(text, tc.want) {
+				t.Errorf("expected %q in response, got: %s", tc.want, text)
+			}
+			if tc.wantAbsent != "" && strings.Contains(text, tc.wantAbsent) {
+				t.Errorf("did not expect %q in response, got: %s", tc.wantAbsent, text)
+			}
+		})
+	}
+}

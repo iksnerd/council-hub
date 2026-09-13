@@ -412,3 +412,28 @@ func TestHandleGetMentionsNone(t *testing.T) {
 		t.Errorf("expected 'No messages mention', got: %s", resultText(res))
 	}
 }
+
+// The pin note must describe what happened: a first pin replaced nothing, and
+// claiming otherwise sends an agent looking for a pin it never overwrote.
+func TestHandlePostToRoomPinNoteNamesOnlyARealReplacement(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-pin-note")
+
+	first, _, _ := reg.handlePostToRoom(context.Background(), nil, PostToRoomInput{
+		RoomID: "h-pin-note", Author: "Claude", Message: "first synthesis", MessageType: "synthesis", Pin: "true",
+	})
+	if text := resultText(first); !strings.Contains(text, "📌 pinned") || strings.Contains(text, "replaced") {
+		t.Errorf("first pin should confirm without claiming a replacement, got: %s", text)
+	}
+	old, err := reg.Server.GetPinnedMessage("h-pin-note")
+	if err != nil || old == nil {
+		t.Fatalf("expected the first message pinned, err=%v", err)
+	}
+
+	second, _, _ := reg.handlePostToRoom(context.Background(), nil, PostToRoomInput{
+		RoomID: "h-pin-note", Author: "Claude", Message: "second synthesis", MessageType: "synthesis", Pin: "true",
+	})
+	if text := resultText(second); !strings.Contains(text, "replaced #"+old.ID[:8]) {
+		t.Errorf("second pin should name the pin it replaced (#%.8s), got: %s", old.ID, text)
+	}
+}

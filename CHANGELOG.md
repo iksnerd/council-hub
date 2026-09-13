@@ -12,6 +12,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 - Dependencies: go-sqlite3 1.14.52, phoenix_live_view 1.2.11, dns_cluster 0.3.0, telemetry_metrics 1.2.0, html_sanitize_ex 1.5.5.
 
 ### Fixed
+- `post_to_room(pin=true)` always said "📌 pinned (previous pin replaced)", including for a room's first pin. It now says "📌 pinned", or "📌 pinned (replaced #xxxxxxxx)" naming the pin it displaced. On the cross-node path the owner reports `replaced_pin` in its reply; an owner still on an older version omits it, which renders as a plain "📌 pinned" rather than a guess.
 - `delete_room` now removes the room's `workspaces` rows, as it already did for read cursors and links. Before, the shared-checkout warning could name a deleted room for up to 24h. Found by the v0.56.0 smoke test.
 
 ## [0.57.0] - 2026-08-24
