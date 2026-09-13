@@ -298,11 +298,15 @@ func (s *Server) DeleteRoom(roomID string) error {
 	_, _ = s.DB.Exec(`DELETE FROM message_vectors WHERE message_id IN (SELECT id FROM messages WHERE room_id = ?)`, roomID)
 	_, _ = s.DB.Exec(`DELETE FROM room_vectors WHERE room_id = ?`, roomID)
 
-	// Cascade-clean links that reference this room's messages (either endpoint) and
-	// this room's read cursors — otherwise get_links keeps pointing at messages that
-	// no longer exist, and agent_cursors accumulates rows for a room that's gone.
+	// Cascade-clean links that reference this room's messages (either endpoint),
+	// this room's read cursors, and its workspace sightings — otherwise get_links
+	// keeps pointing at messages that no longer exist, agent_cursors accumulates
+	// rows for a room that's gone, and the shared-checkout warning names a deleted
+	// room for up to SharedWorkspaceWindow. A participant still in that tree is
+	// re-recorded on their next post to any room.
 	_, _ = s.DB.Exec(`DELETE FROM message_links WHERE from_id IN (SELECT id FROM messages WHERE room_id = ?) OR to_id IN (SELECT id FROM messages WHERE room_id = ?)`, roomID, roomID)
 	_, _ = s.DB.Exec(`DELETE FROM agent_cursors WHERE room_id = ?`, roomID)
+	_, _ = s.DB.Exec(`DELETE FROM workspaces WHERE room_id = ?`, roomID)
 
 	if _, err := s.DB.Exec(`DELETE FROM messages WHERE room_id = ?`, roomID); err != nil {
 		return fmt.Errorf("delete messages for room '%s': %w", roomID, err)
