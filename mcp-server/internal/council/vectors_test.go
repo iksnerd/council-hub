@@ -157,6 +157,16 @@ func TestSearchMessagesSemantic_WithFilters(t *testing.T) {
 	if len(messages) != 1 || messages[0].ID != id2 {
 		t.Errorf("type filter failed: expected 1 result with type=decision, got %d", len(messages))
 	}
+
+	// Filter by project. messages and rooms both have an `id` column, so this
+	// path must not produce an ambiguous-column query.
+	messages, err := s.SearchMessagesSemantic("auth", "", "proj-a", "", "", "", "", 10)
+	if err != nil {
+		t.Fatalf("project filter errored: %v", err)
+	}
+	if len(messages) != 1 || messages[0].ID != id1 {
+		t.Errorf("project filter failed: expected 1 result from proj-a, got %d", len(messages))
+	}
 }
 
 func TestBackfillEmbeddings(t *testing.T) {

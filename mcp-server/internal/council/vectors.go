@@ -158,10 +158,11 @@ func (s *Server) SearchMessagesSemantic(query string, roomID, project, author, m
 		args = append(args, messageType)
 	}
 
-	join := ""
+	// A subquery rather than a JOIN: messageColumns is unqualified, and rooms also
+	// has an `id` column, so joining made every project-filtered search fail with
+	// "ambiguous column name: id".
 	if project != "" {
-		join = ` JOIN rooms r ON m.room_id = r.id`
-		where += ` AND r.project = ?`
+		where += ` AND m.room_id IN (SELECT id FROM rooms WHERE project = ?)`
 		args = append(args, normalizeProject(project))
 	}
 	if since != "" {
@@ -173,7 +174,7 @@ func (s *Server) SearchMessagesSemantic(query string, roomID, project, author, m
 		args = append(args, until)
 	}
 
-	q := fmt.Sprintf(`SELECT %s FROM messages m%s %s`, messageColumns, join, where)
+	q := fmt.Sprintf(`SELECT %s FROM messages m %s`, messageColumns, where)
 	rows, err := s.DB.Query(q, args...)
 	if err != nil {
 		return nil, fmt.Errorf("fetch messages: %w", err)
