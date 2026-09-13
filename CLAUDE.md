@@ -42,9 +42,9 @@ Docker Hub image: `iksnerd/council-hub` ([hub.docker.com/r/iksnerd/council-hub](
 3. **Run tests locally, then commit & push**: `make test` (mcp-server) + `mix test` (ui). The suites no longer run in CI on a main push — `ci.yml` is tags-only to conserve Actions minutes — so verify locally first. Then `git commit -m "vX.Y.Z: <summary>" && git push`. The push triggers only the gitleaks Secret Scan.
 4. **Tag & push tag**: `git tag vX.Y.Z && git push origin vX.Y.Z`
 5. **Wait for CI + release notes**: the tag auto-triggers `ci.yml` (Go + Elixir tests/lint) and `release.yml` (GitHub release) in parallel. Watch with `gh run list --limit 3` + `gh run watch <id>`.
-6. **Publish the Docker image (local, manual)**: CI is for *tests*; images are built and pushed from the dev machine. Run `make docker-push VERSION=vX.Y.Z` — it publishes `:vX.Y.Z` + `:latest` as **`linux/arm64` only** (`PLATFORMS` default), because the amd64 leg cannot build here (see below). Then extend the amd64-unavailable window in `README.md` + `DOCKERHUB.md` through the new tag, as every release since v0.48.0 has done.
+6. **Publish the Docker image via the `docker.yml` workflow**: `gh workflow run docker.yml -f tag=vX.Y.Z`, then `gh run watch <id> --exit-status`. It builds natively on amd64 and arm64 runners and publishes the multi-arch manifest `:vX.Y.Z` + `:latest`. It does not run on a tag push, so trigger it after step 5. Verify both platforms with `docker buildx imagetools inspect`.
 
-   To publish **amd64**, the only path is the `docker.yml` workflow on native runners: `gh workflow run docker.yml -f tag=vX.Y.Z` (or Actions → Docker → Run workflow) → multi-arch manifest `:vX.Y.Z` + `:latest`. It does not run on a tag; trigger it deliberately when you want to close the amd64 gap.
+   **Do not also run `make docker-push`.** It publishes `linux/arm64` only (the amd64 leg cannot build on this Mac, see below) and overwrites `:latest`, which breaks every x86 user. Use it only as a fallback when the workflow cannot run, and if you do, add an amd64-unavailable notice to `README.md` + `DOCKERHUB.md` for that tag. This fallback was the standing practice for v0.48.0–v0.56.0 while `DOCKERHUB_TOKEN` was expired; the token was replaced (no expiry) and v0.57.0 republished multi-arch on 2026-09-13.
 
 **Important:** Never move tags. If a fix is needed after tagging, bump to vX.Y.Z+1.
 
