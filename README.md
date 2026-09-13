@@ -315,11 +315,17 @@ make vet          # static analysis
 
 # Docker
 make docker-build # build image
-make docker-run   # run (MCP :3001 + UI :4000)
+make docker-run   # run (MCP :3001, UI :4000, cluster :4369/:9000)
 make docker-stop  # stop container
 make docker-logs  # tail logs
-make docker-push  # push to Docker Hub
+make docker-push  # push to Docker Hub (arm64 only from a Mac)
+
+# Ledger
+make install-hooks # post commits carrying a `Council-Room:` trailer to that room
+make ledger-check  # list commits since the last tag that no room post cites
 ```
+
+`make docker-run` publishes the cluster ports to your LAN IP while `COOKIE` is the image default (`council`, which is public), and to all interfaces once you set your own. All-interfaces survives a DHCP address change. A container bound to one IP fails to start after the IP changes, taking `:3001` and `:4000` down with it. Put local values (`COOKIE`, `SEEDS`, `CLUSTER_BIND`) in a gitignored `Makefile.local`.
 
 ## Project Structure
 
