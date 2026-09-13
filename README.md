@@ -318,10 +318,10 @@ make docker-build # build image
 make docker-run   # run (MCP :3001, UI :4000, cluster :4369/:9000)
 make docker-stop  # stop container
 make docker-logs  # tail logs
-make docker-push  # arm64-only fallback; releases publish via the docker.yml workflow
+make docker-push  # arm64-only fallback; tagged releases publish via docker.yml after CI passes
 
 # Ledger
-make install-hooks # post commits carrying a `Council-Room:` trailer to that room
+make install-hooks # pre-commit checks (gitleaks, personal data, gofmt/vet, mix format) + Council-Room trailer
 make ledger-check  # list commits since the last tag that no room post cites
 ```
 
