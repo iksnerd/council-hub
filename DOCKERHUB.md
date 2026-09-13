@@ -30,7 +30,7 @@ docker run -d --name council-hub \
 
 - **Web UI**: http://localhost:4000
 - **MCP endpoint**: http://localhost:3001/mcp
-- **Health endpoint**: http://localhost:3001/health (JSON: version, last_integrity_check, heal_count_since_boot)
+- **Health endpoint**: http://localhost:3001/health (JSON: status, version, last_integrity_check, heal_count_since_boot, embedding_coverage, cluster_nodes)
 
 ### Claude Code (recommended: HTTP)
 
@@ -157,7 +157,7 @@ docker run -i --rm \
   iksnerd/council-hub:latest
 ```
 
-> **Note:** Add `--no-healthcheck` if your orchestrator flags stdio containers as unhealthy. The healthcheck targets the HTTP UI which doesn't run in stdio mode. For `--rm` per-session containers this is cosmetic.
+> **Note:** The image healthcheck passes immediately in stdio mode, since there is no HTTP server to probe.
 
 ### Semantic Search
 
@@ -247,7 +247,7 @@ Once connected, all nodes appear in the **Cluster Nodes** section of the UI side
 
 With clustering enabled, pass `cluster_wide="true"` to any of these tools to query across all connected nodes:
 
-`search_messages`, `list_rooms`, `room_stats`, `read_transcript`, `read_room`, `get_messages`, `get_digest`
+`search_messages`, `list_rooms`, `room_stats`, `read_transcript`, `read_room`, `get_messages`, `get_digest`, `read_notebook`
 
 Results are tagged with the source node name (e.g. `[alice@192.168.0.4]`). Unreachable nodes produce a warning but don't block results from reachable nodes.
 
@@ -286,7 +286,7 @@ docker run -d --name council-hub \
   iksnerd/council-hub:latest
 ```
 
-`:latest` always points at the newest release. To pin a specific version for reproducible deploys, swap it for a tag like `:v0.44.0` — the full list is on the [Docker Hub tags page](https://hub.docker.com/r/iksnerd/council-hub/tags).
+`:latest` always points at the newest release. To pin a specific version for reproducible deploys, swap it for a tag like `:v0.57.0` — the full list is on the [Docker Hub tags page](https://hub.docker.com/r/iksnerd/council-hub/tags).
 
 Schema migrations run automatically on startup — existing databases are upgraded in place with no data loss. Running Claude Code sessions will reconnect automatically on the next MCP tool call (no restart needed).
 
@@ -302,8 +302,9 @@ docker compose up -d
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `COUNCIL_DB` | `council.db` | Path to the SQLite database |
-| `COUNCIL_TRANSPORT` | `stdio` | Transport mode: `stdio` or `http` |
+| `COUNCIL_DB` | `/data/council.db` | Path to the SQLite database |
+| `COUNCIL_TRANSPORT` | `http` | Transport mode: `http` (MCP server + dashboard) or `stdio` (MCP server only) |
+| `COUNCIL_UI` | `on` | In `http` mode, `off` runs the Go MCP server without the Phoenix dashboard (~12 MiB idle instead of ~180–240 MiB). Local reads and cross-node writes still work; `cluster_wide` reads do not |
 | `COUNCIL_HTTP_ADDR` | `:3001` | HTTP server bind address |
 | `COUNCIL_DEBUG` | `0` | Set to `1` for verbose debug logging |
 | `COUNCIL_PHOENIX_URL` | `http://127.0.0.1:4000` | Phoenix internal API URL (used by Go server for cluster-wide queries) |
@@ -311,6 +312,8 @@ docker compose up -d
 | `SECRET_KEY_BASE` | auto-generated | Phoenix session signing key |
 | `PHX_HOST` | `localhost` | Phoenix hostname |
 | `PORT` | `4000` | Phoenix HTTP port |
+| `ERL_FLAGS` | `+S 2:2 +SDio 1 +sbwt none +sbwtdcpu none +sbwtdio none` | BEAM flags for the dashboard. The default caps schedulers and disables busy-waiting to cut idle memory and CPU. Set your own to override |
+| `COUNCIL_FORCE_SSL` | — | `true` redirects http→https. Only behind a reverse proxy that sets `x-forwarded-proto`; the container does not terminate TLS |
 | `RELEASE_COOKIE` | `council` | Shared secret cookie for clustering multiple nodes; also authenticates cross-node write proxies. **The default is public — override it before publishing ports `4369`/`9000` anywhere untrusted**, since distribution grants code execution to whoever holds it |
 | `COUNCIL_PEER_MCP_PORT` | `3001` | Port used to reach peer nodes' MCP servers for cross-node writes |
 | `RELEASE_NODE` | `council_hub@127.0.0.1` | Unique node name (e.g. `council_hub@10.0.0.5`) for distributed Erlang |
@@ -342,11 +345,11 @@ docker compose up -d
 |--------|-------|
 | Base image | `debian:trixie-slim` |
 | Architecture | `linux/arm64` — see the note below ⚠️ |
-| Image size | ~292 MB |
+| Image size | ~298 MB |
 | Compressed | ~73 MB |
 | Build | Multi-stage (Go 1.25 + Elixir 1.19/OTP 28 + slim runtime) |
 | User | `council` (UID 1000, non-root) |
-| Healthcheck | `wget` to `:4000` every 30s, 10s timeout, 3 retries |
+| Healthcheck | `wget` to `:4000` every 30s, 10s timeout, 3 retries (`:3001/health` when `COUNCIL_UI=off`; always passes in stdio mode) |
 | Entrypoint | `entrypoint.sh` — manages both Go and Elixir processes |
 
 > **⚠️ amd64 is temporarily unavailable (v0.48.0 – v0.57.0).** A publishing-pipeline failure (the `docker.yml` workflow's Docker Hub token keeps expiring) meant these tags, and `:latest`, went out as `linux/arm64` only. On an x86 host the pull will fail or the container won't start. **`v0.47.0` is the most recent tag with `linux/amd64`** — use `iksnerd/council-hub:v0.47.0` there until a multi-arch build is republished. arm64 hosts (Apple Silicon, Ampere, Raspberry Pi 4/5 64-bit) are unaffected.
@@ -358,7 +361,7 @@ docker compose up -d
 |------|-------------|
 | `create_room` | Create a new council room with metadata and related rooms. Warns if similar rooms already exist. Set `visibility="private"` to keep the room node-local (excluded from cluster fan-out). In a cluster, refuses to create a room whose ID is already owned by another node. |
 | `get_or_create_room` | Return existing room + recent messages, or create if not found. Warns on duplicates. Supports `visibility` when creating. |
-| `post_to_room` | Post a typed message (message/thought/draft/decision/plan/action/review/critique/synthesis/note) with optional reply threading, `mentions` (CSV of agent names), and a `supersedes` link to a message it replaces. Use `synthesis` for compiled knowledge articles that distill a room's conclusions. In a cluster, a write to a room owned by another node is transparently proxied to that node. |
+| `post_to_room` | Post a typed message (message/thought/draft/decision/plan/action/review/critique/synthesis/note) with optional reply threading, `mentions` (CSV of agent names), and a `supersedes` link to a message it replaces. Use `synthesis` for compiled knowledge articles that distill a room's conclusions. `pin=true` pins the new message in the same call. `workspace=<cwd>` warns when another participant posted from the same working tree in the last 24h. In a cluster, a write to a room owned by another node is transparently proxied to that node. |
 | `get_mentions` | Find messages that explicitly mention a specific agent. Call at session start to check if any threads await your input — faster than scanning `get_digest`. |
 | `update_message` | Edit a message — append-only. Posts a new revision and preserves the prior version (linked via `revises`); reads collapse to the newest (✎ edited) and the history stays walkable in `get_links`. Supports optimistic concurrency via optional `expected_content`. |
 | `pin_message` | Pin a message as the living TL;DR for a room. Only one pinned message per room — pinning a new message unpins the old one. |
@@ -376,21 +379,22 @@ docker compose up -d
 | `fork_thread` | Fork a message thread into a new room in one step: creates the new room, moves `start_message_id` and all later messages from its source room, and links both rooms bidirectionally. Replaces the 4-step `create_room → move_messages → update_room × 2` sequence. |
 | `get_messages` | Fetch messages by ID, browse by room (`last_n`), or delta-read new messages (`after_id`). Set `history=true` (with `message_ids`) to see a message's full append-only edit chain. Set `cluster_wide=true` to query all nodes. |
 | `room_stats` | Get message count, participants, type breakdown, and timestamps. Set `cluster_wide=true` to query all nodes. |
-| `get_digest` | Returns a JSON array of rooms with new activity since a timestamp, including health flags (stale, needs-synthesis). Machine-readable — parse `room_id` directly without regex. Set `cluster_wide=true` to query all nodes. |
+| `get_digest` | Returns JSON `{summary, rooms}`: a tally of health flags (stale, needs-synthesis, stale-pin, incoherent) plus one entry per room with new activity since a timestamp. Machine-readable — parse `rooms[].room_id` directly. `exclude_stale=true` hides the inactive-room graveyard. Set `cluster_wide=true` to query all nodes. |
 | `mark_read` | Persist a read cursor for a room and agent. Use with `get_digest(unread_only=true)` on return sessions to see only new activity since you last checked. |
 | `react_to_message` | Add or toggle an emoji reaction on a message. Reactions are stored as JSON and displayed in transcripts. |
 | `link_messages` | Assert a typed link between two messages (`refines`/`contradicts`/`implements`/`duplicates`/`depends-on`/`relates`/`informs`) — an addressable knowledge graph over the ledger. Use `informs` to wire a journal `note` to the deliberation it provides context for. |
 | `get_links` | Show a message's link neighborhood: outgoing edges + incoming backlinks, merging explicit links with implicit reply/supersedes edges. |
 | `unlink_messages` | Remove an explicit typed link by ID. |
-| `check_room_health` | Check a room's knowledge health: staleness, missing synthesis, unresolved actions. |
+| `check_room_health` | Lint all active rooms and tag them: `needs-synthesis`, `stale`, `stale-pin`, `stale-plan`, `unpinned-synthesis`, `incoherent`. `dry_run=true` reports without tagging; `exclude_stale=true` hides stale-only rooms. |
 | `delete_room` | Permanently delete a room and its messages |
 | `delete_messages` | Retract messages by ID — tombstones them (content + links preserved, renders `[retracted]`) so the graph never dangles. `dry_run=true` previews; `purge=true` permanently destroys (secrets/PII only). |
-| `archive_room` | Export transcript to markdown with auto-generated Summary section, optionally delete room |
+| `archive_room` | Export transcript to markdown with auto-generated Summary section and mark the room resolved; optionally delete it |
 | `list_archives` | List all archived room transcripts with file size and archive date |
 | `read_archive` | Read an archived room transcript by room ID |
 | `read_notebook` | Read a project's dev notebook: a compiled timeline of typed messages across all project rooms (via `project`), or a curated outline with transcluded messages and tasks (via `notebook_id`). `level=N` clips an outline to its heading skeleton. Set `cluster_wide=true` for the cross-node timeline. |
 | `edit_notebook` | Curate a notebook outline: create/delete notebooks; add/update/move/remove prose sections, message refs (transcluded live), room refs, and tasks (a self-sorting work-list). |
-| `load_resources` | List available skill guides (`council://guide`, `council://message-types`, `council://workflows`) or fetch one by URI. Fallback for clients that don't support MCP `resources/read` natively. |
+| `regenerate_embeddings` | Start a background embedding job for semantic search: fill in missing vectors, or `full=true` to clear and recompute all of them (e.g. after changing `COUNCIL_EMBED_MODEL`). Requires `COUNCIL_OLLAMA_URL`. |
+| `load_resources` | List available skill guides (`council://guide`, `council://message-types`, `council://workflows`, `council://janitor`) or fetch one by URI. Fallback for clients that don't support MCP `resources/read` natively. |
 | `register_skill` | Register/update a task playbook in the methodology registry (upsert by name; omit `project` for a global skill; `remove='true'` deletes). The agent-extensible Methodology/Training leg of the DKR. |
 | `query_skills_registry` | Discover registered task playbooks — a scannable catalog (filter by `query`/`project`/`tag`), or one skill's full playbook via `name=`. |
 
