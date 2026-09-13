@@ -70,11 +70,7 @@ func (s *Server) CreateRoom(id, description, project, techStack, tags, systemPro
 	s.syncReverseLinks(id, relatedRooms)
 
 	// Embed room description + system prompt (non-fatal)
-	text := description
-	if systemPrompt != "" {
-		text += " " + systemPrompt
-	}
-	s.EmbedAsync("room_vectors", id, text)
+	s.EmbedAsync("room_vectors", id, roomEmbedText(id, description, systemPrompt))
 
 	return nil
 }
@@ -268,11 +264,7 @@ func (s *Server) UpdateRoom(roomID, description, project, techStack, tags, addTa
 	if description != "" || systemPrompt != "" {
 		room, err := s.GetRoom(roomID)
 		if err == nil {
-			text := room.Description
-			if room.SystemPrompt != "" {
-				text += " " + room.SystemPrompt
-			}
-			s.EmbedAsync("room_vectors", roomID, text)
+			s.EmbedAsync("room_vectors", roomID, roomEmbedText(roomID, room.Description, room.SystemPrompt))
 		}
 	}
 
@@ -313,4 +305,16 @@ func (s *Server) DeleteRoom(roomID string) error {
 	}
 
 	return nil
+}
+
+// roomEmbedText is the text a room's vector is built from: its description and
+// system prompt. A room with neither falls back to its ID with separators as
+// spaces ("adeloc-standalone-cli" -> "adeloc standalone cli"), which still says
+// what the room is about. Embedding blank text gets no vector from Ollama, so
+// such rooms used to fail and be retried by every backfill indefinitely.
+func roomEmbedText(id, description, systemPrompt string) string {
+	if text := strings.TrimSpace(description + " " + systemPrompt); text != "" {
+		return text
+	}
+	return strings.NewReplacer("-", " ", "_", " ", ".", " ").Replace(id)
 }

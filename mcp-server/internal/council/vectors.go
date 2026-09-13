@@ -411,11 +411,7 @@ func (s *Server) runBackfill(ctx context.Context) {
 			s.Logger.Info("Backfill cancelled", "rooms_done", roomCount)
 			return
 		}
-		text := p.desc
-		if p.prompt != "" {
-			text += " " + p.prompt
-		}
-		vec, err := s.Embedder.Embed(ctx, text)
+		vec, err := s.Embedder.Embed(ctx, roomEmbedText(p.id, p.desc, p.prompt))
 		if err != nil {
 			s.Logger.Warn("backfill room embed failed", "id", p.id, "error", err)
 			continue

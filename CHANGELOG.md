@@ -4,6 +4,11 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+- Rooms with no description and no system prompt never got a vector. Their embed text was empty, Ollama returns no embedding for blank input, and the 10-minute backfill retried and logged `backfill room embed failed ... no embeddings returned` for each such room indefinitely. Room embed text now falls back to the room ID with separators as spaces, in `create_room`, `update_room` and the backfill alike.
+
 ## [0.58.1] - 2026-09-13
 
 Two fixes found by the v0.58.0 smoke test.
