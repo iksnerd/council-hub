@@ -1,6 +1,12 @@
 package council
 
-import "testing"
+import (
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/google/uuid"
+)
 
 func TestIsIndexOnlyCorruption(t *testing.T) {
 	cases := []struct {
@@ -67,5 +73,53 @@ func TestIntegrityCheckHealthyDB(t *testing.T) {
 	}
 	if len(issues) != 0 {
 		t.Errorf("expected no issues on fresh DB, got %v", issues)
+	}
+}
+
+// A message written straight to SQLite with no id (messages.id is a TEXT PRIMARY
+// KEY, which SQLite lets be NULL) can't be fetched, linked or embedded. Startup
+// gives it a UUIDv7 carrying its own timestamp, so it keeps its chronological
+// place in id-ordered reads, and a second start leaves that id alone.
+func TestNewServerHealsNullMessageIDs(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "council.db")
+	s, err := NewServer(path, testLogger())
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+	mustCreateRoom(t, s, "null-id-room")
+	written := time.Date(2026, 4, 1, 17, 15, 10, 0, time.UTC)
+	if _, err := s.DB.Exec(
+		`INSERT INTO messages (id, room_id, author, content, timestamp) VALUES (NULL, 'null-id-room', 'Gemini CLI', 'written without an id', ?)`,
+		written.Format("2006-01-02 15:04:05"),
+	); err != nil {
+		t.Fatalf("seed NULL-id row: %v", err)
+	}
+	_ = s.DB.Close()
+
+	idAfterStart := func() string {
+		t.Helper()
+		s, err := NewServer(path, testLogger())
+		if err != nil {
+			t.Fatalf("NewServer: %v", err)
+		}
+		defer func() { _ = s.DB.Close() }()
+		msgs, err := s.GetTranscript("null-id-room")
+		if err != nil || len(msgs) != 1 {
+			t.Fatalf("GetTranscript: %d messages, err=%v", len(msgs), err)
+		}
+		return msgs[0].ID
+	}
+
+	id := idAfterStart()
+	parsed, err := uuid.Parse(id)
+	if err != nil || parsed.Version() != 7 {
+		t.Fatalf("expected a UUIDv7 id, got %q (err=%v)", id, err)
+	}
+	sec, nsec := parsed.Time().UnixTime()
+	if got := time.Unix(sec, nsec).UTC(); !got.Equal(written) {
+		t.Errorf("id should carry the message timestamp %v, got %v", written, got)
+	}
+	if again := idAfterStart(); again != id {
+		t.Errorf("a second start must not change the healed id: %q then %q", id, again)
 	}
 }
