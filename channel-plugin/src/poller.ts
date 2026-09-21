@@ -273,10 +273,26 @@ export class Poller {
         return;
       }
 
+      // Without these, the only observable signal this plugin produces is the
+      // notification itself — so "working", "detecting nothing" and "detecting
+      // but the client never surfaces it" are indistinguishable from outside.
+      // Diagnosing a silent channel then costs several inconclusive
+      // experiments; three of them, in the case that prompted this.
+      // Only when there is something to say: a line every poll interval would
+      // be 1,200 an hour of "nothing happened", which is how a debug log stops
+      // being read. Poller liveness is already observable from the watch /
+      // unwatch churn above.
+      if (rows.length > 0) {
+        this.log(`Tick: ${rows.length} new message(s) to consider`);
+      }
+
       this.delivering = true;
       for (const row of rows) {
         // Skip our own messages, but still advance past them.
         if (row.author === this.config.author) {
+          this.log(
+            `Skipping own message ${row.id} (author '${row.author}' matches COUNCIL_AUTHOR)`,
+          );
           this.advanceCursor(row);
           continue;
         }
@@ -305,6 +321,14 @@ export class Poller {
           this.logError(`Notify failed for ${row.id}, will retry: ${err}`);
           break;
         }
+
+        // Logged after the await resolves: this says the notification was
+        // handed to the transport without throwing. It does NOT say the client
+        // surfaced it — that is the next hop, and the distinction is the whole
+        // point of the line.
+        this.log(
+          `Delivered ${row.id} from '${row.room_id}' by '${row.author}' (${content.length} chars) — sent to transport`,
+        );
 
         this.advanceCursor(row);
       }
