@@ -425,6 +425,7 @@ func (r *Registry) RegisterTools() {
 		InputSchema: schema(nil, map[string]map[string]any{
 			"dry_run":       prop("string", "Set to 'true' to report current health tags without running the mutating linter sweep."),
 			"exclude_stale": prop("string", "Set to 'true' to hide rooms flagged only as stale from the rendered result."),
+			"limit":         prop("string", "Max rooms to return in rooms[] (most recent first). The summary is still computed over the full set, and summary.truncated reports how many were dropped, so the tallies stay honest. Use it when the digest overflows: unread_only and exclude_stale filter by state, neither bounds the count, and a project with hundreds of rooms overflows with both set."),
 		}),
 	}, roomHealthHandler)
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
@@ -477,6 +478,7 @@ func (r *Registry) RegisterTools() {
 			"after_id":     prop("string", "Timeline only: return only entries with message ID greater than this value. For delta reads — pair with the latest_message_id from the previous read's JSON footer."),
 			"limit":        prop("string", "Timeline only: max entries (default 100, max 500). When truncating, the most recent entries are kept."),
 			"level":        prop("string", "Notebook (notebook_id) only: NLS-style structural level-clip. An integer N collapses each prose entry to its markdown headings down to depth N (a table of contents) and clips transcluded message bodies to their first line; tasks and room_refs always render. Omit or 0 for the full outline. The structural counterpart to read_transcript's truncate=line-one."),
+			"status":       prop("string", "Notebook (notebook_id) only: keep only work items in this state — 'open', 'doing' or 'done'. Tasks and room_refs both honour it (a room_ref is open until its room resolves). Omit for everything. Pair with level to answer 'what is open' without rendering finished work — on a large standing notebook the done sections are most of the payload."),
 			"cluster_wide": prop("string", "Timeline only: set to 'true' to compile the timeline from all cluster nodes. Default: local only."),
 		}),
 	}, r.handleReadNotebook)

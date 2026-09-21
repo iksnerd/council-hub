@@ -483,3 +483,56 @@ func TestEditNotebookAcceptsRoomIDAlias(t *testing.T) {
 		t.Fatalf("expected room_id to be accepted as ref_id, got: %s", text)
 	}
 }
+
+// `level` used to clip prose entries and transcluded bodies while tasks and
+// room_refs "always render" in full. On current-work — 186 entries that are
+// almost entirely tasks — level=1 cut a 108KB read to 105KB, a 2.7% saving,
+// so the documented remedy for an overflowing cockpit did nothing. Filed as
+// #01a0c4cd after three sessions hit the overflow in the session-start ritual.
+func TestOutlineLevelClipsLongTaskLabels(t *testing.T) {
+	reg := setupHandlerTest(t)
+	editNotebook(t, reg, EditNotebookInput{Action: "create", NotebookID: "wl"})
+
+	long := "Short opening sentence. " + strings.Repeat("then a great deal more incident detail ", 40)
+	mustAddEntry(t, reg, EditNotebookInput{NotebookID: "wl", Kind: "task", Prose: long})
+
+	full, _, _ := reg.handleReadNotebook(context.Background(), nil, ReadNotebookInput{NotebookID: "wl"})
+	clipped, _, _ := reg.handleReadNotebook(context.Background(), nil, ReadNotebookInput{NotebookID: "wl", Level: "1"})
+	f, c := len(resultText(full)), len(resultText(clipped))
+
+	if c >= f {
+		t.Errorf("level=1 did not shrink a task-heavy outline: full=%d clipped=%d", f, c)
+	}
+	if !strings.Contains(resultText(clipped), "Short opening sentence.") {
+		t.Error("clipped label lost its first sentence")
+	}
+	if strings.Contains(resultText(clipped), strings.Repeat("then a great deal more incident detail ", 5)) {
+		t.Error("clipped label still carries the body")
+	}
+}
+
+// status=open answers "what is in flight" without rendering finished work.
+// On a standing notebook the done sections are most of the payload, which is
+// what makes the cockpit unreadable through its own tool.
+func TestOutlineStatusFilter(t *testing.T) {
+	reg := setupHandlerTest(t)
+	editNotebook(t, reg, EditNotebookInput{Action: "create", NotebookID: "wl"})
+
+	mustAddEntry(t, reg, EditNotebookInput{NotebookID: "wl", Kind: "task", Prose: "OPENITEM still to do"})
+	fin := mustAddEntry(t, reg, EditNotebookInput{NotebookID: "wl", Kind: "task", Prose: "DONEITEM finished"})
+	editNotebook(t, reg, EditNotebookInput{Action: "check", EntryID: fin})
+
+	open, _, _ := reg.handleReadNotebook(context.Background(), nil, ReadNotebookInput{NotebookID: "wl", Status: "open"})
+	ot := resultText(open)
+	if !strings.Contains(ot, "OPENITEM") {
+		t.Error("status=open dropped the open task")
+	}
+	if strings.Contains(ot, "DONEITEM") {
+		t.Errorf("status=open rendered a done task:\n%s", ot)
+	}
+
+	all, _, _ := reg.handleReadNotebook(context.Background(), nil, ReadNotebookInput{NotebookID: "wl"})
+	if !strings.Contains(resultText(all), "DONEITEM") {
+		t.Error("omitting status should keep everything (pre-existing behaviour)")
+	}
+}

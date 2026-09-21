@@ -221,7 +221,14 @@ func (r *Registry) handleEditNotebook(ctx context.Context, req *mcp.CallToolRequ
 // entry to its heading skeleton down to depth N (a table of contents) and clips
 // transcluded message bodies to their first line. The self-sorting task and
 // room_ref groups are structural leaves and always render.
-func (r *Registry) renderOutline(notebookID string, level int) (*mcp.CallToolResult, ToolOutput, error) {
+// statusWanted reports whether a work item in the given state should render
+// under the requested status filter. An empty filter keeps everything, which
+// is the pre-existing behaviour.
+func statusWanted(filter, state string) bool {
+	return filter == "" || filter == state
+}
+
+func (r *Registry) renderOutline(notebookID string, level int, status string) (*mcp.CallToolResult, ToolOutput, error) {
 	msg := textResult
 
 	notebook, entries, err := r.Server.GetOutline(notebookID)
@@ -311,34 +318,34 @@ func (r *Registry) renderOutline(notebookID string, level int) (*mcp.CallToolRes
 		}
 	}
 
-	if len(doingTasks) > 0 {
+	if len(doingTasks) > 0 && statusWanted(status, "doing") {
 		fmt.Fprintf(&b, "\n## 🔄 In progress (%d)\n", len(doingTasks))
 		for _, e := range doingTasks {
-			renderTask(&b, e)
+			renderTask(&b, e, level)
 		}
 	}
-	if len(openTasks) > 0 {
+	if len(openTasks) > 0 && statusWanted(status, "open") {
 		fmt.Fprintf(&b, "\n## ☐ Open (%d)\n", len(openTasks))
 		for _, e := range openTasks {
-			renderTask(&b, e)
+			renderTask(&b, e, level)
 		}
 	}
-	if len(doneTasks) > 0 {
+	if len(doneTasks) > 0 && statusWanted(status, "done") {
 		fmt.Fprintf(&b, "\n## ☑ Done (%d)\n", len(doneTasks))
 		for _, e := range doneTasks {
-			renderTask(&b, e)
+			renderTask(&b, e, level)
 		}
 	}
-	if len(inFlight) > 0 {
+	if len(inFlight) > 0 && statusWanted(status, "open") {
 		fmt.Fprintf(&b, "\n## 🔄 In flight (%d)\n", len(inFlight))
 		for _, e := range inFlight {
-			renderRoomRef(&b, e)
+			renderRoomRef(&b, e, level)
 		}
 	}
-	if len(doneRooms) > 0 {
+	if len(doneRooms) > 0 && statusWanted(status, "done") {
 		fmt.Fprintf(&b, "\n## ✅ Done (%d)\n", len(doneRooms))
 		for _, e := range doneRooms {
-			renderRoomRef(&b, e)
+			renderRoomRef(&b, e, level)
 		}
 	}
 
@@ -354,13 +361,20 @@ func roomRefDone(e council.OutlineEntry) bool {
 
 // renderRoomRef writes one work-list item: the room's live status, topic, and
 // latest decision/action. A dangling room_ref renders as a warning in place.
-func renderRoomRef(b *strings.Builder, e council.OutlineEntry) {
+func renderRoomRef(b *strings.Builder, e council.OutlineEntry, level int) {
 	if !e.RefFound {
 		fmt.Fprintf(b, "\n⚠ **referenced room '%.12s' not found** — deleted, or it lives on another cluster node. *(entry %s)*\n", e.RefID, e.ID)
 		return
 	}
-	fmt.Fprintf(b, "\n**[%s] %s** — %s\n", e.RefStatus, e.RefID, e.RefTopic)
-	if e.RefContent != "" {
+	topic := e.RefTopic
+	if level > 0 {
+		topic = clipLabel(topic)
+	}
+	fmt.Fprintf(b, "\n**[%s] %s** — %s\n", e.RefStatus, e.RefID, topic)
+	// At any level above 0 the room's status, id and topic are the structure;
+	// the latest-message excerpt is the body, so it collapses away like a
+	// transcluded message body does.
+	if e.RefContent != "" && level == 0 {
 		ts := e.RefTime.Format("2006-01-02 15:04")
 		excerpt := strings.ReplaceAll(e.RefContent, "\n", " ")
 		excerpt = council.TruncateRunes(excerpt, 240, "", 0)
@@ -372,7 +386,7 @@ func renderRoomRef(b *strings.Builder, e council.OutlineEntry) {
 // renderTask writes one checklist item — a markdown checkbox carrying the task
 // label and its addressable entry ID (so it can be started, checked, or edited).
 // The box reflects status: [ ] open, [~] doing, [x] done.
-func renderTask(b *strings.Builder, e council.OutlineEntry) {
+func renderTask(b *strings.Builder, e council.OutlineEntry, level int) {
 	box := "[ ]"
 	switch e.Status {
 	case "done":
@@ -381,8 +395,33 @@ func renderTask(b *strings.Builder, e council.OutlineEntry) {
 		box = "[~]"
 	}
 	label := strings.ReplaceAll(strings.TrimSpace(e.Prose), "\n", " ")
+	if level > 0 {
+		label = clipLabel(label)
+	}
 	fmt.Fprintf(b, "- %s %s *(entry %s)*\n", box, label, e.ID)
 }
+
+// clipLabel shortens a work-item label to its first sentence, or to
+// clipLabelMax characters, whichever comes first. A task label is nominally a
+// one-liner, but in practice they accumulate into incident write-ups of a
+// thousand characters or more — which is why `level` used to save almost
+// nothing on a task-heavy notebook: it clipped prose and transclusions while
+// tasks and room_refs, the actual bulk, always rendered in full.
+func clipLabel(s string) string {
+	if i := strings.Index(s, ". "); i > 0 && i+1 < clipLabelMax {
+		return s[:i+1] + " …"
+	}
+	if len(s) > clipLabelMax {
+		cut := clipLabelMax
+		if j := strings.LastIndex(s[:clipLabelMax], " "); j > clipLabelMax/2 {
+			cut = j
+		}
+		return strings.TrimRight(s[:cut], " ,;:") + " …"
+	}
+	return s
+}
+
+const clipLabelMax = 140
 
 func refNoun(kind string) string {
 	if kind == "room_ref" {

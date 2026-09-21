@@ -20,6 +20,7 @@ type ReadNotebookInput struct {
 	AfterID     string     `json:"after_id"`
 	Limit       string     `json:"limit"`
 	Level       string     `json:"level"`
+	Status      string     `json:"status"`
 	ClusterWide StringBool `json:"cluster_wide"`
 }
 
@@ -55,7 +56,7 @@ func (r *Registry) handleReadNotebook(ctx context.Context, req *mcp.CallToolRequ
 		if args.Level != "" {
 			_, _ = fmt.Sscanf(args.Level, "%d", &level)
 		}
-		return r.renderOutline(args.NotebookID, level)
+		return r.renderOutline(args.NotebookID, level, strings.ToLower(strings.TrimSpace(args.Status)))
 	}
 
 	if args.Project == "" {

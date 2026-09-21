@@ -19,6 +19,7 @@ type DigestInput struct {
 	Agent        string     `json:"agent"`
 	ClusterWide  StringBool `json:"cluster_wide"`
 	ExcludeStale string     `json:"exclude_stale"`
+	Limit        string     `json:"limit"`
 }
 
 // digestSummary is the at-a-glance health header prepended to the digest so an
@@ -33,6 +34,7 @@ type digestSummary struct {
 	UnpinnedSynth  int `json:"unpinned_synthesis"`
 	Incoherent     int `json:"incoherent"`
 	HiddenStale    int `json:"hidden_stale,omitempty"`
+	Truncated      int `json:"truncated,omitempty"`
 }
 
 // digestResponse wraps the rooms array with a summary header. Hint is set only
@@ -173,6 +175,16 @@ func (r *Registry) handleGetDigest(ctx context.Context, req *mcp.CallToolRequest
 		rooms = kept
 	}
 
+	// Rooms are already ordered most-recent-first, so a limit keeps the part of
+	// the digest anyone reads. The summary is computed above over the FULL set,
+	// so the tallies stay honest and truncation is reported rather than silent
+	// — the failure this exists to fix was a session-start call returning 73KB
+	// with both narrowing params already set, because neither bounds room count.
+	if n := parsePositiveInt(args.Limit); n > 0 && len(rooms) > n {
+		summary.Truncated = len(rooms) - n
+		rooms = rooms[:n]
+	}
+
 	// Hint reflects whether the project filter matched any room at all (len(digest)),
 	// not how many survived exclude_stale (len(rooms)) — a project with only stale
 	// rooms still matched, so it isn't the "wrong project name" footgun.
@@ -222,4 +234,14 @@ func digestExcerpt(content string) string {
 
 	// Fallback: word-boundary truncation
 	return council.TruncateRunes(flat, 120, " ", 80)
+}
+
+// parsePositiveInt reads a positive integer from a string param, returning 0
+// for anything absent or unparseable so the caller falls through to "no limit".
+func parsePositiveInt(s string) int {
+	n := 0
+	if _, err := fmt.Sscanf(strings.TrimSpace(s), "%d", &n); err != nil || n < 1 {
+		return 0
+	}
+	return n
 }

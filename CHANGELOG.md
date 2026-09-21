@@ -4,6 +4,17 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.60.0] - 2026-09-21
+
+The session-start ritual the server's own instructions prescribe — `get_mentions`, `get_digest`, `read_notebook(current-work)` — overflowed the tool-result limit on a mature database, and its two documented remedies did not work. Three sessions hit it before it was filed (`#01a0b6c1`, `#01a0c4c4`, `#01a0c4cd`).
+
+### Fixed
+- **`level` now clips work items, so it actually shrinks a notebook.** It collapsed prose entries and transcluded bodies while tasks and room_refs "always render" in full — and on a standing work list those *are* the payload. On `current-work` (193 entries) `level=1` cut a 108KB read to 105KB: a 2.7% saving from the documented fix for an overflowing notebook. Task labels and room_ref topics now clip to their first sentence (or 140 chars), and a room_ref's latest-message excerpt collapses like any transcluded body. Same notebook, same call: **81% smaller**.
+
+### Added
+- **`read_notebook(status=open|doing|done)`** keeps only work items in that state. Tasks and room_refs both honour it — a room_ref is open until its room resolves. With `level=1` that takes the same notebook **92% smaller**, because the done sections are most of a long-lived list and are never what a session-start read wants.
+- **`get_digest(limit=N)`** bounds `rooms[]`, which nothing previously did. `unread_only` and `exclude_stale` filter by *state*; neither caps *count*, so a project with hundreds of rooms overflowed with both already set (73,471 characters in the filed case). The summary is still computed over the full set and `summary.truncated` reports how many were dropped, so the tallies stay honest and the truncation is never silent.
+
 ## [0.59.1] - 2026-09-21
 
 ### Fixed

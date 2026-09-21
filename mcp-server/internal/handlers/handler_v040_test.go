@@ -535,3 +535,51 @@ func TestGetDigestClusterMissingSince(t *testing.T) {
 		t.Errorf("expected error for missing since, got: %s", resultText(res))
 	}
 }
+
+// get_digest had no way to bound the number of rooms returned. unread_only and
+// exclude_stale filter by state; neither caps count, so a project with hundreds
+// of rooms overflowed the tool-result limit with both params already set —
+// 73,471 characters in the case filed as #01a0c4c4, during the session-start
+// ritual the server's own instructions prescribe.
+func TestGetDigestLimitBoundsRoomsAndReportsTruncation(t *testing.T) {
+	reg := setupHandlerTest(t)
+	for _, id := range []string{"lim-a", "lim-b", "lim-c", "lim-d"} {
+		mustCreateRoom(t, reg.Server, id, withProject("limproj"))
+		mustPost(t, reg.Server, id, "Claude", "message in "+id)
+	}
+
+	res, _, err := reg.handleGetDigest(context.Background(), nil, DigestInput{
+		Project: "limproj", Since: "2000-01-01T00:00:00", Limit: "2",
+	})
+	if err != nil {
+		t.Fatalf("handleGetDigest error: %v", err)
+	}
+
+	var out digestResponse
+	if err := json.Unmarshal([]byte(resultText(res)), &out); err != nil {
+		t.Fatalf("digest is not JSON: %v", err)
+	}
+	if len(out.Rooms) != 2 {
+		t.Errorf("limit=2 returned %d rooms, want 2", len(out.Rooms))
+	}
+	// The summary counts the full set, so the tallies stay honest under a limit.
+	if out.Summary.Total != 4 {
+		t.Errorf("summary.total = %d, want 4 (computed over the full set)", out.Summary.Total)
+	}
+	if out.Summary.Truncated != 2 {
+		t.Errorf("summary.truncated = %d, want 2 — truncation must be reported, not silent", out.Summary.Truncated)
+	}
+
+	// Omitting the limit keeps every room (pre-existing behaviour).
+	all, _, _ := reg.handleGetDigest(context.Background(), nil, DigestInput{
+		Project: "limproj", Since: "2000-01-01T00:00:00",
+	})
+	var full digestResponse
+	_ = json.Unmarshal([]byte(resultText(all)), &full)
+	if len(full.Rooms) != 4 {
+		t.Errorf("no limit returned %d rooms, want 4", len(full.Rooms))
+	}
+	if full.Summary.Truncated != 0 {
+		t.Errorf("summary.truncated = %d with no limit, want 0", full.Summary.Truncated)
+	}
+}
