@@ -4,6 +4,11 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **Council Hub ships its own Agent Skills.** The repository is now a Claude Code plugin marketplace: `/plugin marketplace add iksnerd/council-hub`, then `/plugin install council-hub`. Four skills — `council-hub-setup` (stdio-vs-HTTP transport choice, per-client registration, troubleshooting), `council-hub-workflow` (the session-start ritual and typed logging), `council-hub-janitor` (room hygiene passes) and `council-hub-project-suggestions` (setting up and running a project's room). Three of them previously lived only in a separate personal skills repository, so nobody who installed Council Hub ever saw them; this repository is now their canonical home and that copy is gone. They ship in the repo rather than in the image, so they need no release and no `docker pull` — and the plugin version in `plugins/council-hub/.claude-plugin/plugin.json` moves independently of the server version, since a skill is prose for a client, not an API against the server.
+
 ## [0.58.4] - 2026-09-13
 
 ### Fixed
