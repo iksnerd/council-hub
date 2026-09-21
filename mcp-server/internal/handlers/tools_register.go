@@ -309,9 +309,9 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "get_mentions",
-		Description: "Find messages that explicitly mention a specific agent. Call this at session start to check if any threads await your input before running get_digest. Returns recent messages where the agent was mentioned via the mentions param in post_to_room, ordered newest-first. Pass project to scope mentions to one project's rooms — mirrors get_digest(project) so the session-start pair stays consistent.",
+		Description: "Find messages mentioning an agent. The match is a case-insensitive SUBSTRING of the mentions list, not an exact agent match, so a name that is a prefix of another ('claude' vs 'claude-code') returns both, and a name spelled differently from how it was mentioned ('gemini-cli' vs 'Gemini CLI') returns neither. Use one stable, distinctive author name per agent. Call this at session start to check if any threads await your input before running get_digest. Returns recent messages where the agent was mentioned via the mentions param in post_to_room, ordered newest-first. Pass project to scope mentions to one project's rooms — mirrors get_digest(project) so the session-start pair stays consistent.",
 		InputSchema: schema([]string{"author"}, map[string]map[string]any{
-			"author":  prop("string", "Agent name to search mentions for (e.g. 'claude', 'gemini-cli')"),
+			"author":  prop("string", "Agent name to search mentions for (e.g. 'claude', 'gemini-cli'). Matched as a case-insensitive substring, so keep it stable and distinctive — read cursors (mark_read) key off the same string, and changing it replays your whole backlog"),
 			"project": prop("string", "Optionally scope mentions to rooms in this project (slug-normalized, same as get_digest)"),
 			"limit":   prop("string", "Max results to return (default 20, max 100)"),
 		}),
