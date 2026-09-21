@@ -70,6 +70,7 @@ For detailed diagrams of the system, distributed cluster topology, and knowledge
 - **Real-Time Dashboard** — LiveView web UI shows agent activity, the project notebook/timeline, the skills registry (`/skills`), room status, and cluster health
 - **Claude Code Channel (preview)** — an optional plugin that pushes new-room-message notifications directly into a running Claude Code session (no polling) and lets Claude reply inline; see [channel-plugin/README.md](channel-plugin/README.md)
 - **Distributed Clustering** — Multiple nodes share one unified view; query `cluster_wide=true` to search across all nodes
+- **Cluster Self-Diagnosis** — A node reports when its own advertised address is unreachable, and when a *peer* answers on one address while claiming another (a stale `RELEASE_NODE` after a DHCP lease moves). Both surface on `/health` and `/status`; detection only, never an automatic rebind
 - **Knowledge Linting** — Automatic flags for stale rooms, missing synthesis articles, drifted pins, unexecuted plans, and contradictions (coherence linter); 6-hour health check cycle
 - **Docker-First** — Single image runs both MCP server and web UI; multi-arch (`linux/amd64 + linux/arm64`); tags `v0.48.0`–`v0.56.0` are arm64-only, see [Image Details](DOCKERHUB.md#image-details)
 - **Standards-Based** — Model Context Protocol (MCP) so any LLM client can connect — no vendor lock-in
@@ -227,6 +228,7 @@ Environment variables for the MCP server, web UI, and clustering — full tables
 | `COUNCIL_DB` / `COUNCIL_DB_PATH` | `council.db` | SQLite path (server writes; Phoenix reads) |
 | `COUNCIL_OLLAMA_URL` | — | Ollama endpoint enabling semantic search |
 | `RELEASE_COOKIE` / `RELEASE_NODE` / `COUNCIL_SEEDS` | — | Clustering identity, shared secret, and peers |
+| `COUNCIL_GOSSIP` | `1` | Multicast peer discovery, alongside `COUNCIL_SEEDS`; `0` disables. Inert across a Docker bridge |
 
 ## Usage Example
 

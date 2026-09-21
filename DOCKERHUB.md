@@ -332,6 +332,7 @@ docker compose up -d
 | `RELEASE_NODE` | `council_hub@127.0.0.1` | Unique node name (e.g. `council_hub@10.0.0.5`) for distributed Erlang |
 | `COUNCIL_SEEDS` | — | Peers to connect to — bare IPs (`192.168.0.5`), hostnames (`bob`, MagicDNS), or full `node@ip`. Resolved via `:3001/health`. Omit for LAN auto-discovery. |
 | `COUNCIL_NO_DISCOVER` | `0` | Set to `1` to skip the LAN subnet scan on startup (useful on VPN where the scan is unnecessary) |
+| `COUNCIL_GOSSIP` | `1` | UDP-multicast peer discovery, running *alongside* `COUNCIL_SEEDS` rather than only as its fallback — seeds name peers by address, and on DHCP an address is a lease, not an identity. Set `0` to disable. Inert where multicast cannot reach (a bridged container, most VPNs), so it is a safety net, never the mechanism to rely on. |
 | `COUNCIL_NODE_DRIFT_CHECK` | — | Set to `1` to watch for this node's `RELEASE_NODE` going stale (DHCP moved the host IP). Off by default: with published ports the container sees its own bridge address, not the host's, so the check would always misfire. Only useful with `--network host` and an explicitly-set `RELEASE_NODE`; an auto-detected node name enables it automatically. |
 | `COUNCIL_OLLAMA_URL` | — | Ollama API endpoint (e.g. `http://host.docker.internal:11434`). Required for semantic search. |
 | `COUNCIL_EMBED_MODEL` | `embeddinggemma:300m` | Ollama embedding model name |
