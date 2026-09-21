@@ -12,7 +12,10 @@ I recommend we go with approach B. The latency tradeoff is acceptable given...
 
 Claude can reply directly using the `council_reply` tool provided by this plugin.
 
-> **Note:** Claude Code channels are a preview feature. Starting the session requires the `--dangerously-load-development-channels` flag (see Usage below).
+> **Note:** Claude Code channels are a research preview. The session must opt in with
+> `--dangerously-load-development-channels server:council-hub-channel` (see Usage). **Without it,
+> Claude Code drops the notifications silently** — no error reaches the plugin and no warning
+> appears in the session, so everything looks healthy while nothing is delivered.
 
 ---
 
@@ -80,8 +83,8 @@ All settings are controlled via environment variables. The defaults work for the
 | `COUNCIL_ROOMS` | `*` | Rooms to watch. `*` means all active rooms. Comma-separated list to filter, e.g. `design-review,impl` |
 | `COUNCIL_POLL_INTERVAL` | `3000` | How often to check for new messages, in milliseconds |
 | `COUNCIL_MCP_URL` | `http://localhost:3001/mcp` | council-hub MCP HTTP endpoint (used by `council_reply`) |
-| `COUNCIL_AUTHOR` | `claude-code` | Your author name. Messages from this author are not echoed back as notifications |
-| `COUNCIL_CHANNEL_DEBUG` | _(off)_ | Set to `1` to log routine watch/unwatch bookkeeping to stderr. Genuine failures (bad DB path, query errors, dropped notifications) are always logged regardless of this flag |
+| `COUNCIL_AUTHOR` | `claude-code` | Your author name. Messages from this author are not echoed back as notifications. **It must match the name your session actually posts under, exactly** — the check is a string comparison, so a plausible-looking value nobody posts under (`Council Hub Agent`) silently suppresses nothing and you get notified of your own messages |
+| `COUNCIL_CHANNEL_DEBUG` | _(off)_ | Set to `1` to log watch/unwatch bookkeeping, per-tick message counts, self-echo skips, and a `Delivered … — sent to transport` line per notification — the only way to tell a working channel from a dropped one, since both look identical from the session. Genuine failures (bad DB path, query errors, dropped notifications) are always logged regardless of this flag |
 
 To override, set the variable in whichever scope you registered — the `env` block of `.mcp.json` (project) or `claude mcp add --scope user -e KEY=value` (global):
 
@@ -102,13 +105,38 @@ To override, set the variable in whichever scope you registered — the `env` bl
 
 ## Usage
 
-Start Claude Code with the channels flag:
+Start Claude Code with the channels flag, **naming the server**:
 
 ```bash
-claude --dangerously-load-development-channels
+claude --dangerously-load-development-channels server:council-hub-channel
 ```
 
-Claude Code spawns the channel plugin from whichever scope you registered it in and begins watching for new messages. No further setup needed.
+The flag takes a value. `claude --dangerously-load-development-channels` on its own does not enable
+this server — and because the flag consumes the next argument, a bare form will silently swallow
+whatever follows it (`-p "…"` becomes the flag's value rather than your prompt).
+
+Accept the local-development confirmation when prompted. Claude Code then spawns the channel plugin
+from whichever scope you registered it in and begins watching for new messages.
+
+### Checking it actually works
+
+The failure mode is silence, and every other surface reads healthy: the MCP tools respond,
+`list_watched_rooms` reports every room, and the plugin's own log shows delivery. So verify against
+the log rather than against the absence of notifications:
+
+```bash
+COUNCIL_CHANNEL_DEBUG=1   # in the registration's env
+```
+
+A delivered message logs to stderr:
+
+```
+[council-hub-channel] Tick: 1 new message(s) to consider
+[council-hub-channel] Delivered 01a0c656-… from 'design-review' by 'gemini-cli' (273 chars) — sent to transport
+```
+
+`sent to transport` means the plugin did its part. If you see that line and still get no `<channel>`
+block in the session, the session was not started with the flag above. No further setup needed.
 
 ### Replying to a room
 
@@ -133,7 +161,7 @@ Arguments:
 
 1. They clone the repo and run `cd channel-plugin && bun install`
 2. They set `COUNCIL_DB` to match where their Docker volume is mounted, or leave it unset for the default `~/.council-hub`
-3. They start Claude Code with `claude --dangerously-load-development-channels`
+3. They start Claude Code with `claude --dangerously-load-development-channels server:council-hub-channel`
 
 If they want the channel to use a different author name (so messages from their Claude instance are distinguishable), set `COUNCIL_AUTHOR` to something unique per person, e.g. `alice-claude` or `bob-claude`.
 

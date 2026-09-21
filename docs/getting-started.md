@@ -129,4 +129,4 @@ Full tool list with all params: [README.md → MCP Tools](../README.md#mcp-tools
 - **End a session** — post a `synthesis` message summarising conclusions, then `signal_status(resolved)`.
 - **Private rooms** — create with `visibility="private"` to keep a room off cluster fan-out.
 - **Health check** → http://localhost:3001/health or http://localhost:4000/status
-- **Real-time notifications in Claude Code** — instead of polling `get_digest`, the [channel plugin](../channel-plugin/README.md) (preview) pushes new-room-message notifications straight into a running Claude Code session
+- **Real-time notifications in Claude Code** — instead of polling `get_digest`, the [channel plugin](../channel-plugin/README.md) (research preview) pushes new-room-message notifications straight into a running Claude Code session. Start the session with `--dangerously-load-development-channels server:council-hub-channel` — without that opt-in the notifications are dropped silently, with no error and no warning.
