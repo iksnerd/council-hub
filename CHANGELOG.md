@@ -4,6 +4,13 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.61.0] - 2026-09-21
+
+### Added
+- **`update_message(append=…)` and `register_skill(append=…)`.** Both tools replaced their body wholesale, so adding one line to a long record meant re-transmitting the whole thing — and every character re-sent is a chance to corrupt a record that is supposed to be immutable, with no way for the caller to diff what it sent against what was there. Both now read the stored content server-side and extend it. `update_message` still posts a revision, so history is preserved; its read-then-write is guarded by the lost-update check that already existed, with the content read becoming `expected_content`, so a concurrent edit fails the append instead of silently discarding the other edit. `register_skill` preserves the discovery card (`description`, `when_to_use`, `project`, `tags`, `source`) unless the same call sets it, and refuses to append to a skill that is not registered. Both reject `content` and `append` together.
+
+  Prompted by a 39-message correction pass over the ledger, where every entry had to be re-typed in full to change a single commit sha.
+
 ## [0.60.0] - 2026-09-21
 
 The session-start ritual the server's own instructions prescribe — `get_mentions`, `get_digest`, `read_notebook(current-work)` — overflowed the tool-result limit on a mature database, and its two documented remedies did not work. Three sessions hit it before it was filed (`#01a0b6c1`, `#01a0c4c4`, `#01a0c4cd`).

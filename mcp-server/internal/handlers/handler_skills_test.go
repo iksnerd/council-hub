@@ -107,3 +107,50 @@ func TestHandleRegisterSkillRemove(t *testing.T) {
 		t.Errorf("skill should be gone after removal, got: %s", text)
 	}
 }
+
+// register_skill upserts by name and replaces content wholesale, so adding one
+// dated reading to an 8KB playbook meant re-transmitting the whole body — and a
+// transcription slip there corrupts a reference document whose entire value is
+// its continuity. append extends it server-side.
+func TestRegisterSkillAppendExtendsAndPreservesCard(t *testing.T) {
+	reg := setupHandlerTest(t)
+
+	if _, _, err := reg.handleRegisterSkill(context.Background(), nil, RegisterSkillInput{
+		Name: "metrics", Description: "the card", WhenToUse: "on a release",
+		Tags: "a,b", Project: "council-hub", Content: "## Baseline\nfirst reading",
+	}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	res, _, err := reg.handleRegisterSkill(context.Background(), nil, RegisterSkillInput{
+		Name: "metrics", Append: "## Reading — v2\nsecond reading",
+	})
+	if err != nil || strings.Contains(resultText(res), "Error") {
+		t.Fatalf("append: %v / %s", err, resultText(res))
+	}
+
+	got, err := reg.Server.GetSkill("metrics")
+	if err != nil {
+		t.Fatalf("read back: %v", err)
+	}
+	for _, want := range []string{"first reading", "second reading"} {
+		if !strings.Contains(got.Content, want) {
+			t.Errorf("content missing %q:\n%s", want, got.Content)
+		}
+	}
+	// An append must not blank the discovery card it never mentioned.
+	if got.Description != "the card" || got.WhenToUse != "on a release" ||
+		got.Tags != "a,b" || got.Project != "council-hub" {
+		t.Errorf("append blanked the discovery card: %+v", got)
+	}
+}
+
+func TestRegisterSkillAppendRequiresAnExistingSkill(t *testing.T) {
+	reg := setupHandlerTest(t)
+	res, _, _ := reg.handleRegisterSkill(context.Background(), nil, RegisterSkillInput{
+		Name: "nope", Append: "text",
+	})
+	if !strings.Contains(resultText(res), "not registered") {
+		t.Errorf("expected a clear not-registered error, got: %s", resultText(res))
+	}
+}

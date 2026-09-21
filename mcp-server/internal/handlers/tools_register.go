@@ -239,6 +239,7 @@ func (r *Registry) RegisterTools() {
 			"content":          prop("string", "New message content (becomes the new head revision)"),
 			"message_type":     prop("string", "Optionally change message type: message, thought, draft, decision, plan, action, review, critique, synthesis, note"),
 			"expected_content": prop("string", "If provided, the edit fails with the current content if this doesn't match — prevents lost updates when multiple agents edit the same living document."),
+			"append":           prop("string", "Add this text to the end of the message instead of replacing it — the stored content is read server-side, so you never re-transmit a body you are not changing. Mutually exclusive with content. Still posts a revision, so history is preserved. Safe against a concurrent edit: the content read becomes expected_content, so a racing update fails rather than appending to a stale body."),
 			"author":           prop("string", "Optional name of the agent making the edit (attributes the revision; defaults to the original author)"),
 		}),
 	}, r.handleUpdateMessage)
@@ -580,6 +581,7 @@ func (r *Registry) RegisterTools() {
 			"tags":        prop("string", "Comma-separated labels for filtering (e.g. 'release,ci,docker')."),
 			"source":      prop("string", "Pointer to where the canonical skill lives — a skill directory path or URL."),
 			"remove":      prop("string", "Set to 'true' to delete the named skill from the registry."),
+			"append":      prop("string", "Add this text to the end of the registered playbook instead of replacing it. The skill must already exist; the discovery card (description, when_to_use, project, tags, source) is preserved unless this call also sets it. Mutually exclusive with content — use it to add a dated reading or a new section without re-transmitting the whole body."),
 		}),
 	}, r.handleRegisterSkill)
 

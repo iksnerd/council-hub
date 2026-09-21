@@ -37,6 +37,7 @@ type UpdateMessageInput struct {
 	MessageType     string `json:"message_type"`
 	ExpectedContent string `json:"expected_content"`
 	Author          string `json:"author"`
+	Append          string `json:"append"`
 }
 
 // DeleteMessagesInput represents the parameters for retracting, restoring, or
@@ -213,11 +214,11 @@ func (r *Registry) handleUpdateMessage(ctx context.Context, req *mcp.CallToolReq
 	if args.MessageID == "" {
 		return msg("Error: message_id is required.")
 	}
-	if args.Content == "" {
-		return msg("Error: content is required.")
+	if args.Content == "" && args.Append == "" {
+		return msg("Error: content or append is required.")
 	}
-	if err := validateSize("content", args.Content, maxContentLen); err != nil {
-		return msg("Error: " + err.Error())
+	if args.Content != "" && args.Append != "" {
+		return msg("Error: pass content or append, not both — content replaces the message, append adds to it.")
 	}
 
 	if args.MessageType != "" && !validMessageTypes[args.MessageType] {
@@ -225,6 +226,37 @@ func (r *Registry) handleUpdateMessage(ctx context.Context, req *mcp.CallToolReq
 	}
 	if err := r.resolveInto(&args.MessageID); err != nil {
 		return msg(fmt.Sprintf("Error: %s", err.Error()))
+	}
+
+	// append builds the new content from the stored one, so a caller correcting
+	// a long entry does not have to re-transmit it. Re-transmitting is not just
+	// wasteful: every character is a chance to corrupt a record that is supposed
+	// to be immutable, and the caller usually cannot diff what it sent against
+	// what was there.
+	//
+	// The read-then-write is made safe by the guard that already exists for it:
+	// the content we read becomes expected_content, so a concurrent edit fails
+	// the update rather than silently appending to a stale body. An explicit
+	// expected_content from the caller wins, since theirs is the stricter claim.
+	if args.Append != "" {
+		cur, gerr := r.Server.GetMessageByID(args.MessageID)
+		if gerr != nil {
+			if gerr == sql.ErrNoRows {
+				return msg(fmt.Sprintf("Error: message #%.8s not found.", args.MessageID))
+			}
+			return msg(fmt.Sprintf("Error: %s", gerr.Error()))
+		}
+		if cur.Revised {
+			return msg(fmt.Sprintf("Error: message #%.8s has already been revised; append to the current head instead.", args.MessageID))
+		}
+		if args.ExpectedContent == "" {
+			args.ExpectedContent = cur.Content
+		}
+		args.Content = cur.Content + "\n\n" + args.Append
+	}
+
+	if err := validateSize("content", args.Content, maxContentLen); err != nil {
+		return msg("Error: " + err.Error())
 	}
 
 	m, err := r.Server.UpdateMessageWithExpected(args.MessageID, args.Content, args.MessageType, args.ExpectedContent, args.Author)

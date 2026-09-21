@@ -20,6 +20,7 @@ type RegisterSkillInput struct {
 	Tags        string `json:"tags"`
 	Source      string `json:"source"`
 	Remove      string `json:"remove"`
+	Append      string `json:"append"`
 }
 
 func (r *Registry) handleRegisterSkill(ctx context.Context, req *mcp.CallToolRequest, args RegisterSkillInput) (*mcp.CallToolResult, ToolOutput, error) {
@@ -35,6 +36,39 @@ func (r *Registry) handleRegisterSkill(ctx context.Context, req *mcp.CallToolReq
 		}
 		r.Server.Logger.Info("Skill removed", "name", args.Name)
 		return msg(fmt.Sprintf("Skill '%s' removed from the registry.", args.Name))
+	}
+
+	// append extends the stored playbook instead of replacing it. Upsert-by-name
+	// means the only way to add one line to an 8KB body was to re-transmit the
+	// whole thing, and a transcription slip there silently corrupts a reference
+	// document whose value is its continuity — the running baseline that later
+	// readings are compared against.
+	if args.Append != "" {
+		if args.Content != "" {
+			return msg("Error: pass content or append, not both — content replaces the playbook, append adds to it.")
+		}
+		cur, gerr := r.Server.GetSkill(args.Name)
+		if gerr != nil {
+			return msg(fmt.Sprintf("Error: cannot append to '%s' — it is not registered. Register it with content first.", args.Name))
+		}
+		args.Content = strings.TrimRight(cur.Content, "\n") + "\n\n" + args.Append
+		// Preserve the discovery card unless this call is also changing it, so an
+		// append does not blank the fields it never mentioned.
+		if args.Description == "" {
+			args.Description = cur.Description
+		}
+		if args.WhenToUse == "" {
+			args.WhenToUse = cur.WhenToUse
+		}
+		if args.Project == "" {
+			args.Project = cur.Project
+		}
+		if args.Tags == "" {
+			args.Tags = cur.Tags
+		}
+		if args.Source == "" {
+			args.Source = cur.Source
+		}
 	}
 
 	for _, c := range []struct {
