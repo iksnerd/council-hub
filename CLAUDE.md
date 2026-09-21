@@ -20,6 +20,8 @@ The Go server owns all writes. The Phoenix UI is read-only against the same SQLi
 
 When you need an example, use the established placeholders above. Run `/docs-audit` (check #7) before any release or OSS milestone to catch leaks. Personal data in a committed file is a release blocker.
 
+**Seed `.git/info/private-patterns` on every fresh clone** (one extended regex per line — real hostnames, usernames, LAN or tailnet addresses you actually use). The file is untracked, so it never ships, which is also why a clone starts without it and is unprotected until you write it. The built-in patterns in `.githooks/pre-commit` only match home paths and Tailscale `100.64/10` addresses: a bare hostname — a MagicDNS name, a LAN hostname — matches nothing, and that gap left a real machine name in a tracked comment for three months (fixed in `7793702`). Note the hook also only inspects *added* lines in a staged diff, so seeding it protects what you write next, never what is already committed; `/docs-audit` check #7 is the only thing that finds those.
+
 ## Build & Run Commands
 
 ### Docker (primary workflow)
