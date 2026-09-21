@@ -664,4 +664,65 @@ defmodule CouncilHubUiWeb.ClusterControllerTest do
       assert %{"error" => "project is required"} = json_response(conn, 400)
     end
   end
+
+  describe "GET /api/internal/cluster/nodes" do
+    test "carries the seed doctor's findings so the Go /health can relay them", %{conn: conn} do
+      finding = %{
+        seed: "192.168.0.4",
+        host: "192.168.0.4",
+        reported_node: "bob@192.168.0.5",
+        status: :stale_name,
+        message: "seed 192.168.0.4 is up but reports node bob@192.168.0.5"
+      }
+
+      send(CouncilHubUi.ClusterManager, {:seed_status, [finding]})
+      on_exit(fn -> send(CouncilHubUi.ClusterManager, {:seed_status, []}) end)
+      # Let the manager process the message before reading it back over HTTP.
+      _ = CouncilHubUi.ClusterManager.seed_status()
+
+      assert %{"seed_status" => seed_status} =
+               json_response(get(conn, "/api/internal/cluster/nodes"), 200)
+
+      assert [%{"status" => "stale_name", "host" => "192.168.0.4"}] = seed_status["findings"]
+      assert seed_status["warning"] =~ "no cluster peers connected"
+    end
+
+    test "carries the advertised-address probe", %{conn: conn} do
+      unreachable = %{
+        host: "192.168.0.10",
+        port: 4369,
+        checkable?: true,
+        reachable?: false,
+        warning: "nothing answers on 192.168.0.10:4369"
+      }
+
+      send(CouncilHubUi.ClusterManager, {:advertised_status, unreachable})
+      _ = CouncilHubUi.ClusterManager.advertised_status()
+
+      on_exit(fn ->
+        send(
+          CouncilHubUi.ClusterManager,
+          {:advertised_status,
+           %{host: nil, port: nil, checkable?: false, reachable?: nil, warning: nil}}
+        )
+      end)
+
+      assert %{"advertised" => advertised} =
+               json_response(get(conn, "/api/internal/cluster/nodes"), 200)
+
+      assert advertised["reachable?"] == false
+      assert advertised["warning"] =~ "nothing answers"
+    end
+
+    test "reports no findings when the cluster is healthy", %{conn: conn} do
+      send(CouncilHubUi.ClusterManager, {:seed_status, []})
+      _ = CouncilHubUi.ClusterManager.seed_status()
+
+      assert %{"seed_status" => seed_status} =
+               json_response(get(conn, "/api/internal/cluster/nodes"), 200)
+
+      assert seed_status["findings"] == []
+      assert seed_status["warning"] == nil
+    end
+  end
 end

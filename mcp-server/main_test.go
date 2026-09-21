@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 
 	"council-hub/internal/council"
@@ -173,5 +174,137 @@ func TestHealthHandlerWithoutPhoenix(t *testing.T) {
 	}
 	if _, ok := body["node_identity"]; ok {
 		t.Fatal("did not expect node_identity when Phoenix is unreachable")
+	}
+}
+
+func TestHealthHandlerSurfacesSeedWarning(t *testing.T) {
+	phoenix := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{
+			"nodes": [{"node": "council_hub@10.0.0.6", "version": "0.58.4"}],
+			"count": 1,
+			"version_mismatch": false,
+			"seed_status": {
+				"warning": "no cluster peers connected — seed 10.0.0.4 is up but reports node peer@10.0.0.5, an address it does not hold",
+				"findings": [{"seed": "10.0.0.4", "host": "10.0.0.4", "reported_node": "peer@10.0.0.5", "status": "stale_name", "message": "seed 10.0.0.4 is up but reports node peer@10.0.0.5"}]
+			}
+		}`))
+	}))
+	defer phoenix.Close()
+
+	cs := testServer(t)
+	handler := healthHandler(cs, phoenix.URL, phoenix.Client())
+
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	rec := httptest.NewRecorder()
+	handler(rec, req)
+
+	var body map[string]any
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	warning, ok := body["seed_warning"].(string)
+	if !ok || !strings.Contains(warning, "peer@10.0.0.5") {
+		t.Fatalf("expected seed_warning naming the stale peer, got body: %+v", body)
+	}
+	if _, ok := body["seed_status"]; !ok {
+		t.Fatal("expected seed_status to be present in the response body")
+	}
+}
+
+func TestHealthHandlerOmitsSeedWarningWhenClusterHealthy(t *testing.T) {
+	phoenix := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{
+			"nodes": [{"node": "council_hub@10.0.0.6", "version": "0.58.4"}],
+			"count": 1,
+			"version_mismatch": false,
+			"seed_status": {"warning": null, "findings": []}
+		}`))
+	}))
+	defer phoenix.Close()
+
+	cs := testServer(t)
+	handler := healthHandler(cs, phoenix.URL, phoenix.Client())
+
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	rec := httptest.NewRecorder()
+	handler(rec, req)
+
+	var body map[string]any
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if _, ok := body["seed_warning"]; ok {
+		t.Fatalf("did not expect seed_warning in body: %+v", body)
+	}
+	if _, ok := body["seed_status"]; ok {
+		t.Fatalf("did not expect seed_status in body: %+v", body)
+	}
+}
+
+func TestHealthHandlerSurfacesAdvertisedWarning(t *testing.T) {
+	phoenix := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{
+			"nodes": [{"node": "council_hub@192.168.0.10", "version": "0.58.4"}],
+			"count": 1,
+			"version_mismatch": false,
+			"advertised": {
+				"host": "192.168.0.10",
+				"port": 4369,
+				"checkable?": true,
+				"reachable?": false,
+				"warning": "nothing answers on 192.168.0.10:4369, the address this node advertises to peers"
+			}
+		}`))
+	}))
+	defer phoenix.Close()
+
+	cs := testServer(t)
+	handler := healthHandler(cs, phoenix.URL, phoenix.Client())
+
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	rec := httptest.NewRecorder()
+	handler(rec, req)
+
+	var body map[string]any
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	warning, ok := body["advertised_warning"].(string)
+	if !ok || !strings.Contains(warning, "192.168.0.10:4369") {
+		t.Fatalf("expected advertised_warning naming the dead address, got body: %+v", body)
+	}
+	if _, ok := body["advertised"]; !ok {
+		t.Fatal("expected advertised to be present in the response body")
+	}
+}
+
+func TestHealthHandlerOmitsAdvertisedWhenReachable(t *testing.T) {
+	phoenix := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{
+			"nodes": [{"node": "council_hub@192.168.0.6", "version": "0.58.4"}],
+			"count": 1,
+			"version_mismatch": false,
+			"advertised": {"host": "192.168.0.6", "port": 4369, "checkable?": true, "reachable?": true, "warning": ""}
+		}`))
+	}))
+	defer phoenix.Close()
+
+	cs := testServer(t)
+	handler := healthHandler(cs, phoenix.URL, phoenix.Client())
+
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	rec := httptest.NewRecorder()
+	handler(rec, req)
+
+	var body map[string]any
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if _, ok := body["advertised_warning"]; ok {
+		t.Fatalf("did not expect advertised_warning in body: %+v", body)
 	}
 }

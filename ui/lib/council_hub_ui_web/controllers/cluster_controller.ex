@@ -1,7 +1,7 @@
 defmodule CouncilHubUiWeb.ClusterController do
   use CouncilHubUiWeb, :controller
 
-  alias CouncilHubUi.{Cluster, ClusterManager, Params}
+  alias CouncilHubUi.{Cluster, ClusterManager, Params, SeedDoctor}
   require Logger
 
   def nodes(conn, _params) do
@@ -40,8 +40,23 @@ defmodule CouncilHubUiWeb.ClusterController do
       nodes: all,
       count: length(all),
       version_mismatch: mismatch,
-      node_identity: ClusterManager.ip_status()
+      node_identity: ClusterManager.ip_status(),
+      advertised: ClusterManager.advertised_status(),
+      seed_status: seed_status()
     })
+  end
+
+  # What this node's seeds report about themselves while no peer is connected.
+  # The warning is composed here rather than on the Go side: the classification
+  # and its remedy belong with the code that made the classification.
+  defp seed_status do
+    %{findings: findings, checked_at: checked_at} = ClusterManager.seed_status()
+
+    %{
+      findings: findings,
+      warning: SeedDoctor.warning(findings),
+      checked_at: checked_at
+    }
   end
 
   def search_messages(conn, params) do

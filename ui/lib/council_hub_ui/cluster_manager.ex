@@ -59,7 +59,7 @@ defmodule CouncilHubUi.ClusterManager do
   use GenServer
   require Logger
 
-  alias CouncilHubUi.NodeIdentity
+  alias CouncilHubUi.{NodeIdentity, SeedDoctor}
 
   # name@host — host may be an IP, hostname, or Tailscale MagicDNS name.
   @node_re ~r/^[^@\s]+@[^@\s]+$/
@@ -70,6 +70,11 @@ defmodule CouncilHubUi.ClusterManager do
   # Minimum gap between self-heal rebind attempts, so a persistent failure
   # (e.g. no route to the "current" IP either) doesn't retry every tick.
   @rebind_cooldown :timer.seconds(60)
+
+  # Minimum gap between seed-health probe rounds. The reconnect tick is ~10s,
+  # but a probe round is N HTTP requests to other machines — and it only runs
+  # while the cluster is down, so a healthy node never issues one.
+  @seed_probe_interval :timer.seconds(60)
 
   ## Client API
 
@@ -96,6 +101,26 @@ defmodule CouncilHubUi.ClusterManager do
   @doc "List every peer the self-heal loop keeps alive (persisted ∪ seeds ∪ seen), as strings."
   def known_peers(server \\ __MODULE__) do
     GenServer.call(server, :known_peers)
+  end
+
+  @doc """
+  Whether anything answers on the address this node advertises to peers, as
+  last probed: see `CouncilHubUi.NodeIdentity.advertised_status/0`. The
+  `warning` is nil when reachable, when not distributed, and when the
+  advertisement is loopback (already reported by the /status doctor).
+  """
+  def advertised_status(server \\ __MODULE__) do
+    GenServer.call(server, :advertised_status)
+  end
+
+  @doc """
+  What this node's configured seeds report about themselves, as last probed:
+  `%{findings: [...], checked_at: DateTime.t() | nil}`. Empty whenever a peer
+  is connected — this diagnoses a *down* cluster, and stale findings must not
+  outlive the outage. See `CouncilHubUi.SeedDoctor` for the classifications.
+  """
+  def seed_status(server \\ __MODULE__) do
+    GenServer.call(server, :seed_status)
   end
 
   @doc """
@@ -154,7 +179,18 @@ defmodule CouncilHubUi.ClusterManager do
        last_rebind_attempt: nil,
        # Knowable at boot, so don't learn it by failing a rebind first.
        self_heal_supported?: not NodeIdentity.static_distribution?(),
-       self_heal_warned?: false
+       self_heal_warned?: false,
+       seeds: Keyword.get(opts, :seeds) || System.get_env("COUNCIL_SEEDS", ""),
+       seed_probe: Keyword.get(opts, :seed_probe, &SeedDoctor.probe/1),
+       seed_probe_interval: Keyword.get(opts, :seed_probe_interval, @seed_probe_interval),
+       seed_findings: [],
+       seed_checked_at: nil,
+       seed_warned: MapSet.new(),
+       last_seed_probe: nil,
+       advertised_check: Keyword.get(opts, :advertised_check, &NodeIdentity.advertised_status/0),
+       advertised: NodeIdentity.advertised_status(nil, nil, fn _, _ -> :ok end),
+       advertised_warned?: false,
+       last_advertised_probe: nil
      }}
   end
 
@@ -205,6 +241,16 @@ defmodule CouncilHubUi.ClusterManager do
   end
 
   @impl true
+  def handle_call(:advertised_status, _from, state) do
+    {:reply, state.advertised, state}
+  end
+
+  @impl true
+  def handle_call(:seed_status, _from, state) do
+    {:reply, %{findings: state.seed_findings, checked_at: state.seed_checked_at}, state}
+  end
+
+  @impl true
   def handle_call(:ip_status, _from, state) do
     {:reply, Map.put(state.ip_status, :self_heal_supported?, state.self_heal_supported?), state}
   end
@@ -218,8 +264,52 @@ defmodule CouncilHubUi.ClusterManager do
       safe_connect(node)
     end
 
+    state = maybe_probe_seeds(state)
+    state = maybe_probe_advertised(state)
+
     schedule_reconnect(state.interval)
     {:noreply, state}
+  end
+
+  @impl true
+  def handle_info({:advertised_status, status}, state) do
+    warned? =
+      case {status.warning, state.advertised_warned?} do
+        {nil, _} ->
+          false
+
+        {_warning, true} ->
+          true
+
+        {warning, false} ->
+          Logger.error("ClusterManager: #{warning}")
+          true
+      end
+
+    {:noreply, %{state | advertised: status, advertised_warned?: warned?}}
+  end
+
+  @impl true
+  def handle_info({:seed_status, findings}, state) do
+    # An outage lasts as long as it lasts; the log line about it should not
+    # repeat every probe round. Say each distinct finding once, and let
+    # /health and /status carry the standing state.
+    warned =
+      for %{status: :stale_name, message: message} <- findings,
+          not MapSet.member?(state.seed_warned, message),
+          reduce: state.seed_warned do
+        acc ->
+          Logger.error("ClusterManager: #{message}")
+          MapSet.put(acc, message)
+      end
+
+    {:noreply,
+     %{
+       state
+       | seed_findings: findings,
+         seed_checked_at: DateTime.utc_now(),
+         seed_warned: warned
+     }}
   end
 
   @impl true
@@ -238,6 +328,72 @@ defmodule CouncilHubUi.ClusterManager do
   def handle_info(_msg, state), do: {:noreply, state}
 
   ## Helpers
+
+  # While the cluster is down, ask each configured seed what node name it
+  # believes it has. A seed host that answers `/health` under a name whose
+  # address it no longer holds is the one signal that names the *peer's*
+  # stale identity — which the local node cannot otherwise observe, and which
+  # looks identical to "the peer is simply offline" from here.
+  #
+  # Runs in an unlinked Task: the tick must never block on another machine's
+  # HTTP, and a probe that raises must not take the manager down with it.
+  defp maybe_probe_seeds(state) do
+    cond do
+      Node.list() != [] ->
+        # Cluster is up — drop any findings from the last outage, and forget
+        # what was warned about so a later outage speaks up again.
+        %{
+          state
+          | seed_findings: [],
+            seed_checked_at: nil,
+            seed_warned: MapSet.new(),
+            last_seed_probe: nil
+        }
+
+      state.seeds in [nil, ""] ->
+        state
+
+      seed_probe_cooling_down?(state) ->
+        state
+
+      true ->
+        manager = self()
+        %{seeds: seeds, seed_probe: probe} = state
+
+        Task.start(fn ->
+          send(manager, {:seed_status, SeedDoctor.check(seeds, Node.list(), probe)})
+        end)
+
+        %{state | last_seed_probe: monotonic_ms()}
+    end
+  end
+
+  # Ask whether a peer could reach the address we advertise. Unlike the seed
+  # probe this runs whether or not the cluster is up: a node can hold an
+  # outbound link while its own published address is dead, in which case no
+  # *new* peer can ever reach it. Same unlinked-Task and cooldown discipline.
+  defp maybe_probe_advertised(state) do
+    if advertised_cooling_down?(state) do
+      state
+    else
+      manager = self()
+      check = state.advertised_check
+
+      Task.start(fn -> send(manager, {:advertised_status, check.()}) end)
+
+      %{state | last_advertised_probe: monotonic_ms()}
+    end
+  end
+
+  defp advertised_cooling_down?(%{last_advertised_probe: nil}), do: false
+
+  defp advertised_cooling_down?(state),
+    do: monotonic_ms() - state.last_advertised_probe < state.seed_probe_interval
+
+  defp seed_probe_cooling_down?(%{last_seed_probe: nil}), do: false
+
+  defp seed_probe_cooling_down?(state),
+    do: monotonic_ms() - state.last_seed_probe < state.seed_probe_interval
 
   # Re-checks address drift every tick; attempts a self-heal rebind when
   # drifted and not cooling down from a prior attempt. Always returns state

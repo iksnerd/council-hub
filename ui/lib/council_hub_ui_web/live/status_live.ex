@@ -81,6 +81,8 @@ defmodule CouncilHubUiWeb.StatusLive do
     seeds = System.get_env("COUNCIL_SEEDS")
     peers = Node.list() |> Enum.map(&to_string/1) |> Enum.sort()
     ip_status = ClusterManager.ip_status()
+    seed_findings = ClusterManager.seed_status().findings
+    advertised = ClusterManager.advertised_status()
 
     socket
     |> assign(:page_title, "Status")
@@ -95,7 +97,19 @@ defmodule CouncilHubUiWeb.StatusLive do
     |> assign(:ip_status, ip_status)
     |> assign(:stats, HealthStats.db_stats())
     |> assign(:short_node_fun, &short_node/1)
-    |> assign(:warnings, doctor(self_node, distributed?, cookie_set?, seeds, peers, ip_status))
+    |> assign(
+      :warnings,
+      doctor(
+        self_node,
+        distributed?,
+        cookie_set?,
+        seeds,
+        peers,
+        ip_status,
+        seed_findings,
+        advertised
+      )
+    )
   end
 
   defp version do
@@ -107,7 +121,16 @@ defmodule CouncilHubUiWeb.StatusLive do
 
   # A small "config doctor": surfaces the foot-guns that otherwise only show up
   # as silent cluster failures.
-  defp doctor(self_node, distributed?, cookie_set?, seeds, peers, ip_status) do
+  defp doctor(
+         self_node,
+         distributed?,
+         cookie_set?,
+         seeds,
+         peers,
+         ip_status,
+         seed_findings,
+         advertised
+       ) do
     []
     |> maybe(not distributed?, "Not distributed — set RELEASE_NODE so peers can reach this node.")
     |> maybe(distributed? and not cookie_set?, "RELEASE_COOKIE not set — clustering is disabled.")
@@ -116,9 +139,17 @@ defmodule CouncilHubUiWeb.StatusLive do
       "RELEASE_NODE points at loopback — cluster peers can't reach this node."
     )
     |> maybe(
-      present?(seeds) and peers == [],
+      present?(seeds) and peers == [] and seed_findings == [],
       "Seeds are configured but no peers are connected yet — check the cookie matches and ports are reachable."
     )
+    # Once the seeds have actually been probed, say what they reported rather
+    # than the generic line: a peer advertising a dead address is a different
+    # problem, with a different fix, on a different machine.
+    |> then(fn warnings ->
+      Enum.reduce(seed_findings, warnings, fn finding, acc ->
+        [as_sentence(finding.message) | acc]
+      end)
+    end)
     |> maybe(
       ip_status.drifted? and ip_status.self_heal_supported?,
       "Node identity stale: registered as #{self_node}, host is now #{ip_status.current} — " <>
@@ -131,7 +162,16 @@ defmodule CouncilHubUiWeb.StatusLive do
         "Restart the container to re-detect the address, or set " <>
         "RELEASE_NODE/COUNCIL_NODE_NAME to the correct one."
     )
+    |> maybe(advertised.warning != nil, as_sentence(advertised.warning || ""))
     |> Enum.reverse()
+  end
+
+  # Upcase the first letter only — String.capitalize/1 would downcase the rest,
+  # turning RELEASE_COOKIE into release_cookie in the remedy it is offering.
+  defp as_sentence(message) do
+    {first, rest} = String.split_at(message, 1)
+    sentence = String.upcase(first) <> rest
+    if String.ends_with?(sentence, [".", "!", "?"]), do: sentence, else: sentence <> "."
   end
 
   defp maybe(list, true, msg), do: [msg | list]

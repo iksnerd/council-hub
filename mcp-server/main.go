@@ -42,10 +42,50 @@ type nodeIdentityInfo struct {
 	SelfHealSupported bool   `json:"self_heal_supported?"`
 }
 
+// seedFinding is one seed host's diagnosis, as classified by
+// CouncilHubUi.SeedDoctor. Status is one of stale_name (the seed answers under
+// a node name whose address it no longer holds — the peer must restart),
+// undialable (name and address agree but no link formed — cookie or ports),
+// no_node_name (answered without reporting one, e.g. COUNCIL_UI=off) or
+// unreachable (no answer at all).
+type seedFinding struct {
+	Seed         string `json:"seed"`
+	Host         string `json:"host"`
+	ReportedNode string `json:"reported_node"`
+	Status       string `json:"status"`
+	Message      string `json:"message"`
+}
+
+// seedStatusInfo is what this node's configured seeds report about themselves
+// while no peer is connected. Empty on a healthy cluster: the Phoenix side
+// only probes during an outage, so this is absent exactly when it should be.
+type seedStatusInfo struct {
+	Warning   string        `json:"warning"`
+	Findings  []seedFinding `json:"findings"`
+	CheckedAt string        `json:"checked_at"`
+}
+
+// advertisedInfo is the answer to "could a peer actually reach the address we
+// advertise?" — a question the bridged-container guard on nodeIdentityInfo
+// cannot answer, since it needs no knowledge of the host's own address. The
+// Phoenix side opens a connection to its own advertised host:EPMD port, which
+// under bridge networking leaves the container and comes back through the
+// published port: the same path a peer takes. Warning is empty when reachable,
+// when not distributed, and for a loopback advertisement.
+type advertisedInfo struct {
+	Host      string `json:"host"`
+	Port      int    `json:"port"`
+	Checkable bool   `json:"checkable?"`
+	Reachable bool   `json:"reachable?"`
+	Warning   string `json:"warning"`
+}
+
 type clusterNodesResult struct {
 	Nodes           []clusterNodeInfo
 	VersionMismatch bool
 	NodeIdentity    *nodeIdentityInfo
+	SeedStatus      *seedStatusInfo
+	Advertised      *advertisedInfo
 }
 
 // clusterNodes queries Phoenix for the list of connected Erlang nodes with
@@ -72,6 +112,8 @@ func clusterNodes(phoenixURL string, client *http.Client) *clusterNodesResult {
 		Nodes           []clusterNodeInfo `json:"nodes"`
 		VersionMismatch bool              `json:"version_mismatch"`
 		NodeIdentity    *nodeIdentityInfo `json:"node_identity"`
+		SeedStatus      *seedStatusInfo   `json:"seed_status"`
+		Advertised      *advertisedInfo   `json:"advertised"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
 		return nil
@@ -80,6 +122,8 @@ func clusterNodes(phoenixURL string, client *http.Client) *clusterNodesResult {
 		Nodes:           payload.Nodes,
 		VersionMismatch: payload.VersionMismatch,
 		NodeIdentity:    payload.NodeIdentity,
+		SeedStatus:      payload.SeedStatus,
+		Advertised:      payload.Advertised,
 	}
 }
 
@@ -121,6 +165,19 @@ func healthHandler(cs *council.Server, phoenixURL string, httpClient *http.Clien
 					"node identity stale: registered as %s, host is now %s — %s",
 					result.NodeIdentity.Registered, result.NodeIdentity.Current, remedy,
 				)
+			}
+			// Nothing answering on our own advertised address means no peer can
+			// dial this node, however healthy everything else looks from here.
+			if result.Advertised != nil && result.Advertised.Warning != "" {
+				body["advertised"] = result.Advertised
+				body["advertised_warning"] = result.Advertised.Warning
+			}
+			// A cluster that is down while its seed hosts are up is the failure
+			// that otherwise looks identical to a healthy single node: status ok,
+			// cluster_nodes non-empty (this node lists itself), nothing else said.
+			if result.SeedStatus != nil && result.SeedStatus.Warning != "" {
+				body["seed_status"] = result.SeedStatus
+				body["seed_warning"] = result.SeedStatus.Warning
 			}
 		}
 		w.Header().Set("Content-Type", "application/json")

@@ -93,6 +93,11 @@ docker run -d --name council-hub \
 > (`-p 192.168.0.4:4369:4369 -p 192.168.0.4:9000:9000`) and set `COUNCIL_NO_DISCOVER=1` to skip the
 > startup subnet scan.
 
+> **Reserve both machines' addresses on your router before pinning them here.** `RELEASE_NODE` and a
+> `-p <lan-ip>:` publish are fixed at `docker run` and never re-derived while the container runs, so a
+> DHCP lease change leaves the node listening on, and advertising, an address nothing holds — with no
+> crash and a green `/health`. The node reports it now, but a reservation prevents it.
+
 On the peer's machine (same cookie, their IP):
 ```bash
 -e RELEASE_NODE=peer@192.168.0.5

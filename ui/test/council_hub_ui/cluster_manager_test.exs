@@ -138,4 +138,120 @@ defmodule CouncilHubUi.ClusterManagerTest do
              }
     end
   end
+
+  describe "seed doctor" do
+    test "logs a stale peer name once, not on every probe round" do
+      # capture_log is global and this suite is async, so the address here is
+      # deliberately unique — a sibling test's identical sentence would
+      # otherwise be counted as a repeat.
+      probe = fn "10.9.9.9" -> {:ok, "peer@10.9.9.8"} end
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          name = start_manager(seeds: "10.9.9.9", seed_probe: probe, seed_probe_interval: 0)
+
+          eventually(fn -> ClusterManager.seed_status(name).findings end)
+          Process.sleep(80)
+        end)
+
+      occurrences = log |> String.split("peer@10.9.9.8") |> length()
+      assert occurrences == 2, "expected exactly one stale-name log line, got #{occurrences - 1}"
+    end
+
+    test "reports a seed that is up but hands back a node name for another address" do
+      probe = fn "192.168.0.4" -> {:ok, "bob@192.168.0.5"} end
+      name = start_manager(seeds: "192.168.0.4", seed_probe: probe)
+
+      assert [finding] = eventually(fn -> ClusterManager.seed_status(name).findings end)
+      assert finding.status == :stale_name
+      assert ClusterManager.seed_status(name).checked_at != nil
+    end
+
+    test "does not probe when no seeds are configured" do
+      probe = fn _ -> flunk("must not probe without seeds") end
+      name = start_manager(seeds: "", seed_probe: probe)
+
+      Process.sleep(50)
+      assert ClusterManager.seed_status(name) == %{findings: [], checked_at: nil}
+    end
+
+    test "a slow probe does not stall the reconnect tick" do
+      parent = self()
+
+      probe = fn _ ->
+        send(parent, :probe_started)
+        Process.sleep(300)
+        {:error, :timeout}
+      end
+
+      name = start_manager(seeds: "192.168.0.4", seed_probe: probe)
+      assert_receive :probe_started, 500
+
+      # The manager answers while the probe is still in flight.
+      assert ClusterManager.seed_status(name).findings == []
+      assert ClusterManager.known_peers(name) == []
+    end
+  end
+
+  describe "advertised address probe" do
+    test "caches a failed self-probe so /status and /health can report it" do
+      unreachable = %{
+        host: "192.168.0.10",
+        port: 4369,
+        checkable?: true,
+        reachable?: false,
+        warning: "nothing answers on 192.168.0.10:4369"
+      }
+
+      name = start_manager(advertised_check: fn -> unreachable end)
+
+      status = eventually_map(fn -> ClusterManager.advertised_status(name) end)
+      assert status.warning =~ "nothing answers"
+      refute status.reachable?
+    end
+
+    test "reports nothing to say when the node is not distributed" do
+      name = start_manager([])
+
+      # The test VM is :nonode@nohost, so the real check is not applicable.
+      status = ClusterManager.advertised_status(name)
+      refute status.checkable?
+      assert status.warning == nil
+    end
+  end
+
+  ## Helpers
+
+  defp start_manager(opts) do
+    path = Path.join(System.tmp_dir!(), "ch_peers_#{System.unique_integer([:positive])}")
+    name = :"clmgr_seed_#{System.unique_integer([:positive])}"
+    on_exit(fn -> File.rm(path) end)
+
+    {:ok, _pid} =
+      ClusterManager.start_link([name: name, path: path, reconnect_interval: 10] ++ opts)
+
+    name
+  end
+
+  defp eventually_map(fun, attempts \\ 50) do
+    case fun.() do
+      %{warning: nil} when attempts > 0 ->
+        Process.sleep(20)
+        eventually_map(fun, attempts - 1)
+
+      result ->
+        result
+    end
+  end
+
+  defp eventually(fun, attempts \\ 50) do
+    case fun.() do
+      [] when attempts > 0 ->
+        Process.sleep(20)
+        eventually(fun, attempts - 1)
+
+      result ->
+        result
+    end
+  end
 end

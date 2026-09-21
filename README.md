@@ -291,6 +291,8 @@ Council Hub ships as a single multi-stage Docker image containing both the Go MC
 
 > **Clustering off a trusted LAN?** `4369`/`9000` carry Erlang distribution, which grants code execution to anyone holding `RELEASE_COOKIE` — and the image ships a documented default (`council`). Override the cookie, publish those two ports to a single interface (`-p <lan-ip>:4369:4369`) rather than all of them, and set `COUNCIL_NO_DISCOVER=1` to skip the startup `/24` subnet scan. See [DOCKERHUB.md](DOCKERHUB.md#clustering-mode-distributed-erlang).
 
+> **Give both machines a DHCP reservation first.** Pinning the cluster ports to a LAN IP is the safer publish and the more fragile one: `RELEASE_NODE` and `-p <lan-ip>:` are both fixed at `docker run`, so when a lease moves the host, the container keeps listening on an address nothing holds and keeps naming itself there. Nothing crashes and `/health` stays green. The node now reports it (`seed_warning`, `advertised_warning`, and a `/status` line), but a reservation is what prevents it.
+
 ### Transport Modes
 
 **HTTP mode** (default) — runs both the MCP server and Web UI as a persistent background service:

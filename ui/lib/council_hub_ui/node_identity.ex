@@ -247,4 +247,89 @@ defmodule CouncilHubUi.NodeIdentity do
   defp present?(nil), do: false
   defp present?(""), do: false
   defp present?(_), do: true
+
+  @probe_timeout 2_000
+
+  @doc """
+  Whether anything answers on the address this node advertises to peers.
+
+  `status/0` above compares two addresses and, in the deployment the docs
+  recommend, refuses to compare at all (`checkable?: false`, see the moduledoc)
+  because a bridged container cannot observe its host's address. This asks a
+  different question that needs no such knowledge: *open a connection to the
+  address we are telling peers to use.* Under bridge networking that leaves the
+  container, reaches the host's published port and comes back — exactly the path
+  a peer takes, which is exactly what needs testing. When a DHCP lease moves the
+  host, that connection fails while everything else about the node stays green.
+
+  Detection only: a failure here is reported, never acted on. The remedy is a
+  container restart (which re-runs the entrypoint's detection) or a corrected
+  `RELEASE_NODE`, neither of which this process can do safely on its own.
+  """
+  def advertised_status, do: advertised_status(registered_host(), epmd_port(), &probe/2)
+
+  @doc "Pure form: the three inputs, no VM or environment reads. See `advertised_status/0`."
+  def advertised_status(host, port, probe)
+
+  def advertised_status(nil, _port, _probe), do: unknown_advertisement(nil)
+
+  def advertised_status(host, port, probe) do
+    if loopback?(host) do
+      # A loopback RELEASE_NODE is unreachable to peers by construction, and
+      # the /status doctor already says so. Probing it would succeed and imply
+      # the opposite.
+      unknown_advertisement(host)
+    else
+      case probe.(host, port) do
+        :ok ->
+          %{host: host, port: port, checkable?: true, reachable?: true, warning: nil}
+
+        {:error, reason} ->
+          %{
+            host: host,
+            port: port,
+            checkable?: true,
+            reachable?: false,
+            warning:
+              "nothing answers on #{host}:#{port}, the address this node advertises to peers " <>
+                "(#{inspect(reason)}). Peers cannot reach it under that name. The host's IP " <>
+                "has probably changed, or the cluster ports are published on a different " <>
+                "address. Restart the container to re-detect it, or correct RELEASE_NODE."
+          }
+      end
+    end
+  end
+
+  @doc "The EPMD port peers would use to reach this node."
+  def epmd_port do
+    case System.get_env("ERL_EPMD_PORT") do
+      nil -> 4369
+      "" -> 4369
+      port -> String.to_integer(port)
+    end
+  end
+
+  defp unknown_advertisement(host) do
+    %{host: host, port: nil, checkable?: false, reachable?: nil, warning: nil}
+  end
+
+  defp loopback?(host) do
+    String.downcase(host) in ["127.0.0.1", "localhost", "::1", "[::1]"]
+  end
+
+  defp probe(host, port) do
+    case :gen_tcp.connect(
+           String.to_charlist(host),
+           port,
+           [:binary, active: false],
+           @probe_timeout
+         ) do
+      {:ok, socket} ->
+        :gen_tcp.close(socket)
+        :ok
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
 end

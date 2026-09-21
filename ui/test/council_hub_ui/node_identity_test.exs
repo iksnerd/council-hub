@@ -123,4 +123,46 @@ defmodule CouncilHubUi.NodeIdentityTest do
       refute NodeIdentity.static_distribution?()
     end
   end
+
+  describe "advertised_status/3 — can a peer actually reach the address we advertise?" do
+    test "warns when nothing answers on the advertised address" do
+      probe = fn "192.168.0.10", 4369 -> {:error, :ehostunreach} end
+
+      status = NodeIdentity.advertised_status("192.168.0.10", 4369, probe)
+
+      assert status.checkable?
+      refute status.reachable?
+      assert status.warning =~ "192.168.0.10"
+      assert status.warning =~ "4369"
+    end
+
+    test "is quiet when the advertised address answers" do
+      probe = fn "192.168.0.6", 4369 -> :ok end
+
+      status = NodeIdentity.advertised_status("192.168.0.6", 4369, probe)
+
+      assert status.reachable?
+      assert status.warning == nil
+    end
+
+    test "says nothing when this node is not distributed" do
+      probe = fn _, _ -> flunk("must not probe without a node name") end
+
+      status = NodeIdentity.advertised_status(nil, 4369, probe)
+
+      refute status.checkable?
+      assert status.reachable? == nil
+      assert status.warning == nil
+    end
+
+    test "does not probe a loopback advertisement — unreachability there is already known" do
+      probe = fn _, _ -> flunk("must not probe loopback") end
+
+      for host <- ["127.0.0.1", "localhost", "::1"] do
+        status = NodeIdentity.advertised_status(host, 4369, probe)
+        refute status.checkable?
+        assert status.warning == nil
+      end
+    end
+  end
 end

@@ -37,7 +37,10 @@ defmodule CouncilHubUi.MixProject do
   def application do
     [
       mod: {CouncilHubUi.Application, []},
-      extra_applications: [:logger, :runtime_tools]
+      # :inets is what :httpc lives in — used by McpClient and SeedDoctor.
+      # It currently reaches the release only because libcluster happens to
+      # declare it; say so here rather than depending on a dep's app list.
+      extra_applications: [:logger, :runtime_tools, :inets]
     ]
   end
 
