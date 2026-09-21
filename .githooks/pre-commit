@@ -50,6 +50,24 @@ if [ -n "$hits" ]; then
   fail=1
 fi
 
+# ── 2b. Real-looking machine names in example positions ──
+# The patterns above match addresses and home paths. A bare hostname — a
+# MagicDNS name, a LAN hostname — matches none of them, which is how a real
+# machine name sat in a tracked comment from v0.35.0 until it was found by
+# hand three months later. Check the few positions this repo writes one in,
+# against the placeholders the docs already use.
+hostph='bob|alice|carol|dave|council_hub|councilhub|me|peer|node|node[0-9]+|host|localhost|example|myhost|hostname|your-host|<[a-z_-]+>'
+hostnames=$(printf '%s\n' "$added" \
+  | grep -oE '(MagicDNS names? \(|COUNCIL_SEEDS=|RELEASE_NODE=)[a-zA-Z][a-zA-Z0-9._-]*' \
+  | sed -E 's/^(MagicDNS names? \(|COUNCIL_SEEDS=|RELEASE_NODE=)//' \
+  | grep -vE "^($hostph)$" | sort -u)
+if [ -n "$hostnames" ]; then
+  note "pre-commit: a real-looking machine name in an example position:"
+  printf '%s\n' "$hostnames" | head -5 | sed 's/^/    /' >&2
+  note "  Use bob / alice / council_hub, or add the real name to .git/info/private-patterns."
+  fail=1
+fi
+
 # ── 3. Go ──
 go_files=$(printf '%s\n' "$staged" | grep '^mcp-server/.*\.go$')
 if [ -n "$go_files" ]; then
