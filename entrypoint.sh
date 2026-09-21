@@ -93,6 +93,24 @@ if [ -n "$COUNCIL_SEEDS" ]; then
         node=$(echo "$result" | grep -o '"node":"[^"]*"' | head -1 | sed 's/"node":"//;s/"//')
         if [ -n "$node" ]; then
           echo "Resolved $seed → $node"
+          # A seed that answers at one address while naming itself at another is
+          # advertising a stale address — almost always a DHCP lease that moved.
+          # Erlang's handshake compares a peer's self-reported name against the
+          # dialed one and aborts on mismatch, so that peer is unreachable under
+          # *any* name until it restarts. This line used to print the
+          # contradiction and call it success; four days of a silently split
+          # cluster is what that cost. Only compared when the seed is a literal
+          # IPv4 address: a hostname or MagicDNS seed resolving to an IP-named
+          # node is normal, not drift, and so is a loopback seed (the container
+          # legitimately advertises its LAN IP).
+          node_host="${node#*@}"
+          if echo "$seed" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' &&
+             [ "$seed" != "127.0.0.1" ] && [ "$node_host" != "$seed" ]; then
+            echo "WARN: $seed answered, but calls itself $node — an address it does not hold."
+            echo "      That node is undialable under any name until it is restarted with"
+            echo "      RELEASE_NODE=${node%@*}@$seed (its host IP has probably changed)."
+            echo "      Seeding it anyway; the link will not form until then."
+          fi
           [ -n "$RESOLVED" ] && RESOLVED="$RESOLVED,$node" || RESOLVED="$node"
         else
           echo "WARN: no node name in response from $seed:3001 — skipping"
