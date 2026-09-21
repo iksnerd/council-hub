@@ -38,6 +38,7 @@ Environment variables for the MCP server, the Phoenix web UI, and clustering.
 | `RELEASE_NODE` | `council_hub@127.0.0.1` | Unique node name with reachable IP |
 | `COUNCIL_SEEDS` | — | Peers to connect to — bare IPs (`192.168.0.5`), hostnames (`bob`, MagicDNS), or full `node@ip`. Resolved via `:3001/health`. Omit for LAN auto-discovery. |
 | `COUNCIL_NO_DISCOVER` | `0` | Set to `1` to skip the LAN subnet scan on startup (useful on VPN where scanning is unnecessary) |
+| `COUNCIL_GOSSIP` | `1` | UDP-multicast peer discovery, running alongside `COUNCIL_SEEDS` so a changed address is not fatal to the link. Set to `0` to disable. Inert where multicast cannot reach (a bridged container, most VPNs) |
 | `COUNCIL_PEER_MCP_PORT` | `3001` | Port used to reach peer nodes' MCP servers for cross-node writes |
 | `COUNCIL_CLUSTER_ADMIN_TOKEN` | — | Enables the UI Cluster Settings page (`/settings`) for live peer connect/disconnect. Unlock by visiting `/settings?token=<token>` once. Unset = page disabled |
 | `COUNCIL_NODE_DRIFT_CHECK` | — | `1` watches for `RELEASE_NODE` going stale after a DHCP change. Only meaningful with `--network host`; under bridge networking the container cannot see the host's address. Enabled automatically when the entrypoint auto-detects the node name |
