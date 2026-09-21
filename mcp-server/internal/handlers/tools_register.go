@@ -234,7 +234,7 @@ func (r *Registry) RegisterTools() {
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "update_message",
 		Description: "Edit a message — append-only. Nothing is overwritten: this posts a NEW revision carrying the new content and links it back to the prior version via `revises`, so every version is preserved as an immutable, addressable node (the NLS Journal property). Reads collapse to the newest version (the head) and mark it ✎ edited; the prior versions stay walkable via get_links (revises / revised_by). Use for: (1) maintaining living documents like status tables or running summaries, (2) correcting errors. The new head inherits the original's reply/supersedes links and pin. Use expected_content to prevent lost updates when multiple agents may edit the same message.",
-		InputSchema: schema([]string{"message_id", "content"}, map[string]map[string]any{
+		InputSchema: schema([]string{"message_id"}, map[string]map[string]any{
 			"message_id":       prop("string", "ID of the message to edit (must be the current head — editing an already-revised node returns the head to edit instead). Accepts a full ID or an unambiguous ID prefix (e.g. from a transcript)."),
 			"content":          prop("string", "New message content (becomes the new head revision)"),
 			"message_type":     prop("string", "Optionally change message type: message, thought, draft, decision, plan, action, review, critique, synthesis, note"),

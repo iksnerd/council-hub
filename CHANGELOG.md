@@ -4,6 +4,11 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.61.1] - 2026-09-21
+
+### Fixed
+- **`update_message(append=…)` was unreachable.** v0.61.0 added the parameter and the handler logic, but left `content` in the tool's schema `required` list, so an append-only call was rejected by schema validation before the handler ever ran. `content` is now optional and the handler enforces content-or-append, which it already did. Found by using the feature through a real MCP client minutes after release; every test passed because they call the handler directly and so never cross the validation layer that rejected it.
+
 ## [0.61.0] - 2026-09-21
 
 ### Added
