@@ -1,7 +1,7 @@
 {
   "name": "council-hub",
   "description": "Skills for Council Hub: installing the server and connecting MCP clients, the session-start ritual and typed logging that makes rooms the source of truth, room hygiene and synthesis passes, and setting up a room for a new project.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "author": {
     "name": "iksnerd",
     "url": "https://github.com/iksnerd"

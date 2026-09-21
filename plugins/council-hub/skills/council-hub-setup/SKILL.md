@@ -149,13 +149,26 @@ between an exposed distribution port and code execution on that machine.
 
 ## 6. When it does not connect
 
-**`ConnectionRefused` from every client, container reports healthy.** Check
+**`ConnectionRefused` from every client, container reports healthy.** Run
 `docker port council-hub` before anything else. If it prints nothing, Docker
-published no ports at all — which happens when a port binding names a specific
-host IP (`-p 192.168.0.6:4369:4369`) that the machine no longer holds after a
-DHCP lease change. The container starts, passes its own healthcheck, and is
-unreachable on every port. Fix the pinned address and recreate the container;
-reserve the address on the router so it cannot move again.
+is publishing no ports at all, and `docker ps` will still say `healthy`.
+
+This happens to a **long-running** container whose pinned bind address
+disappears underneath it — `-p 192.168.0.6:4369:4369` when DHCP moves the host
+off `.6`. Docker does not silently drop bindings in general: starting a
+container against a missing address fails loudly with
+`ports are not available: ... bind: can't assign requested address`. A
+container under `restart: always` that never actually restarts never gets that
+error, so it sits in the broken state indefinitely. Restarting it by hand is
+the right instinct — it converts the silence into that message.
+
+`docker ps` is the wrong check because the healthcheck runs *inside* the
+container (`wget http://localhost:4000`), where host-side publishing is
+invisible. "Healthy" and "unreachable from every client" are fully compatible
+states, which is the whole reason to reach for `docker port` first.
+
+Fix the pinned address and recreate the container. Reserve the address on the
+router so it cannot move again.
 
 **Tools missing but the server is up.** The session connected before the tool
 existed. Run `/mcp`.

@@ -50,7 +50,31 @@ missed an active field-report room on a peer node, posted hours earlier.
 If the task maps to an existing room, `get_or_create_room` it and read recent
 messages before assuming you know the state. If it's genuinely new work,
 `get_or_create_room` still — it returns existing content if a room already
-exists under that name, so it's safe to call even when unsure.
+exists under that name.
+
+**But that safety is node-local.** `get_or_create_room` does not fan out, so
+against a room owned by a peer node it matches nothing and creates a *local
+shadow* with the same name. Both then exist, both look right to the session
+that made them, and neither sees the other's messages. Hit 2026-09-17 in
+adeloc: created `adeloc-use-case-fit` while the real room was
+`adeloc-real-world-fit` on a peer. So in any project that spans machines, do
+this first:
+
+```
+list_rooms(project=<project>, cluster_wide=true)
+```
+
+**And do not read a clean result as proof.** `cluster_wide=true` fans out to
+*connected* nodes. A peer that has dropped out of the cluster is not
+"unreachable" — it is absent from the node list, so there is no warning to
+append, and the call returns local-only results that look complete. Verified
+2026-09-21: `/health` reported one `cluster_nodes` entry while the cluster was
+deliberately split (a rotated `RELEASE_COOKIE` the peer had not taken yet), and
+`list_rooms(cluster_wide=true)` returned 30 rooms, every one tagged `[local]`,
+with no indication a second node existed an hour earlier. Any cause works the
+same way — a cookie change, a stopped peer, a moved address.
+Check `/health`'s `cluster_nodes` (or the `/status` page) before trusting a
+cluster-wide read to have covered the cluster.
 
 ## While working — log at checkpoints, not just the end
 
