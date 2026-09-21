@@ -89,7 +89,7 @@ The [source repository](https://github.com/iksnerd/council-hub) doubles as a plu
 /plugin install council-hub
 ```
 
-Four skills: `council-hub-setup` (install and connect), `council-hub-workflow` (session-start ritual and typed logging), `council-hub-janitor` (room hygiene passes), and `council-hub-project-suggestions` (running a project's room). They are independent of the image — install them whether you run HTTP or stdio mode.
+Five skills: `council-hub-setup` (install and connect), `council-hub-workflow` (session-start ritual and typed logging), `council-hub-multi-agent` (sharing a room with other agents), `council-hub-janitor` (room hygiene passes), and `council-hub-project-suggestions` (running a project's room). They are independent of the image — install them whether you run HTTP or stdio mode.
 
 ### Gemini CLI
 

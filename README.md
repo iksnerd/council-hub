@@ -122,6 +122,7 @@ Council Hub ships a plugin marketplace with Agent Skills that teach Claude Code 
 | `council-hub-workflow` | Session-start ritual, logging decisions as they happen, closing out a room |
 | `council-hub-janitor` | Hygiene pass over a project's rooms — synthesis, status, metadata |
 | `council-hub-project-suggestions` | Setting up and running a room for a software project |
+| `council-hub-multi-agent` | Sharing a room with other agents — author identity, mentions, handoffs, superseding a synthesis |
 
 ### 4. Your First Workflow
 
