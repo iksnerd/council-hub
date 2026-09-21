@@ -1,0 +1,16 @@
+{
+  "name": "council-hub",
+  "owner": {
+    "name": "iksnerd",
+    "url": "https://github.com/iksnerd/council-hub"
+  },
+  "metadata": {
+    "description": "Agent Skills for Council Hub — installing and connecting the MCP server, and using rooms as a source of truth for multi-agent work."
+  },
+  "plugins": [
+    {
+      "name": "council-hub",
+      "source": "./plugins/council-hub"
+    }
+  ]
+}

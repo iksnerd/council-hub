@@ -145,7 +145,21 @@ Single test: `cd ui && mix test test/path_to_test.exs:LINE`
 
 ## Claude Code Skills
 
-Project-specific skills live in `.claude/skills/` (gitignored — local only):
+### Shipped skills (`plugins/` — tracked, public)
+
+This repo **is** a plugin marketplace. `.claude-plugin/marketplace.json` exposes one plugin, `plugins/council-hub`, holding the four user-facing skills: `council-hub-setup`, `council-hub-workflow`, `council-hub-janitor`, `council-hub-project-suggestions`. Users install with `/plugin marketplace add iksnerd/council-hub`.
+
+**These are the canonical copies.** They used to live in `iksnerd/skills` as a `council-hub` plugin and were moved here so public users actually get them; that repo no longer has them, and re-adding them there would resurrect a name collision (two marketplaces, both exposing a plugin called `council-hub`). Edit them here.
+
+They ship in the repo, not the image, so the privacy rule above applies in full — no machine names, no home paths, no real tailnet IPs in a SKILL.md. Validate before committing:
+
+```bash
+claude plugin validate .
+```
+
+Bump `plugins/council-hub/.claude-plugin/plugin.json` `version` when skill content changes; it is independent of the server's `VERSION`.
+
+### Maintainer skills (`.claude/skills/` — gitignored, local only)
 
 | Skill | Invoke | Purpose |
 |-------|--------|---------|
@@ -154,6 +168,8 @@ Project-specific skills live in `.claude/skills/` (gitignored — local only):
 | `docs-audit` | `/docs-audit` | Check for drift between code and docs — tool count, params, skill resource coverage, personal info |
 
 Use `/release` for all version bumps — it enforces the gofmt preflight that prevents CI failures from struct alignment drift (lesson from v0.26.4).
+
+Not to be confused with the **methodology registry** (`register_skill` / `query_skills_registry` / the `/skills` UI page), which is runtime data in SQLite, not files.
 
 ### Language skill packs (`npx skills`)
 

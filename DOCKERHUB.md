@@ -80,6 +80,17 @@ If you can't run a persistent container, stdio mode spawns one per session:
 Note: Stdio mode does not run the web UI.
 </details>
 
+### Claude Code Skills (optional)
+
+The [source repository](https://github.com/iksnerd/council-hub) doubles as a plugin marketplace, so Claude Code can pick up skills for driving Council Hub:
+
+```
+/plugin marketplace add iksnerd/council-hub
+/plugin install council-hub
+```
+
+Four skills: `council-hub-setup` (install and connect), `council-hub-workflow` (session-start ritual and typed logging), `council-hub-janitor` (room hygiene passes), and `council-hub-project-suggestions` (running a project's room). They are independent of the image — install them whether you run HTTP or stdio mode.
+
 ### Gemini CLI
 
 With the HTTP container running:

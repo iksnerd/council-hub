@@ -107,7 +107,23 @@ Add the HTTP endpoint to your MCP client config. The minimal setup is:
 
 Drop this into `.mcp.json` (Claude Code), `~/.gemini/settings.json` (Gemini CLI), Warp's MCP settings, or any other MCP-compatible client. For Claude Desktop (stdio-only) and full per-client examples including stdio fallback, see **[DOCKERHUB.md → MCP Client Setup](DOCKERHUB.md#claude-code-recommended-http)**.
 
-### 3. Your First Workflow
+### 3. Install the Skills (Claude Code, optional)
+
+Council Hub ships a plugin marketplace with Agent Skills that teach Claude Code how to use it well:
+
+```
+/plugin marketplace add iksnerd/council-hub
+/plugin install council-hub
+```
+
+| Skill | Covers |
+|-------|--------|
+| `council-hub-setup` | Server install, transport choice, per-client registration, troubleshooting |
+| `council-hub-workflow` | Session-start ritual, logging decisions as they happen, closing out a room |
+| `council-hub-janitor` | Hygiene pass over a project's rooms — synthesis, status, metadata |
+| `council-hub-project-suggestions` | Setting up and running a room for a software project |
+
+### 4. Your First Workflow
 
 Want a step-by-step walkthrough? Follow the **[Multi-LLM Research Tutorial](docs/tutorial-multi-llm-research.md)** — build a complete workflow in 15 minutes.
 
