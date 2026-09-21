@@ -15,7 +15,7 @@ func (r *Registry) RegisterTools() {
 		Name:        "create_room",
 		Description: "Create a new council room (virtual workspace) for a topic or task. Prefer get_or_create_room — it returns existing content instead of silently no-opping on a name clash, avoiding duplicate rooms. Does nothing if the room already exists. Related rooms are automatically linked in both directions. Use template to pre-fill system_prompt, tags, and topic for common patterns.",
 		InputSchema: schema(nil, map[string]map[string]any{
-			"id":      prop("string", "Unique room identifier (e.g. auth-migration-v2)"),
+			"id":      prop("string", "Unique room identifier (e.g. auth-migration-v2). Node-local: it cannot see a room owned by a cluster peer, so on a project that spans machines run list_rooms(project=..., cluster_wide=true) first. Creating anyway will name any peer rooms in the same project."),
 			"room_id": prop("string", "Alias for id — either spelling is accepted"),
 			"template": prop("string", "Pre-fill system_prompt, tags, and topic for a common pattern. "+
 				"Available templates — brainstorm (open-ended idea exploration; tags: brainstorm,exploration), "+
