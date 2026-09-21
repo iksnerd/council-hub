@@ -484,3 +484,57 @@ func TestHandleCreateRoomTemplateNoInitialMsgIfExists(t *testing.T) {
 		t.Errorf("expected no initial message for pre-existing room, got %d messages", len(msgs))
 	}
 }
+
+// Filed six times in two days (#01a0b156 consolidates them): get_or_create_room
+// and create_room take `id` while every room-scoped tool takes `room_id`, so the
+// most common first call of a session is a coin flip. The alias ends the class.
+func TestRoomToolsAcceptRoomIDAlias(t *testing.T) {
+	reg := setupHandlerTest(t)
+
+	res, _, err := reg.handleGetOrCreateRoom(context.Background(), nil, GetOrCreateRoomInput{
+		RoomID: "alias-room", Topic: "arrived as room_id",
+	})
+	if err != nil {
+		t.Fatalf("handleGetOrCreateRoom error: %v", err)
+	}
+	if text := resultText(res); !strings.Contains(text, "alias-room") {
+		t.Fatalf("expected the room to be created from room_id, got: %s", text)
+	}
+	if _, gerr := reg.Server.GetRoom("alias-room"); gerr != nil {
+		t.Fatal("expected room_id to create the room")
+	}
+
+	res2, _, _ := reg.handleCreateRoom(context.Background(), nil, CreateRoomInput{
+		RoomID: "alias-room-2", Topic: "also room_id",
+	})
+	if text := resultText(res2); !strings.Contains(text, "alias-room-2") {
+		t.Fatalf("create_room should accept room_id, got: %s", text)
+	}
+}
+
+// Both spellings at once must not silently pick one.
+func TestRoomToolsRejectConflictingIDSpellings(t *testing.T) {
+	reg := setupHandlerTest(t)
+
+	res, _, _ := reg.handleGetOrCreateRoom(context.Background(), nil, GetOrCreateRoomInput{
+		ID: "one", RoomID: "two", Topic: "x",
+	})
+	text := resultText(res)
+	if !strings.Contains(text, "id") || !strings.Contains(text, "room_id") {
+		t.Errorf("expected an error naming both spellings, got: %s", text)
+	}
+	if _, gerr := reg.Server.GetRoom("one"); gerr == nil {
+		t.Error("expected no room to be created from an ambiguous call")
+	}
+}
+
+// The error a caller gets when neither spelling is supplied must name both.
+func TestRoomToolsNameBothSpellingsWhenMissing(t *testing.T) {
+	reg := setupHandlerTest(t)
+
+	res, _, _ := reg.handleGetOrCreateRoom(context.Background(), nil, GetOrCreateRoomInput{Topic: "x"})
+	text := resultText(res)
+	if !strings.Contains(text, "room_id") {
+		t.Errorf("expected the accepted alias to be named, got: %s", text)
+	}
+}

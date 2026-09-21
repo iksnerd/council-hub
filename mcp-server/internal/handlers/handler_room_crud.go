@@ -11,7 +11,12 @@ import (
 
 // CreateRoomInput represents the parameters for creating a room.
 type CreateRoomInput struct {
-	ID           string `json:"id"`
+	ID string `json:"id"`
+	// RoomID is an accepted alias for ID. Every room-*scoped* tool spells this
+	// room_id, so room_id is what an agent carries over from the neighbouring
+	// call it just made — which is how most agents learn a parameter name.
+	// Filed six times in two days before the alias existed (#01a0b156).
+	RoomID       string `json:"room_id"`
 	Template     string `json:"template"`
 	Topic        string `json:"topic"`
 	Project      string `json:"project"`
@@ -25,7 +30,9 @@ type CreateRoomInput struct {
 
 // GetOrCreateRoomInput represents the parameters for upserting a room.
 type GetOrCreateRoomInput struct {
-	ID           string `json:"id"`
+	ID string `json:"id"`
+	// RoomID is an accepted alias for ID. See CreateRoomInput.RoomID.
+	RoomID       string `json:"room_id"`
 	Topic        string `json:"topic"`
 	Project      string `json:"project"`
 	TechStack    string `json:"tech_stack"`
@@ -70,8 +77,14 @@ type DeleteRoomInput struct {
 func (r *Registry) handleCreateRoom(ctx context.Context, req *mcp.CallToolRequest, args CreateRoomInput) (*mcp.CallToolResult, ToolOutput, error) {
 	msg := textResult
 
+	roomID, aerr := resolveAlias(args.ID, "id", args.RoomID, "room_id")
+	if aerr != nil {
+		return msg("Error: " + aerr.Error())
+	}
+	args.ID = roomID
+
 	if args.ID == "" {
-		return msg("Error: room id is required.")
+		return msg("Error: id is required (room_id is accepted as an alias).")
 	}
 	if err := validateSize("id", args.ID, maxIDLen); err != nil {
 		return msg("Error: " + err.Error())
@@ -172,6 +185,9 @@ func (r *Registry) handleCreateRoom(ctx context.Context, req *mcp.CallToolReques
 
 	// Advisory duplicate check — never blocks creation.
 	r.appendSimilarRooms(&b, args.ID, args.Topic, args.Project, args.Tags)
+	// The same check one level out: rooms this project already has on peers,
+	// which a node-local create cannot see. See peerProjectRoomsNote.
+	b.WriteString(r.peerProjectRoomsNote(args.Project, args.ID))
 
 	return msg(b.String())
 }
@@ -179,8 +195,14 @@ func (r *Registry) handleCreateRoom(ctx context.Context, req *mcp.CallToolReques
 func (r *Registry) handleGetOrCreateRoom(ctx context.Context, req *mcp.CallToolRequest, args GetOrCreateRoomInput) (*mcp.CallToolResult, ToolOutput, error) {
 	msg := textResult
 
+	roomID, aerr := resolveAlias(args.ID, "id", args.RoomID, "room_id")
+	if aerr != nil {
+		return msg("Error: " + aerr.Error())
+	}
+	args.ID = roomID
+
 	if args.ID == "" {
-		return msg("Error: id is required.")
+		return msg("Error: id is required (room_id is accepted as an alias).")
 	}
 	if err := validateSize("id", args.ID, maxIDLen); err != nil {
 		return msg("Error: " + err.Error())
@@ -321,6 +343,11 @@ func (r *Registry) handleGetOrCreateRoom(ctx context.Context, req *mcp.CallToolR
 	if created {
 		r.appendSimilarRooms(&b, args.ID, args.Topic, args.Project, args.Tags)
 		b.WriteString(r.repoProjectHint(args.Repo, room.ID, room.Project))
+		// This call only reached "create" because a node-local lookup cannot
+		// see a peer's rooms — which is how a project ends up with the same
+		// thread twice, once per machine. Name them before the caller starts
+		// logging into the duplicate. See peerProjectRoomsNote.
+		b.WriteString(r.peerProjectRoomsNote(args.Project, args.ID))
 	}
 
 	r.Server.Logger.Info("get_or_create_room", "id", args.ID, "created", created)

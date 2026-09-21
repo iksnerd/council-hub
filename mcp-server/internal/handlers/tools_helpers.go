@@ -232,9 +232,15 @@ var validMessageTypes = map[string]bool{
 // required lists the field names that are mandatory; all others are optional.
 func schema(required []string, props map[string]map[string]any) map[string]any {
 	s := map[string]any{
-		"type":                 "object",
-		"properties":           props,
-		"additionalProperties": true,
+		"type":       "object",
+		"properties": props,
+		// Unknown properties are rejected rather than dropped. A dropped typo
+		// leaves a required field at "", and the failure then surfaces as a
+		// downstream symptom — "room '' not found" for a room the caller had
+		// just created — which cost three separate sessions several calls each
+		// before anyone recognised it as a misspelled parameter (#01a0b156).
+		// The validator names the offending property instead.
+		"additionalProperties": false,
 	}
 	if len(required) > 0 {
 		s["required"] = required
@@ -248,4 +254,33 @@ func prop(typ, desc string) map[string]any {
 
 func enumProp(typ, desc string, enum []string) map[string]any {
 	return map[string]any{"type": typ, "description": desc, "enum": enum}
+}
+
+// resolveAlias picks between two accepted spellings of one parameter. Supplying
+// both is an error rather than a silent preference: the two values can differ,
+// and quietly dropping one is the failure mode that made unknown-parameter typos
+// so expensive to diagnose in the first place.
+func resolveAlias(canonical, canonicalName, alias, aliasName string) (string, error) {
+	switch {
+	case canonical != "" && alias != "" && canonical != alias:
+		return "", fmt.Errorf("%s and %s are two spellings of the same parameter and were given different values (%q vs %q) — pass one", canonicalName, aliasName, canonical, alias)
+	case canonical != "":
+		return canonical, nil
+	default:
+		return alias, nil
+	}
+}
+
+// clientIdentity is the name the connected MCP client gave at initialize, used
+// as the default author. It is the only identity the server actually knows, and
+// it removes the one rejection in the parameter set that costs a re-sent body.
+func clientIdentity(req *mcp.CallToolRequest) string {
+	if req == nil || req.Session == nil {
+		return ""
+	}
+	params := req.Session.InitializeParams()
+	if params == nil || params.ClientInfo == nil {
+		return ""
+	}
+	return strings.TrimSpace(params.ClientInfo.Name)
 }

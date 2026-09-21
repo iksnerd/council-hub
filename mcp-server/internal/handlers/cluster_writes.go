@@ -545,3 +545,61 @@ func (r *Registry) UIBackfillEmbeddingsHandler() http.HandlerFunc {
 		})
 	}
 }
+
+// peerProjectRoomsNote asks the cluster which rooms a project already has on
+// *other* nodes, and renders them as a note to append to a room-creation result.
+//
+// The Z1 conflict guard above only catches an exact id match, which is the rare
+// case: two agents agreeing on a slug character for character. The common case
+// is the one adeloc-c1 hit — a peer owns `adeloc-real-world-fit`, this node
+// creates `adeloc-use-case-fit` for the same purpose, and nothing objects
+// because from here the room genuinely does not exist. That is the shadow
+// duplicate `council://guide` warns about, arriving as the success path.
+//
+// Creation is not refused: a project may legitimately have many rooms, and
+// only the caller can tell a duplicate from a new thread. The fix is to make
+// the peer's rooms impossible to miss at the moment of creating another one.
+// Returns "" when there is nothing to say, when the project is unset, or when
+// the fan-out is unavailable — a create must never fail over this.
+func (r *Registry) peerProjectRoomsNote(project, createdID string) string {
+	if project == "" || r.HTTPClient == nil || r.PhoenixURL == "" {
+		return ""
+	}
+
+	raw, _, err := r.clusterCall("list_rooms", map[string]any{
+		"project": project,
+		"limit":   "10",
+	})
+	if err != nil {
+		return ""
+	}
+
+	var peers []ClusterRoomResult
+	if err := json.Unmarshal(raw, &peers); err != nil {
+		return ""
+	}
+
+	var lines []string
+	for _, rm := range peers {
+		if rm.ID == createdID || rm.SourceNode == "" {
+			continue
+		}
+		desc := rm.Description
+		if desc == "" {
+			desc = "(no topic)"
+		}
+		lines = append(lines, fmt.Sprintf("  - %s [%s] — %s", rm.ID, rm.SourceNode, desc))
+	}
+	if len(lines) == 0 {
+		return ""
+	}
+
+	return fmt.Sprintf(
+		"\n\n**Note: project '%s' already has %d room(s) on other cluster nodes.** "+
+			"This tool is node-local, so it could not have found them:\n%s\n\n"+
+			"If one of those is the thread you meant, use it instead of the room just created: "+
+			"post_to_room auto-routes to the owning node, and read_room(cluster_wide=true) shows it. "+
+			"Otherwise ignore this.",
+		project, len(lines), strings.Join(lines, "\n"),
+	)
+}

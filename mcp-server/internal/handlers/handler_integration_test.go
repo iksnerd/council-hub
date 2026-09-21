@@ -582,3 +582,81 @@ func TestIntegration_DraftMessageType(t *testing.T) {
 		t.Errorf("expected 'posted' for draft message, got: %s", resultText(postResult))
 	}
 }
+
+// author had no default, and its rejection is the only expensive one in the
+// parameter set consolidated in #01a0b156: it arrives after the whole body has
+// been transmitted, so the retry pays for the content twice. The default is the
+// name the client gave at initialize, which is only observable through the real
+// dispatch path — hence an integration test rather than a handler one.
+func TestIntegration_PostToRoomDefaultsAuthorToClientName(t *testing.T) {
+	cs, reg := setupIntegrationTest(t)
+	callTool(t, cs, "create_room", map[string]any{"id": "author-default", "topic": "x"})
+
+	result := callTool(t, cs, "post_to_room", map[string]any{
+		"room_id": "author-default", "message": "posted without an author",
+	})
+	if text := resultText(result); strings.Contains(text, "Error") {
+		t.Fatalf("expected the post to succeed without an author, got: %s", text)
+	}
+
+	msgs, _ := reg.Server.GetRecentMessages("author-default", 5)
+	if len(msgs) != 1 {
+		t.Fatalf("expected exactly one message, got %d", len(msgs))
+	}
+	if msgs[0].Author != "test-client" {
+		t.Errorf("expected the author to default to the client name, got %q", msgs[0].Author)
+	}
+}
+
+// The aliases must survive schema validation, not just handler logic — which is
+// the half that unknown-property rejection could break.
+func TestIntegration_AliasesPassSchemaValidation(t *testing.T) {
+	cs, reg := setupIntegrationTest(t)
+
+	result := callTool(t, cs, "get_or_create_room", map[string]any{
+		"room_id": "alias-integ", "topic": "arrived as room_id",
+	})
+	if text := resultText(result); strings.Contains(text, "Error") {
+		t.Fatalf("get_or_create_room(room_id=) rejected: %s", text)
+	}
+
+	result = callTool(t, cs, "post_to_room", map[string]any{
+		"room_id": "alias-integ", "author": "tester", "content": "arrived as content",
+	})
+	if text := resultText(result); strings.Contains(text, "Error") {
+		t.Fatalf("post_to_room(content=) rejected: %s", text)
+	}
+
+	msgs, _ := reg.Server.GetRecentMessages("alias-integ", 5)
+	if len(msgs) != 1 || msgs[0].Content != "arrived as content" {
+		t.Fatalf("expected the aliased body to be stored, got: %+v", msgs)
+	}
+}
+
+// A misspelled parameter used to be dropped in silence, so a required field
+// defaulted to "" and the error described a downstream symptom — "room ” not
+// found" for a room the caller had just created. Three sessions lost calls to
+// that. The schema now rejects the unknown property and names it.
+func TestIntegration_UnknownPropertyIsRejectedByName(t *testing.T) {
+	cs, _ := setupIntegrationTest(t)
+
+	// A schema rejection may surface either as a transport error or as an
+	// error result; what matters is that the unknown property is named.
+	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "get_or_create_room",
+		Arguments: map[string]any{"id": "typo-room", "topick": "misspelled"},
+	})
+
+	reported := ""
+	if err != nil {
+		reported = err.Error()
+	} else {
+		reported = resultText(res)
+		if !res.IsError {
+			t.Fatalf("expected an unknown property to be rejected, got: %s", reported)
+		}
+	}
+	if !strings.Contains(reported, "topick") {
+		t.Errorf("expected the rejection to name the unknown property, got: %s", reported)
+	}
+}

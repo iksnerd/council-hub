@@ -443,3 +443,43 @@ func TestHandleEditNotebookBatchAddRejectsBadCombinations(t *testing.T) {
 		})
 	}
 }
+
+// Three sessions (#01a0abce, #01a0b10c, #01a0b11a) lost calls to this: the room
+// parameter here is ref_id, and an unrecognised spelling left it "" — so the
+// lookup failed on the default and reported `room ” not found`, which reads as
+// "that room does not exist" for a room the caller had just created.
+func TestEditNotebookNamesTheMissingParameter(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "nb-param-room")
+	reg.Server.CreateNotebook("param-nb", "", "Param NB") //nolint:errcheck
+
+	res, _, _ := reg.handleEditNotebook(context.Background(), nil, EditNotebookInput{
+		Action: "add", NotebookID: "param-nb", Kind: "room_ref", Prose: "no ref given",
+	})
+
+	text := resultText(res)
+	if !strings.Contains(text, "ref_id") {
+		t.Errorf("expected the error to name ref_id, got: %s", text)
+	}
+	if strings.Contains(text, "room '' not found") {
+		t.Errorf("error still blames the room for a parameter that was never supplied: %s", text)
+	}
+}
+
+// room_id is the spelling every room-scoped tool uses, and the one agents carry
+// over from the call they just made.
+func TestEditNotebookAcceptsRoomIDAlias(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "nb-alias-room")
+	reg.Server.CreateNotebook("alias-nb", "", "Alias NB") //nolint:errcheck
+
+	res, _, err := reg.handleEditNotebook(context.Background(), nil, EditNotebookInput{
+		Action: "add", NotebookID: "alias-nb", Kind: "room_ref", RoomID: "nb-alias-room",
+	})
+	if err != nil {
+		t.Fatalf("handleEditNotebook error: %v", err)
+	}
+	if text := resultText(res); strings.Contains(text, "Error") {
+		t.Fatalf("expected room_id to be accepted as ref_id, got: %s", text)
+	}
+}

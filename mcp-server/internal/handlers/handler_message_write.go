@@ -12,9 +12,14 @@ import (
 
 // PostToRoomInput represents the parameters for posting a message.
 type PostToRoomInput struct {
-	RoomID       string `json:"room_id"`
-	Author       string `json:"author"`
-	Message      string `json:"message"`
+	RoomID  string `json:"room_id"`
+	Author  string `json:"author"`
+	Message string `json:"message"`
+	// Content is an accepted alias for Message: it is the natural guess beside
+	// message_type and the spelling several neighbouring MCP servers use. This
+	// is the one alias in the set that is expensive to get wrong, because the
+	// rejection arrives only after the whole body has been transmitted.
+	Content      string `json:"content"`
 	MessageType  string `json:"message_type"`
 	ReplyTo      string `json:"reply_to"`
 	Mentions     string `json:"mentions"`
@@ -62,8 +67,21 @@ type ForkThreadInput struct {
 func (r *Registry) handlePostToRoom(ctx context.Context, req *mcp.CallToolRequest, args PostToRoomInput) (*mcp.CallToolResult, ToolOutput, error) {
 	msg := textResult
 
+	body, aerr := resolveAlias(args.Message, "message", args.Content, "content")
+	if aerr != nil {
+		return msg("Error: " + aerr.Error())
+	}
+	args.Message = body
+
+	// author defaults to the connected client's name — the only identity this
+	// server actually knows. Without it, the rejection lands after the whole
+	// body has been transmitted, so the retry pays for the content twice.
+	if args.Author == "" {
+		args.Author = clientIdentity(req)
+	}
+
 	if args.RoomID == "" || args.Author == "" || args.Message == "" {
-		return msg("Error: room_id, author, and message are all required.")
+		return msg("Error: room_id and message (alias: content) are required; author is required when the client did not identify itself at initialize.")
 	}
 	if err := validateSize("room_id", args.RoomID, maxIDLen); err != nil {
 		return msg("Error: " + err.Error())

@@ -12,13 +12,17 @@ import (
 
 // EditNotebookInput represents the parameters for curating a notebook outline.
 type EditNotebookInput struct {
-	Action       string `json:"action"`
-	NotebookID   string `json:"notebook_id"`
-	Project      string `json:"project"`
-	Title        string `json:"title"`
-	EntryID      string `json:"entry_id"`
-	Kind         string `json:"kind"`
-	RefID        string `json:"ref_id"`
+	Action     string `json:"action"`
+	NotebookID string `json:"notebook_id"`
+	Project    string `json:"project"`
+	Title      string `json:"title"`
+	EntryID    string `json:"entry_id"`
+	Kind       string `json:"kind"`
+	RefID      string `json:"ref_id"`
+	// RoomID is an accepted alias for RefID. For kind=room_ref the value *is* a
+	// room id, and room_id is what every room-scoped tool calls it — so it is
+	// the spelling an agent carries in from the call it just made (#01a0b156).
+	RoomID       string `json:"room_id"`
 	RefIDs       string `json:"ref_ids"`
 	Prose        string `json:"prose"`
 	AfterEntryID string `json:"after_entry_id"`
@@ -58,8 +62,21 @@ func (r *Registry) handleEditNotebook(ctx context.Context, req *mcp.CallToolRequ
 		if err := validateSize("prose", args.Prose, maxContentLen); err != nil {
 			return msg(fmt.Sprintf("Error: %s", err.Error()))
 		}
+		refID, aerr := resolveAlias(args.RefID, "ref_id", args.RoomID, "room_id")
+		if aerr != nil {
+			return msg("Error: " + aerr.Error())
+		}
+		args.RefID = refID
+
 		if args.RefID != "" && args.RefIDs != "" {
 			return msg("Error: pass ref_id or ref_ids, not both.")
+		}
+		// Say which parameter is missing rather than looking up "" and blaming
+		// the room: "room '' not found" reads as "that room does not exist",
+		// which is the one thing that was never true.
+		if (args.Kind == "room_ref" || args.Kind == "ref" || args.Kind == "query_ref") &&
+			args.RefID == "" && args.RefIDs == "" {
+			return msg(fmt.Sprintf("Error: kind=%s needs the target in ref_id (alias: room_id), or several in ref_ids. None was supplied.", args.Kind))
 		}
 		kind := args.Kind
 		if kind == "" {

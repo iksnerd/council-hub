@@ -437,3 +437,39 @@ func TestHandlePostToRoomPinNoteNamesOnlyARealReplacement(t *testing.T) {
 		t.Errorf("second pin should name the full ID of the pin it replaced (#%s), got: %s", old.ID, text)
 	}
 }
+
+// post_to_room takes `message`, where `content` is the natural guess from
+// neighbouring servers — and the rejection arrives after the body has been
+// transmitted, so the retry pays for the content twice (#01a0aba9, #01a0b156).
+func TestPostToRoomAcceptsContentAlias(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "alias-post")
+
+	res, _, err := reg.handlePostToRoom(context.Background(), nil, PostToRoomInput{
+		RoomID: "alias-post", Author: "tester", Content: "arrived as content",
+	})
+	if err != nil {
+		t.Fatalf("handlePostToRoom error: %v", err)
+	}
+	if text := resultText(res); strings.Contains(text, "Error") {
+		t.Fatalf("expected content to be accepted, got: %s", text)
+	}
+
+	msgs, _ := reg.Server.GetRecentMessages("alias-post", 5)
+	if len(msgs) != 1 || msgs[0].Content != "arrived as content" {
+		t.Fatalf("expected the aliased body to be stored, got: %+v", msgs)
+	}
+}
+
+// Supplying both spellings must not silently pick one of two different bodies.
+func TestPostToRoomRejectsConflictingBodySpellings(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "alias-post-2")
+
+	res, _, _ := reg.handlePostToRoom(context.Background(), nil, PostToRoomInput{
+		RoomID: "alias-post-2", Author: "tester", Message: "a", Content: "b",
+	})
+	if text := resultText(res); !strings.Contains(text, "message") || !strings.Contains(text, "content") {
+		t.Errorf("expected an error naming both spellings, got: %s", text)
+	}
+}

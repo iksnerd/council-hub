@@ -14,8 +14,9 @@ func (r *Registry) RegisterTools() {
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "create_room",
 		Description: "Create a new council room (virtual workspace) for a topic or task. Prefer get_or_create_room — it returns existing content instead of silently no-opping on a name clash, avoiding duplicate rooms. Does nothing if the room already exists. Related rooms are automatically linked in both directions. Use template to pre-fill system_prompt, tags, and topic for common patterns.",
-		InputSchema: schema([]string{"id"}, map[string]map[string]any{
-			"id": prop("string", "Unique room identifier (e.g. auth-migration-v2)"),
+		InputSchema: schema(nil, map[string]map[string]any{
+			"id":      prop("string", "Unique room identifier (e.g. auth-migration-v2)"),
+			"room_id": prop("string", "Alias for id — either spelling is accepted"),
 			"template": prop("string", "Pre-fill system_prompt, tags, and topic for a common pattern. "+
 				"Available templates — brainstorm (open-ended idea exploration; tags: brainstorm,exploration), "+
 				"bug (single bug investigation lifecycle; tags: bug,investigation), "+
@@ -37,8 +38,9 @@ func (r *Registry) RegisterTools() {
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "get_or_create_room",
 		Description: "Get an existing room (with recent messages) or create it if it does not exist. Prefer this over create_room in almost all cases — it returns existing content, avoids duplicates, and saves 2-3 round trips. On an existing room it also backfills metadata: any of topic/project/tech_stack/tags/system_prompt/related_rooms/repo you pass that the room is still missing gets filled in (gap-fill only — an already-set field is never overwritten; use update_room to change one). So a room created before a project/tag convention can adopt it just by calling get_or_create_room again with the field set.",
-		InputSchema: schema([]string{"id"}, map[string]map[string]any{
-			"id":            prop("string", "Room identifier \u2014 returns existing room if found, creates if not"),
+		InputSchema: schema(nil, map[string]map[string]any{
+			"id":            prop("string", "Room identifier \u2014 returns existing room if found, creates if not. Node-local: it cannot see a room owned by a cluster peer, so on a project that spans machines run list_rooms(project=..., cluster_wide=true) first. Creating anyway will name any peer rooms in the same project."),
+			"room_id":       prop("string", "Alias for id — either spelling is accepted"),
 			"topic":         prop("string", "Topic (set on create; backfilled on an existing room only if its topic is empty)"),
 			"project":       prop("string", "Project grouping (set on create; backfilled on an existing room only if its project is empty)"),
 			"tech_stack":    prop("string", "Technologies (set on create; backfilled on an existing room only if its tech_stack is empty)"),
@@ -54,10 +56,11 @@ func (r *Registry) RegisterTools() {
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "post_to_room",
 		Description: "Post a message to a council room's ledger. Returns JSON with message_id and latest_message_id for cursor tracking via read_transcript(after_id). Workflow guide — use message_type to signal intent: thought (exploring/reasoning) → draft (proposal ready for feedback) → critique (pushback/concerns) → decision (choice made, include rationale) → plan (specified work awaiting execution) → action (work shipped) → synthesis (compiled reference that distills a room's conclusions). Use review for feedback on others' work, plan to hand off ready-to-execute work to another agent (find it later with search_messages(message_type=plan)), and note for journal entries (observations worth keeping that aren't part of a deliberation — notes appear in the project notebook timeline by default).",
-		InputSchema: schema([]string{"room_id", "author", "message"}, map[string]map[string]any{
+		InputSchema: schema([]string{"room_id"}, map[string]map[string]any{
 			"room_id": prop("string", "Target room ID"),
-			"author":  prop("string", "Name of the posting agent"),
+			"author":  prop("string", "Name of the posting agent. Defaults to the name the MCP client gave at initialize."),
 			"message": prop("string", "Message content (markdown supported)"),
+			"content": prop("string", "Alias for message — either spelling is accepted"),
 			"message_type": prop("string", "Lifecycle: thought → draft → critique → decision → plan → action → synthesis. "+
 				"Also review (feedback on someone else's work) and note (a journal entry outside the lifecycle). "+
 				"Defaults to 'message', the untyped catch-all — avoid it: typed reads (read_notebook, search_messages(message_type=…), "+
@@ -131,6 +134,7 @@ func (r *Registry) RegisterTools() {
 			"tag":            prop("string", "Filter by tag"),
 			"status":         prop("string", "Filter by status (active, paused, resolved)"),
 			"search":         prop("string", "Keyword search across room ID, topic/description, and tags. Multi-word queries use AND (all words must match); if nothing matches, falls back to OR so over-specified queries still find the room."),
+			"compact":        prop("string", "Deprecated — compact output is the default; kept so existing callers passing compact=false still work (it maps to verbose)."),
 			"related_to":     prop("string", "Filter to rooms whose related_rooms list contains this room ID. Returns the flat neighborhood around a specific room — pairs with compact listing for a data-dense alternative to get_concept_map."),
 			"limit":          prop("string", "Max rooms to return (default 50, max 100)"),
 			"offset":         prop("string", "Offset for pagination (default 0)"),
@@ -498,6 +502,7 @@ func (r *Registry) RegisterTools() {
 			"entry_id":       prop("string", "Target entry (update, start, check, uncheck, move, remove). From the *(entry #...)* markers in read_notebook output."),
 			"kind":           enumProp("string", "Entry kind for add. ref_id implies 'ref' and prose implies 'prose'; pass kind=room_ref explicitly with ref_id=<room_id> to track a room's live state, kind=query_ref with ref_id=<room_id>:<message_type> to transclude 'the latest <type> in <room>' (resolved live — a structural address, not a frozen ID), or kind=task with prose=<label> for a first-class checklist item you check/uncheck.", []string{"ref", "room_ref", "query_ref", "prose", "task"}),
 			"ref_id":         prop("string", "What to transclude: a message ID (kind=ref, accepts a full ID or an unambiguous ID prefix), a room ID (kind=room_ref), or 'room_id:message_type' (kind=query_ref, e.g. 'auth-room:synthesis'). Must exist on this node. Ref-like adds are idempotent — re-adding a target already referenced in the notebook is a no-op that returns the existing entry, so it's safe to repeat across sessions without creating duplicate refs."),
+			"room_id":        prop("string", "Alias for ref_id — accepted because kind=room_ref's target is a room id"),
 			"ref_ids":        prop("string", "Comma-separated targets for a batch add (same kind for all) — the multi-entry counterpart to ref_id, mirroring update_room's room_ids. Entries land in the order given. Per-target outcome is reported: already-referenced targets are skipped as no-ops and one bad ID doesn't abort the rest. Mutually exclusive with ref_id, and not for prose."),
 			"prose":          prop("string", "Markdown content (add with kind=prose, or update) — also the task label (add with kind=task)."),
 			"after_entry_id": prop("string", "Position control for add and move: the entry to land after. Omit on add to append; empty on move means the top."),

@@ -91,6 +91,18 @@ compacted away.
 The full lifecycle is thought → draft → critique → decision → plan → action → synthesis.
 Avoid the bare ` + "`message`" + ` type — typed reads skip it.
 
+## Parameter names (both spellings work)
+
+The room parameter is spelled ` + "`id`" + ` on create_room/get_or_create_room, ` + "`room_id`" + `
+on every room-scoped tool, and ` + "`ref_id`" + ` on edit_notebook. Rather than make you remember
+which, each accepts the others as aliases: ` + "`room_id`" + ` works on create_room,
+get_or_create_room and edit_notebook, and ` + "`content`" + ` works wherever ` + "`message`" + ` does.
+` + "`author`" + ` on post_to_room defaults to the name your client gave at initialize, so a post
+never fails after the body has been sent. Passing two spellings of one parameter with different
+values is an error rather than a silent preference, and an **unknown** property is rejected by
+name — a misspelled parameter used to be dropped in silence, leaving a required field empty and
+the error describing something else entirely.
+
 ## Key Tools by Goal
 
 | Goal | Tool |
@@ -178,6 +190,13 @@ behaves exactly like a local one. (Network exposure — who can open the dashboa
   When you aim one at a peer's room the error **names the owning node and the remedy**. Read that
   as "run it there", never as "the room is gone": creating it locally would fork the room into a
   shadow copy that never reconciles.
+- **get_or_create_room is node-local, and this is the one case where the bad outcome is the
+  *success* path.** It cannot see a peer's rooms, so on a project that spans machines it creates
+  a second room for a thread that already exists — the shadow copy above, arriving with no error.
+  The exact-id conflict guard only catches two agents choosing the same slug character for
+  character. On a clustered project, run ` + "`list_rooms(project=..., cluster_wide=true)`" + ` first.
+  Creating anyway now names any peer rooms in the same project in its result; read that list
+  before you start logging into the room you just made.
 - **Deliberately not proxied:** delete_room and rename_project refuse and name the owner
   (destroying a peer's data across a node boundary is a different risk class from posting to it);
   bulk_status_update and bulk_visibility stay local-only, since a batch spanning several owners

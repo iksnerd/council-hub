@@ -699,3 +699,77 @@ func TestPostToRoomProxyPinNoteFollowsOwnerReport(t *testing.T) {
 		})
 	}
 }
+
+// c1's report (#01a0b10c): the Z1 guard only catches an *exact* id match, so
+// creating a room whose project already has rooms on a peer succeeds silently —
+// the shadow duplicate the guide warns about, arriving as the success path.
+func TestCreateRoomNamesPeerRoomsInSameProject(t *testing.T) {
+	reg := setupHandlerTest(t)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.HasSuffix(r.URL.Path, "/locate_room") {
+			// No peer owns this exact id, so the existing guard stays quiet.
+			json.NewEncoder(w).Encode(map[string]any{"nodes": []string{}, "warnings": []string{}})
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]any{
+			"results": []map[string]any{{
+				"id":          "adeloc-real-world-fit",
+				"description": "case-by-case fit assessment",
+				"project":     "adeloc",
+				"source_node": "bob@10.0.0.4",
+			}},
+			"warnings": []string{},
+		})
+	}))
+	defer server.Close()
+
+	reg.PhoenixURL = server.URL
+	reg.HTTPClient = &http.Client{Timeout: 5 * time.Second}
+
+	res, _, err := reg.handleGetOrCreateRoom(context.Background(), nil, GetOrCreateRoomInput{
+		ID: "adeloc-use-case-fit", Project: "adeloc", Topic: "fit assessment",
+	})
+	if err != nil {
+		t.Fatalf("handleGetOrCreateRoom error: %v", err)
+	}
+
+	text := resultText(res)
+	// The room is still created — a project may legitimately have many rooms.
+	if _, gerr := reg.Server.GetRoom("adeloc-use-case-fit"); gerr != nil {
+		t.Fatal("expected the room to be created")
+	}
+	// But the peer's rooms must be named, so the duplicate is visible.
+	if !strings.Contains(text, "adeloc-real-world-fit") {
+		t.Errorf("expected the peer's room to be named, got: %s", text)
+	}
+	if !strings.Contains(text, "bob@10.0.0.4") {
+		t.Errorf("expected the owning node to be named, got: %s", text)
+	}
+}
+
+// A project with no peer rooms must not pay for a note (or a warning).
+func TestCreateRoomQuietWhenNoPeerRoomsInProject(t *testing.T) {
+	reg := setupHandlerTest(t)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.HasSuffix(r.URL.Path, "/locate_room") {
+			json.NewEncoder(w).Encode(map[string]any{"nodes": []string{}, "warnings": []string{}})
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]any{"results": []map[string]any{}, "warnings": []string{}})
+	}))
+	defer server.Close()
+
+	reg.PhoenixURL = server.URL
+	reg.HTTPClient = &http.Client{Timeout: 5 * time.Second}
+
+	res, _, _ := reg.handleGetOrCreateRoom(context.Background(), nil, GetOrCreateRoomInput{
+		ID: "solo-room", Project: "solo", Topic: "x",
+	})
+	if text := resultText(res); strings.Contains(text, "cluster node") {
+		t.Errorf("did not expect a peer note, got: %s", text)
+	}
+}
