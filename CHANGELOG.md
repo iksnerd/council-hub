@@ -4,6 +4,11 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.59.1] - 2026-09-21
+
+### Fixed
+- **The new peer-rooms note no longer reports this node's own rooms as a peer's.** `get_or_create_room`/`create_room` gained a note in v0.59.0 listing rooms the project already has on other cluster nodes. The fan-out reaches every node *including this one*, so local rooms came back tagged with this node's own `source_node` and were printed under "already has N room(s) on other cluster nodes" — contradicting the sentence they appeared under, and on a single-node deployment appending a note to every create listing rooms the caller could already see. The filter now tests local existence rather than node identity, which is what the note actually promises ("this tool is node-local, so it could not have found them") and is the only test this process can make, since the Erlang node name belongs to Phoenix. Found by the v0.59.0 smoke test.
+
 ## [0.59.0] - 2026-09-21
 
 ### Added

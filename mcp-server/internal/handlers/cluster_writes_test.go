@@ -773,3 +773,37 @@ func TestCreateRoomQuietWhenNoPeerRoomsInProject(t *testing.T) {
 		t.Errorf("did not expect a peer note, got: %s", text)
 	}
 }
+
+// The cluster fan-out reaches every node including this one, so a project's
+// local rooms come back from list_rooms tagged with this node's own
+// SourceNode. v0.59.0 reported them under "already has N room(s) on other
+// cluster nodes", which contradicts the sentence it prints and, on a
+// single-node deployment, appended a note to every create listing rooms the
+// caller could see perfectly well. Found by the v0.59.0 smoke test.
+func TestPeerProjectRoomsNoteExcludesLocalRooms(t *testing.T) {
+	reg := setupHandlerTest(t)
+
+	mustCreateRoom(t, reg.Server, "local-room", withProject("proj"))
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		// Fan-out returns both: one this node owns, one a peer owns.
+		json.NewEncoder(w).Encode(map[string]any{"results": []map[string]any{
+			{"id": "local-room", "description": "here", "source_node": "me@127.0.0.1"},
+			{"id": "peer-room", "description": "over there", "source_node": "peer@127.0.0.1"},
+		}, "warnings": []string{}})
+	}))
+	defer server.Close()
+
+	reg.PhoenixURL = server.URL
+	reg.HTTPClient = &http.Client{Timeout: 5 * time.Second}
+
+	note := reg.peerProjectRoomsNote("proj", "just-created")
+
+	if strings.Contains(note, "local-room") {
+		t.Errorf("note names a room that exists locally:\n%s", note)
+	}
+	if !strings.Contains(note, "peer-room") {
+		t.Errorf("note dropped the genuinely remote room:\n%s", note)
+	}
+}

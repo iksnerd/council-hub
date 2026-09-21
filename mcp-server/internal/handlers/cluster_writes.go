@@ -584,6 +584,17 @@ func (r *Registry) peerProjectRoomsNote(project, createdID string) string {
 		if rm.ID == createdID || rm.SourceNode == "" {
 			continue
 		}
+		// The fan-out reaches every node including this one, so its own rooms
+		// come back tagged with its own SourceNode. Reporting those as "on
+		// other cluster nodes" is worse than saying nothing: it contradicts
+		// the sentence it appears under, and on a single-node deployment
+		// every create grows a note listing local rooms. The note's promise
+		// is "rooms this node-local tool could not have found", so the test
+		// is local existence, not node identity — which this process cannot
+		// observe anyway, since the Erlang node name belongs to Phoenix.
+		if _, err := r.Server.GetRoom(rm.ID); err == nil {
+			continue
+		}
 		desc := rm.Description
 		if desc == "" {
 			desc = "(no topic)"
