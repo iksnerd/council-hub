@@ -216,8 +216,35 @@ search_messages(query: "auth", cluster_wide: "true")
 
 ## Troubleshooting
 
-Work the path from the inside out. The commands below are generic; substitute your
-own tailnet names/IPs.
+**Start with `/health` — since v0.59.0 the node diagnoses much of this itself.**
+
+```bash
+curl -s localhost:3001/health | jq '{seed_warning, seed_status, advertised_warning}'
+```
+
+- **`seed_warning` / `seed_status`** — runs when `COUNCIL_SEEDS` is set and no peers are
+  connected. It probes each seed's `:3001/health` and compares the node name it reports
+  against the address that answered, classifying `stale_name` (the peer is advertising an
+  address it does not hold — it is undialable under any name until *it* restarts),
+  `undialable` (cookie or ports), `no_node_name` (`COUNCIL_UI=off` on the peer, so its
+  identity is unknowable from here) and `unreachable`. `stale_name` is the one worth
+  knowing about: it names the *peer's* misconfiguration, which you cannot see from your
+  own node.
+- **`advertised_warning`** — the node opens a connection to its own advertised host on the
+  EPMD port. From a bridged container that leaves, hits the host's published port and
+  comes back, so it tests the path a peer actually takes.
+
+Two caveats, both of which look like "no problem" and are not:
+
+- **These fields are absent when there is nothing to report.** Absence means healthy, not
+  missing — the same convention as `node_identity`.
+- **`seed_warning` cannot run without `COUNCIL_SEEDS`.** With seeds unset the node relies on
+  LAN auto-discovery, which happens only at startup and gives the probe no address to
+  interrogate. For a two-node cluster, set `COUNCIL_SEEDS` explicitly even when discovery
+  would find the peer — it is the difference between a named diagnosis and silence.
+
+If `/health` is clean and the cluster still has not formed, work the path from the inside
+out. The commands below are generic; substitute your own tailnet names/IPs.
 
 **1. Is the peer's node distributed and registered locally?** Run on the *peer*
 (`eval` starts a throwaway BEAM, so inject a dummy `SECRET_KEY_BASE` since it skips

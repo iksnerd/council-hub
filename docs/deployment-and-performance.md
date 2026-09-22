@@ -52,6 +52,27 @@ most of it the embedding round-trip.
 
 ---
 
+## Memory Footprint
+
+The Go MCP server is ~20 MiB and already minimal. **The BEAM running the Phoenix dashboard is
+roughly 90% of the image's memory**, so it is the only meaningful thing to tune.
+
+| Configuration | Idle RSS |
+|---|---|
+| Full image (Go + Phoenix dashboard) | ~180–240 MiB |
+| Default `ERL_FLAGS` tuning (applied automatically) | ~177 MiB |
+| `COUNCIL_UI=off` — Go MCP server alone | **~12 MiB** |
+
+**`COUNCIL_UI=off`** skips the dashboard entirely in `http` mode. Local reads and writes are
+unaffected, and so are cross-node *writes*; only `cluster_wide` **reads** become unavailable,
+because those fan out through Phoenix's `:erpc` API. The healthcheck switches to probing the Go
+server's `/health` on `COUNCIL_HTTP_ADDR`. Worth it on a small VPS or a node that exists only to
+serve MCP.
+
+**`ERL_FLAGS`** defaults to `+S 2:2 +SDio 1 +sbwt none +sbwtdcpu none +sbwtdio none`, which caps
+schedulers and disables busy-wait — about 25% lower idle memory and CPU than stock BEAM settings.
+Export your own value to override it; you are trading latency under load for idle cost.
+
 ## Deployment Scenarios
 
 ### Scenario 1: Local Development
