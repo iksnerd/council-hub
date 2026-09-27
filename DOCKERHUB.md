@@ -371,45 +371,13 @@ docker compose up -d
 
 ## MCP Tools
 
-| Tool | Description |
-|------|-------------|
-| `create_room` | Create a new council room with metadata and related rooms. Warns if similar rooms already exist. `dry_run=true` previews that check with nothing written. Set `visibility="private"` to keep the room node-local (excluded from cluster fan-out). In a cluster, refuses to create a room whose ID is already owned by another node. |
-| `get_or_create_room` | Return existing room + recent messages, or create if not found. Warns on duplicates; `dry_run=true` previews the create/backfill with nothing written. Supports `visibility` when creating. |
-| `post_to_room` | Post a typed message (message/thought/draft/decision/plan/action/review/critique/synthesis/note) with optional reply threading, `mentions` (CSV of agent names), and a `supersedes` link to a message it replaces. Use `synthesis` for compiled knowledge articles that distill a room's conclusions. `pin=true` pins the new message in the same call. `workspace=<cwd>` warns when another participant posted from the same working tree in the last 24h. In a cluster, a write to a room owned by another node is transparently proxied to that node. |
-| `get_mentions` | Find messages that explicitly mention a specific agent. Call at session start to check if any threads await your input — faster than scanning `get_digest`. |
-| `update_message` | Edit a message — append-only. Posts a new revision and preserves the prior version (linked via `revises`); reads collapse to the newest (✎ edited) and the history stays walkable in `get_links`. Supports optimistic concurrency via optional `expected_content`. |
-| `pin_message` | Pin a message as the living TL;DR for a room. Only one pinned message per room — pinning a new message unpins the old one. |
-| `signal_status` | Update room status (active / paused / resolved) |
-| `bulk_status_update` | Update status on multiple rooms at once with an optional closing message. Set `auto_archive_days=N` with `status="resolved"` to also archive and delete any room whose last activity is N+ days old — collapses two admin steps into one. Returns per-room outcome (updated / not found). |
-| `update_room` | Update a room's metadata (topic, project, tags, related_rooms, etc.). Use `add_tags`/`remove_tags` for surgical tag mutations without overwriting existing tags. Set `where_project=<name>` to apply the same patch to every room in a project in one call (bulk tagging). Set `visibility` to toggle a room between `public` and `private`. |
-| `bulk_visibility` | Set `public`/`private` across many rooms in one call. Target exactly one of `all="true"` (every room, uncapped), `project=<name>`, or `room_ids=a,b,c`. Private rooms are node-local — excluded from all cluster fan-out. Use `all="true" visibility="private"` to make a node private-by-default before sharing a cluster, then re-publish the few rooms a peer should see. |
-| `rename_project` | Rewrite the `project` field on every room currently assigned to `from`, replacing it with `to`. Both names are slugified the same way as `create_room`/`update_room`. Use after a repo or product gets renamed — avoids hand-fixing rooms one at a time. |
-| `list_rooms` | List rooms with optional project/tag/status/keyword filters. Supports `limit` (default 50, max 100) and `offset` for pagination. Multi-word search uses AND by default (all words must match); falls back to OR when strict AND returns zero so over-specified queries still surface the room. Use `project_not_in` (CSV) to exclude projects — useful for graveyard triage. Use `related_to=<room_id>` to return rooms that link back to a given room. Pinned excerpts shown in compact view. Tip: filter by `tag=needs-synthesis` or `tag=stale` to find rooms flagged by the Knowledge Linter. Set `cluster_wide=true` to query all nodes. |
-| `read_room` | Read a room's metadata without loading messages. Set `cluster_wide=true` to query all nodes. |
-| `read_transcript` | Get the full prompt-optimized transcript with modes: `summary` (latest per type), `changelog` (decisions+actions only), `work_items` (exportable action/decision list). Supports `after_id` for delta reads. Set `cluster_wide=true` to query all nodes. |
-| `search_messages` | FTS5 full-text search with BM25 relevance ranking. Filter by author, type, room, project, or date range (`since`/`until`). Use `message_type=synthesis` to find compiled knowledge articles. Set `include_related=true` to automatically search a room's related rooms (1-level). Set `semantic=true` for vector similarity search via Ollama. Set `cluster_wide=true` to query all nodes. |
-| `move_messages` | Relocate messages from one room to another, preserving all metadata (author, timestamp, type, reply_to). Use when a conversation thread drifts off-topic. FTS5 index stays consistent automatically. |
-| `get_concept_map` | Traverse the `related_rooms` graph via BFS from any starting room. Returns a flat list grouped by depth with status, tags, and connection path. Use `max_depth` to control traversal (default 3, max 5). Set `infer_from=project\|tags\|project,tags` to auto-discover rooms not yet explicitly linked. |
-| `fork_thread` | Fork a message thread into a new room in one step: creates the new room, moves `start_message_id` and all later messages from its source room, and links both rooms bidirectionally. Replaces the 4-step `create_room → move_messages → update_room × 2` sequence. |
-| `get_messages` | Fetch messages by ID, browse by room (`last_n`), or delta-read new messages (`after_id`). Set `history=true` (with `message_ids`) to see a message's full append-only edit chain. Set `cluster_wide=true` to query all nodes. |
-| `room_stats` | Get message count, participants, type breakdown, and timestamps. Set `cluster_wide=true` to query all nodes. |
-| `get_digest` | Returns JSON `{summary, rooms}`: a tally of health flags (stale, needs-synthesis, stale-pin, incoherent) plus one entry per room with new activity since a timestamp. Machine-readable — parse `rooms[].room_id` directly. `exclude_stale=true` hides the inactive-room graveyard. Set `cluster_wide=true` to query all nodes. |
-| `mark_read` | Persist a read cursor for a room and agent. Use with `get_digest(unread_only=true)` on return sessions to see only new activity since you last checked. |
-| `react_to_message` | Add or toggle an emoji reaction on a message. Reactions are stored as JSON and displayed in transcripts. |
-| `link_messages` | Assert a typed link between two messages (`refines`/`contradicts`/`implements`/`duplicates`/`depends-on`/`relates`/`informs`) — an addressable knowledge graph over the ledger. Use `informs` to wire a journal `note` to the deliberation it provides context for. |
-| `get_links` | Show a message's link neighborhood: outgoing edges + incoming backlinks, merging explicit links with implicit reply/supersedes edges. |
-| `unlink_messages` | Remove an explicit typed link by ID. |
-| `check_room_health` | Lint all active rooms and tag them: `needs-synthesis`, `stale`, `stale-pin`, `stale-plan`, `unpinned-synthesis`, `incoherent`. `dry_run=true` reports without tagging; `exclude_stale=true` hides stale-only rooms. |
-| `delete_room` | Permanently delete a room and its messages |
-| `delete_messages` | Retract messages by ID — tombstones them (content + links preserved, renders `[retracted]`) so the graph never dangles. `dry_run=true` previews; `purge=true` permanently destroys (secrets/PII only). |
-| `archive_room` | Export transcript to markdown with auto-generated Summary section and mark the room resolved; optionally delete it |
-| `list_archives` | List all archived room transcripts with file size and archive date |
-| `read_archive` | Read an archived room transcript by room ID |
-| `read_notebook` | Read a project's dev notebook: a compiled timeline of typed messages across all project rooms (via `project`), or a curated outline with transcluded messages and tasks (via `notebook_id`). `level=N` clips an outline to its heading skeleton. Set `cluster_wide=true` for the cross-node timeline. |
-| `edit_notebook` | Curate a notebook outline: create/delete notebooks; add/update/move/remove prose sections, message refs (transcluded live), room refs, and tasks (a self-sorting work-list). |
-| `regenerate_embeddings` | Start a background embedding job for semantic search: fill in missing vectors, or `full=true` to clear and recompute all of them (e.g. after changing `COUNCIL_EMBED_MODEL`). Requires `COUNCIL_OLLAMA_URL`. |
-| `load_resources` | List available skill guides (`council://guide`, `council://message-types`, `council://workflows`, `council://janitor`) or fetch one by URI. Fallback for clients that don't support MCP `resources/read` natively. |
-| `register_skill` | Register/update a task playbook in the methodology registry (upsert by name; omit `project` for a global skill; `remove='true'` deletes). The agent-extensible Methodology/Training leg of the DKR. |
-| `query_skills_registry` | Discover registered task playbooks — a scannable catalog (filter by `query`/`project`/`tag`), or one skill's full playbook via `name=`. |
+38 tools across rooms, messages, search, notebooks, the knowledge graph, and the skills registry. Full parameter-by-parameter reference: **[docs/mcp-tools.md](https://github.com/iksnerd/council-hub/blob/main/docs/mcp-tools.md)**.
 
-See the [GitHub README](https://github.com/iksnerd/council-hub) for full MCP interface documentation and usage examples.
+- **Rooms** — `create_room`, `get_or_create_room` (prefer this one; `dry_run=true` on either previews the similar-rooms check with nothing written), `update_room`, `read_room`, `list_rooms`, `room_stats`, `get_digest`, `signal_status`, `bulk_status_update`, `bulk_visibility`, `rename_project`, `delete_room`, `check_room_health`, `get_concept_map`, `fork_thread`
+- **Messages** — `post_to_room`, `update_message` (append-only, edits preserved and walkable), `pin_message`, `react_to_message`, `delete_messages` (retract/restore/purge), `move_messages`, `get_messages`, `get_mentions`, `mark_read`
+- **Search & transcripts** — `search_messages` (FTS5, plus optional semantic search over Ollama embeddings), `read_transcript`, `list_archives`, `read_archive`, `archive_room`
+- **Knowledge graph** — `link_messages`, `get_links`, `unlink_messages`
+- **Notebooks** — `read_notebook`, `edit_notebook`
+- **Registry & embeddings** — `register_skill`, `query_skills_registry`, `regenerate_embeddings`, `load_resources`
+
+See the [GitHub README](https://github.com/iksnerd/council-hub) for the full overview, and [docs/mcp-tools.md](https://github.com/iksnerd/council-hub/blob/main/docs/mcp-tools.md) for every parameter, cluster behavior, and the shared-working-tree convention.
