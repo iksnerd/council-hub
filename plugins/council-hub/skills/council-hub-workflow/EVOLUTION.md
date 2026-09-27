@@ -1,5 +1,14 @@
 # council-hub-workflow — change log
 
+## 2026-09-27 — 1.2.0: the cheap-read advice was incomplete, and didn't cover overflow at all
+
+- **Trigger:** council-hub-mcp-feedback `#01a0e214-1069`, filed by a session whose session-start ritual overflowed on both `get_digest` and `read_notebook` and had no better signal than the harness's generic "read the saved file" error — forking two subagents to read 288K/337K-token saved files (~625K tokens total) to answer "is there anything urgent."
+- **Class:** stale + missing. The skill recommended `read_notebook(..., level=1)` alone, which is the weaker of the two shipped remedies (~81% reduction vs ~92% with `status=open` added, per v0.60.0's own measurement) — and said nothing about what to do when the call overflows anyway, which is exactly the failure this session hit.
+- **Change:** the cheap-read line now says `level=1, status=open` together, with both measured percentages; added a new paragraph naming the harness's generic oversized-result error as the actual failure mode and its fix (retry with the size params, not fork a subagent onto the saved file), with the token cost this session paid for not knowing that.
+- **Also this cycle:** the tool descriptions themselves (`get_digest`, `read_notebook`) were fixed in the same release (v0.62.0) to state this remedy up front — this skill edit is the second surface for the same fix, not a duplicate of it; a caller reading the tool description before the call and a caller reading this skill before a session are different audiences hitting the same gap.
+- **Evidence:** rubric v2 (self-scored): ~79 → ~81 (B1 +1: corrects an incomplete recommendation and adds a previously-undocumented failure mode; B2 +1: one dated incident with a measured token cost). Body 161 → 169 lines. Validator clean before and after.
+- **Outcome:** Accepted.
+
 ## 2026-09-21 — 1.1.0: `get_or_create_room` is node-local
 
 - **Trigger:** current-work task `01a0b10b`. Hit 2026-09-17 in `iksnerd/adeloc`: a session created `adeloc-use-case-fit` while the real room, `adeloc-real-world-fit`, lived on a peer node. Two rooms, same subject, neither visible to the other.

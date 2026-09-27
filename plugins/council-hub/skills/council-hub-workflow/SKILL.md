@@ -142,9 +142,16 @@ answer matters. If nothing in council-hub covers it, say so explicitly rather
 than filling the gap with an assumption.
 
 For a cheap first pass over a lot of ground — "what's still open across
-everything" — `read_notebook(notebook_id=current-work, level=1)` collapses
-prose entries to their headings while still rendering tasks and room_refs in
-full, so it's a fraction of the token cost of the unclipped read.
+everything" — `read_notebook(notebook_id=current-work, level=1, status=open)`
+collapses prose entries to their headings and drops done tasks/room_refs, so
+it's a fraction of the token cost of the unclipped read (level alone cut a
+237-entry `current-work` by ~81%; level+status together by over 90%). **If
+`get_digest`/`read_notebook` overflow the tool-call limit anyway** (a mature
+hub can exceed it even with these params), that generic oversized-result
+error means retry with `level=1,status=open` / `limit=N`, not fork a subagent
+to read the saved file — the harness's own remediation text doesn't say this,
+so it's easy to miss. Cost a full session ~625K tokens across two forked
+subagents before this was written down (2026-09-27).
 
 **Cross-check a room's account against the actual codebase before treating it
 as current, especially for anything framed as "still open."** Did this
