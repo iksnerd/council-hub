@@ -130,29 +130,47 @@ func (s *Server) ResolveMessageID(id string) (string, error) {
 // (oldest → newest), walking the append-only revises chain. messageID may name any
 // node in the chain — the walk finds the head, then follows revises back to the
 // root. A message that's never been edited returns a single-element slice.
+//
+// The backward walk to the root is one recursive query instead of one round trip
+// per version: a long edit history (a ledger correction re-typed many times, say)
+// previously cost a query per hop.
 func (s *Server) GetRevisionHistory(messageID string) ([]Message, error) {
 	if _, err := s.GetMessageByID(messageID); err != nil {
 		return nil, err
 	}
-	id := s.headOfRevisionChain(messageID)
+	headID := s.headOfRevisionChain(messageID)
+
+	rows, err := s.DB.Query(fmt.Sprintf(`
+		WITH RECURSIVE chain(id, revises, depth) AS (
+			SELECT id, revises, 0 FROM messages WHERE id = ?
+			UNION ALL
+			SELECT m.id, m.revises, c.depth + 1
+			FROM messages m
+			JOIN chain c ON m.id = c.revises
+			WHERE c.depth < 1000 -- bound against any accidental cycle
+		)
+		SELECT %s FROM messages WHERE id IN (SELECT id FROM chain) ORDER BY id ASC`, messageColumns), headID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
 	var chain []Message
-	for i := 0; i < 1000 && id != ""; i++ { // bound against any accidental cycle
-		m, err := s.GetMessageByID(id)
+	for rows.Next() {
+		m, err := scanMessage(rows)
 		if err != nil {
-			break
+			return nil, err
 		}
 		chain = append(chain, m)
-		id = m.Revises
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	// The head read can race a concurrent purge and leave the chain empty even
 	// though the message existed at the top of this call; never hand back an empty
 	// slice with a nil error — callers index chain[len-1].
 	if len(chain) == 0 {
 		return nil, fmt.Errorf("message #%.8s not found", messageID)
-	}
-	// chain is newest → oldest; flip to chronological.
-	for i, j := 0, len(chain)-1; i < j; i, j = i+1, j-1 {
-		chain[i], chain[j] = chain[j], chain[i]
 	}
 	return chain, nil
 }

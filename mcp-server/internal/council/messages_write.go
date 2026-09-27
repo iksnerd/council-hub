@@ -210,17 +210,25 @@ func (s *Server) UpdateMessageWithExpected(messageID, newContent, newMessageType
 // headOfRevisionChain walks revises pointers forward from a (possibly old) node to
 // the current head — the newest version that nothing else revises. Used to point a
 // caller who edited a stale node at the version they should edit instead.
+//
+// A single recursive query in place of a per-hop round trip: each hop was
+// previously its own SELECT, so a deep edit history paid one query per revision.
 func (s *Server) headOfRevisionChain(messageID string) string {
-	id := messageID
-	for i := 0; i < 1000; i++ { // bound the walk against any accidental cycle
-		var next string
-		err := s.DB.QueryRow(`SELECT id FROM messages WHERE revises = ?`, id).Scan(&next)
-		if err != nil || next == "" {
-			return id
-		}
-		id = next
+	var head string
+	err := s.DB.QueryRow(`
+		WITH RECURSIVE chain(id, depth) AS (
+			SELECT ?, 0
+			UNION ALL
+			SELECT m.id, c.depth + 1
+			FROM messages m
+			JOIN chain c ON m.revises = c.id
+			WHERE c.depth < 1000 -- bound against any accidental cycle
+		)
+		SELECT id FROM chain ORDER BY depth DESC LIMIT 1`, messageID).Scan(&head)
+	if err != nil {
+		return messageID
 	}
-	return id
+	return head
 }
 
 func (s *Server) MoveMessages(ids []string, targetRoomID string) (int, error) {

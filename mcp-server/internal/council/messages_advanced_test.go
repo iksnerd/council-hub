@@ -456,6 +456,43 @@ func TestGetRevisionHistory(t *testing.T) {
 	}
 }
 
+// TestGetRevisionHistoryDeepChain exercises a chain longer than a couple of hops,
+// the case that distinguishes a single recursive query from a per-hop walk.
+func TestGetRevisionHistoryDeepChain(t *testing.T) {
+	s := setupTestServer(t)
+	s.CreateRoom("deep-hist-room", "Deep history test", "", "", "", "", "")
+
+	const depth = 12
+	root, _ := s.PostMessage("deep-hist-room", "claude", "v0", "draft", "")
+	head := root
+	for i := 1; i < depth; i++ {
+		m, err := s.UpdateMessage(head, fmt.Sprintf("v%d", i), "")
+		if err != nil {
+			t.Fatalf("UpdateMessage hop %d failed: %v", i, err)
+		}
+		head = m.ID
+	}
+
+	for _, from := range []string{root, head} {
+		chain, err := s.GetRevisionHistory(from)
+		if err != nil {
+			t.Fatalf("history(%s) failed: %v", from, err)
+		}
+		if len(chain) != depth {
+			t.Fatalf("expected %d versions from %s, got %d", depth, from, len(chain))
+		}
+		for i, m := range chain {
+			want := fmt.Sprintf("v%d", i)
+			if m.Content != want {
+				t.Errorf("position %d: expected content %q, got %q", i, want, m.Content)
+			}
+		}
+		if chain[len(chain)-1].ID != head {
+			t.Errorf("expected head %s last, got %s", head, chain[len(chain)-1].ID)
+		}
+	}
+}
+
 func hasEdge(links []MessageLink, from, to, relation string) bool {
 	for _, l := range links {
 		if l.FromID == from && l.ToID == to && l.Relation == relation {
