@@ -26,6 +26,9 @@ type CreateRoomInput struct {
 	RelatedRooms string `json:"related_rooms"`
 	Visibility   string `json:"visibility"`
 	Repo         string `json:"repo"`
+	// DryRun previews a create — the same similar-rooms/peer-project checks,
+	// with nothing written — instead of committing it. See handleCreateRoom.
+	DryRun string `json:"dry_run"`
 }
 
 // GetOrCreateRoomInput represents the parameters for upserting a room.
@@ -42,6 +45,10 @@ type GetOrCreateRoomInput struct {
 	Visibility   string `json:"visibility"`
 	Repo         string `json:"repo"`
 	LastN        string `json:"last_n"`
+	// DryRun previews a create or backfill — the same similar-rooms checks and
+	// backfill-candidate list, with nothing written — instead of committing it.
+	// See handleGetOrCreateRoom.
+	DryRun string `json:"dry_run"`
 }
 
 // UpdateRoomInput represents the parameters for updating a room's metadata.
@@ -126,6 +133,18 @@ func (r *Registry) handleCreateRoom(ctx context.Context, req *mcp.CallToolReques
 		return msg(fmt.Sprintf("Error: room '%s' already exists on cluster node '%s'. Use post_to_room to participate in it, read_room(cluster_wide=true) to view it, or choose a different id.", args.ID, owner))
 	}
 
+	// dry_run: the same similar-rooms/peer-project preview a real create would
+	// show, with nothing written — so the caller sees a duplicate before it
+	// exists, not after. See #01a09b1e.
+	if args.DryRun == "true" {
+		var b strings.Builder
+		fmt.Fprintf(&b, "**Would create** room '%s'. Nothing written — remove dry_run to actually create it.\n", args.ID)
+		writeCreateRoomInfoLines(&b, args)
+		r.appendSimilarRooms(&b, args.ID, args.Topic, args.Project, args.Tags)
+		b.WriteString(r.peerProjectRoomsNote(args.Project, args.ID))
+		return msg(b.String())
+	}
+
 	if err := r.Server.CreateRoom(args.ID, args.Topic, args.Project, args.TechStack, args.Tags, args.SystemPrompt, args.RelatedRooms); err != nil {
 		r.Server.Logger.Error("Failed to create room", "id", args.ID, "error", err)
 		return nil, ToolOutput{}, err
@@ -157,31 +176,7 @@ func (r *Registry) handleCreateRoom(ctx context.Context, req *mcp.CallToolReques
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "Room '%s' created.\n", args.ID)
-	if args.Template != "" {
-		fmt.Fprintf(&b, "**Template:** %s\n", args.Template)
-	}
-	if args.Topic != "" {
-		fmt.Fprintf(&b, "**Topic:** %s\n", args.Topic)
-	}
-	if args.Project != "" {
-		fmt.Fprintf(&b, "**Project:** %s\n", args.Project)
-	}
-	if args.Tags != "" {
-		fmt.Fprintf(&b, "**Tags:** %s\n", args.Tags)
-	}
-	if args.RelatedRooms != "" {
-		fmt.Fprintf(&b, "**Related rooms:** %s (bidirectional links created)\n", args.RelatedRooms)
-	}
-	if args.Repo != "" {
-		fmt.Fprintf(&b, "**Repo:** %s ({sha:...} tokens resolve to commit links)\n", args.Repo)
-	}
-	if strings.EqualFold(strings.TrimSpace(args.Visibility), "private") {
-		fmt.Fprintf(&b, "**Visibility:** private (node-local — excluded from cluster fan-out)\n")
-	}
-
-	if args.RelatedRooms == "" {
-		fmt.Fprintf(&b, "\n**Tip:** No related_rooms set — link parent/sibling rooms for cross-room navigation.\n")
-	}
+	writeCreateRoomInfoLines(&b, args)
 
 	// Advisory duplicate check — never blocks creation.
 	r.appendSimilarRooms(&b, args.ID, args.Topic, args.Project, args.Tags)
@@ -190,6 +185,36 @@ func (r *Registry) handleCreateRoom(ctx context.Context, req *mcp.CallToolReques
 	b.WriteString(r.peerProjectRoomsNote(args.Project, args.ID))
 
 	return msg(b.String())
+}
+
+// writeCreateRoomInfoLines renders the metadata lines common to a committed
+// create and a dry_run preview — everything from the args the caller passed
+// in, so it needs no DB read.
+func writeCreateRoomInfoLines(b *strings.Builder, args CreateRoomInput) {
+	if args.Template != "" {
+		fmt.Fprintf(b, "**Template:** %s\n", args.Template)
+	}
+	if args.Topic != "" {
+		fmt.Fprintf(b, "**Topic:** %s\n", args.Topic)
+	}
+	if args.Project != "" {
+		fmt.Fprintf(b, "**Project:** %s\n", args.Project)
+	}
+	if args.Tags != "" {
+		fmt.Fprintf(b, "**Tags:** %s\n", args.Tags)
+	}
+	if args.RelatedRooms != "" {
+		fmt.Fprintf(b, "**Related rooms:** %s (bidirectional links created)\n", args.RelatedRooms)
+	}
+	if args.Repo != "" {
+		fmt.Fprintf(b, "**Repo:** %s ({sha:...} tokens resolve to commit links)\n", args.Repo)
+	}
+	if strings.EqualFold(strings.TrimSpace(args.Visibility), "private") {
+		fmt.Fprintf(b, "**Visibility:** private (node-local — excluded from cluster fan-out)\n")
+	}
+	if args.RelatedRooms == "" {
+		fmt.Fprintf(b, "\n**Tip:** No related_rooms set — link parent/sibling rooms for cross-room navigation.\n")
+	}
 }
 
 func (r *Registry) handleGetOrCreateRoom(ctx context.Context, req *mcp.CallToolRequest, args GetOrCreateRoomInput) (*mcp.CallToolResult, ToolOutput, error) {
@@ -219,6 +244,35 @@ func (r *Registry) handleGetOrCreateRoom(ctx context.Context, req *mcp.CallToolR
 		if owner, lerr := r.locateRoomOwner(args.ID); lerr == nil && owner != "" {
 			return msg(fmt.Sprintf("Error: room '%s' already exists on cluster node '%s'. Use post_to_room to participate in it, or read_room(cluster_wide=true) to view it.", args.ID, owner))
 		}
+
+		// dry_run: the same similar-rooms/peer-project preview a real create
+		// would show, with nothing written. See #01a09b1e.
+		if args.DryRun == "true" {
+			var b strings.Builder
+			fmt.Fprintf(&b, "**Would create** room '%s'. Nothing written — remove dry_run to actually create it.\n", args.ID)
+			if args.Topic != "" {
+				fmt.Fprintf(&b, "**Topic:** %s\n", args.Topic)
+			}
+			if args.Project != "" {
+				fmt.Fprintf(&b, "**Project:** %s\n", args.Project)
+			}
+			if args.Tags != "" {
+				fmt.Fprintf(&b, "**Tags:** %s\n", args.Tags)
+			}
+			if args.RelatedRooms != "" {
+				fmt.Fprintf(&b, "**Related rooms:** %s (bidirectional links created)\n", args.RelatedRooms)
+			}
+			if args.Repo != "" {
+				fmt.Fprintf(&b, "**Repo:** %s ({sha:...} tokens resolve to commit links)\n", args.Repo)
+			}
+			if strings.EqualFold(strings.TrimSpace(args.Visibility), "private") {
+				fmt.Fprintf(&b, "**Visibility:** private (node-local — excluded from cluster fan-out)\n")
+			}
+			r.appendSimilarRooms(&b, args.ID, args.Topic, args.Project, args.Tags)
+			b.WriteString(r.peerProjectRoomsNote(args.Project, args.ID))
+			return msg(b.String())
+		}
+
 		// Room doesn't exist — create it
 		if err := r.Server.CreateRoom(args.ID, args.Topic, args.Project, args.TechStack, args.Tags, args.SystemPrompt, args.RelatedRooms); err != nil {
 			r.Server.Logger.Error("Failed to create room", "id", args.ID, "error", err)
@@ -271,20 +325,31 @@ func (r *Registry) handleGetOrCreateRoom(ctx context.Context, req *mcp.CallToolR
 			bfRelated = args.RelatedRooms
 			backfilled = append(backfilled, "related_rooms")
 		}
-		if bfTopic != "" || bfProject != "" || bfTechStack != "" || bfTags != "" || bfSystemPrompt != "" || bfRelated != "" {
-			if err := r.Server.UpdateRoom(args.ID, bfTopic, bfProject, bfTechStack, bfTags, "", "", bfSystemPrompt, bfRelated); err != nil {
-				r.Server.Logger.Error("Failed to backfill room metadata", "id", args.ID, "error", err)
-			}
-		}
-		if args.Repo != "" && room.Repo == "" {
-			if err := r.Server.SetRepo(args.ID, args.Repo); err != nil {
-				r.Server.Logger.Error("Failed to backfill room repo", "id", args.ID, "error", err)
-			} else {
+		repoWouldBackfill := args.Repo != "" && room.Repo == ""
+
+		// dry_run: report what backfill would touch without writing it. Real path
+		// keeps the original semantics — "repo" is only reported once SetRepo
+		// actually succeeds.
+		if args.DryRun == "true" {
+			if repoWouldBackfill {
 				backfilled = append(backfilled, "repo")
 			}
-		}
-		if len(backfilled) > 0 {
-			room, _ = r.Server.GetRoom(args.ID)
+		} else {
+			if bfTopic != "" || bfProject != "" || bfTechStack != "" || bfTags != "" || bfSystemPrompt != "" || bfRelated != "" {
+				if err := r.Server.UpdateRoom(args.ID, bfTopic, bfProject, bfTechStack, bfTags, "", "", bfSystemPrompt, bfRelated); err != nil {
+					r.Server.Logger.Error("Failed to backfill room metadata", "id", args.ID, "error", err)
+				}
+			}
+			if repoWouldBackfill {
+				if err := r.Server.SetRepo(args.ID, args.Repo); err != nil {
+					r.Server.Logger.Error("Failed to backfill room repo", "id", args.ID, "error", err)
+				} else {
+					backfilled = append(backfilled, "repo")
+				}
+			}
+			if len(backfilled) > 0 {
+				room, _ = r.Server.GetRoom(args.ID)
+			}
 		}
 	}
 
@@ -307,7 +372,11 @@ func (r *Registry) handleGetOrCreateRoom(ctx context.Context, req *mcp.CallToolR
 	} else {
 		fmt.Fprintf(&b, "**Found** room '%s'.\n", room.ID)
 		if len(backfilled) > 0 {
-			fmt.Fprintf(&b, "**Backfilled** (were empty): %s\n", strings.Join(backfilled, ", "))
+			if args.DryRun == "true" {
+				fmt.Fprintf(&b, "**Would backfill** (empty, not written — remove dry_run to write): %s\n", strings.Join(backfilled, ", "))
+			} else {
+				fmt.Fprintf(&b, "**Backfilled** (were empty): %s\n", strings.Join(backfilled, ", "))
+			}
 		}
 	}
 	fmt.Fprintf(&b, "**%s** [%s]\n", room.ID, room.Status)

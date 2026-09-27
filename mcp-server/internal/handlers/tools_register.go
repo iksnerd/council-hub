@@ -13,10 +13,11 @@ import (
 func (r *Registry) RegisterTools() {
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "create_room",
-		Description: "Create a new council room (virtual workspace) for a topic or task. Prefer get_or_create_room — it returns existing content instead of silently no-opping on a name clash, avoiding duplicate rooms. Does nothing if the room already exists. Related rooms are automatically linked in both directions. Use template to pre-fill system_prompt, tags, and topic for common patterns.",
+		Description: "Create a new council room (virtual workspace) for a topic or task. Prefer get_or_create_room — it returns existing content instead of silently no-opping on a name clash, avoiding duplicate rooms. Does nothing if the room already exists. Related rooms are automatically linked in both directions. Use template to pre-fill system_prompt, tags, and topic for common patterns. Pass dry_run=true to preview the similar-rooms check before a duplicate exists, instead of after.",
 		InputSchema: schema(nil, map[string]map[string]any{
 			"id":      prop("string", "Unique room identifier (e.g. auth-migration-v2). Node-local: it cannot see a room owned by a cluster peer, so on a project that spans machines run list_rooms(project=..., cluster_wide=true) first. Creating anyway will name any peer rooms in the same project."),
 			"room_id": prop("string", "Alias for id — either spelling is accepted"),
+			"dry_run": prop("string", "Set to 'true' to preview — same similar-rooms and peer-project checks, nothing written. Check this before a real call whenever a name/topic/tags collision is plausible; otherwise the duplicate already exists by the time the advisory notice shows it."),
 			"template": prop("string", "Pre-fill system_prompt, tags, and topic for a common pattern. "+
 				"Available templates — brainstorm (open-ended idea exploration; tags: brainstorm,exploration), "+
 				"bug (single bug investigation lifecycle; tags: bug,investigation), "+
@@ -37,10 +38,11 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "get_or_create_room",
-		Description: "Get an existing room (with recent messages) or create it if it does not exist. Prefer this over create_room in almost all cases — it returns existing content, avoids duplicates, and saves 2-3 round trips. On an existing room it also backfills metadata: any of topic/project/tech_stack/tags/system_prompt/related_rooms/repo you pass that the room is still missing gets filled in (gap-fill only — an already-set field is never overwritten; use update_room to change one). So a room created before a project/tag convention can adopt it just by calling get_or_create_room again with the field set.",
+		Description: "Get an existing room (with recent messages) or create it if it does not exist. Prefer this over create_room in almost all cases — it returns existing content, avoids duplicates, and saves 2-3 round trips. On an existing room it also backfills metadata: any of topic/project/tech_stack/tags/system_prompt/related_rooms/repo you pass that the room is still missing gets filled in (gap-fill only — an already-set field is never overwritten; use update_room to change one). So a room created before a project/tag convention can adopt it just by calling get_or_create_room again with the field set. Pass dry_run=true to preview the create/backfill (including the similar-rooms check) before anything is written.",
 		InputSchema: schema(nil, map[string]map[string]any{
 			"id":            prop("string", "Room identifier \u2014 returns existing room if found, creates if not. Node-local: it cannot see a room owned by a cluster peer, so on a project that spans machines run list_rooms(project=..., cluster_wide=true) first. Creating anyway will name any peer rooms in the same project."),
 			"room_id":       prop("string", "Alias for id — either spelling is accepted"),
+			"dry_run":       prop("string", "Set to 'true' to preview — same similar-rooms/peer-project checks and backfill-candidate list, nothing written. Check this before a real call whenever a name/topic/tags collision is plausible; otherwise the duplicate already exists by the time the advisory notice shows it."),
 			"topic":         prop("string", "Topic (set on create; backfilled on an existing room only if its topic is empty)"),
 			"project":       prop("string", "Project grouping (set on create; backfilled on an existing room only if its project is empty)"),
 			"tech_stack":    prop("string", "Technologies (set on create; backfilled on an existing room only if its tech_stack is empty)"),

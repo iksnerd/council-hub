@@ -538,3 +538,100 @@ func TestRoomToolsNameBothSpellingsWhenMissing(t *testing.T) {
 		t.Errorf("expected the accepted alias to be named, got: %s", text)
 	}
 }
+
+// ========== dry_run: preview a create without committing it ==========
+
+func TestHandleCreateRoomDryRunDoesNotCreate(t *testing.T) {
+	reg := setupHandlerTest(t)
+
+	res, _, err := reg.handleCreateRoom(context.Background(), nil, CreateRoomInput{
+		ID: "dry-run-room", Topic: "Dry run test", DryRun: "true",
+	})
+	if err != nil {
+		t.Fatalf("handleCreateRoom error: %v", err)
+	}
+	text := resultText(res)
+	if !strings.Contains(text, "Would create") {
+		t.Errorf("expected a 'Would create' preview, got: %s", text)
+	}
+	if _, gerr := reg.Server.GetRoom("dry-run-room"); gerr == nil {
+		t.Error("dry_run should not have created the room")
+	}
+}
+
+func TestHandleCreateRoomDryRunShowsSimilarRooms(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "existing-auth-dry", withProject("myapp"), withTags("go,auth,api"))
+
+	res, _, _ := reg.handleCreateRoom(context.Background(), nil, CreateRoomInput{
+		ID: "new-auth-dry", Topic: "Authentication service", Project: "myapp", Tags: "go,auth,backend", DryRun: "true",
+	})
+	text := resultText(res)
+	if !strings.Contains(text, "Similar room") || !strings.Contains(text, "existing-auth-dry") {
+		t.Errorf("expected the similar-room notice before committing, got: %s", text)
+	}
+	if _, gerr := reg.Server.GetRoom("new-auth-dry"); gerr == nil {
+		t.Error("dry_run should not create even when a similar room is found")
+	}
+}
+
+func TestHandleCreateRoomDryRunAlreadyExists(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "already-there")
+
+	res, _, _ := reg.handleCreateRoom(context.Background(), nil, CreateRoomInput{ID: "already-there", DryRun: "true"})
+	if !strings.Contains(resultText(res), "already exists") {
+		t.Errorf("expected the existing no-op message, got: %s", resultText(res))
+	}
+}
+
+func TestHandleGetOrCreateRoomDryRunDoesNotCreate(t *testing.T) {
+	reg := setupHandlerTest(t)
+
+	res, _, err := reg.handleGetOrCreateRoom(context.Background(), nil, GetOrCreateRoomInput{
+		ID: "goc-dry-room", Topic: "GOC dry run", DryRun: "true",
+	})
+	if err != nil {
+		t.Fatalf("handleGetOrCreateRoom error: %v", err)
+	}
+	text := resultText(res)
+	if !strings.Contains(text, "Would create") {
+		t.Errorf("expected a 'Would create' preview, got: %s", text)
+	}
+	if _, gerr := reg.Server.GetRoom("goc-dry-room"); gerr == nil {
+		t.Error("dry_run should not have created the room")
+	}
+}
+
+func TestHandleGetOrCreateRoomDryRunShowsSimilarRooms(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "existing-cache-dry", withProject("perf"), withTags("redis,caching,backend"))
+
+	res, _, _ := reg.handleGetOrCreateRoom(context.Background(), nil, GetOrCreateRoomInput{
+		ID: "new-cache-dry", Topic: "Cache design", Project: "perf", Tags: "redis,caching,go", DryRun: "true",
+	})
+	text := resultText(res)
+	if !strings.Contains(text, "Similar room") || !strings.Contains(text, "existing-cache-dry") {
+		t.Errorf("expected the similar-room notice before committing, got: %s", text)
+	}
+	if _, gerr := reg.Server.GetRoom("new-cache-dry"); gerr == nil {
+		t.Error("dry_run should not create even when a similar room is found")
+	}
+}
+
+func TestHandleGetOrCreateRoomDryRunExistingRoomNoBackfillWrite(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "goc-dry-existing")
+
+	res, _, _ := reg.handleGetOrCreateRoom(context.Background(), nil, GetOrCreateRoomInput{
+		ID: "goc-dry-existing", Project: "diffwire", Tags: "cli,go", DryRun: "true",
+	})
+	text := resultText(res)
+	if !strings.Contains(text, "Would backfill") {
+		t.Errorf("expected a 'Would backfill' preview, got: %s", text)
+	}
+	room, _ := reg.Server.GetRoom("goc-dry-existing")
+	if room.Project != "" || room.Tags != "" {
+		t.Errorf("dry_run should not have written project/tags, got project=%q tags=%q", room.Project, room.Tags)
+	}
+}
