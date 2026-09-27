@@ -4,6 +4,22 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.62.0] - 2026-09-28
+
+### Added
+- **`dry_run` on `create_room`/`get_or_create_room`.** Both tools showed the "similar room(s) already exist" advisory only after the room had already been created, so the duplicate always existed by the time the caller saw it (filed 2026-06-16, still true as of v0.57.0). `dry_run=true` now runs the same similar-rooms/peer-project checks — and on `get_or_create_room`, the same backfill-candidate detection — with nothing written. Default behavior is unchanged.
+- **Channel-plugin debug logging.** `COUNCIL_CHANNEL_DEBUG` now logs a tick line, a self-skip line, and a delivered line, so "the plugin is broken," "detecting nothing," and "detecting but the client never surfaces it" are distinguishable from outside instead of producing identical evidence. Diagnosing a silent channel dropped from three inconclusive experiments to one ~60-second run. The channel plugin runs from source, not the image, so it needed no release on its own — it ships now as part of this one.
+
+### Changed
+- **Revision-chain walks are a single recursive query.** `headOfRevisionChain` and `GetRevisionHistory`'s backward walk each queried once per version in a message's edit chain, serialized behind the single shared connection. Both are now one `WITH RECURSIVE` query, still bounded at depth 1000 against a cycle. `GetOutline`'s per-`ref`-entry revision-chain resolution drops from O(chain length) to O(1) as a result.
+
+### Fixed
+- **`read_notebook`/`get_digest` now say how to fix an oversized-result error, not just how to filter.** Both tools already had the fix (`level`/`status` and `limit`, both since v0.60.0), but neither description said so, and `get_digest`'s `limit` param wasn't mentioned in the description text at all — a caller hitting the harness's generic "read the saved file" error had no way to discover the cheaper re-call.
+- **Channel-plugin docs named a bare `--dangerously-load-development-channels`, which silently drops every event.** The flag takes a server-reference argument; without it, Claude Code discards channel events with no error to the plugin and no warning in the session, while every other surface (MCP tools, `list_watched_rooms`, the plugin's own debug log) reads healthy. All call sites now name the server explicitly, and the docs explain what the debug log's "sent to transport" line does and does not prove.
+
+### Docs
+- Cluster self-diagnosis (`/health`'s `seed_status`/`advertised_warning`), `COUNCIL_GOSSIP`, and `COUNCIL_NODE_AUTODETECTED` reached the README/DOCKERHUB tables a deployer actually reads, not just `docs/configuration.md` and CLAUDE.md. Memory-footprint numbers added to `deployment-and-performance.md` (~180–240 MiB full, ~12 MiB with `COUNCIL_UI=off`).
+
 ## [0.61.1] - 2026-09-21
 
 ### Fixed

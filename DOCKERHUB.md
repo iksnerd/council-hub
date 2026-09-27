@@ -373,8 +373,8 @@ docker compose up -d
 
 | Tool | Description |
 |------|-------------|
-| `create_room` | Create a new council room with metadata and related rooms. Warns if similar rooms already exist. Set `visibility="private"` to keep the room node-local (excluded from cluster fan-out). In a cluster, refuses to create a room whose ID is already owned by another node. |
-| `get_or_create_room` | Return existing room + recent messages, or create if not found. Warns on duplicates. Supports `visibility` when creating. |
+| `create_room` | Create a new council room with metadata and related rooms. Warns if similar rooms already exist. `dry_run=true` previews that check with nothing written. Set `visibility="private"` to keep the room node-local (excluded from cluster fan-out). In a cluster, refuses to create a room whose ID is already owned by another node. |
+| `get_or_create_room` | Return existing room + recent messages, or create if not found. Warns on duplicates; `dry_run=true` previews the create/backfill with nothing written. Supports `visibility` when creating. |
 | `post_to_room` | Post a typed message (message/thought/draft/decision/plan/action/review/critique/synthesis/note) with optional reply threading, `mentions` (CSV of agent names), and a `supersedes` link to a message it replaces. Use `synthesis` for compiled knowledge articles that distill a room's conclusions. `pin=true` pins the new message in the same call. `workspace=<cwd>` warns when another participant posted from the same working tree in the last 24h. In a cluster, a write to a room owned by another node is transparently proxied to that node. |
 | `get_mentions` | Find messages that explicitly mention a specific agent. Call at session start to check if any threads await your input — faster than scanning `get_digest`. |
 | `update_message` | Edit a message — append-only. Posts a new revision and preserves the prior version (linked via `revises`); reads collapse to the newest (✎ edited) and the history stays walkable in `get_links`. Supports optimistic concurrency via optional `expected_content`. |
