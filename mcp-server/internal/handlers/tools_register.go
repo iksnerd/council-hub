@@ -469,7 +469,8 @@ func (r *Registry) RegisterTools() {
 		Description: "Read a project's dev notebook — which of two things you get depends on the param you pass. " +
 			"project=… → the TIMELINE: a live query over the ledger, nothing stored. Typed messages (decision, plan, action, synthesis, note) from every room in the project, woven chronologically and grouped by day, with {sha:…} refs resolved. Use it to see how a project unfolded — standups, retros, onboarding. " +
 			"notebook_id=… → a curated NOTEBOOK: a stored outline you assemble with edit_notebook, interleaving prose with transcluded messages and rooms (refs resolve live; nothing is copied). Work items self-sort — room_refs by their room's status, tasks by their own — so a standing list like current-work stays true without hand-editing. Use it for a hand-curated document or a work list. " +
-			"Timeline-only params: types, since, until, after_id (delta reads — the JSON footer carries latest_message_id), limit, cluster_wide. Notebook-only: level. The timeline footer lists the project's notebooks. Notebooks are node-local.",
+			"On a large notebook, an oversized-result error means retry with level=1,status=open, not re-reading a saved file — that combination has cut a 237-entry notebook by over 90%. " +
+			"Timeline-only params: types, since, until, after_id (delta reads — the JSON footer carries latest_message_id), limit, cluster_wide. Notebook-only: level, status. The timeline footer lists the project's notebooks. Notebooks are node-local.",
 		InputSchema: schema(nil, map[string]map[string]any{
 			"project":      prop("string", "Project whose rooms are compiled into the timeline (use this OR notebook_id)."),
 			"notebook_id":  prop("string", "Curated notebook outline to read (use this OR project). Created via edit_notebook(action=create)."),
@@ -554,6 +555,7 @@ func (r *Registry) RegisterTools() {
 		Description: "Get a project activity and knowledge health digest as JSON: {summary, rooms}. The summary header tallies total / with_unread / stale / needs_synthesis / stale_pin / incoherent so you can triage at scale (\"35 stale, skip the graveyard\") without scanning every entry. Each rooms[] entry has room_id, new_messages, latest_message_id, latest_excerpt, tags, decision_count, synthesis_count. " +
 			"Rooms flagged by check_room_health (stale, needs-synthesis, incoherent) are included. Call second at session start (after get_mentions) to see what changed and what needs attention. " +
 			"Machine-readable — parse rooms[].room_id and rooms[].latest_message_id directly for delta reads. " +
+			"On a project with hundreds of rooms, an oversized-result error means retry with limit=N — nothing else bounds rooms[] count, and unread_only/exclude_stale filter by state, not count. " +
 			"Set unread_only=true (with agent=<your-name>) to show only rooms with messages newer than your stored cursor — ideal for returning sessions after using mark_read. " +
 			"Set exclude_stale=true to drop the inactive-room graveyard (rooms flagged `stale` with no new activity) from rooms[]; the summary still reports how many were hidden. " +
 			"When a project filter matches no rooms, the response adds a top-level `hint` explaining the filter is exact-match and pointing at list_rooms(search=…).",
