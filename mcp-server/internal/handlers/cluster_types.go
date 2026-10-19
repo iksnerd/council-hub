@@ -45,6 +45,11 @@ type ClusterRoomResult struct {
 	CreatedAt    string `json:"created_at"`
 	UpdatedAt    string `json:"updated_at"`
 	SourceNode   string `json:"source_node"`
+	// MessageCount is a pointer so a peer that predates the field (nil) is not
+	// shown as an empty room. PinnedExcerpt is "" when nothing is pinned. The
+	// read cursor is deliberately not carried: it is node-local state.
+	MessageCount  *int   `json:"message_count"`
+	PinnedExcerpt string `json:"pinned_excerpt"`
 }
 
 // ClusterStatsResult represents room stats from a cluster-wide query.

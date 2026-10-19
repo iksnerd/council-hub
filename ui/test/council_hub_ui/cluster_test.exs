@@ -107,6 +107,27 @@ defmodule CouncilHubUi.ClusterTest do
       assert result.warnings == []
     end
 
+    test "rooms carry message_count and pinned_excerpt for the node that owns them" do
+      create_room(%{id: "cluster-counts", project: "proj-counts"})
+      create_message(%{room_id: "cluster-counts", content: "one"})
+      create_message(%{room_id: "cluster-counts", content: "two", revised: 1})
+
+      create_message(%{
+        room_id: "cluster-counts",
+        content: "Pinned\nsummary of the room",
+        pinned: true
+      })
+
+      create_room(%{id: "cluster-counts-empty", project: "proj-counts"})
+
+      rooms = Cluster.list_rooms(%{"project" => "proj-counts"}).results |> Map.new(&{&1.id, &1})
+
+      assert rooms["cluster-counts"].message_count == 2
+      assert rooms["cluster-counts"].pinned_excerpt == "Pinned summary of the room"
+      assert rooms["cluster-counts-empty"].message_count == 0
+      assert rooms["cluster-counts-empty"].pinned_excerpt == ""
+    end
+
     test "returns all rooms with empty filters" do
       create_room(%{id: "cluster-all-a"})
       create_room(%{id: "cluster-all-b"})

@@ -266,7 +266,7 @@ type ListedRoom struct {
 
 // ListRoomsOutput is list_rooms' structured output. OmittedResolved counts the
 // resolved rooms the default view hid (on a cluster read, the distinct resolved
-// rooms across reachable nodes). Pinned excerpts are local-only: peers do not send them.
+// rooms across reachable nodes).
 type ListRoomsOutput struct {
 	Rooms           []ListedRoom `json:"rooms"`
 	Warnings        []string     `json:"warnings"`
@@ -303,14 +303,15 @@ func splitCSV(s string) []string {
 
 func listedRoomFromCluster(rm ClusterRoomResult) ListedRoom {
 	return ListedRoom{
-		ID:           rm.ID,
-		Topic:        rm.Description,
-		Status:       rm.Status,
-		Project:      rm.Project,
-		Tags:         splitCSV(rm.Tags),
-		RelatedRooms: splitCSV(rm.RelatedRooms),
-		SourceNode:   rm.SourceNode,
-		Updated:      rm.UpdatedAt,
+		ID:            rm.ID,
+		Topic:         rm.Description,
+		Status:        rm.Status,
+		Project:       rm.Project,
+		Tags:          splitCSV(rm.Tags),
+		RelatedRooms:  splitCSV(rm.RelatedRooms),
+		SourceNode:    rm.SourceNode,
+		Updated:       rm.UpdatedAt,
+		PinnedExcerpt: listedPin(rm),
 	}
 }
 

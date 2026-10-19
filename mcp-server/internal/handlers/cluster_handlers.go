@@ -749,8 +749,18 @@ func (r *Registry) handleListRoomsCluster(args ListRoomsInput) (*mcp.CallToolRes
 		}
 		localRooms, err := r.Server.ListRoomsFiltered(opts)
 		if err == nil {
+			ids := make([]string, len(localRooms))
+			for i, rm := range localRooms {
+				ids[i] = rm.ID
+			}
+			counts := r.Server.GetMessageCounts()
+			pins := r.Server.GetPinnedExcerpts(ids)
 			for _, rm := range localRooms {
-				results = append(results, clusterRoomFromLocal(rm))
+				cr := clusterRoomFromLocal(rm)
+				n := counts[rm.ID]
+				cr.MessageCount = &n
+				cr.PinnedExcerpt = pins[rm.ID]
+				results = append(results, cr)
 			}
 		}
 	}
@@ -892,7 +902,16 @@ func (r *Registry) renderClusterRooms(args ListRoomsInput, results []ClusterRoom
 			if len(updatedAt) > 16 {
 				updatedAt = updatedAt[:16]
 			}
-			fmt.Fprintf(&b, "- [%s] **%s** | %s | %s | %s | %s\n", rm.SourceNode, rm.ID, project, rm.Status, topic, updatedAt)
+			// Message count and pinned excerpt come from the owning node; the read
+			// cursor is node-local, so it is not shown here.
+			counts := ""
+			if rm.MessageCount != nil {
+				counts = fmt.Sprintf(" | %d msgs", *rm.MessageCount)
+			}
+			if pin := listedPin(rm); pin != "" {
+				counts += " | 📌 " + pin
+			}
+			fmt.Fprintf(&b, "- [%s] **%s** | %s | %s%s | %s | %s\n", rm.SourceNode, rm.ID, project, rm.Status, counts, topic, updatedAt)
 		}
 	} else {
 		for _, rm := range results {
@@ -904,6 +923,9 @@ func (r *Registry) renderClusterRooms(args ListRoomsInput, results []ClusterRoom
 				fmt.Fprintf(&b, " | tags: %s", rm.Tags)
 			}
 			fmt.Fprintf(&b, "\n  %s\n", rm.Description)
+			if pin := listedPin(rm); pin != "" {
+				fmt.Fprintf(&b, "  📌 %s\n", pin)
+			}
 			if rm.TechStack != "" {
 				fmt.Fprintf(&b, "  Tech: %s\n", rm.TechStack)
 			}
@@ -1042,4 +1064,10 @@ func (r *Registry) renderClusterStats(results []ClusterStatsResult, warnings []s
 
 	formatClusterWarnings(&b, warnings)
 	return msg(b.String())
+}
+
+// listedPin is a peer's pinned excerpt flattened to one line and clipped to the
+// same width as the local listing.
+func listedPin(rm ClusterRoomResult) string {
+	return council.TruncateRunes(strings.ReplaceAll(rm.PinnedExcerpt, "\n", " "), 60, " ", 40)
 }

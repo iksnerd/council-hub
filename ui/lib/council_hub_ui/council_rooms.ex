@@ -53,6 +53,49 @@ defmodule CouncilHubUi.CouncilRooms do
   end
 
   @doc """
+  `list_rooms_filtered/1` plus two per-room extras the cluster listing shows:
+  `message_count` (head revisions, as Go GetMessageCounts) and `pinned_excerpt`
+  (the pinned head message, one line, tombstone-masked; "" when none). Computed
+  on the node that owns each room, since every node has its own database. The
+  read cursor is deliberately absent: it is node-local.
+  """
+  def list_rooms_for_cluster(params) when is_map(params) do
+    rooms = list_rooms_filtered(params)
+    ids = Enum.map(rooms, & &1.id)
+
+    counts =
+      from(m in Message,
+        where: m.room_id in ^ids,
+        group_by: m.room_id,
+        select: {m.room_id, count(m.id)}
+      )
+      |> head_revisions()
+      |> Repo.all()
+      |> Map.new()
+
+    pins =
+      from(m in Message, where: m.room_id in ^ids and m.pinned == true)
+      |> head_revisions()
+      |> Repo.all()
+      |> Map.new(&{&1.room_id, pin_excerpt(&1)})
+
+    Enum.map(rooms, fn room ->
+      room
+      |> Map.put(:message_count, Map.get(counts, room.id, 0))
+      |> Map.put(:pinned_excerpt, Map.get(pins, room.id, ""))
+    end)
+  end
+
+  defp pin_excerpt(%{retracted_at: %NaiveDateTime{}, retracted_by: by}) when by not in [nil, ""],
+    do: "[retracted by #{by}]"
+
+  defp pin_excerpt(%{retracted_at: %NaiveDateTime{}}), do: "[retracted]"
+
+  defp pin_excerpt(%{content: content}) do
+    content |> String.replace(~r/\s+/, " ") |> String.trim() |> String.slice(0, 120)
+  end
+
+  @doc """
   Id, status and visibility of every room matching the `list_rooms_filtered/1`
   filters, with no limit. Backs the cluster's resolved-room count, which needs
   every match and none of the row bodies.

@@ -313,6 +313,8 @@ defmodule CouncilHubUiWeb.ClusterController do
       visibility: Map.get(room, :visibility, "public"),
       repo: Map.get(room, :repo, ""),
       work_items: Map.get(room, :work_items, ""),
+      message_count: Map.get(room, :message_count, 0),
+      pinned_excerpt: Map.get(room, :pinned_excerpt, ""),
       created_at: format_datetime(room.created_at),
       updated_at: format_datetime(room.updated_at),
       source_node: Map.get(room, :source_node, nil)

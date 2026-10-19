@@ -255,6 +255,8 @@ defmodule CouncilHubUiWeb.ClusterControllerTest do
       assert room["tags"] == "tag1"
       assert room["description"] == "desc"
       assert room["status"] == "active"
+      assert room["message_count"] == 0
+      assert room["pinned_excerpt"] == ""
       assert room["created_at"] != nil
       assert room["updated_at"] != nil
       assert room["source_node"] != nil

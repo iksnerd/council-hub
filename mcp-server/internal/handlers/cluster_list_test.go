@@ -416,3 +416,39 @@ func TestHandleListRoomsClusterReportsOmittedResolved(t *testing.T) {
 		t.Errorf("status=all should not count: omitted=%d refs=%v", out.OmittedResolved, refsParams)
 	}
 }
+
+func TestHandleListRoomsClusterShowsCountAndPin(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"results": []map[string]any{
+				{"id": "pinned-room", "description": "topic one", "status": "active", "project": "p", "updated_at": "2026-04-01T12:00:00",
+					"message_count": 7, "pinned_excerpt": "Final answer: ship it", "source_node": "a@1"},
+				{"id": "plain-room", "description": "topic two", "status": "active", "project": "p", "updated_at": "2026-04-01T11:00:00",
+					"message_count": 0, "pinned_excerpt": "", "source_node": "a@1"},
+				{"id": "old-peer-room", "description": "topic three", "status": "active", "project": "p", "updated_at": "2026-04-01T10:00:00", "source_node": "b@1"},
+			},
+			"warnings": []string{},
+		})
+	}))
+	defer server.Close()
+
+	reg := &Registry{HTTPClient: &http.Client{Timeout: 5 * time.Second}, PhoenixURL: server.URL}
+	result, out, err := reg.handleListRoomsCluster(ListRoomsInput{Status: "all"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := resultText(result)
+	if !strings.Contains(text, "**pinned-room** | p | active | 7 msgs | 📌 Final answer: ship it | topic one") {
+		t.Errorf("count/pin missing from compact line: %s", text)
+	}
+	if !strings.Contains(text, "**plain-room** | p | active | 0 msgs | topic two") {
+		t.Errorf("zero count missing: %s", text)
+	}
+	if strings.Contains(text, "old-peer-room** | p | active | 0 msgs") {
+		t.Errorf("older peer without a count must not claim 0 msgs: %s", text)
+	}
+	if out.Rooms[0].PinnedExcerpt != "Final answer: ship it" {
+		t.Errorf("structured pinned_excerpt missing: %+v", out.Rooms[0])
+	}
+}

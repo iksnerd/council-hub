@@ -37,7 +37,7 @@ defmodule CouncilHubUi.Cluster do
   """
   def list_rooms(params) do
     {results, warnings} =
-      fan_out(:list_rooms_filtered, [params])
+      fan_out(:list_rooms_for_cluster, [params])
 
     merged =
       results
