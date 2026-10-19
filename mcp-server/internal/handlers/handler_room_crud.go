@@ -64,8 +64,10 @@ type UpdateRoomInput struct {
 	RemoveTags   string `json:"remove_tags"`
 	SystemPrompt string `json:"system_prompt"`
 	RelatedRooms string `json:"related_rooms"`
-	Visibility   string `json:"visibility"`
-	Repo         string `json:"repo"`
+	// AddRelatedRooms merges into the existing list instead of replacing it.
+	AddRelatedRooms string `json:"add_related_rooms"`
+	Visibility      string `json:"visibility"`
+	Repo            string `json:"repo"`
 }
 
 // ReadRoomInput represents the parameters for reading a room's metadata.
@@ -481,8 +483,12 @@ func (r *Registry) handleUpdateRoom(ctx context.Context, req *mcp.CallToolReques
 		return msg("Error: room_id, room_ids, or where_project is required.")
 	}
 
-	if args.Topic == "" && args.Project == "" && args.TechStack == "" && args.Tags == "" && args.AddTags == "" && args.RemoveTags == "" && args.SystemPrompt == "" && args.RelatedRooms == "" && args.Visibility == "" && args.Repo == "" {
-		return msg("Error: at least one field to update must be provided (topic, project, tech_stack, tags, add_tags, remove_tags, system_prompt, related_rooms, visibility, repo).")
+	if args.RelatedRooms != "" && args.AddRelatedRooms != "" {
+		return msg("Error: pass either related_rooms (replace the whole list) or add_related_rooms (merge), not both.")
+	}
+
+	if args.Topic == "" && args.Project == "" && args.TechStack == "" && args.Tags == "" && args.AddTags == "" && args.RemoveTags == "" && args.SystemPrompt == "" && args.RelatedRooms == "" && args.AddRelatedRooms == "" && args.Visibility == "" && args.Repo == "" {
+		return msg("Error: at least one field to update must be provided (topic, project, tech_stack, tags, add_tags, remove_tags, system_prompt, related_rooms, add_related_rooms, visibility, repo).")
 	}
 
 	var updated []string
@@ -510,6 +516,9 @@ func (r *Registry) handleUpdateRoom(ctx context.Context, req *mcp.CallToolReques
 	if args.RelatedRooms != "" {
 		updated = append(updated, "related_rooms")
 	}
+	if args.AddRelatedRooms != "" {
+		updated = append(updated, "add_related_rooms")
+	}
 	if args.Visibility != "" {
 		updated = append(updated, "visibility")
 	}
@@ -520,7 +529,17 @@ func (r *Registry) handleUpdateRoom(ctx context.Context, req *mcp.CallToolReques
 
 	var b strings.Builder
 	for _, id := range ids {
-		if err := r.Server.UpdateRoom(id, args.Topic, args.Project, args.TechStack, args.Tags, args.AddTags, args.RemoveTags, args.SystemPrompt, args.RelatedRooms); err != nil {
+		related := args.RelatedRooms
+		var before []string
+		if args.RelatedRooms != "" || args.AddRelatedRooms != "" {
+			if cur, gerr := r.Server.GetRoom(id); gerr == nil {
+				before = splitIDList(cur.RelatedRooms)
+			}
+			if args.AddRelatedRooms != "" {
+				related = strings.Join(mergeIDLists(before, splitIDList(args.AddRelatedRooms)), ",")
+			}
+		}
+		if err := r.Server.UpdateRoom(id, args.Topic, args.Project, args.TechStack, args.Tags, args.AddTags, args.RemoveTags, args.SystemPrompt, related); err != nil {
 			fmt.Fprintf(&b, "Error updating '%s': %s\n", id, err.Error())
 			continue
 		}
@@ -538,6 +557,14 @@ func (r *Registry) handleUpdateRoom(ctx context.Context, req *mcp.CallToolReques
 		}
 		r.Server.Logger.Info("Room updated", "room_id", id, "fields", fieldsLabel)
 		fmt.Fprintf(&b, "Room '%s' updated: %s.\n", id, fieldsLabel)
+		if args.RelatedRooms != "" {
+			if removed := subtractIDs(before, splitIDList(args.RelatedRooms)); len(removed) > 0 {
+				fmt.Fprintf(&b, "Removed related rooms: %s. related_rooms replaces the whole list; use add_related_rooms to merge instead.\n", strings.Join(removed, ", "))
+			}
+			fmt.Fprintf(&b, "Related rooms now: %s\n", args.RelatedRooms)
+		} else if args.AddRelatedRooms != "" {
+			fmt.Fprintf(&b, "Related rooms now: %s\n", related)
+		}
 	}
 
 	// For single-room updates, append current state (backward-compatible behaviour)
@@ -564,6 +591,34 @@ func (r *Registry) handleUpdateRoom(ctx context.Context, req *mcp.CallToolReques
 	}
 
 	return msg(strings.TrimRight(b.String(), "\n"))
+}
+
+// mergeIDLists appends the IDs of add not already in base, preserving order.
+func mergeIDLists(base, add []string) []string {
+	seen := map[string]bool{}
+	out := make([]string, 0, len(base)+len(add))
+	for _, id := range append(append([]string{}, base...), add...) {
+		if !seen[id] {
+			seen[id] = true
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+// subtractIDs returns the IDs in before that are absent from after.
+func subtractIDs(before, after []string) []string {
+	keep := map[string]bool{}
+	for _, id := range after {
+		keep[id] = true
+	}
+	var out []string
+	for _, id := range before {
+		if !keep[id] {
+			out = append(out, id)
+		}
+	}
+	return out
 }
 
 func (r *Registry) handleReadRoom(ctx context.Context, req *mcp.CallToolRequest, args ReadRoomInput) (*mcp.CallToolResult, ToolOutput, error) {
