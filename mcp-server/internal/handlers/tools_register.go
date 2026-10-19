@@ -322,9 +322,10 @@ func (r *Registry) RegisterTools() {
 		Name:        "get_mentions",
 		Description: "Find messages mentioning an agent. The match is a case-insensitive SUBSTRING of the mentions list, not an exact agent match, so a name that is a prefix of another ('claude' vs 'claude-code') returns both, and a name spelled differently from how it was mentioned ('gemini-cli' vs 'Gemini CLI') returns neither. Use one stable, distinctive author name per agent. Call this at session start to check if any threads await your input before running get_digest. Returns recent messages where the agent was mentioned via the mentions param in post_to_room, ordered newest-first. Pass project to scope mentions to one project's rooms — mirrors get_digest(project) so the session-start pair stays consistent.",
 		InputSchema: schema([]string{"author"}, map[string]map[string]any{
-			"author":  prop("string", "Agent name to search mentions for (e.g. 'claude', 'gemini-cli'). Matched as a case-insensitive substring, so keep it stable and distinctive — read cursors (mark_read) key off the same string, and changing it replays your whole backlog"),
-			"project": prop("string", "Optionally scope mentions to rooms in this project (slug-normalized, same as get_digest)"),
-			"limit":   prop("string", "Max results to return (default 20, max 100)"),
+			"author":       prop("string", "Agent name to search mentions for (e.g. 'claude', 'gemini-cli'). Matched as a case-insensitive substring, so keep it stable and distinctive — read cursors (mark_read) key off the same string, and changing it replays your whole backlog"),
+			"project":      prop("string", "Optionally scope mentions to rooms in this project (slug-normalized, same as get_digest)"),
+			"cluster_wide": prop("string", "Set to 'true' to also search mentions on all cluster nodes. Default: local only (the reply then ends with a 'local node only; N nodes in the cluster' line when peers exist)."),
+			"limit":        prop("string", "Max results to return (default 20, max 100)"),
 		}),
 	}, r.handleGetMentions)
 
@@ -561,7 +562,7 @@ func (r *Registry) RegisterTools() {
 		Description: "Get a project activity and knowledge health digest as JSON: {summary, rooms}. The summary header tallies total / with_unread / stale / needs_synthesis / stale_pin / incoherent so you can triage at scale (\"35 stale, skip the graveyard\") without scanning every entry. Each rooms[] entry has room_id, new_messages, latest_message_id, latest_excerpt, tags, decision_count, synthesis_count. " +
 			"Rooms flagged by check_room_health (stale, needs-synthesis, incoherent) are included. Call second at session start (after get_mentions) to see what changed and what needs attention. " +
 			"Machine-readable — parse rooms[].room_id and rooms[].latest_message_id directly for delta reads. " +
-			"On a project with hundreds of rooms, an oversized-result error means retry with limit=N — nothing else bounds rooms[] count, and unread_only/exclude_stale filter by state, not count. " +
+			"On a project with hundreds of rooms, an oversized-result error means retry with limit=N (or brief=true) — nothing else bounds rooms[] count, and exclude_stale filters by state, not count. unread_only is capped at 30 rooms by default (most unread first); limit=all lifts it. summary.truncated reports how many rooms limit omitted. " +
 			"Set unread_only=true (with agent=<your-name>) to show only rooms with messages newer than your stored cursor — ideal for returning sessions after using mark_read. " +
 			"Set exclude_stale=true to drop the inactive-room graveyard (rooms flagged `stale` with no new activity) from rooms[]; the summary still reports how many were hidden. " +
 			"When a project filter matches no rooms, the response adds a top-level `hint` explaining the filter is exact-match and pointing at list_rooms(search=…).",
@@ -571,6 +572,8 @@ func (r *Registry) RegisterTools() {
 			"unread_only":   prop("string", "Set to 'true' to return only rooms with messages newer than your stored cursor. Requires agent param (or uses 'default'). Use after mark_read to see only what changed since your last session."),
 			"agent":         prop("string", "Your agent name, used to look up stored read cursors. Only relevant when unread_only=true. Defaults to 'default'."),
 			"cluster_wide":  prop("string", "Set to 'true' to fetch the digest from all cluster nodes. Default: local only."),
+			"limit":         prop("string", "Cap rooms[] at N (positive integer), most-unread first under unread_only, most-recent first otherwise. 'all' lifts the default unread_only cap of 30. The summary still counts every room and reports summary.truncated."),
+			"brief":         prop("string", "Set to 'true' for one compact entry per room (room_id, new_messages, latest_message_id) with no excerpt or tags — the cheap session-start form. Fetch detail with get_messages(room_id, after_id=...)."),
 			"exclude_stale": prop("string", "Set to 'true' to omit the inactive-room graveyard (rooms flagged `stale` with no new messages) from rooms[]. The summary header still counts them (and reports hidden_stale). Drift flags on live rooms (stale-pin, stale-plan) are never hidden."),
 		}),
 	}, r.handleGetDigest)

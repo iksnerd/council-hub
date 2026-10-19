@@ -204,7 +204,7 @@ defmodule CouncilHubUi.CouncilMessages do
     Repo.all(from m in base, order_by: [desc: m.id], limit: ^limit)
   end
 
-  def get_mentions(author, limit \\ 20) do
+  def get_mentions(author, limit \\ 20, project \\ "") do
     pattern = "%#{author}%"
 
     # Collapse to live heads (Go GetMentions does the same): a retracted or
@@ -212,6 +212,15 @@ defmodule CouncilHubUi.CouncilMessages do
     base =
       from(m in Message, where: like(m.mentions, ^pattern) and m.mentions != "")
       |> live_messages()
+
+    base =
+      if project in [nil, ""],
+        do: base,
+        else:
+          from(m in base,
+            where:
+              m.room_id in subquery(from r in Room, where: r.project == ^project, select: r.id)
+          )
 
     Repo.all(
       from m in base,
