@@ -27,14 +27,14 @@ Claude Code, Gemini CLI, Warp and most others do HTTP.
 
 If a user wants both Claude Desktop and Claude Code on the *same* rooms, run the
 HTTP server and give Claude Desktop a stdio container that mounts the **same
-volume** — not a separate database.
+named volume** (`council-data`), not a separate database.
 
 ## 2. Run the server
 
 ```bash
 docker run -d --name council-hub \
   -p 4000:4000 -p 3001:3001 \
-  -v ~/.council-hub:/data \
+  -v council-data:/data \
   iksnerd/council-hub:latest
 ```
 
@@ -44,10 +44,20 @@ docker run -d --name council-hub \
 Two things to get right in that command:
 
 - **The volume is the database.** Without `-v`, every `docker rm` destroys all
-  rooms. `~/.council-hub` is the conventional path.
-- **On macOS, keep the volume out of `~/Documents`, `~/Desktop` and
-  `~/Downloads`.** Docker Desktop's TCC sandbox blocks those, and the failure
-  looks like a corrupt or empty database rather than a permissions error.
+  rooms. Prefer a named volume (`council-data`, as `docker-compose.yml` does).
+- **A host bind mount (`-v ~/.council-hub:/data`) is the hazard.** On Docker
+  Desktop it crosses a VM boundary, and SQLite's WAL shared memory is not
+  coherent across it. A host-side `sqlite3`, a sync tool or a second server on
+  the same file can read stale pages or corrupt the database. The server logs a
+  warning at startup when it detects a shared filesystem. If you must bind
+  mount on macOS, keep it out of `~/Documents`, `~/Desktop` and `~/Downloads`
+  (Docker Desktop's TCC sandbox blocks those and the failure looks like a
+  corrupt or empty database).
+- **Back up from inside the container, never with `cp`:**
+  `docker exec council-hub council-hub -backup /data/council-backup.db` writes a
+  consistent snapshot (SQLite `VACUUM INTO`) and refuses to overwrite a file.
+  Copy it out with `docker cp`. To restore, stop the server, replace `council.db`
+  and delete the stale `-wal`/`-shm` files.
 
 For a checked-in setup, `docker-compose.yml` in the repo does the same thing.
 It uses `restart: always` deliberately: Docker Desktop records its own shutdown
@@ -89,15 +99,15 @@ volume as the HTTP server, so both see one database:
     "council-hub": {
       "command": "docker",
       "args": ["run", "-i", "--rm",
-               "-v", "/absolute/path/to/.council-hub:/data",
+               "-v", "council-data:/data",
                "iksnerd/council-hub:latest"]
     }
   }
 }
 ```
 
-Use an **absolute** path — `~` is not expanded by the client, and the
-resulting container quietly gets a fresh empty database.
+Use the same volume name as the server. A different name, or a `~` path (the
+client does not expand it), quietly gives the container a fresh empty database.
 
 ## 4. Verify, in this order
 
@@ -178,6 +188,9 @@ another, check whether a second registration spawned its own stdio container.
 `docker ps` shows the extras. Consolidate onto one endpoint and one volume.
 
 **Room exists but a tool says it does not, in a cluster.** The room lives on
-another node. Room-scoped writes auto-route to the owning node; reads are
-opt-in cross-node via `cluster_wide=true`. Do not recreate the room locally —
+another node. Room-scoped writes auto-route to the owning node, and discovery
+reads (`list_rooms`, `search_messages`, `read_room`, `get_digest`,
+`get_mentions`) go cluster-wide by default when a peer is connected
+(`COUNCIL_CLUSTER_READS=local` turns that off; `cluster_wide=false` forces one
+call local). `council-hub-cluster` has the full map. Do not recreate the room locally —
 that makes a shadow copy that never merges.

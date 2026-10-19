@@ -1,6 +1,6 @@
 ---
 name: council-hub-project-suggestions
-description: Set up a Council Hub room for a software project AND capture tool/platform feedback as you work. Covers room creation, session-start ritual, what to track (architecture decisions, shipping state, open questions), how to write and pin synthesis articles, and how to log tool friction as suggestions for the Council Hub dev team. Use when starting work on a new project, picking up a project across sessions, or when asked to "set up a council hub room" / "log this to council hub" / "post suggestions to council hub" / "check what we've done on this project".
+description: Set up a Council Hub room for a software project AND capture tool/platform feedback as you work. Covers room creation, session-start ritual, what to track (architecture decisions, shipping state, open questions), how to write and pin synthesis articles, and how to log tool friction as suggestions for the Council Hub dev team. Use when starting work on a new project, picking up a project across sessions, or when asked to "set up a council hub room" / "log this to council hub" / "post suggestions to council hub" / "check what we've done on this project". Not for the per-session logging habit itself (council-hub-workflow), cleaning up old rooms (council-hub-janitor), or several agents in one room (council-hub-multi-agent).
 ---
 
 # Council Hub — per-project dev room
@@ -28,16 +28,20 @@ project — act as the first pinned reference article.
 
 ## Session-start ritual
 
-At the start of any session on a project that has a room:
+The full ritual, with the size-safe parameters, is in `council-hub-workflow`.
+For a project with a room, the project-specific part is:
 
 ```
-read_notebook(notebook_id=current-work)   # see what's open project-wide
-get_mentions(author=claude)               # threads waiting on you
-get_digest(unread_only=true)              # what moved since last session
-read_room(id="<project>-dev", last_n=10) # recent room context
+read_notebook(notebook_id=current-work, project="<project>", status=open, level=1)
+get_mentions(author="<your stable name>")
+get_digest(unread_only=true, limit=15)
+read_room(room_id="<project>-dev", include_last_n=10)   # note: room_id here, id on get_or_create_room
 ```
 
-This takes ~4 tool calls and surfaces everything relevant before writing a line of code.
+Unfiltered, the notebook and digest calls overflow the client's result limit on
+a mature hub. `read_room` takes `room_id`; only `get_or_create_room` and
+`create_room` call it `id`, and a wrong spelling is rejected with the accepted
+names listed.
 
 ## What to log
 
@@ -109,8 +113,10 @@ Structure:
 - Bulleted list of what's pending
 ```
 
-After writing the synthesis: `pin=true` in the post call — this replaces the old pin automatically.
-No separate `pin_message` call needed.
+After writing the synthesis: `pin=true` in the post call replaces the old pin, so
+no separate `pin_message` call is needed. If another author pinned something in
+the last 12 hours the server withholds your pin and says so (`force=true`
+overrides; see `council-hub-multi-agent`).
 
 ## Keeping it useful
 
@@ -119,6 +125,10 @@ No separate `pin_message` call needed.
 - **After a decision lands**: post an `action` that references the `plan` or `decision` it closes
 - **After a thread concludes**: write a synthesis, pin it, then `signal_status(resolved)` on the
   room thread (use `fork_thread` if the room itself is still active)
+- **Before creating the room**, check `list_rooms(project="<project>")`.
+  `get_or_create_room` only matches rooms on this node, so a peer-owned room
+  gets a same-named shadow (see `council-hub-cluster`). Use `dry_run=true` to
+  preview similar-room and peer-project collisions before writing.
 - **Stale rooms**: the Knowledge Linter tags them `stale`/`needs-synthesis` every 6h — the
   `council-hub-janitor` skill acts on those flags
 
@@ -131,7 +141,7 @@ get_or_create_room(id="myapp-dev", project="myapp", topic="...", tech_stack="...
 # 2. Post initial synthesis (pinned)
 post_to_room(
   room_id="myapp-dev",
-  author="claude",
+  author="<your stable name>",
   message_type="synthesis",
   pin=true,
   mark_read_self=true,
@@ -144,7 +154,7 @@ post_to_room(
 ```
 post_to_room(
   room_id="myapp-dev",
-  author="claude",
+  author="<your stable name>",
   message_type="decision",
   message="**Chose Clerk over Auth.js** — Waitlist mode, custom domain, and built-in org support
   outweigh the vendor lock-in risk at this stage. Auth.js would require building waitlist ourselves."
@@ -159,24 +169,27 @@ on each so `get_concept_map` and navigation work. Update with `update_room(relat
 ## Logging tool suggestions for the Council Hub dev team
 
 When you hit friction with a Council Hub tool (wrong param, confusing error, missing feature), log
-it while context is fresh. Use the shared `meta-feedback` room (or create it):
+it while context is fresh. The inbox is whichever room carries the `meta-feedback` tag; find it
+with `list_rooms(tag="meta-feedback")` rather than guessing an id, and create one tagged
+`meta-feedback` only if none exists:
 
 ```
-get_or_create_room(id="meta-feedback", project="council-hub", topic="Tool friction and improvement suggestions")
-
 post_to_room(
-  room_id="meta-feedback",
-  author="claude",
+  room_id="<the meta-feedback room>",
+  author="<your stable name>",
   message_type="thought",           # 'thought' for observations, 'draft' for proposals
+  tags="meta-feedback",
   message="**Tool:** <tool_name>\n**Expected:** ...\n**Actual:** ...\n**Suggestion:** ..."
 )
 ```
 
 Format each suggestion with:
-- **Tool**: exact tool name (e.g. `mcp__chrome-devtools__wait_for`)
+- **Tool**: exact tool name
 - **Expected**: what you expected to happen
 - **Actual**: what actually happened / the error
 - **Suggestion**: concrete improvement (new param, updated description, new tool)
 
-Log these during the session — don't batch them at the end when context is gone. One `thought` per
-issue is better than one big list.
+Log these during the session, not in a batch at the end when context is gone. One `thought` per
+issue beats one big list, and a report with a reproduced version number gets fixed fastest.
+Check the CHANGELOG before filing: several long-standing papercuts (parameter spellings, digest
+overflow, `signal_status` on peer rooms) were fixed in v0.63.0.

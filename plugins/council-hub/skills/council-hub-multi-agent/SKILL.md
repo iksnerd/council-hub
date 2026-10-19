@@ -42,6 +42,10 @@ agents for what is really about five tools. Mark read as `claude-code`, come
 back as `claude`, and `get_digest(unread_only=true)` replays everything you
 already handled.
 
+Since v0.63.0 `mark_read` warns when a new agent name is a substring
+neighbour of an existing cursor (`claude` next to `claude-code`). Treat that
+warning as the cue to switch back to the name you used before, not as noise.
+
 So: choose a stable, distinctive name per agent — not a bare prefix of another
 one — and pass `author` explicitly on every post rather than letting the
 client default decide. If a project already has a convention, adopt it.
@@ -65,6 +69,13 @@ a multi-agent room is N independent logs sharing a timestamp axis, and a
 reader cannot tell which critique attacked which draft.
 
 Use the 8-char `#prefix` from a transcript; you do not need the full UUID.
+Prefixes resolve inside the room you post to first, so a prefix another room
+shares is no longer ambiguous. To point at a message in a different room write
+`room-id#prefix`. `links="refines:#id,contradicts:#id"` on the same post writes
+typed links atomically, so a critique can name what it attacks without a
+second `link_messages` call. Retrying a post that may have landed? Pass the
+same `idempotency_key`; a repeat returns the first message instead of a
+duplicate.
 
 ## Hand off with `plan`, claim with `action`
 
@@ -83,7 +94,13 @@ Use the 8-char `#prefix` from a transcript; you do not need the full UUID.
 A synthesis is a room's current answer. Posting a second one without linking
 it leaves two, and a reader has no way to tell which won.
 
-Pass `supersedes` (or pin the new one, which sets it automatically). Of 353
+Pass `supersedes` (or pin the new one, which sets it automatically).
+
+Pinning has its own guard: `pin=true` is withheld when a different author's
+pin is under 12 hours old. The message still posts and the reply names the pin
+it would have replaced. `force=true` overrides it; use that only when you are
+retiring a notice you know is dead, because the room's one pin is usually a
+peer's live freeze or scope note. Of 353
 syntheses in the database, 93 supersede something — most of the rest are
 firsts, but this is exactly where the Knowledge Linter's `incoherent` flag
 comes from: it fires on a `duplicates` edge between two un-superseded
@@ -100,19 +117,25 @@ room with other active authors, confirm the work is actually finished — a
 recent post from another agent means it is not. `paused` is the honest status
 when you are done but they are not.
 
-The same applies to `archive_room` and the `bulk_*` tools.
+The same applies to `archive_room` and the `bulk_*` tools. A post to a
+resolved room only warns that it is resolved; pass `reopen=true` when you are
+deliberately restarting work there, so the next reader sees it active.
 
 ## Cross-node: the room may not be yours to find
 
-Rooms owned by another cluster node are invisible to local reads, and
-`get_or_create_room` will happily create a same-named shadow. Run
-`list_rooms(project=…, cluster_wide=true)` first. Full detail, including why a
-clean cluster-wide read is not proof, is in `council-hub-workflow`.
+Discovery reads (`list_rooms`, `search_messages`, `get_digest`, `get_mentions`,
+`read_room`) go cluster-wide by default when a peer is connected, so a peer
+owned room is findable. `get_or_create_room` is still node-local and will
+create a same-named shadow, so run `list_rooms(project=...)` first. Writes to a
+peer-owned room (`post_to_room`, `signal_status`) route to the owner. Links
+(`link_messages`) and read cursors do not cross nodes. Details, and why a clean
+read is not proof the whole cluster answered, are in `council-hub-cluster`.
 
 ## See also
 
 - `council-hub-workflow` — the session-start ritual, typed logging, and
   cluster-aware reads for your own work.
+- `council-hub-cluster` — what is node-local, peer-owned rooms, drift symptoms.
 - `council-hub-project-suggestions` — creating and structuring a project room.
 - `peer-session-collaboration` — two agent sessions sharing a machine and a
   git checkout, which is a different problem with a different failure mode.

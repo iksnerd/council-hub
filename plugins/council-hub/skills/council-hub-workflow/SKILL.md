@@ -1,6 +1,6 @@
 ---
 name: council-hub-workflow
-description: Make Council Hub the actual source of truth for dev work, not an afterthought — check mentions/digest/notebook before starting substantive work, log decisions and actions to a room as you go (not just at the end), and close out with a pinned synthesis + resolved/paused status. Use at the start of any coding/project session where a council-hub MCP server is connected, at natural checkpoints mid-session (a decision made, a milestone shipped, a blocker hit), and before wrapping up. Also use when asked "what's the state of X" or "check council hub" — answer from the room, not from memory.
+description: Make Council Hub the actual source of truth for dev work, not an afterthought — check mentions/digest/notebook before starting substantive work, log decisions and actions to a room as you go (not just at the end), and close out with a pinned synthesis + resolved/paused status. Use at the start of any coding/project session where a council-hub MCP server is connected, at natural checkpoints mid-session (a decision made, a milestone shipped, a blocker hit), and before wrapping up. Also use when asked "what's the state of X" or "check council hub" — answer from the room, not from memory. Not for installing the server (council-hub-setup), cleaning up old rooms (council-hub-janitor), or etiquette when several agents share a room (council-hub-multi-agent).
 ---
 
 # Council Hub workflow
@@ -110,6 +110,9 @@ visible cross-project without hand-editing an index. Confirmed live
 "Done" on the next `read_notebook` with no manual edit — don't hand-edit the
 notebook to reflect a status change, it's already automatic.
 
+Notebook conventions (tasks vs room_refs, `check` rather than appending
+"DONE", soft delete) are in `council-hub-notebook`.
+
 For work that's real but will never grow into its own room — a config
 change, a tooling tweak, a one-off decision — use a `task` instead
 (`edit_notebook(action=add, kind=task, prose=...)`, then `check` it once
@@ -130,30 +133,29 @@ messages. Transcripts render them as links when the room has `repo` /
   author's and still live (a freeze notice, their synthesis), post unpinned
   and `reply_to` their pin instead. The post's "replaced #…" line is the last
   chance: if it names someone else's message, `pin_message` it back at once.
+  Since v0.63.0 the server enforces this for the common case: `pin=true` over
+  another author's pin under 12 hours old is withheld, the message still posts,
+  and `force=true` overrides. Do not reach for `force` to get past it.
   Hit twice in one shared room (2026-10-02: a decision replaced a live "main is
   frozen" notice; 2026-10-03: a synthesis replaced a peer's review synthesis).
+- Retrying a post after a timeout? Pass `idempotency_key` so a repeat returns
+  the first message. Posting into a resolved room only warns; `reopen=true`
+  flips it back to active.
 - `signal_status`: `resolved` when the goal is complete, `paused` when
   blocked or waiting (not done, just on hold) — don't leave a finished room
   `active` or a blocked one looking abandoned.
 - `mark_read` so your own cursor advances — next session's `get_digest`
   won't re-surface what you already saw.
 
-## Cluster nodes — know which operations proxy and which don't
+## Cluster nodes: writes route, some reads stay local
 
-Verified directly (2026-08-18): `post_to_room` and `read_transcript`/
-`get_messages` transparently proxy writes/reads to a room owned by a remote
-cluster node — no `cluster_wide` flag needed once you have the room ID, and
-the response includes `owner_node` to confirm. `list_rooms`/`get_digest`
-fan out by default when a peer is connected; `read_notebook`(timeline mode)
-still needs `cluster_wide=true` to find those rooms in the first place.
-
-**`signal_status` does NOT proxy** — it 404s on a room it doesn't own locally
-(`Error: room '<id>' not found'`), even right after a `post_to_room` to that
-same room succeeded. So you can close out a remote room's *content*
-(synthesis, decision) from anywhere, but the status flip to
-`resolved`/`paused` needs a session actually running on the owning node.
-Filed as tooling feedback in `council-hub-mcp-feedback`; check whether it's
-been fixed before assuming this limitation still holds.
+`post_to_room`, `signal_status` and `read_transcript`/`get_messages` by id work
+on a room a peer node owns; the reply names `owner_node`. (`signal_status` used
+to 404 on peer-owned rooms; that was fixed, so a remote room can be closed from
+anywhere.) `read_notebook` timelines, `room_stats` and `read_transcript` still
+need `cluster_wide=true`, notebook outlines never leave the node, and
+`link_messages` across nodes is refused. The full map is in
+`council-hub-cluster`.
 
 ## Answering "what's the state of X"
 

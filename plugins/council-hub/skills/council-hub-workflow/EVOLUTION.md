@@ -1,5 +1,13 @@
 # council-hub-workflow — change log
 
+## 2026-10-20: stale cluster section, boundaries, pin guard
+
+- **Trigger:** Owner request 'improve our skills marketplace'; CHANGELOG [0.63.0]; mcp-server cluster_writes.go.
+- **Class:** wrong + incomplete. The 'Cluster nodes' section still said signal_status does NOT proxy; it has proxied to the owner node for several releases. Description had no 'Not for' clause (A3).
+- **Change:** Replaced that section with a short corrected map that points to council-hub-cluster; added pin guard (12h, force), idempotency_key and reopen to Wrapping up; pointer to council-hub-notebook; description now names siblings. Edits kept local to those spots because another branch edits a different paragraph.
+- **Evidence:** rubric v2, self-scored by the editing agent (not independent): 71 -> 75 content (A3 +4, B1 +2 corrected fact, B3 -2 net, body 185 -> 187 lines), 85 with evals. Trigger evals: 9/9 loads, 0/6 false loads, outcome 12/15. Evals run 2026-10-20 with `claude plugin eval plugins/council-hub --runs 3 --ablation none`, final run; first run was 61/63 loads and 0/6 false loads per skill. Outcome graders are judged in a sandbox with no Council Hub server, so they grade the stated approach.
+- **Outcome:** Accepted.
+
 ## 2026-10-03 — 1.3.0: pinning in a shared room replaced another session's live pin
 
 - **Trigger:** twice in `contra-bootstrap`, a room five sessions share. 2026-10-02: a `decision` posted with `pin=true` replaced a peer session's live "v0.2.0 scope agreed; main is frozen" decision, minutes after it was posted. 2026-10-03: an ADR 0023 `synthesis` with `pin=true` replaced another peer's review synthesis. Both restored by hand with `pin_message`. A meta-feedback post after the first (`council-hub-mcp-feedback`, 2026-10-02) did not stop the second.
