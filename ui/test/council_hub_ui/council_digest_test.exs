@@ -20,6 +20,25 @@ defmodule CouncilHubUi.CouncilDigestTest do
       assert entry.latest_message_excerpt =~ "fresh news here"
     end
 
+    test "the latest excerpt skips Knowledge Linter (system) posts when a real message exists" do
+      room = create_room(%{id: "dg-linter", project: "dg-proj"})
+      create_message(%{room_id: room.id, author: "claude", content: "the real latest work"})
+      create_message(%{room_id: room.id, author: "system", content: "### Knowledge Linter stale"})
+
+      [entry] = Council.get_project_digest("dg-proj", NaiveDateTime.to_iso8601(@yesterday))
+
+      assert entry.latest_message_excerpt =~ "the real latest work"
+    end
+
+    test "a room with only linter posts still shows one" do
+      room = create_room(%{id: "dg-linter-only", project: "dg-proj"})
+      create_message(%{room_id: room.id, author: "system", content: "### Knowledge Linter stale"})
+
+      [entry] = Council.get_project_digest("dg-proj", NaiveDateTime.to_iso8601(@yesterday))
+
+      assert entry.latest_message_excerpt =~ "Knowledge Linter"
+    end
+
     test "counts exclude revised (superseded) nodes — no +1 per edit" do
       room = create_room(%{id: "dg-revised", project: "dg-proj"})
       v1 = create_message(%{room_id: room.id, content: "v1", revised: 1})

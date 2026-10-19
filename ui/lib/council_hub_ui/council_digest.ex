@@ -50,18 +50,19 @@ defmodule CouncilHubUi.CouncilDigest do
     # renders as a tombstone below. UUIDv7 ids order chronologically, so max(id)
     # among heads is the latest head; one IN-query fetches them all (no per-room
     # query loop).
-    latest_ids =
-      from(m in Message,
-        where: m.room_id in ^active_room_ids,
-        group_by: m.room_id,
-        select: max(m.id)
-      )
-      |> head_revisions()
-      |> Repo.all()
+    #
+    # Knowledge Linter posts (author "system") are skipped when the room has any
+    # other head, so they don't hide the real last activity (Go GetDigest does the
+    # same); a room with only linter posts still shows one.
+    latest_ids = latest_head_ids(active_room_ids, false)
+    real_ids = latest_head_ids(active_room_ids, true)
 
     latest_by_room =
-      Repo.all(from m in Message, where: m.id in ^latest_ids)
-      |> Map.new(&{&1.room_id, &1})
+      Repo.all(from m in Message, where: m.id in ^(latest_ids ++ real_ids))
+      |> Enum.group_by(& &1.room_id)
+      |> Map.new(fn {rid, msgs} ->
+        {rid, Enum.find(msgs, &(&1.author != "system")) || hd(msgs)}
+      end)
 
     for rid <- active_room_ids do
       %{
@@ -70,6 +71,19 @@ defmodule CouncilHubUi.CouncilDigest do
         latest_message_excerpt: latest_excerpt(Map.get(latest_by_room, rid))
       }
     end
+  end
+
+  defp latest_head_ids(room_ids, exclude_system?) do
+    query =
+      from(m in Message,
+        where: m.room_id in ^room_ids,
+        group_by: m.room_id,
+        select: max(m.id)
+      )
+
+    query = if exclude_system?, do: from(m in query, where: m.author != "system"), else: query
+
+    query |> head_revisions() |> Repo.all()
   end
 
   defp latest_excerpt(nil), do: ""

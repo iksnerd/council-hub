@@ -177,6 +177,50 @@ func TestGetDigestRetractedHeadTombstone(t *testing.T) {
 	}
 }
 
+func TestGetDigestLatestExcerptSkipsLinterPosts(t *testing.T) {
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "digest-linter", withProject("proj-l"))
+	mustPost(t, s, "digest-linter", "Claude", "the real latest work")
+	linterID := mustPost(t, s, "digest-linter", "system", "### Knowledge Linter\nThis room is stale")
+
+	since := time.Now().UTC().Add(-1 * time.Hour).Format("2006-01-02 15:04:05")
+	entries, err := s.GetDigest("proj-l", since)
+	if err != nil {
+		t.Fatalf("GetDigest failed: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(entries))
+	}
+	if !strings.Contains(entries[0].LatestExcerpt, "real latest work") {
+		t.Errorf("excerpt should skip the linter post, got %q", entries[0].LatestExcerpt)
+	}
+	if entries[0].LatestAuthor != "Claude" {
+		t.Errorf("latest author should be the last real author, got %q", entries[0].LatestAuthor)
+	}
+	// The read cursor still advances past the linter post, so unread_only is unchanged.
+	if entries[0].LatestMessageID != linterID {
+		t.Errorf("latest_message_id should still be the room's newest message %q, got %q", linterID, entries[0].LatestMessageID)
+	}
+}
+
+func TestGetDigestLatestExcerptFallsBackToLinterWhenAlone(t *testing.T) {
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "digest-linter-only", withProject("proj-lo"))
+	mustPost(t, s, "digest-linter-only", "system", "### Knowledge Linter\nThis room is stale")
+
+	since := time.Now().UTC().Add(-1 * time.Hour).Format("2006-01-02 15:04:05")
+	entries, err := s.GetDigest("proj-lo", since)
+	if err != nil {
+		t.Fatalf("GetDigest failed: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(entries))
+	}
+	if !strings.Contains(entries[0].LatestExcerpt, "Knowledge Linter") {
+		t.Errorf("a room with only linter posts should still show one, got %q", entries[0].LatestExcerpt)
+	}
+}
+
 func TestGetDigestNoResults(t *testing.T) {
 	s := setupTestServer(t)
 	mustCreateRoom(t, s, "digest-empty")

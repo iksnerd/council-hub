@@ -138,6 +138,11 @@ func (s *Server) GetDigest(project, since string) ([]DigestEntry, error) {
 	// single row — the same resolved-head-id pattern as GetOutline's room_ref join.
 	// retracted_at/by come along so the caller can render a tombstone via
 	// DisplayContent instead of broadcasting withdrawn content.
+	//
+	// The "latest" row prefers the newest non-system message: the Knowledge Linter
+	// posts as "system" and was the latest message in most open rooms, hiding the
+	// real last activity. A room with only linter posts still shows one.
+	// latest_message_id stays the room's true MAX(id) so read cursors are unaffected.
 	query := `
 		SELECT m.room_id,
 		       SUM(CASE WHEN m.timestamp > ? AND ` + liveClause("m") + ` THEN 1 ELSE 0 END) as new_msgs,
@@ -152,7 +157,7 @@ func (s *Server) GetDigest(project, since string) ([]DigestEntry, error) {
 		FROM messages m
 		JOIN rooms r ON m.room_id = r.id
 		LEFT JOIN messages lm ON lm.id = (
-			SELECT id FROM messages WHERE room_id = m.room_id AND ` + headClause("") + ` ORDER BY id DESC LIMIT 1
+			SELECT id FROM messages WHERE room_id = m.room_id AND ` + headClause("") + ` ORDER BY (author = 'system') ASC, id DESC LIMIT 1
 		)
 		WHERE (m.timestamp > ? OR r.tags LIKE '%stale%' OR r.tags LIKE '%needs-synthesis%')`
 
