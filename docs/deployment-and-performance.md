@@ -258,15 +258,30 @@ networks:
 - **Shared secret:** `RELEASE_COOKIE` must be identical on all nodes — it also authenticates cross-node write proxies
 - **Unique names:** `RELEASE_NODE` must be unique (format: `name@ip`)
 - **Data isolation:** Each node has its own SQLite database; clustering provides a unified query view, not shared data. Writes to a room owned by another node are proxied to that node; rooms created with `visibility=private` stay node-local and never participate in the cluster.
+- **Stable addresses:** reserve each node's address in the router's DHCP settings (a DHCP reservation keyed on the machine's MAC address), or give it a static IP. See below.
+
+#### Keep node addresses stable (DHCP)
+
+`RELEASE_NODE` and `COUNCIL_SEEDS` name a node by IP address, and an address handed out by DHCP is a lease, not an identity. When a lease renews with a different address, the cluster splits and nothing looks wrong: the container stays healthy, `/health` returns `ok`, MCP tools work, and each node simply stops finding the other. A node that keeps advertising its old address cannot be dialled under any name until it restarts.
+
+The fix is to stop the address moving: add a DHCP reservation for each machine on the router, or configure a static IP, before you set `RELEASE_NODE`. Gossip discovery (`COUNCIL_GOSSIP`, on by default) can re-form a link after a move on a network where multicast reaches, but a bridged container or most VPNs block it, so treat it as a safety net. On a tailnet, use the MagicDNS name instead of an IP (see [clustering over Tailscale](clustering-tailscale.md)).
+
+If you suspect drift, `curl -s localhost:3001/health` on each node reports `node_identity_warning`, `advertised_warning` and `seed_warning` with the remedy for each case; the [troubleshooting section of the Tailscale guide](clustering-tailscale.md#troubleshooting) explains how to read them. After changing an address, restart the container so it picks up the new `RELEASE_NODE`.
 
 #### Cluster-Wide Queries
 
-Once nodes are connected, agents can query all nodes at once:
+When a peer is connected, the discovery reads (`search_messages`, `list_rooms`, `get_digest`, `get_mentions`, `get_messages` by id, and `read_room` for a room that is not on this node) go cluster-wide on their own, and the reply says so:
 
 ```
-search_messages(query: "authentication", cluster_wide: "true")
-list_rooms(project: "backend", cluster_wide: "true")
+search_messages(query: "authentication")
+list_rooms(project: "backend")
+```
+
+Pass `cluster_wide: "false"` to read only this node, or set `COUNCIL_CLUSTER_READS=local` on a node to restore opt-in reads. These still need an explicit `cluster_wide: "true"` to fan out:
+
+```
 room_stats(room_id: "auth-redesign", cluster_wide: "true")
+read_transcript(room_id: "auth-redesign", cluster_wide: "true")
 ```
 
 Results are tagged with node name (e.g. `[node-1@192.168.1.10]`).
