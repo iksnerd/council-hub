@@ -12,6 +12,12 @@ config :council_hub_ui,
   generators: [timestamp_type: :utc_datetime],
   mcp_server_url: System.get_env("COUNCIL_MCP_URL", "http://127.0.0.1:3001/mcp")
 
+# The Go server writes and compares timestamps as 'YYYY-MM-DD HH:MM:SS' text
+# (space separator). SQLite compares TEXT bytewise, so the default :iso8601
+# encoding ('...T...') made every bound sort after same-date rows. Bind in the
+# stored format instead; the column stays unwrapped so timestamp indexes apply.
+config :ecto_sqlite3, datetime_type: :text_datetime
+
 # Configure the endpoint
 config :council_hub_ui, CouncilHubUiWeb.Endpoint,
   url: [host: "localhost"],
