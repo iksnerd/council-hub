@@ -8,6 +8,9 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
+
+	"council-hub/internal/council"
 )
 
 // entryIDRe matches the full entry UUID in edit_notebook responses. Full IDs
@@ -535,4 +538,78 @@ func TestOutlineStatusFilter(t *testing.T) {
 	if !strings.Contains(resultText(all), "DONEITEM") {
 		t.Error("omitting status should keep everything (pre-existing behaviour)")
 	}
+}
+
+func TestClipLabel(t *testing.T) {
+	long := strings.Repeat("word ", 40) // 200 bytes, no sentence break
+	cases := []struct {
+		name, in, want string
+	}{
+		{"short unchanged", "Ship the release", "Ship the release"},
+		{"first sentence", "Fix the bug. Then verify it on staging and write it up.", "Fix the bug. …"},
+		{"period without space kept", "v1.2.3 is out", "v1.2.3 is out"},
+		{"sentence break beyond max falls to word cut", strings.Repeat("a", 150) + ". tail", strings.Repeat("a", 140) + " …"},
+		{"long text cut at last space", long, strings.TrimRight(long[:139], " ") + " …"},
+		{"no spaces hard cut", strings.Repeat("x", 200), strings.Repeat("x", 140) + " …"},
+		{"exactly max unchanged", strings.Repeat("y", 140), strings.Repeat("y", 140)},
+	}
+	for _, c := range cases {
+		if got := clipLabel(c.in); got != c.want {
+			t.Errorf("%s: clipLabel = %q, want %q", c.name, got, c.want)
+		}
+	}
+}
+
+func TestRenderRoomRef(t *testing.T) {
+	ts := time.Date(2026, 10, 20, 14, 5, 0, 0, time.UTC)
+	found := council.OutlineEntry{
+		ID: "ent-1", Kind: "room_ref", RefID: "my-room", RefFound: true, RefStatus: "active",
+		RefTopic: "Fix the bug. Then verify it on staging.", RefType: "decision", RefAuthor: "Claude",
+		RefContent: "line one\nline two", RefTime: ts,
+	}
+
+	t.Run("dangling", func(t *testing.T) {
+		var b strings.Builder
+		renderRoomRef(&b, council.OutlineEntry{ID: "ent-9", RefID: "a-very-long-room-identifier"}, 0)
+		want := "\n⚠ **referenced room 'a-very-long-' not found** — deleted, or it lives on another cluster node. *(entry ent-9)*\n"
+		if b.String() != want {
+			t.Errorf("got %q want %q", b.String(), want)
+		}
+	})
+	t.Run("level 0 full topic and excerpt", func(t *testing.T) {
+		var b strings.Builder
+		renderRoomRef(&b, found, 0)
+		want := "\n**[active] my-room** — Fix the bug. Then verify it on staging.\n" +
+			"  latest decision [2026-10-20 14:05 Claude]: line one line two\n" +
+			"*(entry ent-1)*\n"
+		if b.String() != want {
+			t.Errorf("got %q want %q", b.String(), want)
+		}
+	})
+	t.Run("level 1 clips topic and drops excerpt", func(t *testing.T) {
+		var b strings.Builder
+		renderRoomRef(&b, found, 1)
+		want := "\n**[active] my-room** — Fix the bug. …\n*(entry ent-1)*\n"
+		if b.String() != want {
+			t.Errorf("got %q want %q", b.String(), want)
+		}
+	})
+	t.Run("no latest message", func(t *testing.T) {
+		e := found
+		e.RefContent = ""
+		var b strings.Builder
+		renderRoomRef(&b, e, 0)
+		if strings.Contains(b.String(), "latest") {
+			t.Errorf("no excerpt expected: %q", b.String())
+		}
+	})
+	t.Run("excerpt truncated at 240", func(t *testing.T) {
+		e := found
+		e.RefContent = strings.Repeat("z", 400)
+		var b strings.Builder
+		renderRoomRef(&b, e, 0)
+		if strings.Contains(b.String(), strings.Repeat("z", 241)) || !strings.Contains(b.String(), strings.Repeat("z", 200)) {
+			t.Errorf("excerpt not truncated near 240: %q", b.String())
+		}
+	})
 }

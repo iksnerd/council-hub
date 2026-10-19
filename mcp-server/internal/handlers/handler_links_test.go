@@ -70,3 +70,89 @@ func TestHandleGetLinksNoLinks(t *testing.T) {
 		t.Errorf("expected 'no links' message, got: %s", resultText(res))
 	}
 }
+
+func TestParseDepth(t *testing.T) {
+	cases := []struct {
+		in   string
+		want int
+	}{
+		{"", 1},
+		{"3", 3},
+		{"0", 0},
+		{"-2", -2},
+		{"abc", 1},
+		{"2x", 2},
+	}
+	for _, c := range cases {
+		if got := parseDepth(c.in); got != c.want {
+			t.Errorf("parseDepth(%q) = %d, want %d", c.in, got, c.want)
+		}
+	}
+}
+
+func TestImplicitTag(t *testing.T) {
+	if got := implicitTag(true, "ignored"); got != " _(implicit)_" {
+		t.Errorf("implicit tag = %q", got)
+	}
+	if got := implicitTag(false, "abc"); got != " _(link #abc)_" {
+		t.Errorf("explicit tag = %q", got)
+	}
+}
+
+func TestRenderNeighborhood(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "nb")
+	a := mustPost(t, reg.Server, "nb", "Claude", "root claim")
+	b, _ := reg.Server.PostMessage("nb", "Gemini", "refinement", "decision", "")
+	c := mustPost(t, reg.Server, "nb", "Codex", "follow-up")
+	l1, err := reg.Server.CreateLink(b, a, "refines", "Gemini")
+	if err != nil {
+		t.Fatal(err)
+	}
+	l2, err := reg.Server.CreateLink(c, b, "relates", "Codex")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// depth 1 reaches b only
+	res, _, _ := reg.renderNeighborhood(a, 1)
+	text := resultText(res)
+	if !strings.Contains(text, "Link neighborhood of #"+a+" (depth 1): 2 node(s), 1 edge(s)") {
+		t.Errorf("depth 1 header wrong:\n%s", text)
+	}
+	if strings.Contains(text, "#"+c) {
+		t.Errorf("depth 1 must not reach c:\n%s", text)
+	}
+
+	// depth 2 reaches c, grouped by distance, with typed tags and edges
+	res, _, _ = reg.renderNeighborhood(a, 2)
+	text = resultText(res)
+	for _, want := range []string{
+		"(depth 2): 3 node(s), 2 edge(s)",
+		"**Distance 0:**\n  - #" + a + " [Claude] root claim",
+		"**Distance 1:**\n  - #" + b + " [Gemini decision] refinement",
+		"**Distance 2:**\n  - #" + c + " [Codex] follow-up",
+		"**Edges:**",
+		"- #" + b + " --refines--> #" + a + " _(link #" + l1 + ")_",
+		"- #" + c + " --relates--> #" + b + " _(link #" + l2 + ")_",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("missing %q in:\n%s", want, text)
+		}
+	}
+	if strings.Index(text, "Distance 0") > strings.Index(text, "Distance 1") || strings.Index(text, "Distance 1") > strings.Index(text, "Distance 2") {
+		t.Errorf("distances out of order:\n%s", text)
+	}
+
+	// same output reached through get_links depth=2
+	res, _, _ = reg.handleGetLinks(context.Background(), nil, GetLinksInput{MessageID: a, Depth: "2"})
+	if resultText(res) != text {
+		t.Errorf("get_links depth=2 differs from renderNeighborhood")
+	}
+
+	// unknown message
+	res, _, _ = reg.renderNeighborhood("00000000-0000-7000-8000-000000000000", 2)
+	if !strings.HasPrefix(resultText(res), "Error: message 00000000 not found") {
+		t.Errorf("expected not-found error, got: %s", resultText(res))
+	}
+}
