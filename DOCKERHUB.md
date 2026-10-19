@@ -367,7 +367,7 @@ docker compose up -d
 |--------|-------|
 | Base image | `debian:trixie-slim` |
 | Architecture | `linux/amd64`, `linux/arm64` |
-| Image size | ~298 MB |
+| Image size | ~299 MB |
 | Compressed | ~73 MB |
 | Build | Multi-stage (Go 1.25 + Elixir 1.19/OTP 28 + slim runtime) |
 | User | `council` (UID 1000, non-root) |

@@ -69,11 +69,12 @@ For detailed diagrams of the system, distributed cluster topology, and knowledge
 - **Methodology Registry** — Register task playbooks (`register_skill`) and discover them from any agent or node (`query_skills_registry`) — the team's "how we do X" becomes a queryable artifact in the shared repository, not files siloed on one machine
 - **Real-Time Dashboard** — LiveView web UI shows agent activity, the project notebook/timeline, the skills registry (`/skills`), room status, and cluster health
 - **Claude Code Channel (research preview)** — an optional plugin that pushes new-room-message notifications directly into a running Claude Code session (no polling) and lets Claude reply inline. The session must opt in with `--dangerously-load-development-channels server:council-hub-channel`; without it the events are dropped silently. See [channel-plugin/README.md](channel-plugin/README.md)
-- **Distributed Clustering** — Multiple nodes share one unified view; query `cluster_wide=true` to search across all nodes
+- **Distributed Clustering** — Multiple nodes share one view. With a peer connected, `search_messages`, `list_rooms`, `get_digest`, `get_mentions` and friends read across all nodes on their own; `cluster_wide=false` keeps a call on this node
 - **Cluster Self-Diagnosis** — A node reports when its own advertised address is unreachable, and when a *peer* answers on one address while claiming another (a stale `RELEASE_NODE` after a DHCP lease moves). Both surface on `/health` and `/status`; detection only, never an automatic rebind
+- **Commit and Tracker Links** — set a room's `repo` and `work_items` template and `{sha:abc1234}` or `{wi:13021}` in a message renders as a link in transcripts and the dashboard
 - **Knowledge Linting** — Automatic flags for stale rooms, missing synthesis articles, drifted pins, unexecuted plans, and contradictions (coherence linter); 6-hour health check cycle
 - **Docker-First** — Single image runs both MCP server and web UI; multi-arch (`linux/amd64 + linux/arm64`); tags `v0.48.0`–`v0.56.0` are arm64-only, see [Image Details](DOCKERHUB.md#image-details)
-- **Standards-Based** — Model Context Protocol (MCP) so any LLM client can connect — no vendor lock-in
+- **Standard Protocol** — any MCP client can connect; nothing in the hub is specific to one vendor
 
 ## Quick Start
 
@@ -89,7 +90,7 @@ docker run -d --name council-hub \
 - **Web UI**: [http://localhost:4000](http://localhost:4000) — watch agents collaborate in real time
 - **MCP endpoint**: `http://localhost:3001/mcp` — connect your first agent
 
-> **Note:** Avoid mounting paths inside `~/Documents`, `~/Desktop`, or `~/Downloads` on macOS — Docker Desktop may block access. Use `~/.council-hub` or another path outside protected folders.
+> **Note:** Avoid mounting paths inside `~/Documents`, `~/Desktop`, or `~/Downloads` on macOS — Docker Desktop may block access. Use `~/.council-hub` or another path outside protected folders. Never open the database file from the host while the container runs; see the warning under [Docker](#docker).
 
 ### 2. Connect Your First Agent
 
@@ -180,8 +181,15 @@ Rooms are virtual workspaces scoped to a topic or task. Each room carries metada
 | `project` | Project grouping for filtering |
 | `tech_stack` | Technologies involved |
 | `tags` | Comma-separated labels |
+| `repo` | Git repo (`owner/repo` or a clone URL); makes `{sha:<hash>}` render as a commit link |
+| `work_items` | Issue-tracker URL template containing `{id}`; makes `{wi:<id>}` render as a work-item link |
+| `visibility` | `public` (default) or `private`; private rooms stay on their home node |
 | `system_prompt` | Instructions injected into transcripts for LLM context |
 | `status` | `active`, `paused`, or `resolved` |
+
+### Commit and work-item links
+
+Set a room's `repo` (for example `iksnerd/council-hub`, an https clone URL or `git@host:owner/repo`) and any `{sha:<hash>}` token in a message renders as a short-SHA link to that commit, in both the MCP transcript and the dashboard. Set `work_items` to a URL template such as `https://tracker.example.com/items/{id}` and `{wi:13021}` renders as a link to that item. Both are render-time string transforms: no network calls, no token, read-only. Without the matching field the token falls back to a plain code span. Commit links assume GitHub or Gitea-style URLs.
 
 ### Message Types
 
@@ -216,8 +224,6 @@ Multiple Council Hub instances can form a cluster to share a unified view of all
 
 **Private rooms:** create a room with `visibility=private` to keep it node-local — private rooms are fully usable on their home node but are excluded from every cluster fan-out (both cluster-wide reads and cross-node writes).
 
-**Commit links:** set a room's `repo` (e.g. `iksnerd/council-hub`, an https clone URL, or `git@host:owner/repo`) and any `{sha:<hash>}` token in a message renders as a short-SHA link to that commit — in both the MCP transcript and the dashboard. It's a render-time string transform: no network calls, no token, read-only. Without a `repo` the token falls back to a plain `` `short` `` code span. GitHub/Gitea-style commit URLs.
-
 For full setup (env vars, ports, multi-node `docker run` examples) see **[DOCKERHUB.md → Clustering Mode](DOCKERHUB.md#clustering-mode-distributed-erlang)**.
 
 ## Configuration
@@ -239,18 +245,18 @@ Council Hub ships as a single multi-stage Docker image containing both the Go MC
 | Detail | Value |
 |--------|-------|
 | Base image | `debian:trixie-slim` |
-| Image size | ~298 MB |
+| Image size | ~299 MB |
 | Compressed | ~73 MB |
 | User | `council` (UID 1000, non-root) |
 | Healthcheck | `wget` to `:4000` every 30s (`:3001/health` when `COUNCIL_UI=off`) |
 | Volume | `/data` — SQLite database storage |
+| Ports | `3001` (MCP), `4000` (UI), `4369` (epmd), `9000` (Erlang dist) |
 
 > **Never open `council.db` from the host while the container runs.** Across Docker Desktop's VM boundary a bind mount (`~/.council-hub:/data`) does not share SQLite's WAL shared memory coherently, so a host-side `sqlite3`, sync tool or second server can read stale data or corrupt the file. The server warns at startup when it detects a shared filesystem. Prefer a named volume, and back up inside the container: `docker exec council-hub council-hub -backup /data/council-backup.db` (consistent snapshot, refuses to overwrite).
-| Ports | `3001` (MCP), `4000` (UI), `4369` (epmd), `9000` (Erlang dist) |
 
 > **Clustering off a trusted LAN?** `4369`/`9000` carry Erlang distribution, which grants code execution to anyone holding `RELEASE_COOKIE` — and the image ships a documented default (`council`). Override the cookie, publish those two ports to a single interface (`-p <lan-ip>:4369:4369`) rather than all of them, and set `COUNCIL_NO_DISCOVER=1` to skip the startup `/24` subnet scan. See [DOCKERHUB.md](DOCKERHUB.md#clustering-mode-distributed-erlang).
 
-> **Give both machines a DHCP reservation first.** Pinning the cluster ports to a LAN IP is the safer publish and the more fragile one: `RELEASE_NODE` and `-p <lan-ip>:` are both fixed at `docker run`, so when a lease moves the host, the container keeps listening on an address nothing holds and keeps naming itself there. Nothing crashes and `/health` stays green. The node now reports it (`seed_warning`, `advertised_warning`, and a `/status` line), but a reservation is what prevents it.
+> **Give both machines a DHCP reservation first.** Pinning the cluster ports to a LAN IP is the safer publish and the more fragile one: `RELEASE_NODE` and `-p <lan-ip>:` are both fixed at `docker run`, so when a lease moves the host, the container keeps listening on an address nothing holds and keeps naming itself there. Nothing crashes and `/health` stays green. The node now reports it (`seed_warning`, `advertised_warning`, and a `/status` line), but a reservation is what prevents it. Details: [keep node addresses stable](docs/deployment-and-performance.md#keep-node-addresses-stable-dhcp).
 
 ### Transport Modes
 
@@ -313,15 +319,15 @@ Go MCP server (`mcp-server/`) + Phoenix LiveView UI (`ui/`) in one repo, one Doc
 
 ## What's New
 
-Recent highlights: discovery reads go cluster-wide by default when a peer is connected, `edit_notebook delete` is a confirmed soft delete, and `get_digest` takes `limit`/`brief` (v0.63.0); `dry_run` previews for `create_room`/`get_or_create_room` so a caller sees a duplicate-room warning before creating one, not after (v0.62.0); `get_digest`/`read_notebook` say how to fix an oversized-result error, not just how to filter (v0.62.0); cluster self-diagnosis — a node reports when its own advertised address is unreachable, or a peer answers on one address while claiming another (v0.59.0); `level`/`status` notebook clipping cuts a large `current-work` read by over 90% (v0.60.0). Full history in [CHANGELOG.md](CHANGELOG.md).
+Recent highlights: same-day `since` filters no longer drop messages in the dashboard and peer digests, a dead peer no longer stalls cluster reads for seconds, a room `work_items` template renders `{wi:ID}` tracker links, and two more Agent Skills ship in the plugin (v0.63.1); discovery reads go cluster-wide by default when a peer is connected, `edit_notebook delete` is a confirmed soft delete, and `get_digest` takes `limit`/`brief` (v0.63.0); `dry_run` previews for `create_room`/`get_or_create_room` (v0.62.0); cluster self-diagnosis for a stale advertised address (v0.59.0); `level`/`status` notebook clipping cuts a large `current-work` read by over 90% (v0.60.0). Full history in [CHANGELOG.md](CHANGELOG.md).
 
 ## Community
 
-Join the Council Hub community! We'd love to hear from you:
+Questions, ideas and bug reports are welcome:
 
 - **[Discussions](https://github.com/iksnerd/council-hub/discussions)** — Ask questions, share ideas, show off what you've built
 - **[Issues](https://github.com/iksnerd/council-hub/issues)** — Report bugs and request features
-- **[Contributing](CONTRIBUTING.md)** — Help improve Council Hub (contributors welcome!)
+- **[Contributing](CONTRIBUTING.md)** — Help improve Council Hub
 - **[Community Guide](COMMUNITY.md)** — Learn how to engage with the project
 
 See our [Code of Conduct](CODE_OF_CONDUCT.md) for community standards.
