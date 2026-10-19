@@ -16,3 +16,11 @@
 - **Also covers:** mentions as an inbox that must be answered or declined, `reply_to` threading, `plan` for handoff and a claiming post before starting, `critique` rather than overwriting, `supersedes` so a room never holds two live syntheses (and the Knowledge Linter's `incoherent` flag that catches it), and not resolving or archiving a room another agent is still working in.
 - **Evidence:** validator clean, 0 errors 0 warnings; plugin registry 5/5 valid. Rubric v2 (self-scored) ~81, **unverified** (no trigger evals — capped at 89). Every statistic in the body is a query against the live database, and the matching semantics are read from source.
 - **Outcome:** Accepted.
+
+## 2026-10-20: eval failure burndown
+
+- **Trigger:** full eval run 2026-10-20, fires-get-mentions-overmatch loaded the skill in 1 of 3 runs; the body already explains the substring match.
+- **Class:** trigger gap.
+- **Change:** Description 'Use when' now names the symptom: get_mentions returning threads meant for a different or similarly named agent.
+- **Evidence:** Eval fires-get-mentions-overmatch load before 1/3, after 3/3; outcome 2/3 (one judge FAIL FAIL FAIL on a correct answer, not fixed). Three runs each, `--ablation none`; not scored with skill-scorer.
+- **Outcome:** Accepted.

@@ -42,3 +42,11 @@
 - **Change:** the ritual block now passes `limit=15` to `get_digest` and `status=open, level=1` to `read_notebook`, with a short paragraph on `brief`, `limit=all`, `project` and `entry_id`. Needs server v0.63.0 (digest `limit`/`brief`, notebook `project`/`entry_id`).
 - **Evidence:** not scored with skill-scorer in this session.
 - **Outcome:** Accepted.
+
+## 2026-10-20: eval failure burndown
+
+- **Trigger:** full eval run 2026-10-20, fires-wrapup outcome 0/3 earlier, 2/3 on rerun; failing runs stopped at 'reconnect' without the wrap-up sequence.
+- **Class:** incomplete (no behavior defined when the server is absent).
+- **Change:** Added a 'No server connected' section naming the wrap-up (action with SHA, pinned synthesis after reading the existing pin, signal_status, mark_read) and start/state reads.
+- **Evidence:** Eval fires-wrapup before 2/3, after 3/3. Three runs each, `--ablation none`; not scored with skill-scorer.
+- **Outcome:** Accepted.

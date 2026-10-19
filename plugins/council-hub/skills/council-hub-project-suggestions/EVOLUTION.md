@@ -7,3 +7,11 @@
 - **Change:** Fixed the ritual (points to council-hub-workflow for the full form), stable-author placeholder, pin guard note, list_rooms pre-check before get_or_create_room, meta-feedback found via tag with message-level `tags=meta-feedback`; description gained a Not-for clause.
 - **Evidence:** rubric v2, self-scored by the editing agent (not independent): 68 -> 78 content (A3 +6, B1 +2, C2 +2), 88 with evals. Trigger evals: 9/9 loads, 0/6 false loads, outcome 13/15. Evals run 2026-10-20 with `claude plugin eval plugins/council-hub --runs 3 --ablation none`, final run; first run was 61/63 loads and 0/6 false loads per skill. Outcome graders are judged in a sandbox with no Council Hub server, so they grade the stated approach.
 - **Outcome:** Accepted.
+
+## 2026-10-20: eval failure burndown
+
+- **Trigger:** full eval run 2026-10-20, fires-picking-up outcome 0/3 earlier, 1/3 on rerun; failing runs gave no read-the-room plan.
+- **Class:** incomplete (no behavior defined when the server is absent).
+- **Change:** Added a 'No server connected' section: read the project room, pinned synthesis, decisions and current-work before coding.
+- **Evidence:** Eval fires-picking-up before 1/3, after 2/3 (remaining failure is judge variance on a plan-bearing answer). Three runs each, `--ablation none`; not scored with skill-scorer.
+- **Outcome:** Accepted.

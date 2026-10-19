@@ -43,6 +43,12 @@ a mature hub. `read_room` takes `room_id`; only `get_or_create_room` and
 `create_room` call it `id`, and a wrong spelling is rejected with the accepted
 names listed.
 
+## No server connected
+
+If the `council-hub` tools are not available in this session, say so once and
+point to `council-hub-setup`, then still give the user the plan: read the project room (`get_or_create_room`, then its pinned synthesis and recent decisions) and the `current-work` notebook for current state before touching code.
+Do not pretend the calls ran, and do not stop at "reconnect and ask again".
+
 ## What to log
 
 Use typed messages — the type determines where the post appears in notebooks, changelogs, and

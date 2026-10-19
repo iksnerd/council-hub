@@ -78,6 +78,12 @@ add `force=true` on a janitor pass. Post unpinned and `reply_to` their pin
 instead, since a live freeze notice is theirs to retire. When you replace an
 older synthesis, pass `supersedes` so the linter does not flag `incoherent`.
 
+## No server connected
+
+If the `council-hub` tools are not available in this session, say so once and
+point to `council-hub-setup`, then still give the user the plan: which flagged rooms you would list (`needs-synthesis`, `stale`, resolved-but-unarchived), the one disposition per room from the table above, and that you would report what changed.
+Do not pretend the calls ran, and do not stop at "reconnect and ask again".
+
 ## Gotchas
 
 - **Flags clear on the corrective post**, not on a timer. A `stale` room you

@@ -147,6 +147,12 @@ messages. Transcripts render them as links when the room has `repo` /
 - `mark_read` so your own cursor advances — next session's `get_digest`
   won't re-surface what you already saw.
 
+## No server connected
+
+If the `council-hub` tools are not available in this session, say so once and
+point to `council-hub-setup`, then still give the user the plan: for a wrap-up, the `action` with the commit SHA, the pinned `synthesis` (read the existing pin first in a shared room), `signal_status` `resolved` or `paused`, and `mark_read`; for a start or state question, the mentions, digest and notebook reads.
+Do not pretend the calls ran, and do not stop at "reconnect and ask again".
+
 ## Cluster nodes: writes route, some reads stay local
 
 `post_to_room`, `signal_status` and `read_transcript`/`get_messages` by id work
