@@ -452,3 +452,63 @@ func TestHandleListRoomsClusterShowsCountAndPin(t *testing.T) {
 		t.Errorf("structured pinned_excerpt missing: %+v", out.Rooms[0])
 	}
 }
+
+// Mixed-version cluster: the peer runs the previous release. Phoenix retries it
+// with the old room query, so its rooms come back with null message_count and
+// no pin, plus one readable warning per feature. The room_refs call carries its
+// own warning (resolved count may be low), which must reach the tool reply
+// instead of being dropped.
+func TestHandleListRoomsClusterOlderPeerDegradesWithReadableWarnings(t *testing.T) {
+	const listWarn = "council_hub@10.0.0.9 runs an older version (v0.63.1) without list_rooms_for_cluster; no message counts or pinned excerpts for its rooms"
+	const refsWarn = "council_hub@10.0.0.9 runs an older version (v0.63.1) without list_room_refs; resolved-room count may be low (counted from at most 100 of its rooms)"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.HasSuffix(r.URL.Path, "/room_refs") {
+			json.NewEncoder(w).Encode(map[string]any{
+				"results":  []map[string]any{{"id": "old-a", "status": "resolved", "source_node": "council_hub@10.0.0.9"}},
+				"warnings": []string{refsWarn},
+			})
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]any{
+			"results": []map[string]any{
+				{"id": "mine", "description": "d", "status": "active", "project": "p", "updated_at": "2026-04-01T12:00:00",
+					"message_count": 4, "pinned_excerpt": "", "source_node": "council_hub@10.0.0.8"},
+				{"id": "theirs", "description": "d", "status": "active", "project": "p", "updated_at": "2026-04-01T11:00:00",
+					"message_count": nil, "pinned_excerpt": "", "source_node": "council_hub@10.0.0.9"},
+			},
+			"warnings": []string{listWarn},
+		})
+	}))
+	defer server.Close()
+
+	reg := &Registry{HTTPClient: &http.Client{Timeout: 5 * time.Second}, PhoenixURL: server.URL}
+	result, out, err := reg.handleListRoomsCluster(ListRoomsInput{Project: "p"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := resultText(result)
+	if !strings.Contains(text, "[council_hub@10.0.0.9] **theirs**") {
+		t.Errorf("older peer's room vanished: %s", text)
+	}
+	if strings.Contains(text, "0 msgs") {
+		t.Errorf("older peer's room shown as empty (0 msgs): %s", text)
+	}
+	for _, w := range []string{listWarn, refsWarn} {
+		if !strings.Contains(text, w) {
+			t.Errorf("warning missing from reply text: %q\n%s", w, text)
+		}
+		found := false
+		for _, ow := range out.Warnings {
+			if ow == w {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("warning missing from structured output: %q (%v)", w, out.Warnings)
+		}
+	}
+	if strings.Contains(text, "{:exception") || strings.Contains(text, "undef") {
+		t.Errorf("raw exception leaked: %s", text)
+	}
+}
