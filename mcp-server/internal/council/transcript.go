@@ -41,8 +41,21 @@ func headerPrefix(m Message, v ViewSpec, includeID bool) string {
 			prefix += " "
 		}
 		prefix += m.Author
+		if from := displayPostedFrom(m.PostedFrom); from != "" && from != m.Author {
+			prefix += " @" + from
+		}
 	}
 	return prefix
+}
+
+// displayPostedFrom shortens a posted_from value for a header: a path shows only
+// its last element, so a long working-tree path does not crowd the line.
+func displayPostedFrom(from string) string {
+	from = strings.TrimRight(from, "/")
+	if i := strings.LastIndex(from, "/"); i >= 0 {
+		return from[i+1:]
+	}
+	return from
 }
 
 // FormatTranscript renders a room with the default view (everything shown, full bodies).

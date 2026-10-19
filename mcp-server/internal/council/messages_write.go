@@ -27,7 +27,46 @@ func (s *Server) PostMessageWithRefs(roomID, author, content, messageType, reply
 	return s.postMessageCore(roomID, author, content, messageType, replyTo, mentions, supersedes)
 }
 
+// PostOptions carries the optional, append-only metadata of a post. All fields
+// are advisory: leaving them empty reproduces the plain post.
+type PostOptions struct {
+	// Tags is a normalized CSV of message-level tags (see NormalizeMessageTags).
+	Tags string
+	// PostedFrom records where the post came from (a working tree, or the MCP
+	// client's name) so sessions that all post as one author stay tellable apart.
+	PostedFrom string
+	// IdempotencyKey makes a retry safe: a second post with the same
+	// (room, author, key) returns the first message's ID instead of writing again.
+	IdempotencyKey string
+}
+
+// NormalizeMessageTags trims, de-duplicates and re-joins a CSV tag list.
+func NormalizeMessageTags(csv string) string {
+	seen := map[string]bool{}
+	var out []string
+	for _, t := range strings.Split(csv, ",") {
+		t = strings.TrimSpace(t)
+		if t == "" || seen[t] {
+			continue
+		}
+		seen[t] = true
+		out = append(out, t)
+	}
+	return strings.Join(out, ",")
+}
+
+// PostMessageOpts is the full post path with optional metadata. duplicate is true
+// when opts.IdempotencyKey matched an earlier post and its ID is returned instead.
+func (s *Server) PostMessageOpts(roomID, author, content, messageType, replyTo, mentions, supersedes string, opts PostOptions) (id string, duplicate bool, err error) {
+	return s.postMessageOpts(roomID, author, content, messageType, replyTo, mentions, supersedes, opts)
+}
+
 func (s *Server) postMessageCore(roomID, author, content, messageType, replyTo, mentions, supersedes string) (string, error) {
+	id, _, err := s.postMessageOpts(roomID, author, content, messageType, replyTo, mentions, supersedes, PostOptions{})
+	return id, err
+}
+
+func (s *Server) postMessageOpts(roomID, author, content, messageType, replyTo, mentions, supersedes string, opts PostOptions) (string, bool, error) {
 	s.Mu.Lock()
 	defer s.Mu.Unlock()
 
@@ -35,13 +74,29 @@ func (s *Server) postMessageCore(roomID, author, content, messageType, replyTo, 
 		messageType = "message"
 	}
 
+	// Idempotent retry: the lookup shares the write lock with the insert, so two
+	// concurrent retries cannot both miss and both write.
+	if opts.IdempotencyKey != "" {
+		var existing string
+		err := s.DB.QueryRow(
+			`SELECT id FROM messages WHERE room_id = ? AND author = ? AND idempotency_key = ? LIMIT 1`,
+			roomID, author, opts.IdempotencyKey,
+		).Scan(&existing)
+		if err == nil {
+			return existing, true, nil
+		}
+		if err != sql.ErrNoRows {
+			return "", false, err
+		}
+	}
+
 	id := uuid.Must(uuid.NewV7()).String()
 	_, err := s.DB.Exec(
-		`INSERT INTO messages (id, room_id, author, content, message_type, reply_to, mentions, supersedes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		id, roomID, author, content, messageType, replyTo, mentions, supersedes,
+		`INSERT INTO messages (id, room_id, author, content, message_type, reply_to, mentions, supersedes, msg_tags, posted_from, idempotency_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		id, roomID, author, content, messageType, replyTo, mentions, supersedes, opts.Tags, opts.PostedFrom, opts.IdempotencyKey,
 	)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 
 	// Auto-clear linter status tags the moment the condition that set them no longer holds:
@@ -81,7 +136,7 @@ func (s *Server) postMessageCore(roomID, author, content, messageType, replyTo, 
 	// Generate embedding asynchronously (non-fatal)
 	s.EmbedAsync("message_vectors", id, content)
 
-	return id, nil
+	return id, false, nil
 }
 
 // ErrContentChanged is returned by UpdateMessage when the message content has
@@ -130,13 +185,14 @@ func (s *Server) UpdateMessageWithExpected(messageID, newContent, newMessageType
 	var (
 		roomID, origAuthor, curContent, curType string
 		curReplyTo, curMentions, curSupersedes  string
+		curTags, curFrom                        string
 		curPinned, revised                      bool
 		retractedAt                             sql.NullTime
 	)
 	err := s.DB.QueryRow(
-		`SELECT room_id, author, content, message_type, reply_to, mentions, supersedes, pinned, revised, retracted_at FROM messages WHERE id = ?`,
+		`SELECT room_id, author, content, message_type, reply_to, mentions, supersedes, pinned, revised, retracted_at, COALESCE(msg_tags, ''), COALESCE(posted_from, '') FROM messages WHERE id = ?`,
 		messageID,
-	).Scan(&roomID, &origAuthor, &curContent, &curType, &curReplyTo, &curMentions, &curSupersedes, &curPinned, &revised, &retractedAt)
+	).Scan(&roomID, &origAuthor, &curContent, &curType, &curReplyTo, &curMentions, &curSupersedes, &curPinned, &revised, &retractedAt, &curTags, &curFrom)
 	if err != nil {
 		return nil, err
 	}
@@ -170,8 +226,8 @@ func (s *Server) UpdateMessageWithExpected(messageID, newContent, newMessageType
 	defer func() { _ = tx.Rollback() }()
 
 	if _, err := tx.Exec(
-		`INSERT INTO messages (id, room_id, author, content, message_type, reply_to, mentions, supersedes, revises, pinned) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		newID, roomID, author, newContent, newType, curReplyTo, curMentions, curSupersedes, messageID, curPinned,
+		`INSERT INTO messages (id, room_id, author, content, message_type, reply_to, mentions, supersedes, revises, pinned, msg_tags, posted_from) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		newID, roomID, author, newContent, newType, curReplyTo, curMentions, curSupersedes, messageID, curPinned, curTags, curFrom,
 	); err != nil {
 		return nil, err
 	}

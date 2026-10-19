@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"time"
 
 	"council-hub/internal/council"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -27,6 +28,17 @@ type PostToRoomInput struct {
 	MarkReadSelf string `json:"mark_read_self"`
 	Pin          string `json:"pin"`
 	Workspace    string `json:"workspace"`
+	// Force lets pin=true replace another author's fresh pin (see PinFreshWindow).
+	Force string `json:"force"`
+	// Reopen flips a resolved room back to active as part of the post.
+	Reopen string `json:"reopen"`
+	// Tags is a CSV of message-level tags (e.g. "meta-feedback").
+	Tags string `json:"tags"`
+	// Links is "relation:ref,relation:ref" (e.g. "refines:#01a0b156"), validated
+	// before anything is written.
+	Links string `json:"links"`
+	// IdempotencyKey makes a retry after a timeout return the first message.
+	IdempotencyKey string `json:"idempotency_key"`
 }
 
 // UpdateMessageInput represents the parameters for editing a message. The edit is
@@ -122,53 +134,48 @@ func (r *Registry) handlePostToRoom(ctx context.Context, req *mcp.CallToolReques
 		}
 	}
 
+	// posted_from separates sessions that all post under one author name: the
+	// declared working tree when there is one, else the connected client's name.
+	postedFrom := council.NormalizeWorkspace(args.Workspace)
+	if postedFrom == "" {
+		postedFrom = clientIdentity(req)
+	}
+	if err := validateSize("tags", args.Tags, 500); err != nil {
+		return msg("Error: " + err.Error())
+	}
+	if err := validateSize("idempotency_key", args.IdempotencyKey, maxIDLen); err != nil {
+		return msg("Error: " + err.Error())
+	}
+	if err := validateSize("links", args.Links, 2000); err != nil {
+		return msg("Error: " + err.Error())
+	}
+	in := internalPostRequest{
+		RoomID: args.RoomID, Author: args.Author, Message: args.Message, MessageType: args.MessageType,
+		ReplyTo: args.ReplyTo, Mentions: args.Mentions, Supersedes: args.Supersedes, Pin: args.Pin,
+		Force: args.Force, Reopen: args.Reopen, Tags: args.Tags, Links: args.Links,
+		IdempotencyKey: args.IdempotencyKey, PostedFrom: postedFrom,
+	}
+
 	// Verify room exists locally. If it doesn't and we're clustered, the room may
 	// be owned by a peer node — locate the owner and proxy the write there rather
-	// than silently creating a local shadow.
+	// than silently creating a local shadow. The owner runs the same applyPost.
 	if _, err := r.Server.GetRoom(args.RoomID); err != nil {
 		if owner, lerr := r.locateRoomOwner(args.RoomID); lerr == nil && owner != "" {
-			msgID, pinned, replaced, perr := r.proxyPostToRoom(owner, args)
+			out, perr := r.proxyPostToRoom(owner, in)
 			if perr != nil {
 				return msg(fmt.Sprintf("Error: room '%s' is owned by cluster node '%s' but the write could not be forwarded: %s", args.RoomID, owner, perr.Error()))
 			}
-			// Report the pin outcome truthfully — the owner applies it, and a
-			// failed pin there doesn't fail the write.
-			pinNote := ""
-			if args.Pin == "true" {
-				if pinned {
-					pinNote = pinConfirmation(replaced)
-				} else {
-					pinNote = " (pin failed on the owner node — pin it manually with pin_message there)"
-				}
-			}
-			r.Server.Logger.Info("Message proxied to owner", "room_id", args.RoomID, "owner", owner, "msg_id", msgID, "pinned", pinned)
-			return msg(fmt.Sprintf("Message #%.8s posted to room '%s' (on cluster node %s) by %s.%s\n\n```json\n{\"message_id\": \"%s\", \"room_id\": \"%s\", \"latest_message_id\": \"%s\", \"owner_node\": \"%s\"}\n```", msgID, args.RoomID, owner, args.Author, pinNote, msgID, args.RoomID, msgID, owner) + workspaceNote)
+			r.Server.Logger.Info("Message proxied to owner", "room_id", args.RoomID, "owner", owner, "msg_id", out.MessageID, "pinned", out.Pinned)
+			return msg(formatPostResult(args, out, owner) + workspaceNote)
 		}
 		return msg(fmt.Sprintf("Error: Room '%s' not found. Create it first with create_room.", args.RoomID))
 	}
 
-	// Resolve reply_to/supersedes to full IDs before storing them. PostMessageWithRefs
-	// stores these refs verbatim and downstream matching (backlinks, revision chains,
-	// get_links) is exact — a stored prefix or typo'd ID would create a silently
-	// dangling edge, so unlike resolveSingleID's pass-through this errors on
-	// not-found too. Local-only: on the cluster-proxy path above the referenced
-	// message lives on the owning node, so the owner resolves it there.
-	for _, ref := range []struct {
-		name  string
-		value *string
-	}{{"reply_to", &args.ReplyTo}, {"supersedes", &args.Supersedes}} {
-		if *ref.value == "" {
-			continue
-		}
-		resolved, rerr := r.Server.ResolveMessageID(*ref.value)
-		if rerr != nil {
-			return msg(fmt.Sprintf("Error: %s: %s", ref.name, rerr.Error()))
-		}
-		*ref.value = resolved
-	}
-
-	msgID, err := r.Server.PostMessageWithRefs(args.RoomID, args.Author, args.Message, args.MessageType, args.ReplyTo, args.Mentions, args.Supersedes)
+	out, err := r.applyPost(in)
 	if err != nil {
+		if ue, ok := err.(postUserError); ok {
+			return msg("Error: " + string(ue))
+		}
 		r.Server.Logger.Error("Failed to post message", "room_id", args.RoomID, "error", err)
 		return nil, ToolOutput{}, err
 	}
@@ -176,22 +183,8 @@ func (r *Registry) handlePostToRoom(ctx context.Context, req *mcp.CallToolReques
 	// mark_read_self folds the end-of-session mark_read round-trip into the write:
 	// the poster just authored this message, so advance their own cursor to it.
 	if args.MarkReadSelf == "true" {
-		if err := r.Server.MarkRead(args.Author, args.RoomID, msgID); err != nil {
+		if err := r.Server.MarkRead(args.Author, args.RoomID, out.MessageID); err != nil {
 			r.Server.Logger.Warn("mark_read_self failed", "room_id", args.RoomID, "author", args.Author, "error", err)
-		}
-	}
-
-	// pin folds the post→pin dance into one call: pin the just-authored message
-	// (auto-unpinning the room's previous pin, identical to pin_message). The
-	// near-universal flow for synthesis/decision is "write after deliberation,
-	// then pin it" — this saves a round-trip and the manual message_id plumbing.
-	pinNote := ""
-	if args.Pin == "true" {
-		if _, replaced, perr := r.Server.PinMessageReplacing(args.RoomID, msgID); perr != nil {
-			r.Server.Logger.Warn("pin-on-post failed", "room_id", args.RoomID, "msg_id", msgID, "error", perr)
-			pinNote = " (pin failed — pin it manually with pin_message)"
-		} else {
-			pinNote = pinConfirmation(replaced)
 		}
 	}
 
@@ -204,8 +197,220 @@ func (r *Registry) handlePostToRoom(ctx context.Context, req *mcp.CallToolReques
 		healthHint = healthTagHint(room.Tags)
 	}
 
-	r.Server.Logger.Info("Message posted", "room_id", args.RoomID, "author", args.Author, "type", args.MessageType, "msg_id", msgID, "pinned", args.Pin == "true")
-	return msg(fmt.Sprintf("Message #%.8s posted to room '%s' by %s.%s\n\n```json\n{\"message_id\": \"%s\", \"room_id\": \"%s\", \"latest_message_id\": \"%s\"}\n```%s", msgID, args.RoomID, args.Author, pinNote, msgID, args.RoomID, msgID, healthHint) + workspaceNote)
+	r.Server.Logger.Info("Message posted", "room_id", args.RoomID, "author", args.Author, "type", args.MessageType, "msg_id", out.MessageID, "pinned", out.Pinned)
+	return msg(formatPostResult(args, out, "") + healthHint + workspaceNote)
+}
+
+// PinFreshWindow is how recent another author's pin must be for post_to_room
+// (pin=true) to refuse replacing it without force=true. A pin is the room's
+// living abstract and replacing a peer's mid-session is a silent overwrite.
+const PinFreshWindow = 12 * time.Hour
+
+// postUserError marks a validation failure the caller should read as "Error: ..."
+// rather than an infrastructure failure to log.
+type postUserError string
+
+func (e postUserError) Error() string { return string(e) }
+
+// postOutcome is what applyPost reports; the same shape crosses the cluster proxy.
+type postOutcome struct {
+	MessageID   string
+	Duplicate   bool
+	Pinned      bool
+	PinRefused  bool
+	ReplacedPin string
+	Reopened    bool
+	WasResolved bool // room is still resolved after the post
+	Notes       []string
+}
+
+// splitRoomRef splits an optional "room#id" qualifier. A bare "#id" or "id"
+// scopes to defaultRoom.
+func splitRoomRef(ref, defaultRoom string) (room, id string) {
+	ref = strings.TrimSpace(ref)
+	if room, id, ok := strings.Cut(ref, "#"); ok {
+		if room == "" {
+			room = defaultRoom
+		}
+		return room, id
+	}
+	return defaultRoom, ref
+}
+
+// resolveRef resolves a message reference written while posting to roomID: a full
+// id, an 8+ char prefix, or room#prefix. Lookup is room-scoped first, so a prefix
+// shared with another room is not ambiguity.
+func (r *Registry) resolveRef(ref, roomID string) (string, error) {
+	room, id := splitRoomRef(ref, roomID)
+	return r.Server.ResolveMessageIDInRoom(id, room)
+}
+
+type pendingLink struct{ relation, toID string }
+
+// parseLinks validates "relation:ref,relation:ref" in full before anything is
+// written, so a bad entry rejects the whole post instead of half-writing it.
+func (r *Registry) parseLinks(spec, roomID string) ([]pendingLink, error) {
+	var out []pendingLink
+	for _, part := range strings.Split(spec, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		rel, ref, ok := strings.Cut(part, ":")
+		rel = strings.ToLower(strings.TrimSpace(rel))
+		if !ok || strings.TrimSpace(ref) == "" {
+			return nil, fmt.Errorf("links: %q must look like relation:#id (e.g. refines:#01a0b156)", part)
+		}
+		if !council.ValidLinkRelations[rel] {
+			return nil, fmt.Errorf("links: unknown relation %q (valid: refines, contradicts, implements, duplicates, depends-on, relates, informs)", rel)
+		}
+		id, err := r.resolveRef(ref, roomID)
+		if err != nil {
+			return nil, fmt.Errorf("links: %q: %s", part, err.Error())
+		}
+		out = append(out, pendingLink{rel, id})
+	}
+	return out, nil
+}
+
+// applyPost is the one write path behind post_to_room, shared by the local handler
+// and the cluster InternalPostHandler so both validate and behave identically. The
+// room must exist locally. Validation (refs, links, pin guard) runs before the
+// first write, so a rejected post leaves nothing behind.
+func (r *Registry) applyPost(in internalPostRequest) (postOutcome, error) {
+	var out postOutcome
+	room, err := r.Server.GetRoom(in.RoomID)
+	if err != nil {
+		return out, postUserError(fmt.Sprintf("room '%s' not found on this node", in.RoomID))
+	}
+	if in.MessageType == "" {
+		in.MessageType = "message"
+	}
+	if !validMessageTypes[in.MessageType] {
+		return out, postUserError(fmt.Sprintf("Invalid message_type '%s'.", in.MessageType))
+	}
+
+	// Resolve reply_to/supersedes to full IDs before storing them. The store keeps
+	// these verbatim and downstream matching (backlinks, revision chains,
+	// get_links) is exact, so a stored prefix or typo'd ID would create a silently
+	// dangling edge: unlike resolveSingleID's pass-through this errors on
+	// not-found too.
+	for _, ref := range []struct {
+		name  string
+		value *string
+	}{{"reply_to", &in.ReplyTo}, {"supersedes", &in.Supersedes}} {
+		if *ref.value == "" {
+			continue
+		}
+		resolved, rerr := r.resolveRef(*ref.value, in.RoomID)
+		if rerr != nil {
+			return out, postUserError(fmt.Sprintf("%s: %s", ref.name, rerr.Error()))
+		}
+		*ref.value = resolved
+	}
+
+	links, lerr := r.parseLinks(in.Links, in.RoomID)
+	if lerr != nil {
+		return out, postUserError(lerr.Error())
+	}
+
+	// Pin guard: another author's pin younger than PinFreshWindow is not replaced
+	// silently. The message still posts (its body is already on the wire); only the
+	// pin is withheld, and the response names what it would have displaced.
+	var refusedPin *council.Message
+	if in.Pin == "true" && in.Force != "true" {
+		if cur, _ := r.Server.GetPinnedMessage(in.RoomID); cur != nil && cur.Author != in.Author && time.Since(cur.Timestamp) < PinFreshWindow {
+			refusedPin = cur
+		}
+	}
+
+	id, dup, err := r.Server.PostMessageOpts(in.RoomID, in.Author, in.Message, in.MessageType, in.ReplyTo, in.Mentions, in.Supersedes, council.PostOptions{
+		Tags:           council.NormalizeMessageTags(in.Tags),
+		PostedFrom:     in.PostedFrom,
+		IdempotencyKey: in.IdempotencyKey,
+	})
+	if err != nil {
+		return out, err
+	}
+	out.MessageID = id
+	if dup {
+		out.Duplicate = true
+		out.Notes = append(out.Notes, fmt.Sprintf("Duplicate: idempotency_key matched an earlier post, so nothing was written; this is that message (#%s).", id))
+		return out, nil
+	}
+
+	if room.Status == "resolved" {
+		if in.Reopen == "true" {
+			if uerr := r.Server.UpdateStatus(in.RoomID, "active"); uerr != nil {
+				r.Server.Logger.Warn("reopen-on-post failed", "room_id", in.RoomID, "error", uerr)
+				out.WasResolved = true
+			} else {
+				out.Reopened = true
+				out.Notes = append(out.Notes, "Room was resolved; reopened to active.")
+			}
+		} else {
+			out.WasResolved = true
+			out.Notes = append(out.Notes, "⚠️ This room is resolved: your message landed, but readers who skip resolved rooms will not see it. Pass reopen=true to flip it back to active, or signal_status(active).")
+		}
+	}
+
+	for _, l := range links {
+		if _, cerr := r.Server.CreateLink(id, l.toID, l.relation, in.Author); cerr != nil {
+			r.Server.Logger.Warn("link-on-post failed", "from", id, "to", l.toID, "relation", l.relation, "error", cerr)
+			out.Notes = append(out.Notes, fmt.Sprintf("link %s:#%.8s failed: %s", l.relation, l.toID, cerr.Error()))
+		}
+	}
+
+	// pin folds the post->pin dance into one call: pin the just-authored message
+	// (auto-unpinning the room's previous pin, identical to pin_message).
+	if in.Pin == "true" {
+		if refusedPin != nil {
+			out.PinRefused = true
+			out.Notes = append(out.Notes, fmt.Sprintf("📌 NOT pinned: the room's current pin #%s was posted by %s %s ago (under %dh), and replacing another author's fresh pin needs force=true. To replace it anyway: pin_message(room_id=%q, message_id=%q).",
+				refusedPin.ID, refusedPin.Author, time.Since(refusedPin.Timestamp).Round(time.Minute), int(PinFreshWindow.Hours()), in.RoomID, id))
+		} else if _, replaced, perr := r.Server.PinMessageReplacing(in.RoomID, id); perr != nil {
+			r.Server.Logger.Warn("pin-on-post failed", "room_id", in.RoomID, "msg_id", id, "error", perr)
+		} else {
+			out.Pinned, out.ReplacedPin = true, replaced
+		}
+	}
+	return out, nil
+}
+
+// formatPostResult renders the post_to_room response for both the local and the
+// proxied path. owner is the cluster node name when the write was forwarded.
+func formatPostResult(args PostToRoomInput, out postOutcome, owner string) string {
+	where := fmt.Sprintf("room '%s'", args.RoomID)
+	if owner != "" {
+		where = fmt.Sprintf("room '%s' (on cluster node %s)", args.RoomID, owner)
+	}
+	verb := "posted to"
+	if out.Duplicate {
+		verb = "already in"
+	}
+	pinNote := ""
+	if args.Pin == "true" && !out.Duplicate {
+		switch {
+		case out.Pinned:
+			pinNote = pinConfirmation(out.ReplacedPin)
+		case out.PinRefused:
+			// explained in Notes
+		case owner != "":
+			pinNote = " (pin failed on the owner node — pin it manually with pin_message there)"
+		default:
+			pinNote = " (pin failed — pin it manually with pin_message)"
+		}
+	}
+	ownerField := ""
+	if owner != "" {
+		ownerField = fmt.Sprintf(", \"owner_node\": \"%s\"", owner)
+	}
+	text := fmt.Sprintf("Message #%.8s %s %s by %s.%s\n\n```json\n{\"message_id\": \"%s\", \"room_id\": \"%s\", \"latest_message_id\": \"%s\", \"ref\": \"%s#%s\"%s}\n```",
+		out.MessageID, verb, where, args.Author, pinNote, out.MessageID, args.RoomID, out.MessageID, args.RoomID, out.MessageID, ownerField)
+	for _, n := range out.Notes {
+		text += "\n\n" + n
+	}
+	return text
 }
 
 func (r *Registry) handleUpdateMessage(ctx context.Context, req *mcp.CallToolRequest, args UpdateMessageInput) (*mcp.CallToolResult, ToolOutput, error) {

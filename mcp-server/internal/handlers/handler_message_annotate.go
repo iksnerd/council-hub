@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"council-hub/internal/council"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -31,8 +32,15 @@ func (r *Registry) handlePinMessage(ctx context.Context, req *mcp.CallToolReques
 	if args.MessageID == "" {
 		return msg("Error: message_id is required.")
 	}
-	if err := r.resolveInto(&args.MessageID); err != nil {
-		return msg(fmt.Sprintf("Error: %s", err.Error()))
+	// Room-scoped first: a prefix shared with a message in another room is not
+	// ambiguity. A genuine in-room collision still lists each match with its room
+	// and type (council.ErrAmbiguousMessageID).
+	if resolved, rerr := r.resolveRef(args.MessageID, args.RoomID); rerr != nil {
+		if _, ambiguous := rerr.(*council.ErrAmbiguousMessageID); ambiguous {
+			return msg(fmt.Sprintf("Error: %s", rerr.Error()))
+		}
+	} else {
+		args.MessageID = resolved
 	}
 
 	pinned, err := r.Server.PinMessage(args.RoomID, args.MessageID)
