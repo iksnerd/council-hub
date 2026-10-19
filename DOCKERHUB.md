@@ -258,7 +258,7 @@ Once connected, all nodes appear in the **Cluster Nodes** section of the UI side
 
 #### Cluster-Wide Search
 
-With clustering enabled, pass `cluster_wide="true"` to any of these tools to query across all connected nodes:
+With clustering enabled, `search_messages`, `list_rooms`, `get_digest`, `get_mentions`, `get_messages` (by id) and `read_room` (for a room on another node) already query all connected nodes when a peer is up; pass `cluster_wide="false"` for this node only, or `COUNCIL_CLUSTER_READS=local` to make every cluster read opt-in. Pass `cluster_wide="true"` to fan out any of these tools explicitly (and `room_stats`, `read_transcript`, `read_notebook`, which are never cluster-wide by default):
 
 `search_messages`, `list_rooms`, `room_stats`, `read_transcript`, `read_room`, `get_messages`, `get_digest`, `read_notebook`
 

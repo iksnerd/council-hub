@@ -34,6 +34,7 @@ type digestBriefEntry struct {
 	RoomID          string `json:"room_id"`
 	NewMessages     int    `json:"new_messages"`
 	LatestMessageID string `json:"latest_message_id"`
+	SourceNode      string `json:"source_node,omitempty"`
 }
 
 // digestSummary is the at-a-glance health header prepended to the digest so an
@@ -61,26 +62,32 @@ type digestResponse struct {
 	Hint    string                `json:"hint,omitempty"`
 	// Note says the read was local on a multi-node cluster.
 	Note string `json:"note,omitempty"`
+	// Warnings lists cluster degradations (unreachable or older peers).
+	Warnings []string `json:"warnings,omitempty"`
 }
 
 // digestBriefResponse is digestResponse with the compact room shape (brief=true).
 type digestBriefResponse struct {
-	Summary digestSummary      `json:"summary"`
-	Rooms   []digestBriefEntry `json:"rooms"`
-	Hint    string             `json:"hint,omitempty"`
-	Note    string             `json:"note,omitempty"`
+	Summary  digestSummary      `json:"summary"`
+	Rooms    []digestBriefEntry `json:"rooms"`
+	Hint     string             `json:"hint,omitempty"`
+	Note     string             `json:"note,omitempty"`
+	Warnings []string           `json:"warnings,omitempty"`
 }
 
 // marshalDigest renders the full or brief response.
-func marshalDigest(summary digestSummary, rooms []council.DigestEntry, brief bool, hint, note string) ([]byte, error) {
+func marshalDigest(summary digestSummary, rooms []council.DigestEntry, brief bool, hint, note string, warnings []string) ([]byte, error) {
+	if rooms == nil {
+		rooms = []council.DigestEntry{} // "rooms": [], never null
+	}
 	if !brief {
-		return json.MarshalIndent(digestResponse{Summary: summary, Rooms: rooms, Hint: hint, Note: note}, "", "  ")
+		return json.MarshalIndent(digestResponse{Summary: summary, Rooms: rooms, Hint: hint, Note: note, Warnings: warnings}, "", "  ")
 	}
 	out := make([]digestBriefEntry, 0, len(rooms))
 	for _, e := range rooms {
-		out = append(out, digestBriefEntry{RoomID: e.RoomID, NewMessages: e.NewMessages, LatestMessageID: e.LatestMessageID})
+		out = append(out, digestBriefEntry{RoomID: e.RoomID, NewMessages: e.NewMessages, LatestMessageID: e.LatestMessageID, SourceNode: e.SourceNode})
 	}
-	return json.MarshalIndent(digestBriefResponse{Summary: summary, Rooms: out, Hint: hint, Note: note}, "", "  ")
+	return json.MarshalIndent(digestBriefResponse{Summary: summary, Rooms: out, Hint: hint, Note: note, Warnings: warnings}, "", "  ")
 }
 
 // capDigestRooms applies limit (most-unread first when sortByUnread). The summary
@@ -210,7 +217,7 @@ func (r *Registry) handleGetDigest(ctx context.Context, req *mcp.CallToolRequest
 
 		summary := summarizeDigest(filtered)
 		rooms := capDigestRooms(filtered, &summary, digestLimit(args.Limit, digestUnreadDefaultCap), true)
-		out, err := marshalDigest(summary, rooms, brief, digestNoMatchHint(args.Project, summary.Total), note)
+		out, err := marshalDigest(summary, rooms, brief, digestNoMatchHint(args.Project, summary.Total), note, nil)
 		if err != nil {
 			return msg(fmt.Sprintf("Error formatting JSON: %s", err.Error()))
 		}
@@ -227,36 +234,7 @@ func (r *Registry) handleGetDigest(ctx context.Context, req *mcp.CallToolRequest
 		digest[i].LatestExcerpt = digestExcerpt(digest[i].LatestExcerpt)
 	}
 
-	// Summary is computed over the full set so the stale count is honest even when
-	// exclude_stale hides those rooms from the list. exclude_stale drops rooms
-	// flagged `stale` (the inactive-room graveyard) — but keeps a `stale` room that
-	// has genuinely new activity, and never hides stale-pin/stale-plan (those are
-	// drift flags on live rooms, not the graveyard).
-	summary := summarizeDigest(digest)
-	rooms := digest
-	if args.ExcludeStale == "true" {
-		kept := rooms[:0:0]
-		for _, e := range digest {
-			if digestHasTag(e.Tags, "stale") && e.NewMessages == 0 {
-				continue
-			}
-			kept = append(kept, e)
-		}
-		summary.HiddenStale = len(digest) - len(kept)
-		rooms = kept
-	}
-
-	// Rooms are already ordered most-recent-first, so a limit keeps the part of
-	// the digest anyone reads. The summary is computed above over the FULL set,
-	// so the tallies stay honest and truncation is reported rather than silent
-	// — the failure this exists to fix was a session-start call returning 73KB
-	// with both narrowing params already set, because neither bounds room count.
-	rooms = capDigestRooms(rooms, &summary, digestLimit(args.Limit, 0), false)
-
-	// Hint reflects whether the project filter matched any room at all (len(digest)),
-	// not how many survived exclude_stale (len(rooms)) — a project with only stale
-	// rooms still matched, so it isn't the "wrong project name" footgun.
-	out, err := marshalDigest(summary, rooms, brief, digestNoMatchHint(args.Project, len(digest)), note)
+	out, err := renderDigest(digest, args, note, nil)
 	if err != nil {
 		return msg(fmt.Sprintf("Error formatting JSON: %s", err.Error()))
 	}
@@ -312,4 +290,38 @@ func parsePositiveInt(s string) int {
 		return 0
 	}
 	return n
+}
+
+// renderDigest turns the full (pre-filter) room set into the digest JSON: the
+// summary over the full set, exclude_stale, the limit, brief, and the no-match
+// hint. Both the local and the cluster path end here so they cannot drift in
+// shape. warnings is cluster-only.
+func renderDigest(digest []council.DigestEntry, args DigestInput, note string, warnings []string) ([]byte, error) {
+	// Summary is computed over the full set so the stale count is honest even when
+	// exclude_stale hides those rooms from the list. exclude_stale drops rooms
+	// flagged `stale` (the inactive-room graveyard) - but keeps a `stale` room that
+	// has genuinely new activity, and never hides stale-pin/stale-plan (those are
+	// drift flags on live rooms, not the graveyard).
+	summary := summarizeDigest(digest)
+	rooms := digest
+	if args.ExcludeStale == "true" {
+		kept := rooms[:0:0]
+		for _, e := range digest {
+			if digestHasTag(e.Tags, "stale") && e.NewMessages == 0 {
+				continue
+			}
+			kept = append(kept, e)
+		}
+		summary.HiddenStale = len(digest) - len(kept)
+		rooms = kept
+	}
+
+	// Rooms arrive most-recent-first, so a limit keeps the part of the digest
+	// anyone reads. The summary above covers the FULL set, so truncation is
+	// reported rather than silent.
+	rooms = capDigestRooms(rooms, &summary, digestLimit(args.Limit, 0), false)
+
+	// Hint reflects whether the project filter matched any room at all, not how
+	// many survived exclude_stale.
+	return marshalDigest(summary, rooms, args.Brief == "true", digestNoMatchHint(args.Project, len(digest)), note, warnings)
 }

@@ -292,6 +292,22 @@ defmodule CouncilHubUi.ClusterTest do
       assert hd(result.results).latest_message_excerpt == "Action required..."
       assert hd(result.results).source_node == Atom.to_string(Node.self())
     end
+
+    test "merged rows keep latest_message_id, latest_author and tags" do
+      create_room(%{id: "cluster-digest-fields", project: "test-proj-f", tags: "stale"})
+      msg = create_message(%{room_id: "cluster-digest-fields", author: "gemini", content: "hi"})
+
+      since =
+        NaiveDateTime.utc_now()
+        |> NaiveDateTime.add(-86400, :second)
+        |> NaiveDateTime.to_iso8601()
+
+      [row] = Cluster.get_digest(%{"project" => "test-proj-f", "since" => since}).results
+
+      assert row.latest_message_id == msg.id
+      assert row.latest_author == "gemini"
+      assert row.tags == "stale"
+    end
   end
 
   describe "fan_out failure simulation" do

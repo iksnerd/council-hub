@@ -90,8 +90,8 @@ func TestHandleListRoomsClusterForwardsAllFilters(t *testing.T) {
 		"tag":            "meta",
 		"status":         "active",
 		"search":         "council",
-		"limit":          "25",
-		"offset":         "5",
+		"limit":          "30", // limit+offset: the page is cut after the merge
+		"offset":         "0",
 	} {
 		if got[key] != want {
 			t.Fatalf("expected %s=%q, got %#v in %#v", key, want, got[key], got)

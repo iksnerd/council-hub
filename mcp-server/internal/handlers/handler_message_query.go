@@ -53,7 +53,8 @@ func (r *Registry) handleSearchMessages(ctx context.Context, req *mcp.CallToolRe
 	// stay on the local path.
 	hasFilter := args.Query != "" || args.Author != "" || args.MessageType != "" || args.RoomID != "" || args.RoomIDs != "" || args.Project != ""
 	if args.ClusterWide != "true" {
-		if ok, res, out, err := r.routeClusterRead(args.ClusterWide, args.Semantic != "true" && hasFilter,
+		if ok, res, out, err := r.routeClusterRead(args.ClusterWide, args.Semantic != "true" && hasFilter && args.IncludeRelated != "true", // include_related expands rooms locally only
+
 			func() (*mcp.CallToolResult, ToolOutput, error) { return r.handleSearchMessagesCluster(args) },
 			func() (*mcp.CallToolResult, ToolOutput, error) {
 				a := args
@@ -196,7 +197,7 @@ func (r *Registry) handleGetMessages(ctx context.Context, req *mcp.CallToolReque
 	// Default cluster-wide only when fetching by message_ids: those can live on
 	// a peer. Room reads and paged reads are room-scoped and stay local.
 	if args.ClusterWide != "true" {
-		if ok, res, out, err := r.routeClusterRead(args.ClusterWide, args.MessageIDs != "",
+		if ok, res, out, err := r.routeClusterRead(args.ClusterWide, args.MessageIDs != "" && args.History != "true", // revision chains are node-local
 			func() (*mcp.CallToolResult, ToolOutput, error) { return r.handleGetMessagesCluster(args) },
 			func() (*mcp.CallToolResult, ToolOutput, error) {
 				a := args

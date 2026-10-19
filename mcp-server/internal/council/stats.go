@@ -124,6 +124,9 @@ type DigestEntry struct {
 	// client names) of the live messages in the digest window, sorted. Omitted when
 	// none recorded one.
 	PostedFrom []string `json:"posted_from,omitempty"`
+	// SourceNode names the cluster node a row came from. Set only on cluster
+	// reads; omitted on a local digest.
+	SourceNode string `json:"source_node,omitempty"`
 }
 
 // GetDigest returns rooms with messages since the given timestamp, plus any rooms needing attention.

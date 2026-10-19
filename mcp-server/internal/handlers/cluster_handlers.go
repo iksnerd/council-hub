@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -99,12 +100,19 @@ func (r *Registry) handleGetDigestCluster(args DigestInput) (*mcp.CallToolResult
 		return msg("Error: since is required (ISO timestamp, e.g. 2026-03-31T12:00:00).")
 	}
 
-	results := []ClusterDigestResult{}
+	// Local rows come from the full local query and are authoritative for rooms
+	// this node owns; peers' rows (Phoenix also echoes this node's own rooms
+	// back, tagged with its Erlang name) only fill in rooms not seen locally.
+	var rooms []council.DigestEntry
+	seen := map[string]bool{}
 	if r.Server != nil {
 		local, err := r.Server.GetDigest(args.Project, args.Since)
 		if err == nil {
 			for _, d := range local {
-				results = append(results, clusterDigestFromLocal(d))
+				d.LatestExcerpt = digestExcerpt(d.LatestExcerpt)
+				d.SourceNode = localSourceNode()
+				seen[d.RoomID] = true
+				rooms = append(rooms, d)
 			}
 		}
 	}
@@ -116,7 +124,7 @@ func (r *Registry) handleGetDigestCluster(args DigestInput) (*mcp.CallToolResult
 
 	raw, warnings, err := r.clusterCall("get_digest", params)
 	if err != nil {
-		if len(results) == 0 {
+		if len(rooms) == 0 {
 			return msg(fmt.Sprintf("Error: cluster get_digest failed: %s", err.Error()))
 		}
 		warnings = append(warnings, fmt.Sprintf("peer fan-out unavailable: %s", err.Error()))
@@ -125,35 +133,48 @@ func (r *Registry) handleGetDigestCluster(args DigestInput) (*mcp.CallToolResult
 		if err := json.Unmarshal(raw, &remote); err != nil {
 			return nil, ToolOutput{}, fmt.Errorf("decode cluster digest results: %w", err)
 		}
-		results = append(results, remote...)
-	}
-
-	byRoom := map[string]ClusterDigestResult{}
-	for _, d := range results {
-		if existing, ok := byRoom[d.RoomID]; ok {
-			if d.NewMessageCount > existing.NewMessageCount || existing.LatestMessageExcerpt == "" {
-				byRoom[d.RoomID] = d
+		legacy := 0
+		for _, d := range remote {
+			if seen[d.RoomID] {
+				continue
 			}
-		} else {
-			byRoom[d.RoomID] = d
+			seen[d.RoomID] = true
+			if d.LatestMessageID == "" {
+				legacy++
+			}
+			rooms = append(rooms, council.DigestEntry{
+				RoomID:          d.RoomID,
+				NewMessages:     d.NewMessageCount,
+				LatestAuthor:    d.LatestAuthor,
+				LatestExcerpt:   d.LatestMessageExcerpt,
+				Tags:            d.Tags,
+				LatestMessageID: d.LatestMessageID,
+				PostedFrom:      d.PostedFrom,
+				SourceNode:      d.SourceNode,
+			})
+		}
+		if legacy > 0 {
+			warnings = append(warnings, fmt.Sprintf("%d peer room(s) come from a node that does not report latest_message_id/latest_author/tags (older version); those fields are empty", legacy))
+		}
+		if len(remote) > 0 {
+			warnings = append(warnings, "peer rooms do not report decision_count or synthesis_count; those fields are empty")
 		}
 	}
-	results = results[:0]
-	for _, d := range byRoom {
-		results = append(results, d)
-	}
-	sort.Slice(results, func(i, j int) bool { return results[i].NewMessageCount > results[j].NewMessageCount })
 
-	outMap := map[string]any{
-		"results":  results,
-		"warnings": warnings,
-	}
-	if n := digestLimit(args.Limit, 0); n > 0 && len(results) > n {
-		outMap["results"] = results[:n]
-		outMap["truncated"] = len(results) - n
-	}
+	// Same ordering as the local digest, which is newest activity first. Rows
+	// without a latest_message_id (legacy peers) sort last, by unread count.
+	sort.SliceStable(rooms, func(i, j int) bool {
+		a, b := rooms[i], rooms[j]
+		if a.LatestMessageID != b.LatestMessageID {
+			return a.LatestMessageID > b.LatestMessageID
+		}
+		return a.NewMessages > b.NewMessages
+	})
 
-	out, err := json.MarshalIndent(outMap, "", "  ")
+	if warnings == nil {
+		warnings = []string{}
+	}
+	out, err := renderDigest(rooms, args, "", warnings)
 	if err != nil {
 		return msg(fmt.Sprintf("Error formatting JSON: %s", err.Error()))
 	}
@@ -311,6 +332,9 @@ func (r *Registry) handleReadRoomCluster(args ReadRoomInput) (*mcp.CallToolResul
 
 	var b strings.Builder
 	writeClusterRoomHeader(&b, *room)
+	// The local read_room also folds in the pinned message and latest-per-type;
+	// a peer's room is header-only here, so say how to get the rest.
+	b.WriteString("\n(Room metadata only. Pass include_last_n=N for recent messages, or read_transcript(room_id, cluster_wide=true) for the summary view.)\n")
 
 	formatClusterWarnings(&b, warnings)
 	return msg(b.String())
@@ -593,6 +617,17 @@ func (r *Registry) handleSearchMessagesCluster(args SearchMessagesInput) (*mcp.C
 	results = append(results, remote...)
 	results = dedupeClusterMessages(results)
 	sort.Slice(results, func(i, j int) bool { return results[i].ID > results[j].ID })
+	// Every node returned up to limit rows; keep the newest limit overall, as
+	// the local search would.
+	searchLimit := 20
+	if args.Limit != "" {
+		if _, err := fmt.Sscanf(args.Limit, "%d", &searchLimit); err != nil {
+			searchLimit = 20
+		}
+	}
+	if searchLimit > 0 && len(results) > searchLimit {
+		results = results[:searchLimit]
+	}
 
 	if len(results) == 0 {
 		var b strings.Builder
@@ -650,20 +685,34 @@ func (r *Registry) renderClusterSearch(args SearchMessagesInput, results []Clust
 }
 
 func (r *Registry) handleListRoomsCluster(args ListRoomsInput) (*mcp.CallToolResult, ListRoomsOutput, error) {
+	// Same defaults as the local list_rooms: limit 50, and resolved rooms hidden
+	// unless a status, search or related_to is given (status=all lifts it).
+	limit := 50
+	if args.Limit != "" {
+		if _, err := fmt.Sscanf(args.Limit, "%d", &limit); err != nil {
+			limit = 50
+		}
+	}
+	offset := 0
+	if args.Offset != "" {
+		if _, err := fmt.Sscanf(args.Offset, "%d", &offset); err != nil {
+			offset = 0
+		}
+	}
+	status := args.Status
+	hideResolved := false
+	switch {
+	case status == "all":
+		status = ""
+	case status == "" && args.Search == "" && args.RelatedTo == "":
+		hideResolved = true
+	}
+	// Each node returns its first limit+offset rooms; the page is cut after the
+	// merge, since a per-node offset would skip the wrong rows.
+	window := limit + offset
+
 	var results []ClusterRoomResult
 	if r.Server != nil {
-		limit := 50
-		if args.Limit != "" {
-			if _, err := fmt.Sscanf(args.Limit, "%d", &limit); err != nil {
-				limit = 50
-			}
-		}
-		offset := 0
-		if args.Offset != "" {
-			if _, err := fmt.Sscanf(args.Offset, "%d", &offset); err != nil {
-				offset = 0
-			}
-		}
 		var projectNotIn []string
 		if args.ProjectNotIn != "" {
 			for _, p := range strings.Split(args.ProjectNotIn, ",") {
@@ -672,16 +721,19 @@ func (r *Registry) handleListRoomsCluster(args ListRoomsInput) (*mcp.CallToolRes
 				}
 			}
 		}
-		localRooms, err := r.Server.ListRoomsFiltered(council.ListRoomsOptions{
+		opts := council.ListRoomsOptions{
 			Project:      args.Project,
 			ProjectNotIn: projectNotIn,
 			Tag:          args.Tag,
-			Status:       args.Status,
+			Status:       status,
 			Search:       args.Search,
 			RelatedTo:    args.RelatedTo,
-			Limit:        limit,
-			Offset:       offset,
-		})
+			Limit:        window,
+		}
+		if hideResolved {
+			opts.ExcludeStatus = "resolved"
+		}
+		localRooms, err := r.Server.ListRoomsFiltered(opts)
 		if err == nil {
 			for _, rm := range localRooms {
 				results = append(results, clusterRoomFromLocal(rm))
@@ -693,11 +745,11 @@ func (r *Registry) handleListRoomsCluster(args ListRoomsInput) (*mcp.CallToolRes
 		"project":        args.Project,
 		"project_not_in": args.ProjectNotIn,
 		"tag":            args.Tag,
-		"status":         args.Status,
+		"status":         status,
 		"search":         args.Search,
 		"related_to":     args.RelatedTo,
-		"limit":          args.Limit,
-		"offset":         args.Offset,
+		"limit":          strconv.Itoa(window),
+		"offset":         "0",
 	}
 
 	raw, warnings, err := r.clusterCall("list_rooms", params)
@@ -713,7 +765,12 @@ func (r *Registry) handleListRoomsCluster(args ListRoomsInput) (*mcp.CallToolRes
 	if err := json.Unmarshal(raw, &remote); err != nil {
 		return nil, ListRoomsOutput{}, fmt.Errorf("decode cluster room results: %w", err)
 	}
-	results = append(results, remote...)
+	for _, rm := range remote {
+		if hideResolved && rm.Status == "resolved" {
+			continue
+		}
+		results = append(results, rm)
+	}
 
 	byID := map[string]ClusterRoomResult{}
 	for _, rm := range results {
@@ -728,6 +785,14 @@ func (r *Registry) handleListRoomsCluster(args ListRoomsInput) (*mcp.CallToolRes
 	sort.Slice(results, func(i, j int) bool {
 		return parseClusterTime(results[i].UpdatedAt).After(parseClusterTime(results[j].UpdatedAt))
 	})
+
+	if offset > len(results) {
+		offset = len(results)
+	}
+	results = results[offset:]
+	if len(results) > limit {
+		results = results[:limit]
+	}
 
 	return r.renderClusterRooms(args, results, warnings)
 }

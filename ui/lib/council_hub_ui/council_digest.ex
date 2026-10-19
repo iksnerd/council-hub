@@ -57,20 +57,35 @@ defmodule CouncilHubUi.CouncilDigest do
     latest_ids = latest_head_ids(active_room_ids, false)
     real_ids = latest_head_ids(active_room_ids, true)
 
-    latest_by_room =
+    grouped =
       Repo.all(from m in Message, where: m.id in ^(latest_ids ++ real_ids))
       |> Enum.group_by(& &1.room_id)
-      |> Map.new(fn {rid, msgs} ->
+
+    latest_by_room =
+      Map.new(grouped, fn {rid, msgs} ->
         {rid, Enum.find(msgs, &(&1.author != "system")) || hd(msgs)}
       end)
 
     posted_from = posted_from_by_room(active_room_ids, since)
 
+    # The room's true newest head id (system posts included), as Go reports it.
+    latest_id_by_room =
+      Map.new(grouped, fn {rid, msgs} -> {rid, msgs |> Enum.map(& &1.id) |> Enum.max()} end)
+
+    tags_by_room =
+      Repo.all(from r in Room, where: r.id in ^active_room_ids, select: {r.id, r.tags})
+      |> Map.new()
+
     for rid <- active_room_ids do
+      latest = Map.get(latest_by_room, rid)
+
       %{
         room_id: rid,
         new_message_count: Map.fetch!(counts, rid),
-        latest_message_excerpt: latest_excerpt(Map.get(latest_by_room, rid)),
+        latest_message_excerpt: latest_excerpt(latest),
+        latest_message_id: Map.get(latest_id_by_room, rid, ""),
+        latest_author: if(latest, do: latest.author, else: ""),
+        tags: Map.get(tags_by_room, rid) || "",
         posted_from: Map.get(posted_from, rid, [])
       }
     end

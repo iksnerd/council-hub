@@ -82,6 +82,11 @@ type ClusterDigestResult struct {
 	LatestMessageExcerpt string   `json:"latest_message_excerpt"`
 	PostedFrom           []string `json:"posted_from,omitempty"`
 	SourceNode           string   `json:"source_node"`
+	// The fields below are supplied by peers running v0.63.1+; an older peer
+	// leaves them empty.
+	LatestMessageID string `json:"latest_message_id"`
+	LatestAuthor    string `json:"latest_author"`
+	Tags            string `json:"tags"`
 }
 
 func formatClusterWarnings(b *strings.Builder, warnings []string) {
@@ -189,16 +194,6 @@ func clusterStatsFromLocal(s council.RoomStats) ClusterStatsResult {
 		LastMessage:     s.LastMessage.Format("2006-01-02T15:04:05"),
 		LatestMessageID: s.LatestMessageID,
 		SourceNode:      localSourceNode(),
-	}
-}
-
-func clusterDigestFromLocal(d council.DigestEntry) ClusterDigestResult {
-	return ClusterDigestResult{
-		RoomID:               d.RoomID,
-		NewMessageCount:      d.NewMessages,
-		LatestMessageExcerpt: d.LatestExcerpt,
-		PostedFrom:           d.PostedFrom,
-		SourceNode:           localSourceNode(),
 	}
 }
 

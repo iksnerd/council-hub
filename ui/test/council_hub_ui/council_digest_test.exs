@@ -46,6 +46,18 @@ defmodule CouncilHubUi.CouncilDigestTest do
       assert entry.latest_message_excerpt =~ "fresh news here"
     end
 
+    test "carries latest_message_id, latest_author and the room's tags" do
+      room = create_room(%{id: "dg-fields", project: "dg-proj", tags: "stale,needs-synthesis"})
+      create_message(%{room_id: room.id, author: "claude", content: "first"})
+      last = create_message(%{room_id: room.id, author: "gemini", content: "second"})
+
+      [entry] = Council.get_project_digest("dg-proj", NaiveDateTime.to_iso8601(@yesterday))
+
+      assert entry.latest_message_id == last.id
+      assert entry.latest_author == "gemini"
+      assert entry.tags == "stale,needs-synthesis"
+    end
+
     test "the latest excerpt skips Knowledge Linter (system) posts when a real message exists" do
       room = create_room(%{id: "dg-linter", project: "dg-proj"})
       create_message(%{room_id: room.id, author: "claude", content: "the real latest work"})

@@ -70,7 +70,7 @@ func TestHandleGetDigestClusterEmpty(t *testing.T) {
 	}
 
 	text := resultText(result)
-	if !strings.Contains(text, "\"results\": []") {
-		t.Errorf("expected empty JSON results, got: %s", text)
+	if !strings.Contains(text, "\"rooms\": []") {
+		t.Errorf("expected empty JSON rooms, got: %s", text)
 	}
 }

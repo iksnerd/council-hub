@@ -195,6 +195,9 @@ defmodule CouncilHubUi.Cluster do
           latest_message_excerpt: best.latest_message_excerpt,
           posted_from:
             items |> Enum.flat_map(&Map.get(&1, :posted_from, [])) |> Enum.uniq() |> Enum.sort(),
+          latest_message_id: Map.get(best, :latest_message_id, ""),
+          latest_author: Map.get(best, :latest_author, ""),
+          tags: Map.get(best, :tags, ""),
           source_node: best.source_node
         }
       end)
