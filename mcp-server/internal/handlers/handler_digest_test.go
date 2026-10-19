@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"council-hub/internal/council"
 )
 
 func digestRoomsOf(t *testing.T, text string) (map[string]any, []map[string]any) {
@@ -162,5 +164,27 @@ func TestGetDigestLocalNoteWhenClustered(t *testing.T) {
 	}
 	if out.Note != "local node only; 2 nodes in the cluster" {
 		t.Errorf("note = %q", out.Note)
+	}
+}
+
+func TestGetDigestShowsPostedFromFullNotBrief(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "dpf-h", withProject("dpfproj"))
+	for _, p := range []struct{ author, from string }{{"alice", "/w/alpha"}, {"bob", "/w/beta"}} {
+		if _, _, err := reg.Server.PostMessageOpts("dpf-h", p.author, "hi", "note", "", "", "", council.PostOptions{PostedFrom: p.from}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	in := DigestInput{Project: "dpfproj", Since: "2000-01-01T00:00:00"}
+	res, _, _ := reg.handleGetDigest(context.Background(), nil, in)
+	_, rooms := digestRoomsOf(t, resultText(res))
+	pf, _ := rooms[0]["posted_from"].([]any)
+	if len(pf) != 2 || pf[0] != "alpha" || pf[1] != "beta" {
+		t.Errorf("full digest posted_from = %v", rooms[0]["posted_from"])
+	}
+	in.Brief = "true"
+	res, _, _ = reg.handleGetDigest(context.Background(), nil, in)
+	if strings.Contains(resultText(res), "posted_from") {
+		t.Errorf("brief must not carry posted_from: %s", resultText(res))
 	}
 }

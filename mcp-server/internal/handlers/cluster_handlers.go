@@ -242,7 +242,7 @@ func (r *Registry) handleReadNotebookCluster(args ReadNotebookInput) (*mcp.CallT
 			day = d
 			fmt.Fprintf(&b, "\n## %s\n", day)
 		}
-		writeNotebookEntry(&b, e, res.SourceNode, nil)
+		writeNotebookEntry(&b, nil, e, res.SourceNode, nil)
 	}
 
 	latest := results[len(results)-1].ID
@@ -395,12 +395,17 @@ func (r *Registry) handleReadRoomClusterWithMessages(args ReadRoomInput) (*mcp.C
 		}
 		if len(messages) > 0 {
 			fmt.Fprintf(&b, "\n---\n**Recent messages (%d):**\n", len(messages))
+			remoteIDList := make([]string, 0, len(messages))
+			for _, m := range messages {
+				remoteIDList = append(remoteIDList, m.ID)
+			}
+			remoteIDs := council.NewShortIDs(remoteIDList)
 			for _, m := range messages {
 				ts := m.Timestamp
 				if len(ts) > 19 {
 					ts = ts[:19]
 				}
-				appendMessageBlock(&b, m.ID, ts, m.Author, m.MessageType, council.DisplayContent(mapClusterMessage(m)), room.Repo)
+				appendMessageBlock(&b, remoteIDs, m.ID, ts, m.Author, m.MessageType, council.DisplayContent(mapClusterMessage(m)), room.Repo)
 			}
 		}
 	}

@@ -19,6 +19,10 @@ type ViewSpec struct {
 	ShowTimestamps  bool
 	ShowReactions   bool
 	TruncateLineOne bool
+
+	// IDs, when set, shortens printed ids to the prefixes unique within the whole
+	// room. When nil, FormatTranscriptView derives them from the messages it is given.
+	IDs *ShortIDs
 }
 
 // DefaultViewSpec renders the full transcript — every metadata field, full bodies.

@@ -569,7 +569,7 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name: "get_digest",
-		Description: "Get a project activity and knowledge health digest as JSON: {summary, rooms}. The summary header tallies total / with_unread / stale / needs_synthesis / stale_pin / incoherent so you can triage at scale (\"35 stale, skip the graveyard\") without scanning every entry. Each rooms[] entry has room_id, new_messages, latest_message_id, latest_excerpt, tags, decision_count, synthesis_count. " +
+		Description: "Get a project activity and knowledge health digest as JSON: {summary, rooms}. The summary header tallies total / with_unread / stale / needs_synthesis / stale_pin / incoherent so you can triage at scale (\"35 stale, skip the graveyard\") without scanning every entry. Each rooms[] entry has room_id, new_messages, latest_message_id, latest_excerpt, tags, decision_count, synthesis_count, posted_from (distinct working trees/clients that posted in the window; omitted when brief). " +
 			"Rooms flagged by check_room_health (stale, needs-synthesis, incoherent) are included. Call second at session start (after get_mentions) to see what changed and what needs attention. " +
 			"Machine-readable — parse rooms[].room_id and rooms[].latest_message_id directly for delta reads. " +
 			"On a project with hundreds of rooms, an oversized-result error means retry with limit=N (or brief=true) — nothing else bounds rooms[] count, and exclude_stale filters by state, not count. unread_only is capped at 30 rooms by default (most unread first); limit=all lifts it. summary.truncated reports how many rooms limit omitted. " +

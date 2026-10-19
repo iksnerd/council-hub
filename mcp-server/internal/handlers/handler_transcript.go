@@ -129,6 +129,7 @@ func (r *Registry) readSingleTranscript(args ReadTranscriptInput) (*mcp.CallTool
 	if err != nil {
 		return msg(fmt.Sprintf("Error: Room '%s' not found.%s", args.RoomID, r.remoteRoomNote(args.RoomID, remedyClusterRead)))
 	}
+	ids := r.Server.ShortIDsOrDefault(args.RoomID)
 
 	// Mode: summary \u2014 return system_prompt + latest message per type
 	if args.Mode == "summary" {
@@ -152,7 +153,7 @@ func (r *Registry) readSingleTranscript(args ReadTranscriptInput) (*mcp.CallTool
 		pinned, _ := r.Server.GetPinnedMessage(args.RoomID)
 		if pinned != nil {
 			ts := pinned.Timestamp.Format("2006-01-02 15:04:05")
-			fmt.Fprintf(&b, "**PINNED [#%.8s %s] %s:**\n%s\n---\n", pinned.ID, ts, pinned.Author, council.DisplayContent(*pinned))
+			fmt.Fprintf(&b, "**PINNED [#%s %s] %s:**\n%s\n---\n", ids.Of(pinned.ID), ts, pinned.Author, council.DisplayContent(*pinned))
 		}
 
 		if len(latestMsgs) == 0 {
@@ -170,7 +171,7 @@ func (r *Registry) readSingleTranscript(args ReadTranscriptInput) (*mcp.CallTool
 				if seenType[m.MessageType] > 1 {
 					label = "Previous"
 				}
-				fmt.Fprintf(&b, "**%s %s** [#%.8s %s] %s:\n  %s\n\n", label, m.MessageType, m.ID, ts, m.Author, snippet)
+				fmt.Fprintf(&b, "**%s %s** [#%s %s] %s:\n  %s\n\n", label, m.MessageType, ids.Of(m.ID), ts, m.Author, snippet)
 			}
 		}
 		return msg(b.String())
@@ -202,7 +203,7 @@ func (r *Registry) readSingleTranscript(args ReadTranscriptInput) (*mcp.CallTool
 			if m.MessageType == "decision" {
 				label = "Decision"
 			}
-			fmt.Fprintf(&b, "## [%s] %s — %s (#%.8s)\n\n%s\n\n", ts, label, m.Author, m.ID, council.DisplayContent(m))
+			fmt.Fprintf(&b, "## [%s] %s — %s (#%s)\n\n%s\n\n", ts, label, m.Author, ids.Of(m.ID), council.DisplayContent(m))
 		}
 		if count == 0 {
 			b.WriteString("No actions or decisions recorded yet.\n")
@@ -231,7 +232,7 @@ func (r *Registry) readSingleTranscript(args ReadTranscriptInput) (*mcp.CallTool
 				continue
 			}
 			ts := m.Timestamp.Format("2006-01-02 15:04:05")
-			fmt.Fprintf(&b, "\n**[#%.8s %s] %s (%s):**\n%s\n", m.ID, ts, m.Author, m.MessageType, council.DisplayContent(m))
+			fmt.Fprintf(&b, "\n**[#%s %s] %s (%s):**\n%s\n", ids.Of(m.ID), ts, m.Author, m.MessageType, council.DisplayContent(m))
 			count++
 		}
 		if count == 0 {
@@ -257,9 +258,9 @@ func (r *Registry) readSingleTranscript(args ReadTranscriptInput) (*mcp.CallTool
 		}
 
 		var b strings.Builder
-		fmt.Fprintf(&b, "# %s \u2014 %d message(s) after #%.8s", room.ID, len(messages), args.AfterID)
+		fmt.Fprintf(&b, "# %s \u2014 %d message(s) after #%s", room.ID, len(messages), ids.Of(args.AfterID))
 		if latestID != "" {
-			fmt.Fprintf(&b, " (latest: #%.8s)", latestID)
+			fmt.Fprintf(&b, " (latest: #%s)", ids.Of(latestID))
 		}
 		b.WriteString("\n")
 		if room.SystemPrompt != "" {
@@ -271,22 +272,22 @@ func (r *Registry) readSingleTranscript(args ReadTranscriptInput) (*mcp.CallTool
 		pinned, _ := r.Server.GetPinnedMessage(args.RoomID)
 		if pinned != nil {
 			ts := pinned.Timestamp.Format("2006-01-02 15:04:05")
-			fmt.Fprintf(&b, "\n**PINNED [#%.8s %s] %s:**\n%s\n---\n", pinned.ID, ts, pinned.Author, council.DisplayContent(*pinned))
+			fmt.Fprintf(&b, "\n**PINNED [#%s %s] %s:**\n%s\n---\n", ids.Of(pinned.ID), ts, pinned.Author, council.DisplayContent(*pinned))
 		}
 
 		for _, m := range messages {
 			ts := m.Timestamp.Format("2006-01-02 15:04:05")
 			replyTag := ""
 			if m.ReplyTo != "" {
-				replyTag = fmt.Sprintf(", re: #%.8s", m.ReplyTo)
+				replyTag = fmt.Sprintf(", re: #%s", ids.Of(m.ReplyTo))
 			}
 			content := council.DisplayContent(m)
 			if m.IsSummary {
 				fmt.Fprintf(&b, "\n**[%s] SUMMARY:**\n%s\n", ts, content)
 			} else if m.MessageType != "" && m.MessageType != "message" {
-				fmt.Fprintf(&b, "\n**[#%.8s %s] %s (%s%s):**\n%s\n", m.ID, ts, m.Author, m.MessageType, replyTag, content)
+				fmt.Fprintf(&b, "\n**[#%s %s] %s (%s%s):**\n%s\n", ids.Of(m.ID), ts, m.Author, m.MessageType, replyTag, content)
 			} else {
-				fmt.Fprintf(&b, "\n**[#%.8s %s] %s:**\n%s\n", m.ID, ts, m.Author, content)
+				fmt.Fprintf(&b, "\n**[#%s %s] %s:**\n%s\n", ids.Of(m.ID), ts, m.Author, content)
 			}
 		}
 
@@ -327,7 +328,9 @@ func (r *Registry) readSingleTranscript(args ReadTranscriptInput) (*mcp.CallTool
 		}
 	}
 
-	transcript := council.FormatTranscriptView(room, messages, council.ParseViewSpec(args.Show, args.Truncate))
+	viewSpec := council.ParseViewSpec(args.Show, args.Truncate)
+	viewSpec.IDs = ids
+	transcript := council.FormatTranscriptView(room, messages, viewSpec)
 	return msg(transcript)
 }
 

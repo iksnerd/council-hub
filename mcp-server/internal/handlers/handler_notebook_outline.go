@@ -405,6 +405,7 @@ func (r *Registry) outlineText(notebookID string, level int, f council.OutlineFi
 	}
 	filtered := f.Status != "" || f.Project != "" || f.EntryID != "" || f.Limit > 0
 
+	outlineIDs := newRoomIDCache(r.Server)
 	var b strings.Builder
 	title := notebook.Title
 	if title == "" {
@@ -489,8 +490,8 @@ func (r *Registry) outlineText(notebookID string, level int, f council.OutlineFi
 			if level > 0 {
 				content = firstNonEmptyLine(content)
 			}
-			fmt.Fprintf(&b, "\n> **[#%.8s %s] [%s] %s (%s)%s:**\n> %s\n*(entry %s)*\n",
-				e.RefID, ts, e.RefRoomID, e.RefAuthor, e.RefType, pin,
+			fmt.Fprintf(&b, "\n> **[#%s %s] [%s] %s (%s)%s:**\n> %s\n*(entry %s)*\n",
+				outlineIDs.Of(e.RefRoomID, e.RefID), ts, e.RefRoomID, e.RefAuthor, e.RefType, pin,
 				strings.ReplaceAll(content, "\n", "\n> "), e.ID)
 		}
 	}

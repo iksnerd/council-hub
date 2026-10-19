@@ -27,7 +27,7 @@ func formatReactions(reactionsJSON string) string {
 func headerPrefix(m Message, v ViewSpec, includeID bool) string {
 	var br []string
 	if v.ShowIDs && includeID {
-		br = append(br, fmt.Sprintf("#%.8s", m.ID))
+		br = append(br, "#"+v.IDs.Of(m.ID))
 	}
 	if v.ShowTimestamps {
 		br = append(br, m.Timestamp.Format("2006-01-02 15:04:05"))
@@ -66,6 +66,14 @@ func FormatTranscript(room Room, messages []Message) string {
 // FormatTranscriptView renders a room projected through a ViewSpec.
 func FormatTranscriptView(room Room, messages []Message, v ViewSpec) string {
 	var b strings.Builder
+
+	if v.IDs == nil {
+		all := make([]string, 0, len(messages)*2)
+		for _, m := range messages {
+			all = append(all, m.ID, m.ReplyTo, m.Supersedes)
+		}
+		v.IDs = NewShortIDs(all)
+	}
 
 	fmt.Fprintf(&b, "# COUNCIL ROOM: %s\n", room.ID)
 	if room.Project != "" {
@@ -113,7 +121,7 @@ func FormatTranscriptView(room Room, messages []Message, v ViewSpec) string {
 			pinnedID = m.ID
 			staleNote := ""
 			if by, ok := supersededBy[m.ID]; ok {
-				staleNote = fmt.Sprintf(" ⚠️ superseded by #%.8s", by)
+				staleNote = fmt.Sprintf(" ⚠️ superseded by #%s", v.IDs.Of(by))
 			}
 			if m.Revises != "" {
 				staleNote += " ✎ edited"
@@ -149,14 +157,14 @@ func FormatTranscriptView(room Room, messages []Message, v ViewSpec) string {
 		}
 		replyTag := ""
 		if m.ReplyTo != "" {
-			replyTag = fmt.Sprintf(", re: #%.8s", m.ReplyTo)
+			replyTag = fmt.Sprintf(", re: #%s", v.IDs.Of(m.ReplyTo))
 		}
 		supersedesTag := ""
 		if m.Supersedes != "" {
-			supersedesTag = fmt.Sprintf(", supersedes #%.8s", m.Supersedes)
+			supersedesTag = fmt.Sprintf(", supersedes #%s", v.IDs.Of(m.Supersedes))
 		}
 		if by, ok := supersededBy[m.ID]; ok {
-			supersedesTag += fmt.Sprintf(", superseded by #%.8s", by)
+			supersedesTag += fmt.Sprintf(", superseded by #%s", v.IDs.Of(by))
 		}
 		mentionTag := ""
 		if m.Mentions != "" {
@@ -183,7 +191,7 @@ func FormatTranscriptView(room Room, messages []Message, v ViewSpec) string {
 			if m.MessageType != "" && m.MessageType != "message" {
 				annot = " (" + m.MessageType + replyTag + supersedesTag + ")"
 			} else if m.ReplyTo != "" {
-				annot = fmt.Sprintf(" (re: #%.8s%s)", m.ReplyTo, supersedesTag)
+				annot = fmt.Sprintf(" (re: #%s%s)", v.IDs.Of(m.ReplyTo), supersedesTag)
 			} else {
 				annot = supersedesTag // bare, no parens (matches the plain-message form)
 			}

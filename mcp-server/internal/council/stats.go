@@ -3,6 +3,7 @@ package council
 import (
 	"database/sql"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 )
@@ -119,6 +120,10 @@ type DigestEntry struct {
 	DecisionCount   int    `json:"decision_count"`
 	SynthesisCount  int    `json:"synthesis_count"`
 	LatestMessageID string `json:"latest_message_id"`
+	// PostedFrom lists the distinct posted_from labels (working-tree basenames or
+	// client names) of the live messages in the digest window, sorted. Omitted when
+	// none recorded one.
+	PostedFrom []string `json:"posted_from,omitempty"`
 }
 
 // GetDigest returns rooms with messages since the given timestamp, plus any rooms needing attention.
@@ -178,7 +183,48 @@ func (s *Server) GetDigest(project, since string) ([]DigestEntry, error) {
 		d.LatestExcerpt = DisplayContent(Message{Content: d.LatestExcerpt, RetractedAt: retractedAt, RetractedBy: retractedBy})
 		entries = append(entries, d)
 	}
-	return entries, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	s.attachDigestPostedFrom(entries, since)
+	return entries, nil
+}
+
+// attachDigestPostedFrom fills DigestEntry.PostedFrom. It is a separate query,
+// not another column of the aggregate: the aggregate GROUPs by room, and joining
+// per-message posted_from into it would multiply the rows its SUM counts over.
+// Best effort: a failure leaves the field empty rather than failing the digest.
+func (s *Server) attachDigestPostedFrom(entries []DigestEntry, since string) {
+	if len(entries) == 0 {
+		return
+	}
+	rows, err := s.DB.Query(`SELECT DISTINCT room_id, posted_from FROM messages WHERE timestamp > ? AND posted_from IS NOT NULL AND posted_from != '' AND `+liveClause(""), since)
+	if err != nil {
+		return
+	}
+	defer func() { _ = rows.Close() }()
+	byRoom := map[string]map[string]bool{}
+	for rows.Next() {
+		var room, from string
+		if rows.Scan(&room, &from) != nil {
+			continue
+		}
+		label := displayPostedFrom(from)
+		if label == "" {
+			continue
+		}
+		if byRoom[room] == nil {
+			byRoom[room] = map[string]bool{}
+		}
+		byRoom[room][label] = true
+	}
+	for i := range entries {
+		set := byRoom[entries[i].RoomID]
+		for label := range set {
+			entries[i].PostedFrom = append(entries[i].PostedFrom, label)
+		}
+		sort.Strings(entries[i].PostedFrom)
+	}
 }
 
 // GetMessageCounts returns a map of room_id -> message count for all rooms.

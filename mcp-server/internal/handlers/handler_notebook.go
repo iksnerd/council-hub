@@ -118,7 +118,7 @@ func (r *Registry) handleReadNotebook(ctx context.Context, req *mcp.CallToolRequ
 		fmt.Fprintf(&b, " | **Window:** %s → %s", orStr(args.Since, "…"), orStr(args.Until, "…"))
 	}
 	b.WriteString("\n---\n")
-	writeNotebookEntries(&b, entries, r.noteConnections(entries))
+	writeNotebookEntries(&b, newRoomIDCache(r.Server), entries, r.noteConnections(entries))
 
 	// Structured JSON footer for machine-parseable cursor tracking (same shape
 	// as read_transcript's after_id mode).
@@ -151,7 +151,7 @@ func (r *Registry) noteConnections(entries []council.NotebookEntry) map[string][
 // heading per day. Each entry resolves {sha:...} refs against its own room's
 // repo and carries a 📌 marker when pinned. conns maps an entry ID to its
 // connective links (notes only); pass nil to skip the weave.
-func writeNotebookEntries(b *strings.Builder, entries []council.NotebookEntry, conns map[string][]council.MessageLink) {
+func writeNotebookEntries(b *strings.Builder, ids *roomIDCache, entries []council.NotebookEntry, conns map[string][]council.MessageLink) {
 	day := ""
 	for _, e := range entries {
 		d := e.Timestamp.Format("2006-01-02")
@@ -159,7 +159,7 @@ func writeNotebookEntries(b *strings.Builder, entries []council.NotebookEntry, c
 			day = d
 			fmt.Fprintf(b, "\n## %s\n", day)
 		}
-		writeNotebookEntry(b, e, "", conns[e.ID])
+		writeNotebookEntry(b, ids, e, "", conns[e.ID])
 	}
 }
 
@@ -167,7 +167,7 @@ func writeNotebookEntries(b *strings.Builder, entries []council.NotebookEntry, c
 // prefixed in cluster-wide output to show which node the entry came from. conns
 // are the entry's connective links (notes wired to deliberation), rendered as
 // ↳ lines beneath the entry.
-func writeNotebookEntry(b *strings.Builder, e council.NotebookEntry, nodeTag string, conns []council.MessageLink) {
+func writeNotebookEntry(b *strings.Builder, ids *roomIDCache, e council.NotebookEntry, nodeTag string, conns []council.MessageLink) {
 	ts := e.Timestamp.Format("15:04")
 	pin := ""
 	if e.Pinned {
@@ -178,9 +178,9 @@ func writeNotebookEntry(b *strings.Builder, e council.NotebookEntry, nodeTag str
 		node = fmt.Sprintf("[%s] ", nodeTag)
 	}
 	content := council.ResolveCommitRefs(e.Content, e.Repo)
-	fmt.Fprintf(b, "\n**[#%.8s %s] %s[%s] %s (%s)%s:**\n%s\n", e.ID, ts, node, e.RoomID, e.Author, e.MessageType, pin, content)
+	fmt.Fprintf(b, "\n**[#%s %s] %s[%s] %s (%s)%s:**\n%s\n", ids.Of(e.RoomID, e.ID), ts, node, e.RoomID, e.Author, e.MessageType, pin, content)
 	for _, l := range conns {
-		fmt.Fprintf(b, "↳ %s #%.8s\n", l.Relation, l.ToID)
+		fmt.Fprintf(b, "↳ %s #%s\n", l.Relation, ids.Of(e.RoomID, l.ToID))
 	}
 }
 
