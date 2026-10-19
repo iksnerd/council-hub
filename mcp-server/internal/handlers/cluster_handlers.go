@@ -55,7 +55,7 @@ func (r *Registry) handleGetMessagesCluster(args GetMessagesInput) (*mcp.CallToo
 	if err != nil {
 		if len(results) > 0 {
 			warnings = append(warnings, fmt.Sprintf("peer fan-out unavailable: %s", err.Error()))
-			return r.renderClusterMessages(results, warnings)
+			return r.renderClusterMessages(results, warnings, nil)
 		}
 		return msg(fmt.Sprintf("Error: cluster get_messages failed: %s", err.Error()))
 	}
@@ -67,17 +67,49 @@ func (r *Registry) handleGetMessagesCluster(args GetMessagesInput) (*mcp.CallToo
 	results = append(results, remote...)
 	results = dedupeClusterMessages(results)
 
+	var missing []string
+	if args.MessageIDs != "" {
+		missing = missingClusterIDs(splitIDList(args.MessageIDs), results)
+	}
+
 	if len(results) == 0 {
 		var b strings.Builder
 		b.WriteString("No messages found on any cluster node.")
+		if len(missing) > 0 {
+			fmt.Fprintf(&b, " Not found: %s.", strings.Join(missing, ", "))
+		}
 		formatClusterWarnings(&b, warnings)
 		return msg(b.String())
 	}
 
-	return r.renderClusterMessages(results, warnings)
+	return r.renderClusterMessages(results, warnings, missing)
 }
 
-func (r *Registry) renderClusterMessages(results []ClusterSearchResult, warnings []string) (*mcp.CallToolResult, ToolOutput, error) {
+// missingClusterIDs returns the requested ids no node returned. A requested id
+// may be a prefix (or room#prefix), so it counts as found when a result's id
+// starts with it.
+func missingClusterIDs(requested []string, results []ClusterSearchResult) []string {
+	var missing []string
+	for _, id := range requested {
+		want := id
+		if i := strings.LastIndex(want, "#"); i >= 0 {
+			want = want[i+1:]
+		}
+		found := false
+		for _, m := range results {
+			if want != "" && strings.HasPrefix(m.ID, want) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			missing = append(missing, id)
+		}
+	}
+	return missing
+}
+
+func (r *Registry) renderClusterMessages(results []ClusterSearchResult, warnings []string, missing []string) (*mcp.CallToolResult, ToolOutput, error) {
 	msg := textResult
 	var b strings.Builder
 	fmt.Fprintf(&b, "Found %d message(s) across cluster:\n\n", len(results))
@@ -89,6 +121,9 @@ func (r *Registry) renderClusterMessages(results []ClusterSearchResult, warnings
 		fmt.Fprintf(&b, "---\n**#%s** [%s] [%s] %s in **%s** (%s):\n\n%s\n\n", m.ID, m.SourceNode, ts, m.Author, m.RoomID, m.MessageType, council.DisplayContent(mapClusterMessage(m)))
 	}
 
+	if len(missing) > 0 {
+		fmt.Fprintf(&b, "Not found: %s.\n", strings.Join(missing, ", "))
+	}
 	formatClusterWarnings(&b, warnings)
 	return msg(b.String())
 }

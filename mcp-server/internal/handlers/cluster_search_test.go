@@ -375,3 +375,40 @@ func TestHandleSearchMessagesClusterEmptyNodeLocalNote(t *testing.T) {
 		t.Errorf("expected standardized Cluster Warning format, got: %s", text)
 	}
 }
+
+func TestHandleGetMessagesClusterNamesMissingIDs(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"results": []map[string]any{
+				{"id": "msg-123-full", "room_id": "r", "author": "a", "content": "hi", "message_type": "message",
+					"timestamp": "2026-04-01T12:00:00", "source_node": "n@1"},
+			},
+			"warnings": []string{},
+		})
+	}))
+	defer server.Close()
+	reg := &Registry{HTTPClient: &http.Client{Timeout: 5 * time.Second}, PhoenixURL: server.URL}
+
+	// msg-123 is a prefix of a returned id, so it counts as found.
+	result, _, _ := reg.handleGetMessagesCluster(GetMessagesInput{MessageIDs: "msg-123, ghost-1,ghost-2", ClusterWide: "true"})
+	text := resultText(result)
+	if !strings.Contains(text, "Not found: ghost-1, ghost-2.") {
+		t.Errorf("missing ids not named: %s", text)
+	}
+	if strings.Contains(text, "Not found: msg-123") || strings.Contains(text, ", msg-123") {
+		t.Errorf("found prefix reported missing: %s", text)
+	}
+
+	// Nothing found at all keeps the cluster phrase and still names the ids.
+	empty := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{"results": []map[string]any{}, "warnings": []string{}})
+	}))
+	defer empty.Close()
+	reg.PhoenixURL = empty.URL
+	result, _, _ = reg.handleGetMessagesCluster(GetMessagesInput{MessageIDs: "ghost-1", ClusterWide: "true"})
+	text = resultText(result)
+	if !strings.Contains(text, "No messages found on any cluster node") || !strings.Contains(text, "Not found: ghost-1.") {
+		t.Errorf("empty case: %s", text)
+	}
+}
