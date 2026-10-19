@@ -48,6 +48,21 @@ type GetMentionsInput struct {
 }
 
 func (r *Registry) handleSearchMessages(ctx context.Context, req *mcp.CallToolRequest, args SearchMessagesInput) (*mcp.CallToolResult, ToolOutput, error) {
+	// Default cluster-wide (peers connected, cluster_wide unset). Semantic search
+	// is node-local, and a filterless search is an error either way, so both
+	// stay on the local path.
+	hasFilter := args.Query != "" || args.Author != "" || args.MessageType != "" || args.RoomID != "" || args.RoomIDs != "" || args.Project != ""
+	if args.ClusterWide != "true" {
+		if ok, res, out, err := r.routeClusterRead(args.ClusterWide, args.Semantic != "true" && hasFilter,
+			func() (*mcp.CallToolResult, ToolOutput, error) { return r.handleSearchMessagesCluster(args) },
+			func() (*mcp.CallToolResult, ToolOutput, error) {
+				a := args
+				a.ClusterWide = "false"
+				return r.handleSearchMessages(ctx, req, a)
+			}); ok {
+			return res, out, err
+		}
+	}
 	if args.ClusterWide == "true" {
 		if args.Semantic == "true" {
 			// Semantic search uses sqlite-vec which is local-only; the Phoenix
@@ -178,6 +193,19 @@ func (r *Registry) handleSearchMessages(ctx context.Context, req *mcp.CallToolRe
 }
 
 func (r *Registry) handleGetMessages(ctx context.Context, req *mcp.CallToolRequest, args GetMessagesInput) (*mcp.CallToolResult, ToolOutput, error) {
+	// Default cluster-wide only when fetching by message_ids: those can live on
+	// a peer. Room reads and paged reads are room-scoped and stay local.
+	if args.ClusterWide != "true" {
+		if ok, res, out, err := r.routeClusterRead(args.ClusterWide, args.MessageIDs != "",
+			func() (*mcp.CallToolResult, ToolOutput, error) { return r.handleGetMessagesCluster(args) },
+			func() (*mcp.CallToolResult, ToolOutput, error) {
+				a := args
+				a.ClusterWide = "false"
+				return r.handleGetMessages(ctx, req, a)
+			}); ok {
+			return res, out, err
+		}
+	}
 	if args.ClusterWide == "true" {
 		return r.handleGetMessagesCluster(args)
 	}
@@ -342,8 +370,14 @@ func (r *Registry) handleGetMentions(ctx context.Context, req *mcp.CallToolReque
 	if limit <= 0 || limit > 100 {
 		limit = 20
 	}
-	if args.ClusterWide == "true" {
-		return r.handleGetMentionsCluster(args, limit)
+	if ok, res, out, err := r.routeClusterRead(args.ClusterWide, true,
+		func() (*mcp.CallToolResult, ToolOutput, error) { return r.handleGetMentionsCluster(args, limit) },
+		func() (*mcp.CallToolResult, ToolOutput, error) {
+			a := args
+			a.ClusterWide = "false"
+			return r.handleGetMentions(ctx, req, a)
+		}); ok {
+		return res, out, err
 	}
 
 	messages, err := r.Server.GetMentions(args.Author, args.Project, limit)

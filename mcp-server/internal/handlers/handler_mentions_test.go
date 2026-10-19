@@ -58,7 +58,7 @@ func TestGetMentionsLocalNoteWhenClustered(t *testing.T) {
 	reg := setupHandlerTest(t)
 	reg.HTTPClient = &http.Client{Timeout: 5 * time.Second}
 	reg.PhoenixURL = srv.URL
-	res, _, _ := reg.handleGetMentions(context.Background(), nil, GetMentionsInput{Author: "claude"})
+	res, _, _ := reg.handleGetMentions(context.Background(), nil, GetMentionsInput{Author: "claude", ClusterWide: "false"})
 	text := strings.TrimSpace(resultText(res))
 	if !strings.HasSuffix(text, "local node only; 3 nodes in the cluster") {
 		t.Errorf("want footer, got: %s", text)

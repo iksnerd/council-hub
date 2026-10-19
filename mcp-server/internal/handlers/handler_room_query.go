@@ -33,8 +33,23 @@ type RoomStatsInput struct {
 }
 
 func (r *Registry) handleListRooms(ctx context.Context, req *mcp.CallToolRequest, args ListRoomsInput) (*mcp.CallToolResult, ListRoomsOutput, error) {
-	if args.ClusterWide == "true" {
-		return r.handleListRoomsCluster(args)
+	// routeClusterRead is typed to ToolOutput, so the structured rows travel out of
+	// the closures through structured and the router's own output is ignored.
+	var structured ListRoomsOutput
+	if ok, res, _, err := r.routeClusterRead(args.ClusterWide, true,
+		func() (*mcp.CallToolResult, ToolOutput, error) {
+			res, out, err := r.handleListRoomsCluster(args)
+			structured = out
+			return res, ToolOutput{}, err
+		},
+		func() (*mcp.CallToolResult, ToolOutput, error) {
+			a := args
+			a.ClusterWide = "false"
+			res, out, err := r.handleListRooms(ctx, req, a)
+			structured = out
+			return res, ToolOutput{}, err
+		}); ok {
+		return res, structured, err
 	}
 
 	limit := 50

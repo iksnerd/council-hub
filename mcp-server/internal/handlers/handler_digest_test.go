@@ -155,7 +155,7 @@ func TestGetDigestLocalNoteWhenClustered(t *testing.T) {
 	reg.PhoenixURL = srv.URL
 	mustCreateRoom(t, reg.Server, "dn-a", withProject("dnproj"))
 	mustPost(t, reg.Server, "dn-a", "Claude", "x")
-	res, _, _ := reg.handleGetDigest(context.Background(), nil, DigestInput{Project: "dnproj", Since: "2000-01-01T00:00:00"})
+	res, _, _ := reg.handleGetDigest(context.Background(), nil, DigestInput{Project: "dnproj", Since: "2000-01-01T00:00:00", ClusterWide: "false"})
 	var out struct {
 		Note string `json:"note"`
 	}

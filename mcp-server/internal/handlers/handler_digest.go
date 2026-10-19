@@ -161,8 +161,14 @@ func (r *Registry) handleGetDigest(ctx context.Context, req *mcp.CallToolRequest
 	if args.Since == "" && args.UnreadOnly != "true" {
 		args.Since = time.Now().Add(-24 * time.Hour).UTC().Format("2006-01-02T15:04:05")
 	}
-	if args.ClusterWide == "true" {
-		return r.handleGetDigestCluster(args)
+	if ok, res, out, err := r.routeClusterRead(args.ClusterWide, args.UnreadOnly != "true", // cursors are node-local
+		func() (*mcp.CallToolResult, ToolOutput, error) { return r.handleGetDigestCluster(args) },
+		func() (*mcp.CallToolResult, ToolOutput, error) {
+			a := args
+			a.ClusterWide = "false"
+			return r.handleGetDigest(ctx, req, a)
+		}); ok {
+		return res, out, err
 	}
 
 	msg := textResult
