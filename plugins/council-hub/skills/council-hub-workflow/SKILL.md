@@ -30,7 +30,7 @@ instructions already say, made explicit here so it isn't skipped:
 
 ```
 get_mentions(author=<your-name>)                        # threads waiting on you — check FIRST
-get_digest(unread_only=true, cluster_wide=true)         # what changed since your last session
+get_digest(unread_only=true)                            # what changed since your last session (unread cursors are node-local)
 read_notebook(notebook_id=current-work)                 # the cross-project cockpit: in-flight work, open tasks
 ```
 
@@ -40,11 +40,16 @@ cross-project cockpit. Create it once with
 `edit_notebook(action=create, notebook_id=current-work)`; until it exists
 that third call returns nothing.
 
-Pass `cluster_wide=true` on anything that searches for rooms rather than
-reading a known one — `get_digest`, `list_rooms`, `search_messages`. Reads
-default to local, so a room another node owns is invisible: the call returns
-a clean "nothing new" instead of an error, and you report no feedback when
-there is some. Seen 2026-09-17: a local-only `search_messages` for a project
+`get_digest`, `list_rooms`, `search_messages`, `get_mentions`, `get_messages`
+(by id) and `read_room` go cluster-wide on their own when a peer is connected
+(the reply says so); pass `cluster_wide=false` only when you want this node
+alone. Still pass `cluster_wide=true` on `room_stats`, `read_transcript` and
+`read_notebook` timelines. Before this default, reads were local, so a room
+another node owned was invisible: the call returned a clean "nothing new"
+instead of an error, and you reported no feedback when there was some. An
+operator can restore that with `COUNCIL_CLUSTER_READS=local`; if a reply lacks
+the "cluster-wide by default" line on a multi-node project, assume it did not
+cover the cluster. Seen 2026-09-17: a local-only `search_messages` for a project
 missed an active field-report room on a peer node, posted hours earlier.
 
 If the task maps to an existing room, `get_or_create_room` it and read recent
@@ -61,10 +66,10 @@ adeloc: created `adeloc-use-case-fit` while the real room was
 this first:
 
 ```
-list_rooms(project=<project>, cluster_wide=true)
+list_rooms(project=<project>)        # cluster-wide by default when peers are connected
 ```
 
-**And do not read a clean result as proof.** `cluster_wide=true` fans out to
+**And do not read a clean result as proof.** A cluster-wide read (default or explicit) fans out to
 *connected* nodes. A peer that has dropped out of the cluster is not
 "unreachable" — it is absent from the node list, so there is no warning to
 append, and the call returns local-only results that look complete. Verified
@@ -127,9 +132,9 @@ task is the lightweight option for exactly this.
 Verified directly (2026-08-18): `post_to_room` and `read_transcript`/
 `get_messages` transparently proxy writes/reads to a room owned by a remote
 cluster node — no `cluster_wide` flag needed once you have the room ID, and
-the response includes `owner_node` to confirm. `list_rooms`/`get_digest`/
-`read_notebook`(timeline mode) need `cluster_wide=true` to fan out and find
-those rooms in the first place.
+the response includes `owner_node` to confirm. `list_rooms`/`get_digest`
+fan out by default when a peer is connected; `read_notebook`(timeline mode)
+still needs `cluster_wide=true` to find those rooms in the first place.
 
 **`signal_status` does NOT proxy** — it 404s on a room it doesn't own locally
 (`Error: room '<id>' not found'`), even right after a `post_to_room` to that

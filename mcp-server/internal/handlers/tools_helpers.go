@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -188,6 +190,10 @@ type Registry struct {
 	PhoenixURL    string       // e.g. "http://127.0.0.1:4000"
 	PeerMCPPort   string       // MCP HTTP port used to reach peer Go servers for cross-node writes (default "3001")
 	ClusterSecret string       // shared secret (RELEASE_COOKIE) authenticating cross-node write proxies
+
+	nodeMu sync.Mutex // guards the cached cluster node count (see clusterNodeCount)
+	nodeAt time.Time
+	nodeN  int
 }
 
 // toolResultText extracts the text content from a CallToolResult.

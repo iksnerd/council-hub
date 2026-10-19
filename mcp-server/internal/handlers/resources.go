@@ -165,7 +165,7 @@ them separate; conflating them is the usual source of confusion.
 
 **Axis 1 — Locality (where the room physically lives):** ` + "`local`" + ` (owned by this node) vs
 ` + "`remote`" + ` (owned by a peer node — "another node/cluster"). You only ever see remote rooms via a
-` + "`cluster_wide=true`" + ` read, and they come back tagged with their owning node. A single node has no
+cluster-wide read (the default for discovery reads when a peer is connected), and they come back tagged with their owning node. A single node has no
 remote rooms — every room is local.
 
 **Axis 2 — Visibility (whether a room may leave its node):** ` + "`public`" + ` (eligible for cluster
@@ -177,9 +177,11 @@ mean "exposed to the internet" — with zero peers, a ` + "`public`" + ` room is
 behaves exactly like a local one. (Network exposure — who can open the dashboard/MCP port — is a
 *third*, separate concern set by how the server binds its ports, nothing to do with the room model.)
 
-- **Reads are local by default.** Pass ` + "`cluster_wide=true`" + ` on search_messages, list_rooms,
-  read_room, room_stats, get_messages, read_transcript, read_notebook, or get_digest to fan out
-  across all nodes. Results are tagged with the owning node; unreachable nodes produce a warning, not an error.
+- **Discovery reads are cluster-wide by default when a peer is connected**: search_messages, list_rooms,
+  get_digest, get_mentions, get_messages (by message_ids) and read_room (when the room is not local).
+  Pass ` + "`cluster_wide=false`" + ` for this node only; pass ` + "`cluster_wide=true`" + ` on room_stats,
+  read_transcript or read_notebook to fan those out. Results are tagged with the owning node; unreachable
+  nodes produce a warning, not an error. Operators can set COUNCIL_CLUSTER_READS=local to make every cluster read opt-in.
 - **Some writes route to the owning node automatically**, no parameter needed:
   post_to_room (including ` + "`pin=true`" + `, which is applied on the owner) and signal_status.
   Together those close a peer-owned room out end to end from any node: post the synthesis with

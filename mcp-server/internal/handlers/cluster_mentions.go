@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"sort"
 	"strings"
+	"time"
 
 	"council-hub/internal/council"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -22,10 +24,29 @@ type ClusterMentionResult struct {
 	SourceNode string `json:"source_node"`
 }
 
+// nodeCountTTL bounds how often a read may cost a Phoenix round trip to learn
+// whether peers are connected. Failures are cached too, so a down Phoenix does
+// not add its connect latency to every read.
+const nodeCountTTL = 10 * time.Second
+
 // clusterNodeCount asks Phoenix how many nodes the cluster has. It returns 0
 // when that cannot be determined (no Phoenix, UI off, error), so callers stay
 // silent rather than guess.
 func (r *Registry) clusterNodeCount() int {
+	r.nodeMu.Lock()
+	defer r.nodeMu.Unlock()
+	if !r.nodeAt.IsZero() && time.Since(r.nodeAt) < nodeCountTTL {
+		return r.nodeN
+	}
+	r.nodeN = r.fetchClusterNodeCount()
+	r.nodeAt = time.Now()
+	return r.nodeN
+}
+
+func (r *Registry) fetchClusterNodeCount() int {
+	if strings.EqualFold(os.Getenv("COUNCIL_UI"), "off") {
+		return 0
+	}
 	if r.HTTPClient == nil || r.PhoenixURL == "" {
 		return 0
 	}

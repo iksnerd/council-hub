@@ -147,7 +147,7 @@ func (r *Registry) RegisterTools() {
 			"limit":          prop("string", "Max rooms to return (default 50, max 100); the reply says how many matching rooms were left out."),
 			"offset":         prop("string", "Offset for pagination (default 0)"),
 			"verbose":        prop("string", "Set to 'true' for full metadata per room (system_prompt, tech_stack, tags, related_rooms)"),
-			"cluster_wide":   prop("string", "Set to 'true' to search across all cluster nodes. Default: local only."),
+			"cluster_wide":   prop("string", "'true' searches all cluster nodes. Default: cluster-wide when peers are connected (COUNCIL_CLUSTER_READS=local turns that off); 'false' forces this node only."),
 		}),
 	}, r.handleListRooms)
 
@@ -180,7 +180,7 @@ func (r *Registry) RegisterTools() {
 			"include_related_summaries": prop("string", "Set to 'true' to append topic, system_prompt, and pinned message from each related room."),
 			"include_last_n":            prop("string", "Append the last N messages inline after room metadata (max 50). Saves a separate get_messages call."),
 			"limit":                     prop("string", "Alias for include_last_n."),
-			"cluster_wide":              prop("string", "Set to 'true' to fetch this room from the cluster node that owns it. Default: local only."),
+			"cluster_wide":              prop("string", "'true' fetches this room from the cluster node that owns it. Default: tries this node first, then the cluster if it is not here (COUNCIL_CLUSTER_READS=local turns that off); 'false' forces this node only."),
 		}),
 	}, r.handleReadRoom)
 
@@ -205,7 +205,7 @@ func (r *Registry) RegisterTools() {
 		"until":           prop("string", "ISO timestamp (e.g. 2026-04-03T23:59:59). Only return messages at or before this time."),
 		"summary_only":    prop("string", "Set to 'true' for compact output: id, author, timestamp, room, type, and 120-char excerpt"),
 		"full_content":    prop("string", "Set to 'true' to return the full un-truncated message body instead of a 300-char snippet"),
-		"cluster_wide":    prop("string", "Set to 'true' to search across all cluster nodes. Default: local only."),
+		"cluster_wide":    prop("string", "'true' searches all cluster nodes. Default: cluster-wide when peers are connected (COUNCIL_CLUSTER_READS=local turns that off); 'false' forces this node only. Semantic search is always node-local."),
 	}
 	// Only expose semantic param when an embedding provider is configured.
 	// Avoids agents wasting turns on a feature that will return an error.
@@ -228,7 +228,7 @@ func (r *Registry) RegisterTools() {
 			"limit":        prop("string", "With room_id: alias for last_n when browsing; with after_id/before_id: page size (default 50, max 200). The reply gives the cursor for the next page."),
 			"before_id":    prop("string", "Return the messages just older than this ID (requires room_id), in chronological order. Page backwards with limit."),
 			"after_id":     prop("string", "Return only messages with ID greater than this value (requires room_id). For delta reads without transcript formatting."),
-			"cluster_wide": prop("string", "Set to 'true' to fetch messages from all cluster nodes. Default: local only."),
+			"cluster_wide": prop("string", "'true' fetches messages from all cluster nodes. Default: cluster-wide when peers are connected and message_ids is given (COUNCIL_CLUSTER_READS=local turns that off); 'false' forces this node only. Room reads stay local."),
 			"history":      prop("string", "Set to 'true' (with message_ids) to return each message's full revision history — every preserved version in the append-only edit chain, oldest to newest."),
 		}),
 	}, r.handleGetMessages)
@@ -330,7 +330,7 @@ func (r *Registry) RegisterTools() {
 		InputSchema: schema([]string{"author"}, map[string]map[string]any{
 			"author":       prop("string", "Agent name to search mentions for (e.g. 'claude', 'gemini-cli'). Matched as a case-insensitive substring, so keep it stable and distinctive — read cursors (mark_read) key off the same string, and changing it replays your whole backlog"),
 			"project":      prop("string", "Optionally scope mentions to rooms in this project (slug-normalized, same as get_digest)"),
-			"cluster_wide": prop("string", "Set to 'true' to also search mentions on all cluster nodes. Default: local only (the reply then ends with a 'local node only; N nodes in the cluster' line when peers exist)."),
+			"cluster_wide": prop("string", "'true' also searches mentions on all cluster nodes. Default: cluster-wide when peers are connected (COUNCIL_CLUSTER_READS=local turns that off); 'false' forces this node only and the reply then ends with a 'local node only; N nodes in the cluster' line."),
 			"limit":        prop("string", "Max results to return (default 20, max 100)"),
 		}),
 	}, r.handleGetMentions)
@@ -581,7 +581,7 @@ func (r *Registry) RegisterTools() {
 			"since":         prop("string", "ISO timestamp (e.g. 2026-03-31T12:00:00). Defaults to 24 hours ago if omitted. Ignored when unread_only=true."),
 			"unread_only":   prop("string", "Set to 'true' to return only rooms with messages newer than your stored cursor. Requires agent param (or uses 'default'). Use after mark_read to see only what changed since your last session."),
 			"agent":         prop("string", "Your agent name, used to look up stored read cursors. Only relevant when unread_only=true. Defaults to 'default'."),
-			"cluster_wide":  prop("string", "Set to 'true' to fetch the digest from all cluster nodes. Default: local only."),
+			"cluster_wide":  prop("string", "'true' fetches the digest from all cluster nodes. Default: cluster-wide when peers are connected, except unread_only (node-local cursors) (COUNCIL_CLUSTER_READS=local turns that off); 'false' forces this node only."),
 			"limit":         prop("string", "Cap rooms[] at N (positive integer), most-unread first under unread_only, most-recent first otherwise. 'all' lifts the default unread_only cap of 30. The summary still counts every room and reports summary.truncated."),
 			"brief":         prop("string", "Set to 'true' for one compact entry per room (room_id, new_messages, latest_message_id) with no excerpt or tags — the cheap session-start form. Fetch detail with get_messages(room_id, after_id=...)."),
 			"exclude_stale": prop("string", "Set to 'true' to omit the inactive-room graveyard (rooms flagged `stale` with no new messages) from rooms[]. The summary header still counts them (and reports hidden_stale). Drift flags on live rooms (stale-pin, stale-plan) are never hidden."),

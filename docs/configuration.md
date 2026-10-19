@@ -11,6 +11,7 @@ Environment variables for the MCP server, the Phoenix web UI, and clustering.
 | `COUNCIL_DB` | `council.db` (image: `/data/council.db`) | Path to the SQLite database |
 | `COUNCIL_TRANSPORT` | `stdio` (image: `http`) | Transport mode: `stdio` or `http` |
 | `COUNCIL_UI` | `on` | In `http` mode, `off` skips the Phoenix dashboard and runs the Go server alone (~12 MiB idle instead of ~180–240 MiB). Local reads and cross-node writes still work; `cluster_wide` reads do not, since they fan out through Phoenix |
+| `COUNCIL_CLUSTER_READS` | `auto` | `auto`: discovery reads (`search_messages`, `list_rooms`, `get_digest`, `get_mentions`, `get_messages` by id, `read_room`) go cluster-wide when at least one peer is connected. `local`: reads stay on this node unless the caller passes `cluster_wide=true`. An explicit `cluster_wide` always wins |
 | `COUNCIL_HTTP_ADDR` | `:3001` | HTTP server bind address |
 | `COUNCIL_DEBUG` | `0` | Set to `1` for verbose debug logging |
 | `COUNCIL_PHOENIX_URL` | `http://127.0.0.1:4000` | Phoenix internal API URL (used for cluster-wide queries) |
