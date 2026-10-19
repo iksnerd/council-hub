@@ -11,6 +11,7 @@ import (
 )
 
 func (r *Registry) RegisterTools() {
+	r.installValidationHints()
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "create_room",
 		Description: "Create a new council room (virtual workspace) for a topic or task. Prefer get_or_create_room — it returns existing content instead of silently no-opping on a name clash, avoiding duplicate rooms. Does nothing if the room already exists. Related rooms are automatically linked in both directions. Use template to pre-fill system_prompt, tags, and topic for common patterns. Pass dry_run=true to preview the similar-rooms check before a duplicate exists, instead of after.",
@@ -134,11 +135,11 @@ func (r *Registry) RegisterTools() {
 			"project":        prop("string", "Filter by project name"),
 			"project_not_in": prop("string", "Comma-separated project names to EXCLUDE. Useful for triaging deprecated-project graveyards (e.g. project_not_in='active-proj-a,active-proj-b' surfaces every room whose project is anything else)."),
 			"tag":            prop("string", "Filter by tag"),
-			"status":         prop("string", "Filter by status (active, paused, resolved)"),
+			"status":         prop("string", "Filter by status: active, paused, resolved, or all. Default (omitted): active and paused only; the reply says how many resolved rooms were left out."),
 			"search":         prop("string", "Keyword search across room ID, topic/description, and tags. Multi-word queries use AND (all words must match); if nothing matches, falls back to OR so over-specified queries still find the room."),
 			"compact":        prop("string", "Deprecated — compact output is the default; kept so existing callers passing compact=false still work (it maps to verbose)."),
 			"related_to":     prop("string", "Filter to rooms whose related_rooms list contains this room ID. Returns the flat neighborhood around a specific room — pairs with compact listing for a data-dense alternative to get_concept_map."),
-			"limit":          prop("string", "Max rooms to return (default 50, max 100)"),
+			"limit":          prop("string", "Max rooms to return (default 50, max 100); the reply says how many matching rooms were left out."),
 			"offset":         prop("string", "Offset for pagination (default 0)"),
 			"verbose":        prop("string", "Set to 'true' for full metadata per room (system_prompt, tech_stack, tags, related_rooms)"),
 			"cluster_wide":   prop("string", "Set to 'true' to search across all cluster nodes. Default: local only."),
@@ -172,6 +173,7 @@ func (r *Registry) RegisterTools() {
 			"room_id":                   prop("string", "Target room ID"),
 			"include_related_summaries": prop("string", "Set to 'true' to append topic, system_prompt, and pinned message from each related room."),
 			"include_last_n":            prop("string", "Append the last N messages inline after room metadata (max 50). Saves a separate get_messages call."),
+			"limit":                     prop("string", "Alias for include_last_n."),
 			"cluster_wide":              prop("string", "Set to 'true' to fetch this room from the cluster node that owns it. Default: local only."),
 		}),
 	}, r.handleReadRoom)
@@ -217,6 +219,8 @@ func (r *Registry) RegisterTools() {
 			"message_ids":  prop("string", "Comma-separated message IDs (e.g. 48,52,55) — each accepts a full ID or an unambiguous ID prefix (e.g. from a transcript)"),
 			"room_id":      prop("string", "Browse messages from this room (alternative to message_ids)"),
 			"last_n":       prop("string", "Number of recent messages to fetch when using room_id (default 10, max 50)"),
+			"limit":        prop("string", "With room_id: alias for last_n when browsing; with after_id/before_id: page size (default 50, max 200). The reply gives the cursor for the next page."),
+			"before_id":    prop("string", "Return the messages just older than this ID (requires room_id), in chronological order. Page backwards with limit."),
 			"after_id":     prop("string", "Return only messages with ID greater than this value (requires room_id). For delta reads without transcript formatting."),
 			"cluster_wide": prop("string", "Set to 'true' to fetch messages from all cluster nodes. Default: local only."),
 			"history":      prop("string", "Set to 'true' (with message_ids) to return each message's full revision history — every preserved version in the append-only edit chain, oldest to newest."),

@@ -283,6 +283,56 @@ func (s *Server) GetRecentMessages(roomID string, limit int) ([]Message, error) 
 	return msgs, nil
 }
 
+// GetMessagesPage returns up to limit head messages of a room in chronological
+// order. With afterID it pages forward from that cursor (oldest first); with
+// beforeID it returns the newest limit messages older than the cursor. hasMore
+// reports whether more messages exist in the direction of travel.
+func (s *Server) GetMessagesPage(roomID, afterID, beforeID string, limit int) (msgs []Message, hasMore bool, err error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	where := `room_id = ? AND ` + headClause("")
+	args := []any{roomID}
+	order := "ASC"
+	if afterID != "" {
+		where += ` AND id > ?`
+		args = append(args, afterID)
+	}
+	if beforeID != "" {
+		where += ` AND id < ?`
+		args = append(args, beforeID)
+		if afterID == "" {
+			order = "DESC"
+		}
+	}
+	args = append(args, limit+1)
+	rows, err := s.DB.Query(fmt.Sprintf(`SELECT %s FROM messages WHERE %s ORDER BY id %s LIMIT ?`, messageColumns, where, order), args...)
+	if err != nil {
+		return nil, false, err
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		m, err := scanMessage(rows)
+		if err != nil {
+			return nil, false, err
+		}
+		msgs = append(msgs, m)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, false, err
+	}
+	if len(msgs) > limit {
+		hasMore = true
+		msgs = msgs[:limit]
+	}
+	if order == "DESC" {
+		for i, j := 0, len(msgs)-1; i < j; i, j = i+1, j-1 {
+			msgs[i], msgs[j] = msgs[j], msgs[i]
+		}
+	}
+	return msgs, hasMore, nil
+}
+
 // GetMessagesAfterID returns messages with ID > afterID for a room, in chronological order.
 func (s *Server) GetMessagesAfterID(roomID string, afterID string) ([]Message, error) {
 	rows, err := s.DB.Query(fmt.Sprintf(`
@@ -395,6 +445,7 @@ func (s *Server) SearchMessages(query, author, messageType, roomID, project, sin
 		where += ` AND r.project = ?`
 		args = append(args, normalizeProject(project))
 	}
+	since, until = NormalizeTimestamp(since, false), NormalizeTimestamp(until, true)
 	if since != "" {
 		where += ` AND m.timestamp >= ?`
 		args = append(args, since)

@@ -74,6 +74,7 @@ type ReadRoomInput struct {
 	ClusterWide             StringBool `json:"cluster_wide"`
 	IncludeRelatedSummaries string     `json:"include_related_summaries"`
 	IncludeLastN            string     `json:"include_last_n"`
+	Limit                   string     `json:"limit"` // alias for include_last_n
 }
 
 // DeleteRoomInput represents the parameters for deleting a room.
@@ -396,7 +397,7 @@ func (r *Registry) handleGetOrCreateRoom(ctx context.Context, req *mcp.CallToolR
 		if len(messages) > 0 {
 			fmt.Fprintf(&b, "---\n**Recent messages (%d):**\n", len(messages))
 			for _, m := range messages {
-				appendMessageBlock(&b, m.ID, m.Timestamp.Format("2006-01-02 15:04:05"), m.Author, m.MessageType, council.DisplayContent(m), room.Repo)
+				appendMessageBlock(&b, m.ID, utcStamp(m.Timestamp), m.Author, m.MessageType, council.DisplayContent(m), room.Repo)
 			}
 		} else {
 			b.WriteString("No messages yet.\n")
@@ -567,6 +568,12 @@ func (r *Registry) handleUpdateRoom(ctx context.Context, req *mcp.CallToolReques
 }
 
 func (r *Registry) handleReadRoom(ctx context.Context, req *mcp.CallToolRequest, args ReadRoomInput) (*mcp.CallToolResult, ToolOutput, error) {
+	n, aliasErr := resolveAlias(args.IncludeLastN, "include_last_n", args.Limit, "limit")
+	if aliasErr != nil {
+		return textResult("Error: " + aliasErr.Error())
+	}
+	args.IncludeLastN = n
+
 	if args.ClusterWide == "true" {
 		return r.handleReadRoomCluster(args)
 	}
@@ -606,8 +613,8 @@ func (r *Registry) handleReadRoom(ctx context.Context, req *mcp.CallToolRequest,
 	if room.Repo != "" {
 		fmt.Fprintf(&b, "**Repo:** %s\n", room.Repo)
 	}
-	fmt.Fprintf(&b, "**Created:** %s\n", room.CreatedAt.Format("2006-01-02 15:04:05"))
-	fmt.Fprintf(&b, "**Updated:** %s\n", room.UpdatedAt.Format("2006-01-02 15:04:05"))
+	fmt.Fprintf(&b, "**Created:** %s\n", utcStamp(room.CreatedAt))
+	fmt.Fprintf(&b, "**Updated:** %s\n", utcStamp(room.UpdatedAt))
 
 	// Shared-checkout hazard, if any participant declared a working tree another is
 	// also in. Surfaced on the read side too, not only to the agent that posted:
@@ -634,7 +641,7 @@ func (r *Registry) handleReadRoom(ctx context.Context, req *mcp.CallToolRequest,
 			if len(messages) > 0 {
 				fmt.Fprintf(&b, "\n---\n**Recent messages (%d):**\n", len(messages))
 				for _, m := range messages {
-					appendMessageBlock(&b, m.ID, m.Timestamp.Format("2006-01-02 15:04:05"), m.Author, m.MessageType, council.DisplayContent(m), room.Repo)
+					appendMessageBlock(&b, m.ID, utcStamp(m.Timestamp), m.Author, m.MessageType, council.DisplayContent(m), room.Repo)
 				}
 			}
 		}
@@ -719,7 +726,7 @@ func (r *Registry) appendRoomSummary(b *strings.Builder, roomID, repo string) {
 	b.WriteString("\n---\n")
 	if pinned != nil {
 		b.WriteString("**📌 Pinned:**\n")
-		appendMessageBlock(b, pinned.ID, pinned.Timestamp.Format("2006-01-02 15:04:05"), pinned.Author, pinned.MessageType, council.DisplayContent(*pinned), repo)
+		appendMessageBlock(b, pinned.ID, utcStamp(pinned.Timestamp), pinned.Author, pinned.MessageType, council.DisplayContent(*pinned), repo)
 	}
 
 	var shown int
@@ -735,7 +742,7 @@ func (r *Registry) appendRoomSummary(b *strings.Builder, roomID, repo string) {
 			if pinned != nil && m.ID == pinned.ID {
 				continue
 			}
-			appendMessageBlock(b, m.ID, m.Timestamp.Format("2006-01-02 15:04:05"), m.Author, m.MessageType, council.DisplayContent(m), repo)
+			appendMessageBlock(b, m.ID, utcStamp(m.Timestamp), m.Author, m.MessageType, council.DisplayContent(m), repo)
 		}
 	}
 

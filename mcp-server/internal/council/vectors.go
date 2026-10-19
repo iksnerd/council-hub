@@ -165,6 +165,7 @@ func (s *Server) SearchMessagesSemantic(query string, roomID, project, author, m
 		where += ` AND m.room_id IN (SELECT id FROM rooms WHERE project = ?)`
 		args = append(args, normalizeProject(project))
 	}
+	since, until = NormalizeTimestamp(since, false), NormalizeTimestamp(until, true)
 	if since != "" {
 		where += ` AND m.timestamp >= ?`
 		args = append(args, since)

@@ -33,6 +33,8 @@ type GetMessagesInput struct {
 	RoomID      string     `json:"room_id"`
 	LastN       string     `json:"last_n"`
 	AfterID     string     `json:"after_id"`
+	BeforeID    string     `json:"before_id"`
+	Limit       string     `json:"limit"`
 	ClusterWide StringBool `json:"cluster_wide"`
 	History     string     `json:"history"`
 }
@@ -182,6 +184,7 @@ func (r *Registry) handleGetMessages(ctx context.Context, req *mcp.CallToolReque
 
 	var messages []council.Message
 	var requestedIDs []string // set only in mode 1, to report which requested IDs missed
+	var moreCursor string     // set when a paged read stopped short of the room's end
 
 	if args.MessageIDs != "" {
 		// Mode 1: fetch by explicit IDs
@@ -224,18 +227,44 @@ func (r *Registry) handleGetMessages(ctx context.Context, req *mcp.CallToolReque
 			r.Server.Logger.Error("Failed to get messages", "error", err)
 			return nil, ToolOutput{}, err
 		}
-	} else if args.RoomID != "" && args.AfterID != "" {
-		// Mode 2: delta read — messages after a known ID in a room
+	} else if args.RoomID != "" && (args.AfterID != "" || args.BeforeID != "") {
+		// Mode 2: paged read — forward from after_id (delta read) or backward from
+		// before_id. Capped (default 50, max 200) because an uncapped delta read
+		// returned 87k chars in one reply.
+		limit := 50
+		if args.Limit != "" {
+			if _, err := fmt.Sscanf(args.Limit, "%d", &limit); err != nil || limit <= 0 {
+				limit = 50
+			}
+		}
+		if limit > 200 {
+			limit = 200
+		}
+		if _, err := r.Server.GetRoom(args.RoomID); err != nil {
+			return msg(fmt.Sprintf("Error: room '%s' not found", args.RoomID))
+		}
+		var more bool
 		var err error
-		messages, err = r.Server.GetMessagesAfterID(args.RoomID, args.AfterID)
+		messages, more, err = r.Server.GetMessagesPage(args.RoomID, args.AfterID, args.BeforeID, limit)
 		if err != nil {
 			return msg(fmt.Sprintf("Error: %s", err.Error()))
 		}
+		if more && len(messages) > 0 {
+			if args.AfterID != "" {
+				moreCursor = "more messages follow — continue with after_id=" + messages[len(messages)-1].ID
+			} else {
+				moreCursor = "older messages exist — continue with before_id=" + messages[0].ID
+			}
+		}
 	} else if args.RoomID != "" {
-		// Mode 3: browse room messages by last_n
+		// Mode 3: browse room messages by last_n (limit is an accepted alias)
+		lastNStr, aliasErr := resolveAlias(args.LastN, "last_n", args.Limit, "limit")
+		if aliasErr != nil {
+			return msg("Error: " + aliasErr.Error())
+		}
 		limit := 10
-		if args.LastN != "" {
-			if _, err := fmt.Sscanf(args.LastN, "%d", &limit); err != nil {
+		if lastNStr != "" {
+			if _, err := fmt.Sscanf(lastNStr, "%d", &limit); err != nil {
 				limit = 10
 			}
 		}
@@ -252,7 +281,7 @@ func (r *Registry) handleGetMessages(ctx context.Context, req *mcp.CallToolReque
 			return msg(fmt.Sprintf("Error: %s", err.Error()))
 		}
 	} else {
-		return msg("Error: provide either message_ids, or room_id (with optional after_id or last_n).")
+		return msg("Error: provide either message_ids, or room_id (with optional after_id, before_id, last_n or limit).")
 	}
 
 	// Name which requested IDs missed instead of a bare "No messages found" —
@@ -286,6 +315,9 @@ func (r *Registry) handleGetMessages(ctx context.Context, req *mcp.CallToolReque
 	}
 	if len(missing) > 0 {
 		fmt.Fprintf(&b, "Not found: %s.\n", strings.Join(missing, ", "))
+	}
+	if moreCursor != "" {
+		fmt.Fprintf(&b, "(%s)\n", moreCursor)
 	}
 
 	return msg(b.String())
