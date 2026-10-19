@@ -337,7 +337,7 @@ var validMessageTypes = map[string]bool{
 	"plan":      true,
 }
 
-// schema builds a JSON Schema object with additionalProperties: true.
+// schema builds a JSON Schema object with additionalProperties: false.
 // required lists the field names that are mandatory; all others are optional.
 func schema(required []string, props map[string]map[string]any) map[string]any {
 	s := map[string]any{
