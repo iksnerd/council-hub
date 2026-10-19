@@ -124,7 +124,7 @@ type DigestEntry struct {
 // GetDigest returns rooms with messages since the given timestamp, plus any rooms needing attention.
 func (s *Server) GetDigest(project, since string) ([]DigestEntry, error) {
 	// Normalize timestamp — accept both "2026-03-31T12:00:00" and "2026-03-31 12:00:00"
-	since = strings.ReplaceAll(since, "T", " ")
+	since = NormalizeTimestamp(since, false)
 	project = normalizeProject(project)
 
 	// The lm join resolves each room's latest head revision ONCE (headClause, so

@@ -67,8 +67,8 @@ func firstLine(s string) string {
 }
 
 // parseFilterTime accepts "2026-06-01", "2026-06-01 12:30:00", or the ISO "T" form.
-func parseFilterTime(s string) (time.Time, bool) {
-	s = strings.TrimSpace(strings.ReplaceAll(s, "T", " "))
+func parseFilterTime(s string, endOfDay bool) (time.Time, bool) {
+	s = NormalizeTimestamp(s, endOfDay)
 	if s == "" {
 		return time.Time{}, false
 	}
@@ -87,8 +87,8 @@ func parseFilterTime(s string) (time.Time, bool) {
 func FilterMessages(msgs []Message, author, msgType, since, until string) []Message {
 	author = strings.ToLower(strings.TrimSpace(author))
 	msgType = strings.TrimSpace(msgType)
-	sinceT, hasSince := parseFilterTime(since)
-	untilT, hasUntil := parseFilterTime(until)
+	sinceT, hasSince := parseFilterTime(since, false)
+	untilT, hasUntil := parseFilterTime(until, true)
 
 	if author == "" && msgType == "" && !hasSince && !hasUntil {
 		return msgs

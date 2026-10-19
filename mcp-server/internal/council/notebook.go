@@ -46,8 +46,8 @@ func (s *Server) GetNotebookEntries(project string, types []string, since, until
 
 	// Normalize timestamps — accept both "2026-03-31T12:00:00" and
 	// "2026-03-31 12:00:00" (stored format uses a space).
-	since = strings.ReplaceAll(since, "T", " ")
-	until = strings.ReplaceAll(until, "T", " ")
+	since = NormalizeTimestamp(since, false)
+	until = NormalizeTimestamp(until, true)
 
 	typePlaceholders := make([]string, len(types))
 	args := []any{project}

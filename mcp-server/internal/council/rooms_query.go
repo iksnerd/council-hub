@@ -9,6 +9,7 @@ type ListRoomsOptions struct {
 	ProjectNotIn  []string // exclude rooms whose normalized project matches any of these
 	Tag           string
 	Status        string
+	ExcludeStatus string // drop rooms in this status (list_rooms hides resolved by default)
 	Search        string
 	RelatedTo     string // filter to rooms whose related_rooms contains this room ID
 	Limit, Offset int
@@ -49,51 +50,8 @@ func (s *Server) ListRoomsFiltered(opts ListRoomsOptions) ([]Room, error) {
 // "OR" and controls how multiple search words are combined across the
 // id/description/tags LIKE clauses.
 func (s *Server) listRoomsMatch(opts ListRoomsOptions, words []string, searchJoin string) ([]Room, error) {
-	query := `SELECT id, description, status, project, tech_stack, tags, system_prompt, related_rooms, created_at, updated_at FROM rooms WHERE 1=1`
-	var args []any
-
-	if opts.Project != "" {
-		query += ` AND project = ?`
-		args = append(args, normalizeProject(opts.Project))
-	}
-	if len(opts.ProjectNotIn) > 0 {
-		placeholders := make([]string, 0, len(opts.ProjectNotIn))
-		for _, p := range opts.ProjectNotIn {
-			p = strings.TrimSpace(p)
-			if p == "" {
-				continue
-			}
-			placeholders = append(placeholders, "?")
-			args = append(args, normalizeProject(p))
-		}
-		if len(placeholders) > 0 {
-			query += ` AND project NOT IN (` + strings.Join(placeholders, ",") + `)`
-		}
-	}
-	if opts.Tag != "" {
-		query += ` AND (',' || tags || ',') LIKE '%,' || ? || ',%'`
-		args = append(args, opts.Tag)
-	}
-	if opts.Status != "" {
-		query += ` AND status = ?`
-		args = append(args, opts.Status)
-	}
-	if opts.RelatedTo != "" {
-		query += ` AND (',' || related_rooms || ',') LIKE '%,' || ? || ',%'`
-		args = append(args, opts.RelatedTo)
-	}
-	if len(words) > 0 {
-		clauses := make([]string, 0, len(words))
-		for _, word := range words {
-			clauses = append(clauses, `(id LIKE '%' || ? || '%' OR description LIKE '%' || ? || '%' OR tags LIKE '%' || ? || '%')`)
-			args = append(args, word, word, word)
-		}
-		sep := " AND "
-		if searchJoin == "OR" {
-			sep = " OR "
-		}
-		query += ` AND (` + strings.Join(clauses, sep) + `)`
-	}
+	where, args := roomFilterSQL(opts, words, searchJoin)
+	query := `SELECT id, description, status, project, tech_stack, tags, system_prompt, related_rooms, created_at, updated_at FROM rooms WHERE 1=1` + where
 
 	query += ` ORDER BY updated_at DESC LIMIT ? OFFSET ?`
 
@@ -125,6 +83,70 @@ func (s *Server) listRoomsMatch(opts ListRoomsOptions, words []string, searchJoi
 		rooms = append(rooms, r)
 	}
 	return rooms, rows.Err()
+}
+
+// roomFilterSQL builds the " AND ..." filter fragment shared by the list and
+// count queries, so the two can never disagree about which rooms match.
+func roomFilterSQL(opts ListRoomsOptions, words []string, searchJoin string) (string, []any) {
+	var q string
+	var args []any
+	if opts.Project != "" {
+		q += ` AND project = ?`
+		args = append(args, normalizeProject(opts.Project))
+	}
+	if len(opts.ProjectNotIn) > 0 {
+		placeholders := make([]string, 0, len(opts.ProjectNotIn))
+		for _, p := range opts.ProjectNotIn {
+			p = strings.TrimSpace(p)
+			if p == "" {
+				continue
+			}
+			placeholders = append(placeholders, "?")
+			args = append(args, normalizeProject(p))
+		}
+		if len(placeholders) > 0 {
+			q += ` AND project NOT IN (` + strings.Join(placeholders, ",") + `)`
+		}
+	}
+	if opts.Tag != "" {
+		q += ` AND (',' || tags || ',') LIKE '%,' || ? || ',%'`
+		args = append(args, opts.Tag)
+	}
+	if opts.Status != "" {
+		q += ` AND status = ?`
+		args = append(args, opts.Status)
+	}
+	if opts.ExcludeStatus != "" {
+		q += ` AND status != ?`
+		args = append(args, opts.ExcludeStatus)
+	}
+	if opts.RelatedTo != "" {
+		q += ` AND (',' || related_rooms || ',') LIKE '%,' || ? || ',%'`
+		args = append(args, opts.RelatedTo)
+	}
+	if len(words) > 0 {
+		clauses := make([]string, 0, len(words))
+		for _, word := range words {
+			clauses = append(clauses, `(id LIKE '%' || ? || '%' OR description LIKE '%' || ? || '%' OR tags LIKE '%' || ? || '%')`)
+			args = append(args, word, word, word)
+		}
+		sep := " AND "
+		if searchJoin == "OR" {
+			sep = " OR "
+		}
+		q += ` AND (` + strings.Join(clauses, sep) + `)`
+	}
+
+	return q, args
+}
+
+// CountRooms returns how many rooms match opts, ignoring Limit and Offset. It
+// uses strict AND search semantics (no OR fallback).
+func (s *Server) CountRooms(opts ListRoomsOptions) (int, error) {
+	where, args := roomFilterSQL(opts, strings.Fields(opts.Search), "AND")
+	var n int
+	err := s.DB.QueryRow(`SELECT COUNT(*) FROM rooms WHERE 1=1`+where, args...).Scan(&n)
+	return n, err
 }
 
 // SimilarRoom represents a room that may overlap with a newly created one.

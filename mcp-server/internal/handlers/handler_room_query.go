@@ -61,23 +61,48 @@ func (r *Registry) handleListRooms(ctx context.Context, req *mcp.CallToolRequest
 		}
 	}
 
-	rooms, err := r.Server.ListRoomsFiltered(council.ListRoomsOptions{
+	// Default view hides resolved rooms (they are most of a long-lived hub and
+	// rarely what the caller wants). An explicit status, a keyword search or a
+	// related_to lookup is a targeted ask, so those still see everything.
+	status := args.Status
+	hideResolved := false
+	switch {
+	case status == "all":
+		status = ""
+	case status == "" && args.Search == "" && args.RelatedTo == "":
+		hideResolved = true
+	}
+	listOpts := council.ListRoomsOptions{
 		Project:      args.Project,
 		ProjectNotIn: projectNotIn,
 		Tag:          args.Tag,
-		Status:       args.Status,
+		Status:       status,
 		Search:       args.Search,
 		RelatedTo:    args.RelatedTo,
 		Limit:        limit,
 		Offset:       offset,
-	})
+	}
+	if hideResolved {
+		listOpts.ExcludeStatus = "resolved"
+	}
+	rooms, err := r.Server.ListRoomsFiltered(listOpts)
 	if err != nil {
 		r.Server.Logger.Error("Failed to list rooms", "error", err)
 		return nil, ToolOutput{}, err
 	}
 
+	// How many resolved rooms the default view left out, so the omission is visible.
+	hiddenNote := ""
+	if hideResolved {
+		resolvedOpts := listOpts
+		resolvedOpts.ExcludeStatus, resolvedOpts.Status = "", "resolved"
+		if n, cerr := r.Server.CountRooms(resolvedOpts); cerr == nil && n > 0 {
+			hiddenNote = fmt.Sprintf("\n(%d resolved room(s) not shown — pass status=resolved or status=all to include them.)\n", n)
+		}
+	}
+
 	if len(rooms) == 0 {
-		return msg("No rooms found matching the given filters.")
+		return msg("No rooms found matching the given filters." + hiddenNote)
 	}
 
 	var b strings.Builder
@@ -108,9 +133,9 @@ func (r *Registry) handleListRooms(ctx context.Context, req *mcp.CallToolRequest
 				cursor = fmt.Sprintf(" | cursor:%.8s", lid)
 			}
 			if excerpt, ok := pinnedExcerpts[rm.ID]; ok {
-				fmt.Fprintf(&b, "- **%s** | %s | %s | %d msgs%s | 📌 %s | %s | %s\n", rm.ID, project, rm.Status, count, cursor, excerpt, topic, rm.UpdatedAt.Format("2006-01-02 15:04"))
+				fmt.Fprintf(&b, "- **%s** | %s | %s | %d msgs%s | 📌 %s | %s | %s\n", rm.ID, project, rm.Status, count, cursor, excerpt, topic, utcStampMinute(rm.UpdatedAt))
 			} else {
-				fmt.Fprintf(&b, "- **%s** | %s | %s | %d msgs%s | %s | %s\n", rm.ID, project, rm.Status, count, cursor, topic, rm.UpdatedAt.Format("2006-01-02 15:04"))
+				fmt.Fprintf(&b, "- **%s** | %s | %s | %d msgs%s | %s | %s\n", rm.ID, project, rm.Status, count, cursor, topic, utcStampMinute(rm.UpdatedAt))
 			}
 		}
 	} else {
@@ -135,9 +160,14 @@ func (r *Registry) handleListRooms(ctx context.Context, req *mcp.CallToolRequest
 			if lid, ok := latestIDs[rm.ID]; ok {
 				fmt.Fprintf(&b, "  Latest msg: %.8s\n", lid)
 			}
-			fmt.Fprintf(&b, "  Last activity: %s\n", rm.UpdatedAt.Format("2006-01-02 15:04:05"))
+			fmt.Fprintf(&b, "  Last activity: %s\n", utcStamp(rm.UpdatedAt))
 		}
 	}
+
+	if total, cerr := r.Server.CountRooms(listOpts); cerr == nil && total > offset+len(rooms) {
+		fmt.Fprintf(&b, "\n(%d more matching room(s) not shown — raise limit or pass offset=%d.)\n", total-offset-len(rooms), offset+len(rooms))
+	}
+	b.WriteString(hiddenNote)
 
 	text := b.String()
 	return msg(text)
@@ -197,8 +227,8 @@ func (r *Registry) handleRoomStats(ctx context.Context, req *mcp.CallToolRequest
 				parts = append(parts, fmt.Sprintf("%s (%d)", author, count))
 			}
 			fmt.Fprintf(&b, "**Participants:** %s\n", strings.Join(parts, ", "))
-			fmt.Fprintf(&b, "**First message:** %s\n", stats.FirstMessage.Format("2006-01-02 15:04:05"))
-			fmt.Fprintf(&b, "**Last message:** %s\n", stats.LastMessage.Format("2006-01-02 15:04:05"))
+			fmt.Fprintf(&b, "**First message:** %s\n", utcStamp(stats.FirstMessage))
+			fmt.Fprintf(&b, "**Last message:** %s\n", utcStamp(stats.LastMessage))
 		}
 
 		if len(stats.TypeCounts) > 0 {
