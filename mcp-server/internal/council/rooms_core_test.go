@@ -334,8 +334,35 @@ func TestDeleteRoomMessageCleanupError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when messages table is missing")
 	}
-	if !strings.Contains(err.Error(), "delete messages") {
-		t.Errorf("expected 'delete messages' in error, got: %s", err)
+	// The first cascade step that touches messages now fails inside the tx.
+	if !strings.Contains(err.Error(), "del-msg-err") || !strings.Contains(err.Error(), "messages") {
+		t.Errorf("expected error naming the room and the missing messages table, got: %s", err)
+	}
+}
+
+func TestDeleteRoomIsAtomic(t *testing.T) {
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "del-atomic")
+	mustPost(t, s, "del-atomic", "Claude", "msg")
+	// A late cleanup statement (read cursors) fails: nothing may be deleted.
+	if _, err := s.DB.Exec(`CREATE TRIGGER block_cursor_del BEFORE DELETE ON agent_cursors BEGIN SELECT RAISE(ABORT, 'boom'); END`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.DB.Exec(`INSERT INTO agent_cursors (agent, room_id, cursor_message_id) VALUES ('a', 'del-atomic', 'x')`); err != nil {
+		t.Fatalf("seed cursor: %v", err)
+	}
+
+	err := s.DeleteRoom("del-atomic")
+	if err == nil {
+		t.Fatal("expected error when a cleanup statement fails")
+	}
+	if _, gerr := s.GetRoom("del-atomic"); gerr != nil {
+		t.Errorf("room must survive a failed delete, got: %v", gerr)
+	}
+	var n int
+	s.DB.QueryRow(`SELECT COUNT(*) FROM messages WHERE room_id = 'del-atomic'`).Scan(&n)
+	if n != 1 {
+		t.Errorf("messages must survive a failed delete, got %d", n)
 	}
 }
 

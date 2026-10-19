@@ -275,9 +275,16 @@ func (s *Server) DeleteRoom(roomID string) error {
 	s.Mu.Lock()
 	defer s.Mu.Unlock()
 
-	s.removeRoomFromRelatedLinks(roomID)
+	// One transaction: a failure partway must not leave the room gone with its
+	// messages orphaned (messages has no FK on room_id). SetMaxOpenConns(1)
+	// means nothing else may touch s.DB until Commit/Rollback.
+	tx, err := s.DB.Begin()
+	if err != nil {
+		return fmt.Errorf("delete room '%s': %w", roomID, err)
+	}
+	defer func() { _ = tx.Rollback() }()
 
-	res, err := s.DB.Exec(`DELETE FROM rooms WHERE id = ?`, roomID)
+	res, err := tx.Exec(`DELETE FROM rooms WHERE id = ?`, roomID)
 	if err != nil {
 		return fmt.Errorf("delete room '%s': %w", roomID, err)
 	}
@@ -286,24 +293,35 @@ func (s *Server) DeleteRoom(roomID string) error {
 		return fmt.Errorf("room '%s' not found", roomID)
 	}
 
-	// Clean up vectors before deleting messages (best-effort)
-	_, _ = s.DB.Exec(`DELETE FROM message_vectors WHERE message_id IN (SELECT id FROM messages WHERE room_id = ?)`, roomID)
-	_, _ = s.DB.Exec(`DELETE FROM room_vectors WHERE room_id = ?`, roomID)
-
-	// Cascade-clean links that reference this room's messages (either endpoint),
-	// this room's read cursors, and its workspace sightings — otherwise get_links
-	// keeps pointing at messages that no longer exist, agent_cursors accumulates
-	// rows for a room that's gone, and the shared-checkout warning names a deleted
-	// room for up to SharedWorkspaceWindow. A participant still in that tree is
-	// re-recorded on their next post to any room.
-	_, _ = s.DB.Exec(`DELETE FROM message_links WHERE from_id IN (SELECT id FROM messages WHERE room_id = ?) OR to_id IN (SELECT id FROM messages WHERE room_id = ?)`, roomID, roomID)
-	_, _ = s.DB.Exec(`DELETE FROM agent_cursors WHERE room_id = ?`, roomID)
-	_, _ = s.DB.Exec(`DELETE FROM workspaces WHERE room_id = ?`, roomID)
-
-	if _, err := s.DB.Exec(`DELETE FROM messages WHERE room_id = ?`, roomID); err != nil {
-		return fmt.Errorf("delete messages for room '%s': %w", roomID, err)
+	// Cascade: vectors first (they key off messages), then links that reference
+	// this room's messages (either endpoint), read cursors and workspace
+	// sightings, then the messages themselves. Otherwise get_links keeps pointing
+	// at deleted messages, agent_cursors accumulates rows for a gone room, and the
+	// shared-checkout warning names a deleted room for up to SharedWorkspaceWindow.
+	steps := []struct {
+		what, query string
+		args        []any
+	}{
+		{"message vectors", `DELETE FROM message_vectors WHERE message_id IN (SELECT id FROM messages WHERE room_id = ?)`, []any{roomID}},
+		{"room vector", `DELETE FROM room_vectors WHERE room_id = ?`, []any{roomID}},
+		{"links", `DELETE FROM message_links WHERE from_id IN (SELECT id FROM messages WHERE room_id = ?) OR to_id IN (SELECT id FROM messages WHERE room_id = ?)`, []any{roomID, roomID}},
+		{"cursors", `DELETE FROM agent_cursors WHERE room_id = ?`, []any{roomID}},
+		{"workspaces", `DELETE FROM workspaces WHERE room_id = ?`, []any{roomID}},
+		{"messages", `DELETE FROM messages WHERE room_id = ?`, []any{roomID}},
+	}
+	for _, st := range steps {
+		if _, err := tx.Exec(st.query, st.args...); err != nil {
+			return fmt.Errorf("delete %s for room '%s': %w", st.what, roomID, err)
+		}
 	}
 
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("delete room '%s': %w", roomID, err)
+	}
+
+	// Best-effort and after commit: it edits other rooms, which must not change
+	// if this delete rolled back.
+	s.removeRoomFromRelatedLinks(roomID)
 	return nil
 }
 
