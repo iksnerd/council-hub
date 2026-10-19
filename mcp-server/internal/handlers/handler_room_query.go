@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"council-hub/internal/council"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -31,12 +32,10 @@ type RoomStatsInput struct {
 	ClusterWide StringBool `json:"cluster_wide"`
 }
 
-func (r *Registry) handleListRooms(ctx context.Context, req *mcp.CallToolRequest, args ListRoomsInput) (*mcp.CallToolResult, ToolOutput, error) {
+func (r *Registry) handleListRooms(ctx context.Context, req *mcp.CallToolRequest, args ListRoomsInput) (*mcp.CallToolResult, ListRoomsOutput, error) {
 	if args.ClusterWide == "true" {
 		return r.handleListRoomsCluster(args)
 	}
-
-	msg := textResult
 
 	limit := 50
 	if args.Limit != "" {
@@ -88,21 +87,25 @@ func (r *Registry) handleListRooms(ctx context.Context, req *mcp.CallToolRequest
 	rooms, err := r.Server.ListRoomsFiltered(listOpts)
 	if err != nil {
 		r.Server.Logger.Error("Failed to list rooms", "error", err)
-		return nil, ToolOutput{}, err
+		return nil, ListRoomsOutput{}, err
 	}
 
 	// How many resolved rooms the default view left out, so the omission is visible.
 	hiddenNote := ""
+	omittedResolved := 0
 	if hideResolved {
 		resolvedOpts := listOpts
 		resolvedOpts.ExcludeStatus, resolvedOpts.Status = "", "resolved"
 		if n, cerr := r.Server.CountRooms(resolvedOpts); cerr == nil && n > 0 {
+			omittedResolved = n
 			hiddenNote = fmt.Sprintf("\n(%d resolved room(s) not shown — pass status=resolved or status=all to include them.)\n", n)
 		}
 	}
 
 	if len(rooms) == 0 {
-		return msg("No rooms found matching the given filters." + hiddenNote)
+		out := newListRoomsOutput(nil, nil)
+		out.OmittedResolved = omittedResolved
+		return listRoomsResult("No rooms found matching the given filters."+hiddenNote, out)
 	}
 
 	var b strings.Builder
@@ -169,8 +172,16 @@ func (r *Registry) handleListRooms(ctx context.Context, req *mcp.CallToolRequest
 	}
 	b.WriteString(hiddenNote)
 
-	text := b.String()
-	return msg(text)
+	listed := make([]ListedRoom, 0, len(rooms))
+	for _, rm := range rooms {
+		lr := listedRoomFromCluster(clusterRoomFromLocal(rm))
+		lr.PinnedExcerpt = pinnedExcerpts[rm.ID]
+		lr.Updated = rm.UpdatedAt.UTC().Format(time.RFC3339)
+		listed = append(listed, lr)
+	}
+	out := newListRoomsOutput(listed, nil)
+	out.OmittedResolved = omittedResolved
+	return listRoomsResult(b.String(), out)
 }
 
 func (r *Registry) handleRoomStats(ctx context.Context, req *mcp.CallToolRequest, args RoomStatsInput) (*mcp.CallToolResult, ToolOutput, error) {

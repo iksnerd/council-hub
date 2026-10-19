@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"council-hub/internal/council"
 	"encoding/json"
 	"fmt"
@@ -204,6 +205,82 @@ func toolResultText(r *mcp.CallToolResult) string {
 // ToolOutput is the structured output type for tool results.
 type ToolOutput struct {
 	Message string `json:"message"`
+}
+
+// plainTool adapts a text-only handler so the SDK neither derives an
+// outputSchema nor emits structuredContent for it. Registering such a handler
+// with ToolOutput advertised a {"message": string} schema and echoed the
+// markdown a second time as structuredContent; the Content text is the real
+// result. Tools with real structured output (list_rooms) register directly.
+func plainTool[In any](h func(context.Context, *mcp.CallToolRequest, In) (*mcp.CallToolResult, ToolOutput, error)) func(context.Context, *mcp.CallToolRequest, In) (*mcp.CallToolResult, any, error) {
+	return func(ctx context.Context, req *mcp.CallToolRequest, in In) (*mcp.CallToolResult, any, error) {
+		res, _, err := h(ctx, req, in)
+		return res, nil, err
+	}
+}
+
+// ListedRoom is one row of list_rooms' structured output, built from the same
+// data the markdown renderer prints.
+type ListedRoom struct {
+	ID            string   `json:"id"`
+	Topic         string   `json:"topic"`
+	Status        string   `json:"status"`
+	Project       string   `json:"project"`
+	Tags          []string `json:"tags"`
+	RelatedRooms  []string `json:"related_rooms"`
+	PinnedExcerpt string   `json:"pinned_excerpt,omitempty"`
+	SourceNode    string   `json:"source_node,omitempty"`
+	Updated       string   `json:"updated"`
+}
+
+// ListRoomsOutput is list_rooms' structured output. OmittedResolved counts the
+// resolved rooms the default view hid (local view only; cluster_wide does not
+// compute it). Pinned excerpts are local-only: peers do not send them.
+type ListRoomsOutput struct {
+	Rooms           []ListedRoom `json:"rooms"`
+	Warnings        []string     `json:"warnings"`
+	OmittedResolved int          `json:"omitted_resolved"`
+}
+
+// newListRoomsOutput guarantees non-nil slices so they serialize as [] and
+// satisfy the generated output schema.
+func newListRoomsOutput(rooms []ListedRoom, warnings []string) ListRoomsOutput {
+	if rooms == nil {
+		rooms = []ListedRoom{}
+	}
+	if warnings == nil {
+		warnings = []string{}
+	}
+	return ListRoomsOutput{Rooms: rooms, Warnings: warnings}
+}
+
+func listRoomsResult(text string, out ListRoomsOutput) (*mcp.CallToolResult, ListRoomsOutput, error) {
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{&mcp.TextContent{Text: text}},
+	}, out, nil
+}
+
+func splitCSV(s string) []string {
+	out := []string{}
+	for _, p := range strings.Split(s, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+func listedRoomFromCluster(rm ClusterRoomResult) ListedRoom {
+	return ListedRoom{
+		ID:           rm.ID,
+		Topic:        rm.Description,
+		Status:       rm.Status,
+		Project:      rm.Project,
+		Tags:         splitCSV(rm.Tags),
+		RelatedRooms: splitCSV(rm.RelatedRooms),
+		SourceNode:   rm.SourceNode,
+		Updated:      rm.UpdatedAt,
+	}
 }
 
 // validRoomStatuses gates every path that writes rooms.status — the signal_status

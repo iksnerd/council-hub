@@ -641,9 +641,7 @@ func (r *Registry) renderClusterSearch(args SearchMessagesInput, results []Clust
 	return msg(b.String())
 }
 
-func (r *Registry) handleListRoomsCluster(args ListRoomsInput) (*mcp.CallToolResult, ToolOutput, error) {
-	msg := textResult
-
+func (r *Registry) handleListRoomsCluster(args ListRoomsInput) (*mcp.CallToolResult, ListRoomsOutput, error) {
 	var results []ClusterRoomResult
 	if r.Server != nil {
 		limit := 50
@@ -700,12 +698,12 @@ func (r *Registry) handleListRoomsCluster(args ListRoomsInput) (*mcp.CallToolRes
 			warnings = append(warnings, fmt.Sprintf("peer fan-out unavailable: %s", err.Error()))
 			return r.renderClusterRooms(args, results, warnings)
 		}
-		return msg(fmt.Sprintf("Error: cluster list rooms failed: %s", err.Error()))
+		return listRoomsResult(fmt.Sprintf("Error: cluster list rooms failed: %s", err.Error()), newListRoomsOutput(nil, nil))
 	}
 
 	var remote []ClusterRoomResult
 	if err := json.Unmarshal(raw, &remote); err != nil {
-		return nil, ToolOutput{}, fmt.Errorf("decode cluster room results: %w", err)
+		return nil, ListRoomsOutput{}, fmt.Errorf("decode cluster room results: %w", err)
 	}
 	results = append(results, remote...)
 
@@ -726,14 +724,12 @@ func (r *Registry) handleListRoomsCluster(args ListRoomsInput) (*mcp.CallToolRes
 	return r.renderClusterRooms(args, results, warnings)
 }
 
-func (r *Registry) renderClusterRooms(args ListRoomsInput, results []ClusterRoomResult, warnings []string) (*mcp.CallToolResult, ToolOutput, error) {
-	msg := textResult
-
+func (r *Registry) renderClusterRooms(args ListRoomsInput, results []ClusterRoomResult, warnings []string) (*mcp.CallToolResult, ListRoomsOutput, error) {
 	if len(results) == 0 {
 		var b strings.Builder
 		b.WriteString("No rooms found matching the given filters (cluster-wide).")
 		formatClusterWarnings(&b, warnings)
-		return msg(b.String())
+		return listRoomsResult(b.String(), newListRoomsOutput(nil, warnings))
 	}
 
 	var b strings.Builder
@@ -774,7 +770,11 @@ func (r *Registry) renderClusterRooms(args ListRoomsInput, results []ClusterRoom
 	}
 
 	formatClusterWarnings(&b, warnings)
-	return msg(b.String())
+	listed := make([]ListedRoom, 0, len(results))
+	for _, rm := range results {
+		listed = append(listed, listedRoomFromCluster(rm))
+	}
+	return listRoomsResult(b.String(), newListRoomsOutput(listed, warnings))
 }
 
 func (r *Registry) handleRoomStatsCluster(args RoomStatsInput) (*mcp.CallToolResult, ToolOutput, error) {
