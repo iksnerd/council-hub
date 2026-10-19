@@ -4,6 +4,32 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.63.2] - 2026-10-20
+
+The cluster-completeness round after 0.63.1: the gaps between the default cluster reads and the local ones, three bugs found by an audit, and fixes to the tooling around the release. No schema change.
+
+### Added
+- **`search_messages(work_item=ID)`.** An exact lookup of the literal `{wi:ID}` token, passed through the cluster fan-out. The id may use letters, digits, `.`, `_` and `-`; an invalid id, or combining it with `semantic=true`, is an error.
+- **Peer rooms in a cluster `list_rooms` show their message count and pinned excerpt**, and the reply says how many resolved rooms it hid (`omitted_resolved` in the structured output).
+- **Cluster `get_messages` by id ends with `Not found: ...`** for an id no node returned, as the local path does.
+- **Peers report `decision_count` and `synthesis_count`** in the cluster `get_digest`.
+- **`make test-hooks` and `make test-scripts`** test the `Council-Room` post-commit hook (amend, rebase, the suppression window) and the container healthcheck's port parsing. CI runs the hook tests.
+
+### Fixed
+- **Every default cluster `get_digest` carried a warning that peers do not report some fields**, even when every room was local. It now fires only for a row taken from a peer that lacks them.
+- **The `Council-Room` hook re-posted every commit a rebase replayed**, because its duplicate check included the parent commit. It now also remembers recent room and subject pairs for 10 minutes.
+- **`bulk_status_update` reported success when its closing message could not be written.** The room is listed under `Failed` and its status is left unchanged.
+- **`delete_room` was not atomic.** A failure partway left the room gone and its messages orphaned. It is now one transaction that rolls back.
+- **The container healthcheck broke with `COUNCIL_UI=off` and a host in `COUNCIL_HTTP_ADDR`** (for example `0.0.0.0:3001`), marking the container unhealthy for good.
+- **`read_notebook level=N` could cut a multi-byte character in half** when clipping a long label.
+
+### Changed
+- **CI:** `golangci-lint` is pinned to `v2.11.4` so a linter release cannot fail a tag build, and `ci.yml` and `secret-scan.yml` declare read-only token permissions.
+- **Skills (plugin 0.3.1):** `council-hub-janitor`, `-workflow` and `-project-suggestions` state their plan when no server is connected, and `-multi-agent` also triggers when `get_mentions` returns threads meant for another agent.
+
+### Docs
+- `docs/mcp-tools.md` lists the parameters it was missing (`dry_run`, `limit`, the `room_id` alias); `docs/project-structure.md` and CLAUDE.md cover the files that were absent; CLAUDE.md no longer says the ledger hook uses `/api/ui/post`, and records the git-worktree gotchas.
+
 ## [0.63.1] - 2026-10-20
 
 Fixes found by running the 0.63.0 image as a real two-node cluster, plus the follow-ups that were left open after 0.63.0. Schema: one additive column (`rooms.work_items`); a downgrade ignores it.
