@@ -494,7 +494,7 @@ func (s *Server) lintProjectsNeedingNotebook() []string {
 		JOIN rooms r ON r.id = m.room_id
 		WHERE r.project != ''
 		  AND m.message_type IN ('decision', 'action')
-		  AND NOT EXISTS (SELECT 1 FROM notebooks n WHERE n.project = r.project)
+		  AND NOT EXISTS (SELECT 1 FROM notebooks n WHERE n.project = r.project AND n.deleted_at IS NULL)
 		GROUP BY r.project
 		HAVING COUNT(*) >= ?
 		ORDER BY r.project

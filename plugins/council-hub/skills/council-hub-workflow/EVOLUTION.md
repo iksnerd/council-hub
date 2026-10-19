@@ -26,3 +26,11 @@
 - **Outcome:** Accepted.
 
 *Skill moved into `iksnerd/council-hub` from `iksnerd/skills` in {sha:0cb8f8b}; this log starts there.*
+
+## 2026-10-20: session-start calls use the size-safe parameters
+
+- **Trigger:** council-hub-mcp-feedback, six independent reports (#01a0b11a, #01a0c4e6, #01a0ff51, #01a102e2, #01a14ee8, #01a1508d): the three-call ritual overflowed the client's result limit on a long-lived hub, and `get_digest` rejected the `limit` it advertised.
+- **Class:** incomplete. The ritual named the calls but not the parameters that keep them readable.
+- **Change:** the ritual block now passes `limit=15` to `get_digest` and `status=open, level=1` to `read_notebook`, with a short paragraph on `brief`, `limit=all`, `project` and `entry_id`. Needs server v0.63.0 (digest `limit`/`brief`, notebook `project`/`entry_id`).
+- **Evidence:** not scored with skill-scorer in this session.
+- **Outcome:** Accepted.

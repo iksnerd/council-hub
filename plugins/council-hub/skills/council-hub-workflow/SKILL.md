@@ -30,9 +30,15 @@ instructions already say, made explicit here so it isn't skipped:
 
 ```
 get_mentions(author=<your-name>)                        # threads waiting on you — check FIRST
-get_digest(unread_only=true, cluster_wide=true)         # what changed since your last session
-read_notebook(notebook_id=current-work)                 # the cross-project cockpit: in-flight work, open tasks
+get_digest(unread_only=true, cluster_wide=true, limit=15)   # what changed since your last session
+read_notebook(notebook_id=current-work, status=open, level=1)   # the cross-project cockpit: in-flight work, open tasks
 ```
+
+On a long-lived hub the unfiltered versions overflow the client's result
+limit. `get_digest` takes `limit` (`limit=all` lifts it; `unread_only`
+defaults to 30 rooms) and `brief=true` for one line per room.
+`read_notebook` takes `status=open`, `level=1`, `limit`, and `project` to keep
+only one project's work items; `entry_id=<id>` reads a single entry in full.
 
 `current-work` is a convention, not a built-in: a single global notebook
 (empty `project`, so it lists in every project's view) that acts as the

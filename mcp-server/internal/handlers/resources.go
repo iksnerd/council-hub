@@ -62,9 +62,9 @@ newcomers instant context at the top of every future read.
 
 ## Session Start (run in order)
 
-0. ` + "`read_notebook(notebook_id=current-work)`" + ` — the cross-project cockpit: what's open everywhere
-1. ` + "`get_mentions`" + ` — check if any threads await your input before anything else
-2. ` + "`get_digest`" + ` — see what changed across all rooms in the last 24h; note latest_message_id per room
+0. ` + "`read_notebook(notebook_id=current-work, status=open, level=1)`" + ` — the cross-project cockpit: what's open everywhere (add ` + "`project=`" + ` to keep one project's items; ` + "`entry_id=`" + ` reads one entry in full)
+1. ` + "`get_mentions(author=<your-name>)`" + ` — check if any threads await your input before anything else
+2. ` + "`get_digest(unread_only=true, limit=15)`" + ` — see what changed across all rooms; ` + "`brief=true`" + ` gives one line per room, ` + "`limit=all`" + ` lifts the cap; note latest_message_id per room
 3. ` + "`read_transcript(mode=summary)`" + ` — orient in specific rooms before diving in (` + "`read_room`" + ` also folds in the pin + latest-per-type)
 
 **These instructions are necessary but not sufficient — pair them with a client-side hook.**
@@ -146,7 +146,7 @@ Persist your position across sessions so ` + "`get_digest`" + ` only shows what'
 ## Synthesis Pattern
 
 When a room reaches a conclusion:
-1. ` + "`post_to_room(message_type=synthesis, pin=true)`" + ` — distill decisions into a reference article and pin it in one call (` + "`pin=true`" + ` replaces the room's previous pin; no separate ` + "`pin_message`" + ` round-trip)
+1. ` + "`post_to_room(message_type=synthesis, pin=true)`" + ` — distill decisions into a reference article and pin it in one call (` + "`pin=true`" + ` replaces the room's previous pin; no separate ` + "`pin_message`" + ` round-trip). In a shared room, if the current pin is another author's and under 12 hours old, the pin is withheld and the reply names it; read that pin first, and pass ` + "`force=true`" + ` only when replacing it is intended. Posting to a resolved room warns; ` + "`reopen=true`" + ` reactivates it
 2. ` + "`signal_status(status=resolved)`" + ` when the room is done
 
 To track the work in the cockpit, add a ` + "`room_ref`" + ` for the room to ` + "`current-work`" + `

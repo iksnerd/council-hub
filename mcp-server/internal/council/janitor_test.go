@@ -306,6 +306,31 @@ func TestLintProjectsNeedingNotebookSkipsWhenNotebookExists(t *testing.T) {
 	}
 }
 
+func TestLintProjectsNeedingNotebookIgnoresSoftDeletedNotebook(t *testing.T) {
+	cs := setupTestServer(t)
+	mustCreateRoom(t, cs, "nn-gone", withProject("deleted-nb-proj"))
+	for i := 0; i < 10; i++ {
+		mustPostTyped(t, cs, "nn-gone", "Claude", "decided", "decision")
+	}
+	if err := cs.CreateNotebook("gone-nb", "deleted-nb-proj", "Gone"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cs.DeleteNotebook("gone-nb"); err != nil {
+		t.Fatal(err)
+	}
+
+	got := cs.lintProjectsNeedingNotebook()
+	found := false
+	for _, p := range got {
+		if p == "deleted-nb-proj" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("a project whose only notebook is soft-deleted should be nudged, got %v", got)
+	}
+}
+
 func TestLintProjectsNeedingNotebookBelowThreshold(t *testing.T) {
 	cs := setupTestServer(t)
 	mustCreateRoom(t, cs, "nn-quiet", withProject("quiet-proj"))
