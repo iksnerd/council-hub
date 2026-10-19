@@ -126,6 +126,53 @@ func (s *Server) ResolveMessageID(id string) (string, error) {
 	}
 }
 
+// ResolveMessageIDInRoom is ResolveMessageID with the lookup scoped to roomID
+// first. UUIDv7 prefixes collide across rooms (8 hex chars is a ~65s window), so
+// a reference written while posting to a room almost always means a message in
+// that room; a same-prefix message elsewhere is not ambiguity. Resolution order:
+// exact full ID (any room), then a prefix unique within roomID, ambiguity if
+// several in roomID share it, and only when roomID has no match does it fall
+// back to the global lookup (an intentional cross-room reference).
+func (s *Server) ResolveMessageIDInRoom(id, roomID string) (string, error) {
+	if roomID == "" || id == "" || len(id) < minResolvePrefixLen {
+		return s.ResolveMessageID(id)
+	}
+	var exact string
+	if err := s.DB.QueryRow(`SELECT id FROM messages WHERE id = ?`, id).Scan(&exact); err == nil {
+		return exact, nil
+	}
+	rows, err := s.DB.Query(
+		`SELECT id, room_id, author, message_type FROM messages WHERE room_id = ? AND id >= ? AND id < ? ORDER BY id LIMIT ?`,
+		roomID, id, id+"g", maxPrefixCandidates+1,
+	)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = rows.Close() }()
+	var candidates []PrefixCandidate
+	for rows.Next() {
+		var c PrefixCandidate
+		if serr := rows.Scan(&c.ID, &c.RoomID, &c.Author, &c.MessageType); serr == nil {
+			candidates = append(candidates, c)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return "", err
+	}
+	switch len(candidates) {
+	case 0:
+		return s.ResolveMessageID(id)
+	case 1:
+		return candidates[0].ID, nil
+	default:
+		truncated := len(candidates) > maxPrefixCandidates
+		if truncated {
+			candidates = candidates[:maxPrefixCandidates]
+		}
+		return "", &ErrAmbiguousMessageID{Prefix: id, Candidates: candidates, Truncated: truncated}
+	}
+}
+
 // GetRevisionHistory returns every version of a message in chronological order
 // (oldest → newest), walking the append-only revises chain. messageID may name any
 // node in the chain — the walk finds the head, then follows revises back to the

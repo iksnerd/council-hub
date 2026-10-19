@@ -56,6 +56,8 @@ type Message struct {
 	RetractedAt sql.NullTime
 	RetractedBy string // who retracted it
 	Timestamp   time.Time
+	Tags        string // CSV of message-level tags (e.g. "meta-feedback"), or ""
+	PostedFrom  string // where the post came from (working tree or client name), or ""
 }
 
 // DisplayContent returns the content to surface for a message, masking a retracted
@@ -98,7 +100,7 @@ func TruncateRunes(s string, max int, boundary string, minBoundary int) string {
 }
 
 // messageColumns is the canonical column list for SELECT queries on messages.
-const messageColumns = `id, room_id, author, content, message_type, is_summary, reply_to, pinned, reactions, mentions, supersedes, revises, revised, retracted_at, retracted_by, timestamp`
+const messageColumns = `id, room_id, author, content, message_type, is_summary, reply_to, pinned, reactions, mentions, supersedes, revises, revised, retracted_at, retracted_by, timestamp, msg_tags, posted_from`
 
 // headClause is the SQL predicate that collapses reads to head revisions — the
 // single source of truth for "edits are append-only, so hide superseded versions".
@@ -132,6 +134,7 @@ func messageScanDests(m *Message) []any {
 		&m.ID, &m.RoomID, &m.Author, &m.Content, &m.MessageType, &m.IsSummary,
 		&m.ReplyTo, &m.Pinned, &m.Reactions, &m.Mentions, &m.Supersedes,
 		&m.Revises, &m.Revised, &m.RetractedAt, &m.RetractedBy, &m.Timestamp,
+		&m.Tags, &m.PostedFrom,
 	}
 }
 
@@ -379,6 +382,9 @@ func initSchema(db *sql.DB) error {
 		`ALTER TABLE messages ADD COLUMN revised INTEGER DEFAULT 0`,
 		`ALTER TABLE messages ADD COLUMN retracted_at DATETIME`,
 		`ALTER TABLE messages ADD COLUMN retracted_by TEXT DEFAULT ''`,
+		`ALTER TABLE messages ADD COLUMN msg_tags TEXT DEFAULT ''`,
+		`ALTER TABLE messages ADD COLUMN posted_from TEXT DEFAULT ''`,
+		`ALTER TABLE messages ADD COLUMN idempotency_key TEXT DEFAULT ''`,
 	}
 	for _, m := range migrations {
 		_, _ = db.Exec(m) // Ignore "duplicate column" errors for already-migrated DBs
@@ -391,6 +397,7 @@ func initSchema(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_messages_room_id_timestamp ON messages(room_id, timestamp)`,
 		`CREATE INDEX IF NOT EXISTS idx_messages_room_id_is_summary ON messages(room_id, is_summary)`,
 		`CREATE INDEX IF NOT EXISTS idx_messages_revises ON messages(revises)`,
+		`CREATE INDEX IF NOT EXISTS idx_messages_idem ON messages(room_id, author, idempotency_key) WHERE idempotency_key != ''`,
 		`CREATE INDEX IF NOT EXISTS idx_rooms_project ON rooms(project)`,
 		`CREATE INDEX IF NOT EXISTS idx_rooms_status ON rooms(status)`,
 		`CREATE INDEX IF NOT EXISTS idx_notebook_entries_nb ON notebook_entries(notebook_id, position)`,

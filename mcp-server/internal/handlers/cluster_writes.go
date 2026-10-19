@@ -36,6 +36,14 @@ type internalPostRequest struct {
 	Mentions    string `json:"mentions"`
 	Supersedes  string `json:"supersedes"`
 	Pin         string `json:"pin"`
+	// The fields below are applied by the owner through the same applyPost the
+	// local handler uses, so a proxied post behaves exactly like a local one.
+	Force          string `json:"force,omitempty"`
+	Reopen         string `json:"reopen,omitempty"`
+	Tags           string `json:"tags,omitempty"`
+	Links          string `json:"links,omitempty"`
+	IdempotencyKey string `json:"idempotency_key,omitempty"`
+	PostedFrom     string `json:"posted_from,omitempty"`
 }
 
 // internalStatusRequest is the body forwarded to a peer node's internal status endpoint.
@@ -63,7 +71,14 @@ type internalPostResponse struct {
 	// had none. An older owner never sets it, which reads as "nothing replaced"
 	// rather than claiming a replacement that may not have happened.
 	ReplacedPin string `json:"replaced_pin,omitempty"`
-	Error       string `json:"error"`
+	// PinRefused: the owner withheld the pin because it would replace another
+	// author's fresh one (needs force=true). Distinct from a pin that failed.
+	PinRefused  bool     `json:"pin_refused,omitempty"`
+	Duplicate   bool     `json:"duplicate,omitempty"`
+	Reopened    bool     `json:"reopened,omitempty"`
+	WasResolved bool     `json:"was_resolved,omitempty"`
+	Notes       []string `json:"notes,omitempty"`
+	Error       string   `json:"error"`
 }
 
 // locateRoomOwner asks Phoenix which cluster node owns a (public) room. Returns
@@ -125,55 +140,50 @@ func (r *Registry) peerMCPURL(node, path string) (string, error) {
 
 // proxyPostToRoom forwards a post_to_room write to the node that owns the room.
 // Returns the new message ID and whether a requested pin landed there.
-func (r *Registry) proxyPostToRoom(owner string, args PostToRoomInput) (msgID string, pinned bool, replacedPin string, err error) {
+func (r *Registry) proxyPostToRoom(owner string, in internalPostRequest) (postOutcome, error) {
 	url, err := r.peerMCPURL(owner, internalPostPath)
 	if err != nil {
-		return "", false, "", err
+		return postOutcome{}, err
 	}
 
 	// Workspace is deliberately absent: a shared working tree is a fact about the
 	// *poster's* machine, so it is recorded on this node before the proxy and must
-	// not be replayed onto the owner's, where that path describes nothing.
-	reqBody, err := json.Marshal(internalPostRequest{
-		RoomID:      args.RoomID,
-		Author:      args.Author,
-		Message:     args.Message,
-		MessageType: args.MessageType,
-		ReplyTo:     args.ReplyTo,
-		Mentions:    args.Mentions,
-		Supersedes:  args.Supersedes,
-		Pin:         args.Pin,
-	})
+	// not be replayed onto the owner's, where that path describes nothing. The
+	// derived posted_from label travels instead.
+	reqBody, err := json.Marshal(in)
 	if err != nil {
-		return "", false, "", err
+		return postOutcome{}, err
 	}
 
 	httpReq, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(reqBody))
 	if err != nil {
-		return "", false, "", err
+		return postOutcome{}, err
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set(clusterSecretHeader, r.ClusterSecret)
 
 	resp, err := r.HTTPClient.Do(httpReq)
 	if err != nil {
-		return "", false, "", fmt.Errorf("proxy to %s: %w", owner, err)
+		return postOutcome{}, fmt.Errorf("proxy to %s: %w", owner, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		msg, _ := io.ReadAll(resp.Body)
-		return "", false, "", fmt.Errorf("owner node %s returned %d: %s", owner, resp.StatusCode, strings.TrimSpace(string(msg)))
+		return postOutcome{}, fmt.Errorf("owner node %s returned %d: %s", owner, resp.StatusCode, strings.TrimSpace(string(msg)))
 	}
 
 	var out internalPostResponse
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return "", false, "", fmt.Errorf("decode owner response: %w", err)
+		return postOutcome{}, fmt.Errorf("decode owner response: %w", err)
 	}
 	if out.Error != "" {
-		return "", false, "", fmt.Errorf("owner node %s: %s", owner, out.Error)
+		return postOutcome{}, fmt.Errorf("owner node %s: %s", owner, out.Error)
 	}
-	return out.MessageID, out.Pinned, out.ReplacedPin, nil
+	return postOutcome{
+		MessageID: out.MessageID, Duplicate: out.Duplicate, Pinned: out.Pinned, PinRefused: out.PinRefused,
+		ReplacedPin: out.ReplacedPin, Reopened: out.Reopened, WasResolved: out.WasResolved, Notes: out.Notes,
+	}, nil
 }
 
 // Remedies for remoteRoomNote, matching what the calling tool can actually offer.
@@ -333,35 +343,18 @@ func (r *Registry) InternalPostHandler() http.HandlerFunc {
 			return
 		}
 
-		msgType := in.MessageType
-		if msgType == "" {
-			msgType = "message"
-		}
-
-		msgID, err := r.Server.PostMessageWithRefs(in.RoomID, in.Author, in.Message, msgType, in.ReplyTo, in.Mentions, in.Supersedes)
+		out, err := r.applyPost(in)
 		if err != nil {
 			r.Server.Logger.Error("Cross-node write failed", "room_id", in.RoomID, "error", err)
 			writeJSON(internalPostResponse{Error: err.Error()})
 			return
 		}
 
-		// Apply pin here rather than dropping it: the close-out workflow is
-		// post synthesis -> pin -> resolve, and a pin that silently vanished on
-		// the proxy path left peer-owned rooms permanently flagged stale-pin with
-		// no way to fix them from another node.
-		pinned, replaced := false, ""
-		if in.Pin == "true" {
-			if _, old, perr := r.Server.PinMessageReplacing(in.RoomID, msgID); perr != nil {
-				// The write already succeeded — report the partial outcome instead
-				// of failing the whole call.
-				r.Server.Logger.Warn("Cross-node pin failed", "room_id", in.RoomID, "msg_id", msgID, "error", perr)
-			} else {
-				pinned, replaced = true, old
-			}
-		}
-
-		r.Server.Logger.Info("Cross-node write applied", "room_id", in.RoomID, "author", in.Author, "msg_id", msgID, "pinned", pinned)
-		writeJSON(internalPostResponse{MessageID: msgID, RoomID: in.RoomID, Pinned: pinned, ReplacedPin: replaced})
+		r.Server.Logger.Info("Cross-node write applied", "room_id", in.RoomID, "author", in.Author, "msg_id", out.MessageID, "pinned", out.Pinned)
+		writeJSON(internalPostResponse{
+			MessageID: out.MessageID, RoomID: in.RoomID, Pinned: out.Pinned, ReplacedPin: out.ReplacedPin,
+			PinRefused: out.PinRefused, Duplicate: out.Duplicate, Reopened: out.Reopened, WasResolved: out.WasResolved, Notes: out.Notes,
+		})
 	}
 }
 
