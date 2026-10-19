@@ -216,6 +216,8 @@ func loggingMiddleware(logger *slog.Logger) mcp.Middleware {
 func main() {
 	backfillEmbeddings := flag.Bool("backfill-embeddings", false,
 		"Run a one-shot embedding backfill for any messages/rooms missing a vector, then exit. Requires COUNCIL_OLLAMA_URL. Safe to run against a live server's DB (WAL mode).")
+	backupTo := flag.String("backup", "",
+		"Write a consistent snapshot of the database to this new file (SQLite VACUUM INTO), then exit. Safe against a running server; in Docker run it inside the container: docker exec council-hub council-hub -backup /data/council-backup.db")
 	flag.Parse()
 
 	logLevel := slog.LevelInfo
@@ -237,6 +239,18 @@ func main() {
 		log.Fatalf("Failed to create server: %v", err)
 	}
 	defer func() { _ = cs.DB.Close() }()
+
+	if *backupTo != "" {
+		if err := cs.BackupTo(*backupTo); err != nil {
+			log.Fatalf("backup failed: %v", err)
+		}
+		logger.Info("Backup written", "from", dbPath, "to", *backupTo)
+		return
+	}
+
+	if warn := council.SharedFSWarning(dbPath); warn != "" {
+		logger.Warn(warn)
+	}
 
 	// Initialize embedder via Ollama
 	if ollamaURL := os.Getenv("COUNCIL_OLLAMA_URL"); ollamaURL != "" {

@@ -535,19 +535,16 @@ This exports the transcript to a markdown file and removes the room from the act
 
 Council Hub data is stored entirely in SQLite. To back up:
 
-```bash
-# Backup
-cp -r ~/.council-hub ~/council-hub-backup
-
-# Restore
-cp -r ~/council-hub-backup ~/.council-hub
-```
-
-Or use standard SQLite backup tools:
+With the server running (including in Docker), take a consistent snapshot from the binary itself:
 
 ```bash
-sqlite3 ~/.council-hub/council.db ".backup ~/.council-hub-$(date +%Y%m%d).db.bak"
+docker exec council-hub council-hub -backup /data/council-backup.db
+# native install: COUNCIL_DB=~/.council-hub/council.db council-hub -backup ~/council-backup.db
 ```
+
+`-backup` uses SQLite `VACUUM INTO`, writes a new standalone file and refuses to overwrite one.
+
+Do not `cp` or run `sqlite3` against a database that a running Docker container holds through a bind mount: WAL shared memory is not coherent across Docker Desktop's VM boundary. If the server is stopped, copying the whole data directory (`council.db`, `-wal`, `-shm`) is safe. To restore, stop the server and replace `council.db` with the backup (delete any stale `-wal`/`-shm` next to it).
 
 ---
 
