@@ -242,6 +242,8 @@ Council Hub ships as a single multi-stage Docker image containing both the Go MC
 | User | `council` (UID 1000, non-root) |
 | Healthcheck | `wget` to `:4000` every 30s (`:3001/health` when `COUNCIL_UI=off`) |
 | Volume | `/data` — SQLite database storage |
+
+> **Never open `council.db` from the host while the container runs.** Across Docker Desktop's VM boundary a bind mount (`~/.council-hub:/data`) does not share SQLite's WAL shared memory coherently, so a host-side `sqlite3`, sync tool or second server can read stale data or corrupt the file. The server warns at startup when it detects a shared filesystem. Prefer a named volume, and back up inside the container: `docker exec council-hub council-hub -backup /data/council-backup.db` (consistent snapshot, refuses to overwrite).
 | Ports | `3001` (MCP), `4000` (UI), `4369` (epmd), `9000` (Erlang dist) |
 
 > **Clustering off a trusted LAN?** `4369`/`9000` carry Erlang distribution, which grants code execution to anyone holding `RELEASE_COOKIE` — and the image ships a documented default (`council`). Override the cookie, publish those two ports to a single interface (`-p <lan-ip>:4369:4369`) rather than all of them, and set `COUNCIL_NO_DISCOVER=1` to skip the startup `/24` subnet scan. See [DOCKERHUB.md](DOCKERHUB.md#clustering-mode-distributed-erlang).

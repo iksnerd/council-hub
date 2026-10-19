@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -43,6 +44,9 @@ func (r *Registry) handleLinkMessages(ctx context.Context, req *mcp.CallToolRequ
 
 	id, err := r.Server.CreateLink(args.FromID, args.ToID, args.Relation, args.Author)
 	if err != nil {
+		if missing := r.missingLocalMessages(args.FromID, args.ToID); len(missing) > 0 {
+			return msg("Error: " + r.describeMissingLinkEnds(missing))
+		}
 		return msg(fmt.Sprintf("Error: %s. Valid relations: %s.", err.Error(), validLinkRelationList()))
 	}
 
@@ -50,6 +54,56 @@ func (r *Registry) handleLinkMessages(ctx context.Context, req *mcp.CallToolRequ
 	// straight into another tool's id parameter (unlink_messages).
 	r.Server.Logger.Info("Link created", "from", args.FromID, "to", args.ToID, "relation", args.Relation)
 	return msg(fmt.Sprintf("Linked #%s --%s--> #%s (link #%s).", args.FromID, strings.ToLower(args.Relation), args.ToID, id))
+}
+
+// missingLocalMessages returns the IDs among ids that are not stored on this node.
+func (r *Registry) missingLocalMessages(ids ...string) []string {
+	var missing []string
+	for _, id := range ids {
+		var one int
+		if err := r.Server.DB.QueryRow(`SELECT 1 FROM messages WHERE id = ?`, id).Scan(&one); err != nil {
+			missing = append(missing, id)
+		}
+	}
+	return missing
+}
+
+// describeMissingLinkEnds explains a link_messages miss. Links are node-local
+// (the edge table lives beside the messages it joins), so an ID that exists on
+// a peer cannot be linked from here; when the cluster fan-out can say where it
+// lives, name the node and room. Best-effort: with no peers or an unreachable
+// fan-out it still states the node-local rule.
+func (r *Registry) describeMissingLinkEnds(missing []string) string {
+	var b strings.Builder
+	for _, id := range missing {
+		fmt.Fprintf(&b, "message %s not found on this node.", id)
+		if owner, room := r.locateMessageOwner(id); owner != "" {
+			fmt.Fprintf(&b, " It lives on cluster node '%s' (room '%s').", owner, room)
+		}
+		b.WriteString(" ")
+	}
+	b.WriteString("Links are node-local: both messages must be stored on the same node, so cross-node edges are not supported. Post a note in a room on one node that cites the other message instead.")
+	return b.String()
+}
+
+// locateMessageOwner asks the cluster which node stores a message. Returns
+// empty strings when the cluster is not configured, unreachable, or the
+// message is nowhere. Costs one fan-out, so call it only on an error path.
+func (r *Registry) locateMessageOwner(id string) (node, room string) {
+	raw, _, err := r.clusterCall("get_messages", map[string]any{"message_ids": id})
+	if err != nil {
+		return "", ""
+	}
+	var found []ClusterSearchResult
+	if json.Unmarshal(raw, &found) != nil {
+		return "", ""
+	}
+	for _, m := range found {
+		if m.ID == id && m.SourceNode != "" {
+			return m.SourceNode, m.RoomID
+		}
+	}
+	return "", ""
 }
 
 func (r *Registry) handleUnlinkMessages(ctx context.Context, req *mcp.CallToolRequest, args UnlinkMessagesInput) (*mcp.CallToolResult, ToolOutput, error) {

@@ -353,6 +353,14 @@ docker compose up -d
 |------|-------------|
 | `/data` | SQLite database storage. Mount a host directory or named volume for persistence. Contains `council.db`, `.db-wal`, and `.db-shm` files. |
 
+> **Do not open the database from the host while the container runs.** On Docker Desktop (macOS/Windows) a bind mount like `~/.council-hub:/data` crosses a VM boundary, and SQLite's WAL shared memory (`.db-shm`) is not coherent across it: a host-side `sqlite3`, a file-sync tool or a second server on the same file can read stale pages or corrupt the database. The server logs a warning at startup when it detects a shared filesystem. Prefer a named volume (`-v council-data:/data`), and back up from inside the container:
+>
+> ```bash
+> docker exec council-hub council-hub -backup /data/council-backup.db
+> ```
+>
+> `-backup` writes a consistent snapshot (SQLite `VACUUM INTO`) to a new file and exits; it refuses to overwrite an existing one.
+
 ## Image Details
 
 | Detail | Value |

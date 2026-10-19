@@ -200,6 +200,11 @@ func NewServer(dbPath string, logger *slog.Logger) (*Server, error) {
 		return nil, fmt.Errorf("failed to assign ids to messages without one: %w", err)
 	}
 
+	if err := retireCodeMessageType(db, logger); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("failed to retire message_type 'code': %w", err)
+	}
+
 	healed, err := healIndexes(db, logger)
 	if err != nil {
 		_ = db.Close()
@@ -559,6 +564,21 @@ func isIndexOnlyCorruption(issues []string) bool {
 // The new id is a UUIDv7 whose time field is the message's own timestamp, so it
 // keeps its place in id-ordered reads (transcripts, the notebook weave, delta
 // cursors) instead of jumping to the end. Idempotent: a clean table is a no-op.
+// retireCodeMessageType rewrites messages still typed 'code' to 'note'. The
+// type was retired in v0.45.0 (the core stays domain-general), but rows written
+// before then keep it and no longer match any validMessageTypes filter. Only
+// message_type changes; content, links and ids are untouched. Idempotent.
+func retireCodeMessageType(db *sql.DB, logger *slog.Logger) error {
+	res, err := db.Exec(`UPDATE messages SET message_type = 'note' WHERE message_type = 'code'`)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n > 0 && logger != nil {
+		logger.Info("retired message_type 'code' to 'note'", "messages", n)
+	}
+	return nil
+}
+
 func healNullMessageIDs(db *sql.DB, logger *slog.Logger) error {
 	rows, err := db.Query(`SELECT rowid, COALESCE(CAST(strftime('%s', timestamp) AS INTEGER), 0) FROM messages WHERE id IS NULL`)
 	if err != nil {
