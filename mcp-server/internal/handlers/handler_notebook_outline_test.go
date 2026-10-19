@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"council-hub/internal/council"
 )
@@ -612,4 +613,20 @@ func TestRenderRoomRef(t *testing.T) {
 			t.Errorf("excerpt not truncated near 240: %q", b.String())
 		}
 	})
+}
+
+func TestClipLabelKeepsValidUTF8(t *testing.T) {
+	for _, in := range []string{
+		strings.Repeat("é", 100),                // two-byte runes, no spaces
+		strings.Repeat("日本語 ", 40),              // three-byte runes with spaces
+		strings.Repeat("a", 139) + "é" + "tail", // rune straddles the 140-byte cut
+	} {
+		got := clipLabel(in)
+		if !utf8.ValidString(got) {
+			t.Errorf("clipLabel produced invalid UTF-8 for %q: %q", in[:10], got)
+		}
+		if !strings.HasSuffix(got, " …") {
+			t.Errorf("expected clipped label, got %q", got)
+		}
+	}
 }

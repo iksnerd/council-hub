@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"council-hub/internal/council"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -593,6 +594,10 @@ func clipLabel(s string) string {
 		cut := clipLabelMax
 		if j := strings.LastIndex(s[:clipLabelMax], " "); j > clipLabelMax/2 {
 			cut = j
+		}
+		// Never cut inside a multi-byte rune.
+		for cut > 0 && !utf8.RuneStart(s[cut]) {
+			cut--
 		}
 		return strings.TrimRight(s[:cut], " ,;:") + " …"
 	}
