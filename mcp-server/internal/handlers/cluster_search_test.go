@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -410,5 +411,39 @@ func TestHandleGetMessagesClusterNamesMissingIDs(t *testing.T) {
 	text = resultText(result)
 	if !strings.Contains(text, "No messages found on any cluster node") || !strings.Contains(text, "Not found: ghost-1.") {
 		t.Errorf("empty case: %s", text)
+	}
+}
+
+func TestSearchMessagesWorkItemLocalAndCluster(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "wi-h")
+	mustPost(t, reg.Server, "wi-h", "alice", "shipped {wi:PROJ-7}")
+	mustPost(t, reg.Server, "wi-h", "alice", "unrelated PROJ-7")
+
+	res, _, err := reg.handleSearchMessages(context.Background(), nil, SearchMessagesInput{WorkItem: "PROJ-7", ClusterWide: "false"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := resultText(res)
+	if !strings.Contains(text, "shipped") || strings.Contains(text, "unrelated") {
+		t.Errorf("work_item filter wrong: %s", text)
+	}
+
+	res, _, _ = reg.handleSearchMessages(context.Background(), nil, SearchMessagesInput{WorkItem: "bad id}", ClusterWide: "false"})
+	if !strings.Contains(resultText(res), "Error: work_item") {
+		t.Errorf("invalid id not rejected: %s", resultText(res))
+	}
+
+	var body map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		json.NewEncoder(w).Encode(map[string]any{"results": []map[string]any{}, "warnings": []string{}})
+	}))
+	defer srv.Close()
+	reg.HTTPClient = &http.Client{Timeout: 5 * time.Second}
+	reg.PhoenixURL = srv.URL
+	_, _, _ = reg.handleSearchMessages(context.Background(), nil, SearchMessagesInput{WorkItem: "PROJ-7", ClusterWide: "true"})
+	if body["work_item"] != "PROJ-7" {
+		t.Errorf("work_item not forwarded to the fan-out: %v", body)
 	}
 }

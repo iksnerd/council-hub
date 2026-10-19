@@ -382,3 +382,44 @@ func TestInitSchemaFTSRebuild(t *testing.T) {
 		t.Fatalf("expected 1 fts row after rebuild, got %d", count)
 	}
 }
+
+func TestSearchMessagesByWorkItem(t *testing.T) {
+	s := setupTestServer(t)
+	s.CreateRoom("wi-room", "Room", "proj", "", "", "", "")
+	s.PostMessage("wi-room", "a", "fixed in {wi:ABC-12} today", "action", "")
+	s.PostMessage("wi-room", "a", "also touches {wi:ABC-123}", "action", "")
+	s.PostMessage("wi-room", "a", "ABC-12 mentioned without the token", "note", "")
+	s.PostMessage("wi-room", "a", "under_score {wi:a_b}", "note", "")
+	s.PostMessage("wi-room", "a", "no underscore {wi:axb}", "note", "")
+
+	got, err := s.SearchMessagesByWorkItem("ABC-12", "", "", "", "", "", "", "", 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || !strings.Contains(got[0].Content, "{wi:ABC-12}") {
+		t.Fatalf("want exactly the {wi:ABC-12} message, got %d: %+v", len(got), got)
+	}
+
+	got, _ = s.SearchMessagesByWorkItem("a_b", "", "", "", "", "", "", "", 20)
+	if len(got) != 1 || !strings.Contains(got[0].Content, "{wi:a_b}") {
+		t.Fatalf("underscore must be literal, got %d", len(got))
+	}
+
+	got, _ = s.SearchMessagesByWorkItem("ABC-12", "touches", "", "", "", "", "", "", 20)
+	if len(got) != 0 {
+		t.Errorf("work item must combine with query by AND, got %d", len(got))
+	}
+}
+
+func TestValidWorkItemID(t *testing.T) {
+	for _, ok := range []string{"ABC-12", "1234", "a.b_c-d"} {
+		if !ValidWorkItemID(ok) {
+			t.Errorf("%q should be valid", ok)
+		}
+	}
+	for _, bad := range []string{"", "a b", "a}b", "{wi:x", "a/b", "-x"} {
+		if ValidWorkItemID(bad) {
+			t.Errorf("%q should be invalid", bad)
+		}
+	}
+}

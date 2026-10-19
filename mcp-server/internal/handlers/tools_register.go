@@ -208,6 +208,7 @@ func (r *Registry) RegisterTools() {
 		"until":           prop("string", "ISO timestamp (e.g. 2026-04-03T23:59:59). Only return messages at or before this time."),
 		"summary_only":    prop("string", "Set to 'true' for compact output: id, author, timestamp, room, type, and 120-char excerpt"),
 		"full_content":    prop("string", "Set to 'true' to return the full un-truncated message body instead of a 300-char snippet"),
+		"work_item":       prop("string", "Exact work-item id (letters, digits, '.', '_', '-'): only messages containing the literal token {wi:ID}. Free-text spellings such as 'ABC 12' are not matched. Combines with the other filters by AND; not available with semantic."),
 		"cluster_wide":    prop("string", "'true' searches all cluster nodes. Default: cluster-wide when peers are connected (COUNCIL_CLUSTER_READS=local turns that off); 'false' forces this node only. Semantic search is always node-local."),
 	}
 	// Only expose semantic param when an embedding provider is configured.
@@ -217,7 +218,7 @@ func (r *Registry) RegisterTools() {
 	}
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "search_messages",
-		Description: "Search messages across rooms by keyword, author, type, or time range. Prefer over read_transcript when: room has 20+ messages, you need cross-room results, or you're filtering by author/type/time window. Use read_transcript when you need a room's full sequential context. Returns snippets with message IDs; use get_messages to fetch full content. Use summary_only=true for compact results (id, author, timestamp, 120-char excerpt). Use full_content=true to bypass snippet truncation. Use include_related=true to automatically include related rooms in the search scope. Note: when cluster_wide=true, semantic search runs locally only (sqlite-vec is node-local) and remote nodes fall back to keyword search with a warning.",
+		Description: "Search messages across rooms by keyword, author, type, or time range. Prefer over read_transcript when: room has 20+ messages, you need cross-room results, or you're filtering by author/type/time window. Use read_transcript when you need a room's full sequential context. Returns snippets with message IDs; use get_messages to fetch full content. Use summary_only=true for compact results (id, author, timestamp, 120-char excerpt). Use full_content=true to bypass snippet truncation. Use include_related=true to automatically include related rooms in the search scope. Use work_item=ID for an exact lookup of messages that carry the {wi:ID} token. Note: when cluster_wide=true, semantic search runs locally only (sqlite-vec is node-local) and remote nodes fall back to keyword search with a warning.",
 		InputSchema: schema(nil, searchProps),
 	}, plainTool(r.handleSearchMessages))
 

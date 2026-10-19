@@ -626,7 +626,7 @@ func (r *Registry) handleSearchMessagesCluster(args SearchMessagesInput) (*mcp.C
 				limit = 20
 			}
 		}
-		local, err := r.Server.SearchMessages(args.Query, args.Author, args.MessageType, effectiveRoomIDs, args.Project, args.Since, args.Until, limit)
+		local, err := r.Server.SearchMessagesByWorkItem(args.WorkItem, args.Query, args.Author, args.MessageType, effectiveRoomIDs, args.Project, args.Since, args.Until, limit)
 		if err == nil {
 			for _, m := range local {
 				results = append(results, clusterMessageFromLocal(m))
@@ -645,6 +645,7 @@ func (r *Registry) handleSearchMessagesCluster(args SearchMessagesInput) (*mcp.C
 		"until":        args.Until,
 		"limit":        args.Limit,
 		"semantic":     args.Semantic,
+		"work_item":    args.WorkItem,
 	}
 
 	raw, warnings, err := r.clusterCall("search_messages", params)

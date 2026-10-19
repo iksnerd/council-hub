@@ -3,6 +3,7 @@ package council
 import (
 	"database/sql"
 	"fmt"
+	"regexp"
 	"strings"
 )
 
@@ -437,6 +438,22 @@ func (s *Server) GetLatestPerType(roomID string) ([]Message, error) {
 }
 
 func (s *Server) SearchMessages(query, author, messageType, roomID, project, since, until string, limit int) ([]Message, error) {
+	return s.SearchMessagesByWorkItem("", query, author, messageType, roomID, project, since, until, limit)
+}
+
+// ValidWorkItemID reports whether id is usable as a work_item filter: the same
+// shape {wi:ID} tokens are recognised with (workItemRefRe).
+func ValidWorkItemID(id string) bool {
+	return workItemIDRe.MatchString(id)
+}
+
+var workItemIDRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+
+// SearchMessagesByWorkItem is SearchMessages narrowed to messages containing the
+// literal token {wi:workItem}. An empty workItem adds no filter. The match is
+// exact and case-sensitive (instr, not LIKE, so "_" in an id is not a wildcard);
+// spelling variants in free text are deliberately not matched.
+func (s *Server) SearchMessagesByWorkItem(workItem, query, author, messageType, roomID, project, since, until string, limit int) ([]Message, error) {
 	// Search surfaces only current, live nodes: head revisions, never retracted
 	// tombstones. Old revisions linger in the FTS index but are filtered here.
 	where := `WHERE 1=1 AND ` + liveClause("m")
@@ -458,6 +475,10 @@ func (s *Server) SearchMessages(query, author, messageType, roomID, project, sin
 			args = append(args, strings.Join(terms, " AND "))
 			orderBy = `ORDER BY bm25(messages_fts), m.timestamp DESC`
 		}
+	}
+	if workItem != "" {
+		where += ` AND instr(m.content, ?) > 0`
+		args = append(args, "{wi:"+workItem+"}")
 	}
 	if author != "" {
 		where += ` AND m.author = ?`

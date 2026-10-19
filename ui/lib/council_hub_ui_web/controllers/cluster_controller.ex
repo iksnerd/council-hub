@@ -69,6 +69,7 @@ defmodule CouncilHubUiWeb.ClusterController do
       "project" => Map.get(params, "project", ""),
       "since" => Map.get(params, "since", ""),
       "until" => Map.get(params, "until", ""),
+      "work_item" => Map.get(params, "work_item", ""),
       "limit" => Params.clamp_int(Map.get(params, "limit"), 20, max: 100)
     }
 

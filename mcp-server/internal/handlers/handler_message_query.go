@@ -25,6 +25,7 @@ type SearchMessagesInput struct {
 	FullContent    string     `json:"full_content"`
 	ClusterWide    StringBool `json:"cluster_wide"`
 	Semantic       string     `json:"semantic"`
+	WorkItem       string     `json:"work_item"`
 }
 
 // GetMessagesInput represents the parameters for fetching messages by ID or by room.
@@ -51,7 +52,15 @@ func (r *Registry) handleSearchMessages(ctx context.Context, req *mcp.CallToolRe
 	// Default cluster-wide (peers connected, cluster_wide unset). Semantic search
 	// is node-local, and a filterless search is an error either way, so both
 	// stay on the local path.
-	hasFilter := args.Query != "" || args.Author != "" || args.MessageType != "" || args.RoomID != "" || args.RoomIDs != "" || args.Project != ""
+	hasFilter := args.WorkItem != "" || args.Query != "" || args.Author != "" || args.MessageType != "" || args.RoomID != "" || args.RoomIDs != "" || args.Project != ""
+	if args.WorkItem != "" {
+		if !council.ValidWorkItemID(args.WorkItem) {
+			return textResult("Error: work_item must be a work-item id of letters, digits, '.', '_' or '-' (the ID inside {wi:ID}).")
+		}
+		if args.Semantic == "true" {
+			return textResult("Error: work_item cannot be combined with semantic search; drop semantic=true.")
+		}
+	}
 	if args.ClusterWide != "true" {
 		if ok, res, out, err := r.routeClusterRead(args.ClusterWide, args.Semantic != "true" && hasFilter && args.IncludeRelated != "true", // include_related expands rooms locally only
 
@@ -105,8 +114,8 @@ func (r *Registry) handleSearchMessages(ctx context.Context, req *mcp.CallToolRe
 
 	msg := textResult
 
-	if args.Query == "" && args.Author == "" && args.MessageType == "" && args.RoomID == "" && args.RoomIDs == "" && args.Project == "" {
-		return msg("Error: at least one search filter is required (query, author, message_type, room_id, room_ids, or project).")
+	if args.WorkItem == "" && args.Query == "" && args.Author == "" && args.MessageType == "" && args.RoomID == "" && args.RoomIDs == "" && args.Project == "" {
+		return msg("Error: at least one search filter is required (query, work_item, author, message_type, room_id, room_ids, or project).")
 	}
 
 	// Merge room_id into room_ids for unified handling, expanding related rooms if requested.
@@ -148,7 +157,7 @@ func (r *Registry) handleSearchMessages(ctx context.Context, req *mcp.CallToolRe
 		}
 		messages, err = r.Server.SearchMessagesSemantic(args.Query, effectiveRoomIDs, args.Project, args.Author, args.MessageType, args.Since, args.Until, limit)
 	} else {
-		messages, err = r.Server.SearchMessages(args.Query, args.Author, args.MessageType, effectiveRoomIDs, args.Project, args.Since, args.Until, limit)
+		messages, err = r.Server.SearchMessagesByWorkItem(args.WorkItem, args.Query, args.Author, args.MessageType, effectiveRoomIDs, args.Project, args.Since, args.Until, limit)
 	}
 	if err != nil {
 		r.Server.Logger.Error("Failed to search messages", "error", err)

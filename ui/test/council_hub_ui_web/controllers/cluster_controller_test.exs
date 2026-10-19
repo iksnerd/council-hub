@@ -3,6 +3,22 @@ defmodule CouncilHubUiWeb.ClusterControllerTest do
 
   import CouncilHubUi.CouncilFixtures
 
+  describe "POST /api/internal/cluster/search_messages work_item" do
+    test "forwards work_item to the search", %{conn: conn} do
+      create_room(%{id: "api-wi", project: "api-wi"})
+      create_message(%{room_id: "api-wi", content: "done {wi:WI-9}"})
+      create_message(%{room_id: "api-wi", content: "WI-9 plain"})
+
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> post("/api/internal/cluster/search_messages", %{"work_item" => "WI-9"})
+
+      assert %{"results" => [hit]} = json_response(conn, 200)
+      assert hit["content"] =~ "{wi:WI-9}"
+    end
+  end
+
   describe "POST /api/internal/cluster/search_messages" do
     test "returns search results as JSON", %{conn: conn} do
       room = create_room(%{id: "api-search"})

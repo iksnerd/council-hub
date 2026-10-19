@@ -107,6 +107,22 @@ defmodule CouncilHubUi.CouncilMessagesTest do
     end
   end
 
+  describe "search_messages/1 work_item" do
+    test "matches the literal {wi:ID} token only" do
+      room = create_room(%{id: "sm-wi", project: "sm-wi-proj"})
+      create_message(%{room_id: room.id, content: "fixed in {wi:ABC-12} today"})
+      create_message(%{room_id: room.id, content: "also {wi:ABC-123}"})
+      create_message(%{room_id: room.id, content: "ABC-12 without token"})
+      create_message(%{room_id: room.id, content: "under {wi:a_b}"})
+      create_message(%{room_id: room.id, content: "other {wi:axb}"})
+
+      assert [m] = Council.search_messages(%{"work_item" => "ABC-12"})
+      assert m.content =~ "{wi:ABC-12}"
+      assert [u] = Council.search_messages(%{"work_item" => "a_b"})
+      assert u.content =~ "{wi:a_b}"
+    end
+  end
+
   describe "search_messages_in_room/2" do
     test "finds messages by content" do
       room = create_room(%{id: "search-room"})

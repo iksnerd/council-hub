@@ -83,6 +83,21 @@ defmodule CouncilHubUi.CouncilMessages do
           end)
       end
 
+    # Exact {wi:ID} token (Go SearchMessagesByWorkItem): instr, not LIKE, so "_"
+    # in an id is not a wildcard.
+    base =
+      case Map.get(params, "work_item") do
+        nil ->
+          base
+
+        "" ->
+          base
+
+        id ->
+          token = "{wi:" <> id <> "}"
+          from([msg: m] in base, where: fragment("instr(?, ?) > 0", m.content, ^token))
+      end
+
     base =
       case Map.get(params, "author") do
         nil -> base
