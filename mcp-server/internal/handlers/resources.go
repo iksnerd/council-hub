@@ -131,6 +131,8 @@ the error describing something else entirely.
 | Batch close rooms | bulk_status_update |
 | Lightweight acknowledgment | react_to_message |
 
+**Linking commits and work items.** A room's repo makes {sha:abc1234} render as a commit link in transcripts. A room's work_items (a URL template with an {id} placeholder, e.g. https://tracker.example.com/items/{id}) does the same for {wi:13021}, which renders as a link to that work item. With no template set, the token shows as a plain code span. Set either on create_room, get_or_create_room (fills a gap, never overwrites) or update_room.
+
 ## Delta Reads
 
 Use **after_id** to read only new messages since your last visit:
@@ -670,11 +672,11 @@ func (r *Registry) handleMessageResource(ctx context.Context, req *mcp.ReadResou
 		b.WriteString(council.DisplayContent(m) + "\n")
 	} else {
 		room, rerr := r.Server.GetRoom(m.RoomID)
-		repo := ""
+		repo, workItems := "", ""
 		if rerr == nil {
-			repo = room.Repo
+			repo, workItems = room.Repo, room.WorkItems
 		}
-		b.WriteString(council.ResolveCommitRefs(m.Content, repo) + "\n")
+		b.WriteString(council.ResolveRefs(m.Content, repo, workItems) + "\n")
 	}
 
 	return &mcp.ReadResourceResult{

@@ -41,6 +41,7 @@ type ClusterRoomResult struct {
 	SystemPrompt string `json:"system_prompt"`
 	RelatedRooms string `json:"related_rooms"`
 	Repo         string `json:"repo"`
+	WorkItems    string `json:"work_items"`
 	CreatedAt    string `json:"created_at"`
 	UpdatedAt    string `json:"updated_at"`
 	SourceNode   string `json:"source_node"`
@@ -71,7 +72,8 @@ type ClusterReadTranscriptResult struct {
 // resolution) and the source node.
 type ClusterNotebookResult struct {
 	ClusterSearchResult
-	Repo string `json:"repo"`
+	Repo      string `json:"repo"`
+	WorkItems string `json:"work_items"`
 }
 
 type ClusterDigestResult struct {
@@ -126,6 +128,7 @@ func mapClusterRoom(r ClusterRoomResult) council.Room {
 		SystemPrompt: r.SystemPrompt,
 		RelatedRooms: r.RelatedRooms,
 		Repo:         r.Repo,
+		WorkItems:    r.WorkItems,
 		CreatedAt:    parseClusterTime(r.CreatedAt),
 		UpdatedAt:    parseClusterTime(r.UpdatedAt),
 	}
@@ -167,6 +170,7 @@ func clusterRoomFromLocal(r council.Room) ClusterRoomResult {
 		SystemPrompt: r.SystemPrompt,
 		RelatedRooms: r.RelatedRooms,
 		Repo:         r.Repo,
+		WorkItems:    r.WorkItems,
 		CreatedAt:    r.CreatedAt.Format("2006-01-02T15:04:05"),
 		UpdatedAt:    r.UpdatedAt.Format("2006-01-02T15:04:05"),
 		SourceNode:   localSourceNode(),
@@ -200,5 +204,6 @@ func clusterNotebookFromLocal(e council.NotebookEntry) ClusterNotebookResult {
 	return ClusterNotebookResult{
 		ClusterSearchResult: clusterMessageFromLocal(e.Message),
 		Repo:                e.Repo,
+		WorkItems:           e.WorkItems,
 	}
 }

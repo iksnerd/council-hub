@@ -236,7 +236,7 @@ func (r *Registry) handleReadNotebookCluster(args ReadNotebookInput) (*mcp.CallT
 
 	day := ""
 	for _, res := range results {
-		e := council.NotebookEntry{Message: mapClusterMessage(res.ClusterSearchResult), Repo: res.Repo}
+		e := council.NotebookEntry{Message: mapClusterMessage(res.ClusterSearchResult), Repo: res.Repo, WorkItems: res.WorkItems}
 		d := e.Timestamp.Format("2006-01-02")
 		if d != day {
 			day = d
@@ -340,6 +340,9 @@ func writeClusterRoomHeader(b *strings.Builder, room ClusterRoomResult) {
 	if room.Repo != "" {
 		fmt.Fprintf(b, "**Repo:** %s\n", room.Repo)
 	}
+	if room.WorkItems != "" {
+		fmt.Fprintf(b, "**Work items:** %s\n", room.WorkItems)
+	}
 	fmt.Fprintf(b, "**Created:** %s\n", room.CreatedAt)
 	fmt.Fprintf(b, "**Updated:** %s\n", room.UpdatedAt)
 }
@@ -405,7 +408,7 @@ func (r *Registry) handleReadRoomClusterWithMessages(args ReadRoomInput) (*mcp.C
 				if len(ts) > 19 {
 					ts = ts[:19]
 				}
-				appendMessageBlock(&b, remoteIDs, m.ID, ts, m.Author, m.MessageType, council.DisplayContent(mapClusterMessage(m)), room.Repo)
+				appendMessageBlock(&b, remoteIDs, m.ID, ts, m.Author, m.MessageType, council.DisplayContent(mapClusterMessage(m)), room.Repo, room.WorkItems)
 			}
 		}
 	}

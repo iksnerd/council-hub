@@ -177,7 +177,7 @@ func writeNotebookEntry(b *strings.Builder, ids *roomIDCache, e council.Notebook
 	if nodeTag != "" {
 		node = fmt.Sprintf("[%s] ", nodeTag)
 	}
-	content := council.ResolveCommitRefs(e.Content, e.Repo)
+	content := council.ResolveRefs(e.Content, e.Repo, e.WorkItems)
 	fmt.Fprintf(b, "\n**[#%s %s] %s[%s] %s (%s)%s:**\n%s\n", ids.Of(e.RoomID, e.ID), ts, node, e.RoomID, e.Author, e.MessageType, pin, content)
 	for _, l := range conns {
 		fmt.Fprintf(b, "↳ %s #%s\n", l.Relation, ids.Of(e.RoomID, l.ToID))

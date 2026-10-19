@@ -107,7 +107,7 @@ func FormatTranscriptView(room Room, messages []Message, v ViewSpec) string {
 	}
 
 	projectBody := func(raw string) string {
-		c := ResolveCommitRefs(raw, room.Repo)
+		c := ResolveRefs(raw, room.Repo, room.WorkItems)
 		if v.TruncateLineOne {
 			c = firstLine(c)
 		}

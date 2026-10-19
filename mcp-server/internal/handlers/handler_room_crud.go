@@ -26,6 +26,7 @@ type CreateRoomInput struct {
 	RelatedRooms string `json:"related_rooms"`
 	Visibility   string `json:"visibility"`
 	Repo         string `json:"repo"`
+	WorkItems    string `json:"work_items"`
 	// DryRun previews a create — the same similar-rooms/peer-project checks,
 	// with nothing written — instead of committing it. See handleCreateRoom.
 	DryRun string `json:"dry_run"`
@@ -44,6 +45,7 @@ type GetOrCreateRoomInput struct {
 	RelatedRooms string `json:"related_rooms"`
 	Visibility   string `json:"visibility"`
 	Repo         string `json:"repo"`
+	WorkItems    string `json:"work_items"`
 	LastN        string `json:"last_n"`
 	// DryRun previews a create or backfill — the same similar-rooms checks and
 	// backfill-candidate list, with nothing written — instead of committing it.
@@ -68,6 +70,7 @@ type UpdateRoomInput struct {
 	AddRelatedRooms string `json:"add_related_rooms"`
 	Visibility      string `json:"visibility"`
 	Repo            string `json:"repo"`
+	WorkItems       string `json:"work_items"`
 }
 
 // ReadRoomInput represents the parameters for reading a room's metadata.
@@ -100,6 +103,9 @@ func (r *Registry) handleCreateRoom(ctx context.Context, req *mcp.CallToolReques
 		return msg("Error: " + err.Error())
 	}
 	if err := validateRoomMetadata(args.Topic, args.Project, args.TechStack, args.Tags, args.SystemPrompt); err != nil {
+		return msg("Error: " + err.Error())
+	}
+	if err := validateWorkItems(args.WorkItems); err != nil {
 		return msg("Error: " + err.Error())
 	}
 
@@ -166,6 +172,11 @@ func (r *Registry) handleCreateRoom(ctx context.Context, req *mcp.CallToolReques
 			r.Server.Logger.Error("Failed to set room repo", "id", args.ID, "error", err)
 		}
 	}
+	if args.WorkItems != "" {
+		if err := r.Server.SetWorkItems(args.ID, args.WorkItems); err != nil {
+			r.Server.Logger.Error("Failed to set room work_items", "id", args.ID, "error", err)
+		}
+	}
 
 	// Post initial message for new rooms created from a template
 	if args.Template != "" {
@@ -212,6 +223,9 @@ func writeCreateRoomInfoLines(b *strings.Builder, args CreateRoomInput) {
 	if args.Repo != "" {
 		fmt.Fprintf(b, "**Repo:** %s ({sha:...} tokens resolve to commit links)\n", args.Repo)
 	}
+	if args.WorkItems != "" {
+		fmt.Fprintf(b, "**Work items:** %s ({wi:...} tokens resolve to tracker links)\n", args.WorkItems)
+	}
 	if strings.EqualFold(strings.TrimSpace(args.Visibility), "private") {
 		fmt.Fprintf(b, "**Visibility:** private (node-local — excluded from cluster fan-out)\n")
 	}
@@ -236,6 +250,9 @@ func (r *Registry) handleGetOrCreateRoom(ctx context.Context, req *mcp.CallToolR
 		return msg("Error: " + err.Error())
 	}
 	if err := validateRoomMetadata(args.Topic, args.Project, args.TechStack, args.Tags, args.SystemPrompt); err != nil {
+		return msg("Error: " + err.Error())
+	}
+	if err := validateWorkItems(args.WorkItems); err != nil {
 		return msg("Error: " + err.Error())
 	}
 
@@ -268,6 +285,9 @@ func (r *Registry) handleGetOrCreateRoom(ctx context.Context, req *mcp.CallToolR
 			if args.Repo != "" {
 				fmt.Fprintf(&b, "**Repo:** %s ({sha:...} tokens resolve to commit links)\n", args.Repo)
 			}
+			if args.WorkItems != "" {
+				fmt.Fprintf(&b, "**Work items:** %s ({wi:...} tokens resolve to tracker links)\n", args.WorkItems)
+			}
 			if strings.EqualFold(strings.TrimSpace(args.Visibility), "private") {
 				fmt.Fprintf(&b, "**Visibility:** private (node-local — excluded from cluster fan-out)\n")
 			}
@@ -289,6 +309,11 @@ func (r *Registry) handleGetOrCreateRoom(ctx context.Context, req *mcp.CallToolR
 		if args.Repo != "" {
 			if err := r.Server.SetRepo(args.ID, args.Repo); err != nil {
 				r.Server.Logger.Error("Failed to set room repo", "id", args.ID, "error", err)
+			}
+		}
+		if args.WorkItems != "" {
+			if err := r.Server.SetWorkItems(args.ID, args.WorkItems); err != nil {
+				r.Server.Logger.Error("Failed to set room work_items", "id", args.ID, "error", err)
 			}
 		}
 		room, _ = r.Server.GetRoom(args.ID)
@@ -329,6 +354,7 @@ func (r *Registry) handleGetOrCreateRoom(ctx context.Context, req *mcp.CallToolR
 			backfilled = append(backfilled, "related_rooms")
 		}
 		repoWouldBackfill := args.Repo != "" && room.Repo == ""
+		workItemsWouldBackfill := args.WorkItems != "" && room.WorkItems == ""
 
 		// dry_run: report what backfill would touch without writing it. Real path
 		// keeps the original semantics — "repo" is only reported once SetRepo
@@ -336,6 +362,9 @@ func (r *Registry) handleGetOrCreateRoom(ctx context.Context, req *mcp.CallToolR
 		if args.DryRun == "true" {
 			if repoWouldBackfill {
 				backfilled = append(backfilled, "repo")
+			}
+			if workItemsWouldBackfill {
+				backfilled = append(backfilled, "work_items")
 			}
 		} else {
 			if bfTopic != "" || bfProject != "" || bfTechStack != "" || bfTags != "" || bfSystemPrompt != "" || bfRelated != "" {
@@ -348,6 +377,13 @@ func (r *Registry) handleGetOrCreateRoom(ctx context.Context, req *mcp.CallToolR
 					r.Server.Logger.Error("Failed to backfill room repo", "id", args.ID, "error", err)
 				} else {
 					backfilled = append(backfilled, "repo")
+				}
+			}
+			if workItemsWouldBackfill {
+				if err := r.Server.SetWorkItems(args.ID, args.WorkItems); err != nil {
+					r.Server.Logger.Error("Failed to backfill room work_items", "id", args.ID, "error", err)
+				} else {
+					backfilled = append(backfilled, "work_items")
 				}
 			}
 			if len(backfilled) > 0 {
@@ -393,6 +429,9 @@ func (r *Registry) handleGetOrCreateRoom(ctx context.Context, req *mcp.CallToolR
 	if room.Repo != "" {
 		fmt.Fprintf(&b, "**Repo:** %s\n", room.Repo)
 	}
+	if room.WorkItems != "" {
+		fmt.Fprintf(&b, "**Work items:** %s\n", room.WorkItems)
+	}
 
 	if !created {
 		messages, _ := r.Server.GetRecentMessages(args.ID, limit)
@@ -400,7 +439,7 @@ func (r *Registry) handleGetOrCreateRoom(ctx context.Context, req *mcp.CallToolR
 			fmt.Fprintf(&b, "---\n**Recent messages (%d):**\n", len(messages))
 			ids := r.Server.ShortIDsOrDefault(args.ID)
 			for _, m := range messages {
-				appendMessageBlock(&b, ids, m.ID, utcStamp(m.Timestamp), m.Author, m.MessageType, council.DisplayContent(m), room.Repo)
+				appendMessageBlock(&b, ids, m.ID, utcStamp(m.Timestamp), m.Author, m.MessageType, council.DisplayContent(m), room.Repo, room.WorkItems)
 			}
 		} else {
 			b.WriteString("No messages yet.\n")
@@ -489,8 +528,12 @@ func (r *Registry) handleUpdateRoom(ctx context.Context, req *mcp.CallToolReques
 		return msg("Error: pass either related_rooms (replace the whole list) or add_related_rooms (merge), not both.")
 	}
 
-	if args.Topic == "" && args.Project == "" && args.TechStack == "" && args.Tags == "" && args.AddTags == "" && args.RemoveTags == "" && args.SystemPrompt == "" && args.RelatedRooms == "" && args.AddRelatedRooms == "" && args.Visibility == "" && args.Repo == "" {
-		return msg("Error: at least one field to update must be provided (topic, project, tech_stack, tags, add_tags, remove_tags, system_prompt, related_rooms, add_related_rooms, visibility, repo).")
+	if args.Topic == "" && args.Project == "" && args.TechStack == "" && args.Tags == "" && args.AddTags == "" && args.RemoveTags == "" && args.SystemPrompt == "" && args.RelatedRooms == "" && args.AddRelatedRooms == "" && args.Visibility == "" && args.Repo == "" && args.WorkItems == "" {
+		return msg("Error: at least one field to update must be provided (topic, project, tech_stack, tags, add_tags, remove_tags, system_prompt, related_rooms, add_related_rooms, visibility, repo, work_items).")
+	}
+
+	if err := validateWorkItems(args.WorkItems); err != nil {
+		return msg("Error: " + err.Error())
 	}
 
 	var updated []string
@@ -527,6 +570,9 @@ func (r *Registry) handleUpdateRoom(ctx context.Context, req *mcp.CallToolReques
 	if args.Repo != "" {
 		updated = append(updated, "repo")
 	}
+	if args.WorkItems != "" {
+		updated = append(updated, "work_items")
+	}
 	fieldsLabel := strings.Join(updated, ", ")
 
 	var b strings.Builder
@@ -554,6 +600,12 @@ func (r *Registry) handleUpdateRoom(ctx context.Context, req *mcp.CallToolReques
 		if args.Repo != "" {
 			if err := r.Server.SetRepo(id, args.Repo); err != nil {
 				fmt.Fprintf(&b, "Error setting repo on '%s': %s\n", id, err.Error())
+				continue
+			}
+		}
+		if args.WorkItems != "" {
+			if err := r.Server.SetWorkItems(id, args.WorkItems); err != nil {
+				fmt.Fprintf(&b, "Error setting work_items on '%s': %s\n", id, err.Error())
 				continue
 			}
 		}
@@ -587,6 +639,9 @@ func (r *Registry) handleUpdateRoom(ctx context.Context, req *mcp.CallToolReques
 			}
 			if room.Repo != "" {
 				fmt.Fprintf(&b, "\n- Repo: %s", room.Repo)
+			}
+			if room.WorkItems != "" {
+				fmt.Fprintf(&b, "\n- Work items: %s", room.WorkItems)
 			}
 			fmt.Fprintf(&b, "\n- Status: %s", room.Status)
 		}
@@ -682,6 +737,9 @@ func (r *Registry) handleReadRoom(ctx context.Context, req *mcp.CallToolRequest,
 	if room.Repo != "" {
 		fmt.Fprintf(&b, "**Repo:** %s\n", room.Repo)
 	}
+	if room.WorkItems != "" {
+		fmt.Fprintf(&b, "**Work items:** %s\n", room.WorkItems)
+	}
 	fmt.Fprintf(&b, "**Created:** %s\n", utcStamp(room.CreatedAt))
 	fmt.Fprintf(&b, "**Updated:** %s\n", utcStamp(room.UpdatedAt))
 
@@ -711,12 +769,12 @@ func (r *Registry) handleReadRoom(ctx context.Context, req *mcp.CallToolRequest,
 			if len(messages) > 0 {
 				fmt.Fprintf(&b, "\n---\n**Recent messages (%d):**\n", len(messages))
 				for _, m := range messages {
-					appendMessageBlock(&b, ids, m.ID, utcStamp(m.Timestamp), m.Author, m.MessageType, council.DisplayContent(m), room.Repo)
+					appendMessageBlock(&b, ids, m.ID, utcStamp(m.Timestamp), m.Author, m.MessageType, council.DisplayContent(m), room.Repo, room.WorkItems)
 				}
 			}
 		}
 	} else {
-		r.appendRoomSummary(&b, args.RoomID, room.Repo)
+		r.appendRoomSummary(&b, args.RoomID, room.Repo, room.WorkItems)
 	}
 
 	// Append related room summaries if requested
@@ -784,7 +842,7 @@ func excerptLine(content string, max int) string {
 // response so one call orients a newcomer (the read_transcript(mode=summary)
 // view). The pinned message, if any, is shown once and not repeated in the
 // per-type list.
-func (r *Registry) appendRoomSummary(b *strings.Builder, roomID, repo string) {
+func (r *Registry) appendRoomSummary(b *strings.Builder, roomID, repo, workItems string) {
 	pinned, _ := r.Server.GetPinnedMessage(roomID)
 	latest, _ := r.Server.GetLatestPerType(roomID)
 	ids := r.Server.ShortIDsOrDefault(roomID)
@@ -797,7 +855,7 @@ func (r *Registry) appendRoomSummary(b *strings.Builder, roomID, repo string) {
 	b.WriteString("\n---\n")
 	if pinned != nil {
 		b.WriteString("**📌 Pinned:**\n")
-		appendMessageBlock(b, ids, pinned.ID, utcStamp(pinned.Timestamp), pinned.Author, pinned.MessageType, council.DisplayContent(*pinned), repo)
+		appendMessageBlock(b, ids, pinned.ID, utcStamp(pinned.Timestamp), pinned.Author, pinned.MessageType, council.DisplayContent(*pinned), repo, workItems)
 	}
 
 	var shown int
@@ -813,7 +871,7 @@ func (r *Registry) appendRoomSummary(b *strings.Builder, roomID, repo string) {
 			if pinned != nil && m.ID == pinned.ID {
 				continue
 			}
-			appendMessageBlock(b, ids, m.ID, utcStamp(m.Timestamp), m.Author, m.MessageType, council.DisplayContent(m), repo)
+			appendMessageBlock(b, ids, m.ID, utcStamp(m.Timestamp), m.Author, m.MessageType, council.DisplayContent(m), repo, workItems)
 		}
 	}
 

@@ -116,6 +116,11 @@ change, a tooling tweak, a one-off decision — use a `task` instead
 done). Don't leave it untracked just because it doesn't warrant a room; a
 task is the lightweight option for exactly this.
 
+Write `{sha:abc1234}` for a commit and `{wi:13021}` for an issue-tracker item in
+messages. Transcripts render them as links when the room has `repo` /
+`work_items` set (a URL template containing `{id}`, e.g.
+`https://tracker.example.com/items/{id}`); otherwise they show as plain code.
+
 ## Wrapping up
 
 - Post a `synthesis` that distills the room's conclusion, and `pin=true` it

@@ -465,7 +465,7 @@ func (r *Registry) outlineText(notebookID string, level int, f council.OutlineFi
 				fmt.Fprintf(&b, "\n> **↪ latest %s in %s** — *none yet* *(entry %s)*\n", msgType, roomID, e.ID)
 			} else {
 				ts := e.RefTime.Format("2006-01-02 15:04")
-				content := council.ResolveCommitRefs(e.RefContent, e.RefRepo)
+				content := council.ResolveRefs(e.RefContent, e.RefRepo, e.RefWorkItems)
 				if level > 0 {
 					content = firstNonEmptyLine(content)
 				}
@@ -486,7 +486,7 @@ func (r *Registry) outlineText(notebookID string, level int, f council.OutlineFi
 			if e.RefPinned {
 				pin = " 📌"
 			}
-			content := council.ResolveCommitRefs(e.RefContent, e.RefRepo)
+			content := council.ResolveRefs(e.RefContent, e.RefRepo, e.RefWorkItems)
 			if level > 0 {
 				content = firstNonEmptyLine(content)
 			}
@@ -556,7 +556,7 @@ func renderRoomRef(b *strings.Builder, e council.OutlineEntry, level int) {
 		ts := e.RefTime.Format("2006-01-02 15:04")
 		excerpt := strings.ReplaceAll(e.RefContent, "\n", " ")
 		excerpt = council.TruncateRunes(excerpt, 240, "", 0)
-		fmt.Fprintf(b, "  latest %s [%s %s]: %s\n", e.RefType, ts, e.RefAuthor, council.ResolveCommitRefs(excerpt, e.RefRepo))
+		fmt.Fprintf(b, "  latest %s [%s %s]: %s\n", e.RefType, ts, e.RefAuthor, council.ResolveRefs(excerpt, e.RefRepo, e.RefWorkItems))
 	}
 	fmt.Fprintf(b, "*(entry %s)*\n", e.ID)
 }

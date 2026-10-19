@@ -750,3 +750,17 @@ func TestBuildEpitaphLongContentTruncated(t *testing.T) {
 		t.Errorf("expected long content to be truncated with ..., got: %s", out)
 	}
 }
+
+func TestFormatTranscriptResolvesWorkItemRefs(t *testing.T) {
+	room := Room{ID: "wi-t", Description: "Test", Status: "active", WorkItems: "https://tracker.example.com/items/{id}"}
+	msgs := []Message{{ID: "uuid-0001", Author: "Claude", Content: "Fixes {wi:13021}", MessageType: "action"}}
+	transcript := FormatTranscript(room, msgs)
+	if !strings.Contains(transcript, "[13021](https://tracker.example.com/items/13021)") {
+		t.Errorf("expected work item link, got: %s", transcript)
+	}
+	room.WorkItems = ""
+	transcript = FormatTranscript(room, msgs)
+	if !strings.Contains(transcript, "`13021`") || strings.Contains(transcript, "https://") {
+		t.Errorf("expected code-span fallback, got: %s", transcript)
+	}
+}

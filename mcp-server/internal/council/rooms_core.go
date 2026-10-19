@@ -78,9 +78,9 @@ func (s *Server) CreateRoom(id, description, project, techStack, tags, systemPro
 func (s *Server) GetRoom(roomID string) (Room, error) {
 	var r Room
 	err := s.DB.QueryRow(
-		`SELECT id, description, status, project, tech_stack, tags, system_prompt, related_rooms, COALESCE(visibility, 'public'), COALESCE(repo, ''), created_at, updated_at FROM rooms WHERE id = ?`,
+		`SELECT id, description, status, project, tech_stack, tags, system_prompt, related_rooms, COALESCE(visibility, 'public'), COALESCE(repo, ''), COALESCE(work_items, ''), created_at, updated_at FROM rooms WHERE id = ?`,
 		roomID,
-	).Scan(&r.ID, &r.Description, &r.Status, &r.Project, &r.TechStack, &r.Tags, &r.SystemPrompt, &r.RelatedRooms, &r.Visibility, &r.Repo, &r.CreatedAt, &r.UpdatedAt)
+	).Scan(&r.ID, &r.Description, &r.Status, &r.Project, &r.TechStack, &r.Tags, &r.SystemPrompt, &r.RelatedRooms, &r.Visibility, &r.Repo, &r.WorkItems, &r.CreatedAt, &r.UpdatedAt)
 	if err != nil {
 		return r, err
 	}
@@ -317,4 +317,24 @@ func roomEmbedText(id, description, systemPrompt string) string {
 		return text
 	}
 	return strings.NewReplacer("-", " ", "_", " ", ".", " ").Replace(id)
+}
+
+// SetWorkItems sets a room's issue-tracker URL template (must contain {id}),
+// used to resolve {wi:<id>} tokens into links at render time. Validation of the
+// template shape lives in the handler layer; this stores it trimmed.
+func (s *Server) SetWorkItems(roomID, template string) error {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+
+	res, err := s.DB.Exec(
+		`UPDATE rooms SET work_items = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+		strings.TrimSpace(template), roomID,
+	)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("room '%s' not found", roomID)
+	}
+	return nil
 }

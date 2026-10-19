@@ -114,8 +114,8 @@ func (r *Registry) resolveInto(id *string) error {
 // "message" type (or empty) omits the trailing "(type)" tag. {sha:...} tokens in
 // the body resolve to commit links using the room's repo (empty repo → bare code
 // spans), matching FormatTranscript.
-func appendMessageBlock(b *strings.Builder, ids *council.ShortIDs, id, ts, author, msgType, content, repo string) {
-	content = council.ResolveCommitRefs(content, repo)
+func appendMessageBlock(b *strings.Builder, ids *council.ShortIDs, id, ts, author, msgType, content, repo, workItems string) {
+	content = council.ResolveRefs(content, repo, workItems)
 	if msgType != "" && msgType != "message" {
 		fmt.Fprintf(b, "\n**[#%s %s] %s (%s):**\n%s\n", ids.Of(id), ts, author, msgType, content)
 	} else {
@@ -180,6 +180,30 @@ func validateRoomMetadata(topic, project, techStack, tags, systemPrompt string) 
 		if err := validateSize(check.name, check.val, maxMetadataLen); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// maxWorkItemsLen caps a work_items URL template.
+const maxWorkItemsLen = 500
+
+// validateWorkItems checks a room's work_items URL template: empty is allowed
+// (no template), otherwise it must be an http(s) URL containing the {id}
+// placeholder. The scheme check keeps javascript:/data: URLs out of the
+// markdown links {wi:...} renders.
+func validateWorkItems(tmpl string) error {
+	tmpl = strings.TrimSpace(tmpl)
+	if tmpl == "" {
+		return nil
+	}
+	if err := validateSize("work_items", tmpl, maxWorkItemsLen); err != nil {
+		return err
+	}
+	if !strings.HasPrefix(tmpl, "http://") && !strings.HasPrefix(tmpl, "https://") {
+		return fmt.Errorf("work_items must start with http:// or https:// (e.g. https://tracker.example.com/items/{id})")
+	}
+	if !strings.Contains(tmpl, "{id}") {
+		return fmt.Errorf("work_items must contain the {id} placeholder (e.g. https://tracker.example.com/items/{id})")
 	}
 	return nil
 }

@@ -13,6 +13,8 @@ import (
 // you change one side, change the other and update both test files.
 
 // commitRefRe matches {sha:<hash>} tokens where hash is 7–40 hex characters.
+var workItemRefRe = regexp.MustCompile(`\{wi:([A-Za-z0-9][A-Za-z0-9._-]*)\}`)
+
 var commitRefRe = regexp.MustCompile(`\{sha:([0-9a-fA-F]{7,40})\}`)
 
 // ownerRepoRe matches a bare GitHub-style owner/repo slug.
@@ -73,4 +75,27 @@ func ResolveCommitRefs(content, repo string) string {
 		}
 		return "[`" + short + "`](" + base + "/commit/" + full + ")"
 	})
+}
+
+// ResolveWorkItemRefs replaces {wi:<id>} tokens with a markdown link built from
+// the room's work_items URL template ({id} is substituted), or a bare `id` code
+// span when the room has no template. Render-time only, no network calls.
+func ResolveWorkItemRefs(content, template string) string {
+	if !strings.Contains(content, "{wi:") {
+		return content
+	}
+	template = strings.TrimSpace(template)
+	return workItemRefRe.ReplaceAllStringFunc(content, func(tok string) string {
+		id := workItemRefRe.FindStringSubmatch(tok)[1]
+		if template == "" || !strings.Contains(template, "{id}") {
+			return "`" + id + "`"
+		}
+		return "[" + id + "](" + strings.ReplaceAll(template, "{id}", id) + ")"
+	})
+}
+
+// ResolveRefs applies both {sha:...} and {wi:...} resolution; the single entry
+// point for every render path that has a room's repo and work_items in hand.
+func ResolveRefs(content, repo, workItems string) string {
+	return ResolveWorkItemRefs(ResolveCommitRefs(content, repo), workItems)
 }

@@ -11,7 +11,8 @@ import (
 // the same project may point at different repositories.
 type NotebookEntry struct {
 	Message
-	Repo string `json:"repo"`
+	Repo      string `json:"repo"`
+	WorkItems string `json:"work_items"`
 }
 
 // DefaultNotebookTypes are the message types compiled into a notebook when the
@@ -58,7 +59,7 @@ func (s *Server) GetNotebookEntries(project string, types []string, since, until
 
 	prefixed := "m." + strings.ReplaceAll(messageColumns, ", ", ", m.")
 	query := fmt.Sprintf(`
-		SELECT %s, COALESCE(r.repo, '')
+		SELECT %s, COALESCE(r.repo, ''), COALESCE(r.work_items, '')
 		FROM messages m
 		JOIN rooms r ON m.room_id = r.id
 		WHERE r.project = ? AND m.is_summary = 0 AND `+liveClause("m")+` AND m.message_type IN (%s)`,
@@ -91,7 +92,7 @@ func (s *Server) GetNotebookEntries(project string, types []string, since, until
 		var e NotebookEntry
 		// Reuse the canonical message scan dests, then the extra trailing repo column —
 		// so messageColumns' order lives in exactly one place (messageScanDests).
-		dests := append(messageScanDests(&e.Message), &e.Repo)
+		dests := append(messageScanDests(&e.Message), &e.Repo, &e.WorkItems)
 		if err := rows.Scan(dests...); err != nil {
 			return nil, err
 		}

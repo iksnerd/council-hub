@@ -34,6 +34,7 @@ func (r *Registry) RegisterTools() {
 			"related_rooms": prop("string", "Comma-separated IDs of related rooms — bidirectional: linked rooms automatically link back"),
 			"visibility":    prop("string", "'public' (default) or 'private'. Private rooms are node-local — excluded from all cluster fan-out (cluster-wide reads and cross-node writes); they live only on this node."),
 			"repo":          prop("string", "Optional git repo for this room (owner/repo, an https clone URL, or git@host:owner/repo). Enables {sha:<hash>} tokens in messages to render as commit links in transcripts and the dashboard. GitHub/Gitea-style commit URLs."),
+			"work_items":    prop("string", "Optional issue-tracker URL template containing {id}, e.g. https://tracker.example.com/items/{id} (http:// or https:// only). Enables {wi:<id>} tokens in messages to render as links to that work item."),
 		}),
 	}, plainTool(r.handleCreateRoom))
 
@@ -52,6 +53,7 @@ func (r *Registry) RegisterTools() {
 			"related_rooms": prop("string", "Comma-separated related room IDs (set on create; backfilled on an existing room only if it has none)"),
 			"visibility":    prop("string", "'public' (default) or 'private', used only when creating. Private rooms are node-local — excluded from all cluster fan-out."),
 			"repo":          prop("string", "Optional git repo (owner/repo or clone URL). Set on create; backfilled on an existing room only if it has no repo. Enables {sha:<hash>} commit-link resolution in this room's transcripts."),
+			"work_items":    prop("string", "Optional issue-tracker URL template containing {id} (http/https). Set on create; backfilled on an existing room only if it has none. Enables {wi:<id>} link resolution in this room's transcripts."),
 			"last_n":        prop("string", "Number of recent messages to return for existing rooms (default 5, max 50)"),
 		}),
 	}, plainTool(r.handleGetOrCreateRoom))
@@ -169,6 +171,7 @@ func (r *Registry) RegisterTools() {
 			"add_related_rooms": prop("string", "Comma-separated room IDs to merge into the existing related_rooms list (nothing removed). Mutually exclusive with related_rooms."),
 			"visibility":        prop("string", "'public' or 'private'. Set 'private' to make the room node-local (excluded from cluster fan-out); 'public' to re-expose it to the cluster."),
 			"repo":              prop("string", "Set the room's git repo (owner/repo or clone URL) for {sha:<hash>} commit-link resolution. An empty value leaves the existing repo unchanged."),
+			"work_items":        prop("string", "Set the room's issue-tracker URL template (must contain {id}, http/https) for {wi:<id>} link resolution. An empty value leaves the existing template unchanged."),
 		}),
 	}, plainTool(r.handleUpdateRoom))
 

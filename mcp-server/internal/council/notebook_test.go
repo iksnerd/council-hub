@@ -191,3 +191,19 @@ func TestCountRoomsInProject(t *testing.T) {
 		t.Errorf("expected 0 rooms, got %d", count)
 	}
 }
+
+func TestNotebookEntriesCarryWorkItems(t *testing.T) {
+	s := setupTestServer(t)
+	mustCreateRoom(t, s, "wi-nb", withProject("wi-proj"))
+	if err := s.SetWorkItems("wi-nb", "https://tracker.example.com/items/{id}"); err != nil {
+		t.Fatal(err)
+	}
+	mustPostTyped(t, s, "wi-nb", "claude", "closed {wi:7}", "action")
+	entries, err := s.GetNotebookEntries("wi-proj", nil, "", "", "", 0)
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("entries=%d err=%v", len(entries), err)
+	}
+	if entries[0].WorkItems != "https://tracker.example.com/items/{id}" {
+		t.Errorf("got %q", entries[0].WorkItems)
+	}
+}

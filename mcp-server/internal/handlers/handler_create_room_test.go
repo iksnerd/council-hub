@@ -635,3 +635,78 @@ func TestHandleGetOrCreateRoomDryRunExistingRoomNoBackfillWrite(t *testing.T) {
 		t.Errorf("dry_run should not have written project/tags, got project=%q tags=%q", room.Project, room.Tags)
 	}
 }
+
+const wiTmpl = "https://tracker.example.com/items/{id}"
+
+func TestValidateWorkItemsTemplate(t *testing.T) {
+	good := []string{"", wiTmpl, "http://tracker.example.com/?q={id}"}
+	for _, g := range good {
+		if err := validateWorkItems(g); err != nil {
+			t.Errorf("%q should be valid: %v", g, err)
+		}
+	}
+	bad := []string{"tracker.example.com/{id}", "https://tracker.example.com/items/", "ftp://x.example.com/{id}", "javascript:alert({id})", "https://x.example.com/" + strings.Repeat("a", 600) + "{id}"}
+	for _, b := range bad {
+		if err := validateWorkItems(b); err == nil {
+			t.Errorf("%q should be rejected", b)
+		}
+	}
+}
+
+func TestHandleRoomWorkItemsLifecycle(t *testing.T) {
+	reg := setupHandlerTest(t)
+	ctx := context.Background()
+
+	res, _, _ := reg.handleCreateRoom(ctx, nil, CreateRoomInput{ID: "wi-bad", WorkItems: "nope"})
+	if text := resultText(res); !strings.Contains(text, "Error") {
+		t.Errorf("expected validation error, got: %s", text)
+	}
+	if _, err := reg.Server.GetRoom("wi-bad"); err == nil {
+		t.Error("room must not be created when work_items is invalid")
+	}
+
+	if _, _, err := reg.handleCreateRoom(ctx, nil, CreateRoomInput{ID: "wi-a", Topic: "t", WorkItems: wiTmpl}); err != nil {
+		t.Fatal(err)
+	}
+	room, _ := reg.Server.GetRoom("wi-a")
+	if room.WorkItems != wiTmpl {
+		t.Errorf("create: got %q", room.WorkItems)
+	}
+	readRes, _, _ := reg.handleReadRoom(ctx, nil, ReadRoomInput{RoomID: "wi-a"})
+	if text := resultText(readRes); !strings.Contains(text, wiTmpl) {
+		t.Errorf("read_room should show work_items, got: %s", text)
+	}
+
+	// get_or_create gap-fills, never overwrites.
+	_, _, _ = reg.handleCreateRoom(ctx, nil, CreateRoomInput{ID: "wi-b", Topic: "t"})
+	_, _, _ = reg.handleGetOrCreateRoom(ctx, nil, GetOrCreateRoomInput{ID: "wi-b", WorkItems: wiTmpl})
+	room, _ = reg.Server.GetRoom("wi-b")
+	if room.WorkItems != wiTmpl {
+		t.Errorf("backfill: got %q", room.WorkItems)
+	}
+	_, _, _ = reg.handleGetOrCreateRoom(ctx, nil, GetOrCreateRoomInput{ID: "wi-b", WorkItems: "https://other.example.com/{id}"})
+	room, _ = reg.Server.GetRoom("wi-b")
+	if room.WorkItems != wiTmpl {
+		t.Errorf("backfill must not overwrite, got %q", room.WorkItems)
+	}
+
+	// update_room, single and batch.
+	_, _, _ = reg.handleUpdateRoom(ctx, nil, UpdateRoomInput{RoomIDs: "wi-a,wi-b", WorkItems: "https://other.example.com/t/{id}"})
+	for _, id := range []string{"wi-a", "wi-b"} {
+		room, _ = reg.Server.GetRoom(id)
+		if room.WorkItems != "https://other.example.com/t/{id}" {
+			t.Errorf("update %s: got %q", id, room.WorkItems)
+		}
+	}
+	res, _, _ = reg.handleUpdateRoom(ctx, nil, UpdateRoomInput{RoomID: "wi-a", WorkItems: "bad"})
+	if text := resultText(res); !strings.Contains(text, "Error") {
+		t.Errorf("expected error, got %s", text)
+	}
+
+	// Transcript rendering resolves {wi:}.
+	_, _ = reg.Server.PostMessage("wi-a", "claude", "fixes {wi:13021}", "action", "")
+	readRes, _, _ = reg.handleReadRoom(ctx, nil, ReadRoomInput{RoomID: "wi-a", IncludeLastN: "5"})
+	if text := resultText(readRes); !strings.Contains(text, "[13021](https://other.example.com/t/13021)") {
+		t.Errorf("expected resolved link in read_room, got: %s", text)
+	}
+}

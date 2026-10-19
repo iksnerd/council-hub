@@ -49,14 +49,15 @@ type OutlineEntry struct {
 	// room. Non-task entries carry the column default "open" but ignore it.
 	Status string
 
-	RefRoomID  string
-	RefAuthor  string
-	RefType    string
-	RefContent string
-	RefPinned  bool
-	RefTime    time.Time
-	RefRepo    string
-	RefFound   bool
+	RefRoomID    string
+	RefAuthor    string
+	RefType      string
+	RefContent   string
+	RefPinned    bool
+	RefTime      time.Time
+	RefRepo      string
+	RefWorkItems string
+	RefFound     bool
 
 	// room_ref only: the room's live status, topic, and owning project.
 	RefStatus  string
@@ -635,6 +636,7 @@ func (s *Server) GetOutlineFiltered(notebookID string, f OutlineFilter) (Noteboo
 		       COALESCE(m.pinned, 0),
 		       COALESCE(m.timestamp, lm.timestamp),
 		       COALESCE(r.repo, rr.repo, ''),
+		       COALESCE(r.work_items, rr.work_items, ''),
 		       COALESCE(rr.status, ''), COALESCE(rr.description, ''),
 		       m.retracted_at, COALESCE(m.retracted_by, ''),
 		       COALESCE(rr.project, ''), COALESCE(m.revised, 0)
@@ -666,7 +668,7 @@ func (s *Server) GetOutlineFiltered(notebookID string, f OutlineFilter) (Noteboo
 		var retractedBy string
 		if err := rows.Scan(&e.ID, &e.Position, &e.Kind, &e.RefID, &e.Prose, &e.Status,
 			&e.RefFound, &e.RefRoomID, &e.RefAuthor, &e.RefType,
-			&e.RefContent, &e.RefPinned, &ts, &e.RefRepo,
+			&e.RefContent, &e.RefPinned, &ts, &e.RefRepo, &e.RefWorkItems,
 			&e.RefStatus, &e.RefTopic, &retractedAt, &retractedBy, &e.RefProject, &revised); err != nil {
 			return n, nil, err
 		}
@@ -755,8 +757,8 @@ func (s *Server) resolveQueryRef(e *OutlineEntry) {
 	if err != nil {
 		return // no match yet → RefFound stays false
 	}
-	var repo string
-	_ = s.DB.QueryRow(`SELECT COALESCE(repo, '') FROM rooms WHERE id = ?`, roomID).Scan(&repo)
+	var repo, workItems string
+	_ = s.DB.QueryRow(`SELECT COALESCE(repo, ''), COALESCE(work_items, '') FROM rooms WHERE id = ?`, roomID).Scan(&repo, &workItems)
 	e.RefFound = true
 	e.RefRoomID = m.RoomID
 	e.RefAuthor = m.Author
@@ -765,6 +767,7 @@ func (s *Server) resolveQueryRef(e *OutlineEntry) {
 	e.RefPinned = m.Pinned
 	e.RefTime = m.Timestamp
 	e.RefRepo = repo
+	e.RefWorkItems = workItems
 }
 
 // parseStoredTime parses a raw SQLite timestamp string in the formats the

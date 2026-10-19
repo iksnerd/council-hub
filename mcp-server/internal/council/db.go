@@ -26,6 +26,7 @@ type Room struct {
 	RelatedRooms string
 	Visibility   string // "public" (default) or "private" (node-local, excluded from cluster fan-out)
 	Repo         string // optional git repo ref (owner/repo or URL) for {sha:...} commit-link resolution
+	WorkItems    string // optional issue-tracker URL template with {id}, for {wi:...} link resolution
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 }
@@ -260,6 +261,7 @@ func initSchema(db *sql.DB) error {
 		related_rooms TEXT DEFAULT '',
 		visibility TEXT DEFAULT 'public',
 		repo TEXT DEFAULT '',
+		work_items TEXT DEFAULT '',
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
@@ -381,6 +383,7 @@ func initSchema(db *sql.DB) error {
 		`ALTER TABLE messages ADD COLUMN mentions TEXT DEFAULT ''`,
 		`ALTER TABLE rooms ADD COLUMN visibility TEXT DEFAULT 'public'`,
 		`ALTER TABLE rooms ADD COLUMN repo TEXT DEFAULT ''`,
+		`ALTER TABLE rooms ADD COLUMN work_items TEXT DEFAULT ''`,
 		`ALTER TABLE messages ADD COLUMN supersedes TEXT DEFAULT ''`,
 		`ALTER TABLE notebook_entries ADD COLUMN status TEXT DEFAULT 'open'`,
 		`ALTER TABLE messages ADD COLUMN revises TEXT DEFAULT ''`,
