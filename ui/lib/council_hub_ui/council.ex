@@ -34,8 +34,8 @@ defmodule CouncilHubUi.Council do
   defdelegate revision_history(head_id), to: CouncilHubUi.CouncilMessages
   defdelegate get_recent_messages(room_id, limit), to: CouncilHubUi.CouncilMessages
 
-  def get_mentions(author, limit \\ 20),
-    do: CouncilHubUi.CouncilMessages.get_mentions(author, limit)
+  def get_mentions(author, limit \\ 20, project \\ ""),
+    do: CouncilHubUi.CouncilMessages.get_mentions(author, limit, project)
 
   # -- Bulk stats --
 

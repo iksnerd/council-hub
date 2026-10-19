@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -28,6 +29,9 @@ func (r *Registry) handleMarkRead(ctx context.Context, req *mcp.CallToolRequest,
 		agent = "default"
 	}
 
+	// Checked before the write so "new name" is still observable.
+	isNew, neighbours, _ := r.Server.CursorNeighbours(agent)
+
 	if err := r.Server.MarkRead(agent, args.RoomID, args.Cursor); err != nil {
 		r.Server.Logger.Error("Failed to mark read", "agent", agent, "room_id", args.RoomID, "error", err)
 		if note := r.remoteRoomNote(args.RoomID, "read cursors are node-local, so mark it read there"); note != "" {
@@ -37,5 +41,9 @@ func (r *Registry) handleMarkRead(ctx context.Context, req *mcp.CallToolRequest,
 	}
 
 	r.Server.Logger.Info("Cursor saved", "agent", agent, "room_id", args.RoomID, "cursor", args.Cursor)
-	return msg(fmt.Sprintf("Cursor saved for agent '%s' in room '%s': #%.8s. Use get_digest(unread_only=true, agent=%s) to see only new messages.", agent, args.RoomID, args.Cursor, agent))
+	out := fmt.Sprintf("Cursor saved for agent '%s' in room '%s': #%.8s. Use get_digest(unread_only=true, agent=%s) to see only new messages.", agent, args.RoomID, args.Cursor, agent)
+	if isNew && len(neighbours) > 0 {
+		out += fmt.Sprintf("\nWarning: '%s' is a substring neighbour of existing cursor name(s): %s. get_mentions matches by substring, so these names share mentions but keep separate read cursors. Use one stable, distinctive agent name.", agent, strings.Join(neighbours, ", "))
+	}
+	return msg(out)
 }

@@ -76,3 +76,33 @@ func (s *Server) GetCursor(agent, roomID string) (string, error) {
 	}
 	return cursorID, err
 }
+
+// CursorNeighbours reports, before a mark_read, whether agent is a brand-new
+// cursor name and which existing cursor names it is a case-insensitive substring
+// of (or contains). get_mentions matches by substring while cursors key on the
+// exact string, so 'claude' next to 'claude-code' silently shares mentions but
+// not read position. Neighbours are returned sorted.
+func (s *Server) CursorNeighbours(agent string) (isNew bool, neighbours []string, err error) {
+	s.Mu.RLock()
+	defer s.Mu.RUnlock()
+
+	var existing int
+	if err = s.DB.QueryRow(`SELECT COUNT(*) FROM agent_cursors WHERE agent = ?`, agent).Scan(&existing); err != nil {
+		return false, nil, err
+	}
+	rows, err := s.DB.Query(`SELECT DISTINCT agent FROM agent_cursors
+		WHERE agent != ? AND (LOWER(agent) LIKE '%'||LOWER(?)||'%' OR LOWER(?) LIKE '%'||LOWER(agent)||'%')
+		ORDER BY agent`, agent, agent, agent)
+	if err != nil {
+		return false, nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var a string
+		if err = rows.Scan(&a); err != nil {
+			return false, nil, err
+		}
+		neighbours = append(neighbours, a)
+	}
+	return existing == 0, neighbours, rows.Err()
+}

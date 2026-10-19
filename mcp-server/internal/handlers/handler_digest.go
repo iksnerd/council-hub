@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -20,6 +21,19 @@ type DigestInput struct {
 	ClusterWide  StringBool `json:"cluster_wide"`
 	ExcludeStale string     `json:"exclude_stale"`
 	Limit        string     `json:"limit"`
+	Brief        string     `json:"brief"`
+}
+
+// digestUnreadDefaultCap bounds unread_only results when no limit is given: a
+// returning session after a long gap would otherwise get every room it ever
+// touched. limit=all lifts it; the summary reports what was omitted.
+const digestUnreadDefaultCap = 30
+
+// digestBriefEntry is the one-line-per-room shape of brief=true.
+type digestBriefEntry struct {
+	RoomID          string `json:"room_id"`
+	NewMessages     int    `json:"new_messages"`
+	LatestMessageID string `json:"latest_message_id"`
 }
 
 // digestSummary is the at-a-glance health header prepended to the digest so an
@@ -45,6 +59,54 @@ type digestResponse struct {
 	Summary digestSummary         `json:"summary"`
 	Rooms   []council.DigestEntry `json:"rooms"`
 	Hint    string                `json:"hint,omitempty"`
+	// Note says the read was local on a multi-node cluster.
+	Note string `json:"note,omitempty"`
+}
+
+// digestBriefResponse is digestResponse with the compact room shape (brief=true).
+type digestBriefResponse struct {
+	Summary digestSummary      `json:"summary"`
+	Rooms   []digestBriefEntry `json:"rooms"`
+	Hint    string             `json:"hint,omitempty"`
+	Note    string             `json:"note,omitempty"`
+}
+
+// marshalDigest renders the full or brief response.
+func marshalDigest(summary digestSummary, rooms []council.DigestEntry, brief bool, hint, note string) ([]byte, error) {
+	if !brief {
+		return json.MarshalIndent(digestResponse{Summary: summary, Rooms: rooms, Hint: hint, Note: note}, "", "  ")
+	}
+	out := make([]digestBriefEntry, 0, len(rooms))
+	for _, e := range rooms {
+		out = append(out, digestBriefEntry{RoomID: e.RoomID, NewMessages: e.NewMessages, LatestMessageID: e.LatestMessageID})
+	}
+	return json.MarshalIndent(digestBriefResponse{Summary: summary, Rooms: out, Hint: hint, Note: note}, "", "  ")
+}
+
+// capDigestRooms applies limit (most-unread first when sortByUnread). The summary
+// must be computed by the caller BEFORE this, over the full set; the omitted
+// count is recorded on it here.
+func capDigestRooms(rooms []council.DigestEntry, summary *digestSummary, n int, sortByUnread bool) []council.DigestEntry {
+	if sortByUnread {
+		sort.SliceStable(rooms, func(i, j int) bool { return rooms[i].NewMessages > rooms[j].NewMessages })
+	}
+	if n > 0 && len(rooms) > n {
+		summary.Truncated = len(rooms) - n
+		rooms = rooms[:n]
+	}
+	return rooms
+}
+
+// digestLimit reads limit: "all" lifts any cap (returns -1), a positive integer
+// caps, anything else falls back to def.
+func digestLimit(s string, def int) int {
+	if strings.EqualFold(strings.TrimSpace(s), "all") {
+		return -1
+	}
+	if n := parsePositiveInt(s); n > 0 {
+		return n
+	}
+	return def
 }
 
 // digestNoMatchHint points an agent at keyword search when an exact-match project
@@ -96,11 +158,16 @@ func digestHasTag(tags, tag string) bool {
 
 // handleGetDigest returns a project activity digest in JSON format.
 func (r *Registry) handleGetDigest(ctx context.Context, req *mcp.CallToolRequest, args DigestInput) (*mcp.CallToolResult, ToolOutput, error) {
+	if args.Since == "" && args.UnreadOnly != "true" {
+		args.Since = time.Now().Add(-24 * time.Hour).UTC().Format("2006-01-02T15:04:05")
+	}
 	if args.ClusterWide == "true" {
 		return r.handleGetDigestCluster(args)
 	}
 
 	msg := textResult
+	brief := args.Brief == "true"
+	note := r.localOnlyNote()
 
 	// unread_only mode: filter rooms to only those with messages after the agent's stored cursor.
 	if args.UnreadOnly == "true" {
@@ -135,15 +202,13 @@ func (r *Registry) handleGetDigest(ctx context.Context, req *mcp.CallToolRequest
 			return msg(fmt.Sprintf("No unread rooms for agent '%s'. All rooms are up to date.", agent))
 		}
 
-		out, err := json.MarshalIndent(digestResponse{Summary: summarizeDigest(filtered), Rooms: filtered, Hint: digestNoMatchHint(args.Project, len(filtered))}, "", "  ")
+		summary := summarizeDigest(filtered)
+		rooms := capDigestRooms(filtered, &summary, digestLimit(args.Limit, digestUnreadDefaultCap), true)
+		out, err := marshalDigest(summary, rooms, brief, digestNoMatchHint(args.Project, summary.Total), note)
 		if err != nil {
 			return msg(fmt.Sprintf("Error formatting JSON: %s", err.Error()))
 		}
 		return msg(string(out))
-	}
-
-	if args.Since == "" {
-		args.Since = time.Now().Add(-24 * time.Hour).UTC().Format("2006-01-02T15:04:05")
 	}
 
 	digest, err := r.Server.GetDigest(args.Project, args.Since)
@@ -180,15 +245,12 @@ func (r *Registry) handleGetDigest(ctx context.Context, req *mcp.CallToolRequest
 	// so the tallies stay honest and truncation is reported rather than silent
 	// — the failure this exists to fix was a session-start call returning 73KB
 	// with both narrowing params already set, because neither bounds room count.
-	if n := parsePositiveInt(args.Limit); n > 0 && len(rooms) > n {
-		summary.Truncated = len(rooms) - n
-		rooms = rooms[:n]
-	}
+	rooms = capDigestRooms(rooms, &summary, digestLimit(args.Limit, 0), false)
 
 	// Hint reflects whether the project filter matched any room at all (len(digest)),
 	// not how many survived exclude_stale (len(rooms)) — a project with only stale
 	// rooms still matched, so it isn't the "wrong project name" footgun.
-	out, err := json.MarshalIndent(digestResponse{Summary: summary, Rooms: rooms, Hint: digestNoMatchHint(args.Project, len(digest))}, "", "  ")
+	out, err := marshalDigest(summary, rooms, brief, digestNoMatchHint(args.Project, len(digest)), note)
 	if err != nil {
 		return msg(fmt.Sprintf("Error formatting JSON: %s", err.Error()))
 	}

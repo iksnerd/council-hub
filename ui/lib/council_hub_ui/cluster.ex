@@ -148,6 +148,30 @@ defmodule CouncilHubUi.Cluster do
   end
 
   @doc """
+  Messages mentioning an agent across all cluster nodes, newest first.
+  Returns %{results: [message_maps], warnings: [strings]}.
+  """
+  def get_mentions(params) do
+    limit = Map.get(params, "limit", 20)
+
+    {results, warnings} =
+      fan_out(:get_mentions, [
+        Map.get(params, "author", ""),
+        limit,
+        Map.get(params, "project", "")
+      ])
+
+    merged =
+      results
+      |> List.flatten()
+      |> Enum.uniq_by(& &1.id)
+      |> Enum.sort_by(& &1.id, :desc)
+      |> Enum.take(limit)
+
+    %{results: merged, warnings: warnings}
+  end
+
+  @doc """
   Get project digest across all cluster nodes.
   Returns %{results: [digest_maps], warnings: [strings]}.
   """

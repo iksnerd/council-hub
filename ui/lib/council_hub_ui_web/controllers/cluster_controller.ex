@@ -213,6 +213,36 @@ defmodule CouncilHubUiWeb.ClusterController do
     end
   end
 
+  def get_mentions(conn, params) do
+    author = Map.get(params, "author", "")
+
+    if author == "" do
+      conn |> put_status(400) |> json(%{error: "author is required"})
+    else
+      result =
+        Cluster.get_mentions(%{
+          "author" => author,
+          "project" => Map.get(params, "project", ""),
+          "limit" => Params.clamp_int(Map.get(params, "limit"), 20, max: 100)
+        })
+
+      json(conn, %{
+        results:
+          Enum.map(result.results, fn m ->
+            %{
+              id: m.id,
+              room_id: m.room_id,
+              author: m.author,
+              content: m.content,
+              timestamp: format_datetime(m.timestamp),
+              source_node: Map.get(m, :source_node)
+            }
+          end),
+        warnings: result.warnings
+      })
+    end
+  end
+
   def get_digest(conn, params) do
     cluster_params = %{
       "project" => Map.get(params, "project", ""),

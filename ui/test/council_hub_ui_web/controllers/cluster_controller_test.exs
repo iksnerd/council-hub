@@ -505,6 +505,41 @@ defmodule CouncilHubUiWeb.ClusterControllerTest do
     end
   end
 
+  describe "POST /api/internal/cluster/get_mentions" do
+    test "returns messages mentioning the author, scoped by project", %{conn: conn} do
+      in_proj = create_room(%{id: "api-mention-in", project: "mention-proj"})
+      other = create_room(%{id: "api-mention-out", project: "other-proj"})
+      create_message(%{room_id: in_proj.id, author: "Bob", content: "ping", mentions: "claude"})
+
+      create_message(%{
+        room_id: other.id,
+        author: "Bob",
+        content: "elsewhere",
+        mentions: "claude"
+      })
+
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> post("/api/internal/cluster/get_mentions", %{
+          "author" => "claude",
+          "project" => "mention-proj"
+        })
+
+      assert %{"results" => results, "warnings" => []} = json_response(conn, 200)
+      assert Enum.map(results, & &1["room_id"]) == ["api-mention-in"]
+    end
+
+    test "requires author", %{conn: conn} do
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> post("/api/internal/cluster/get_mentions", %{})
+
+      assert json_response(conn, 400)
+    end
+  end
+
   describe "POST /api/internal/cluster/read_transcript" do
     test "returns transcript as JSON", %{conn: conn} do
       room = create_room(%{id: "api-transcript"})

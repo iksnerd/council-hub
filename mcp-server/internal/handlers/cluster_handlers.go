@@ -148,6 +148,10 @@ func (r *Registry) handleGetDigestCluster(args DigestInput) (*mcp.CallToolResult
 		"results":  results,
 		"warnings": warnings,
 	}
+	if n := digestLimit(args.Limit, 0); n > 0 && len(results) > n {
+		outMap["results"] = results[:n]
+		outMap["truncated"] = len(results) - n
+	}
 
 	out, err := json.MarshalIndent(outMap, "", "  ")
 	if err != nil {

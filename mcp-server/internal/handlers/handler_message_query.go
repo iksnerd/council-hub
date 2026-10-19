@@ -39,9 +39,10 @@ type GetMessagesInput struct {
 
 // GetMentionsInput represents the parameters for querying messages that mention an agent.
 type GetMentionsInput struct {
-	Author  string `json:"author"`
-	Project string `json:"project"`
-	Limit   string `json:"limit"`
+	Author      string     `json:"author"`
+	Project     string     `json:"project"`
+	Limit       string     `json:"limit"`
+	ClusterWide StringBool `json:"cluster_wide"`
 }
 
 func (r *Registry) handleSearchMessages(ctx context.Context, req *mcp.CallToolRequest, args SearchMessagesInput) (*mcp.CallToolResult, ToolOutput, error) {
@@ -305,17 +306,29 @@ func (r *Registry) handleGetMentions(ctx context.Context, req *mcp.CallToolReque
 		}
 	}
 
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+	if args.ClusterWide == "true" {
+		return r.handleGetMentionsCluster(args, limit)
+	}
+
 	messages, err := r.Server.GetMentions(args.Author, args.Project, limit)
 	if err != nil {
 		r.Server.Logger.Error("Failed to get mentions", "author", args.Author, "error", err)
 		return nil, ToolOutput{}, err
 	}
 
+	note := r.localOnlyNote()
+	if note != "" {
+		note = "\n" + note + "\n"
+	}
+
 	if len(messages) == 0 {
 		if args.Project != "" {
-			return msg(fmt.Sprintf("No messages mention @%s in project '%s'.", args.Author, args.Project))
+			return msg(fmt.Sprintf("No messages mention @%s in project '%s'.%s", args.Author, args.Project, note))
 		}
-		return msg(fmt.Sprintf("No messages mention @%s.", args.Author))
+		return msg(fmt.Sprintf("No messages mention @%s.%s", args.Author, note))
 	}
 
 	var b strings.Builder
@@ -327,6 +340,7 @@ func (r *Registry) handleGetMentions(ctx context.Context, req *mcp.CallToolReque
 		excerpt = strings.ReplaceAll(excerpt, "\n", " ")
 		fmt.Fprintf(&b, "- **#%s** [%s] %s in **%s** (%s): %s\n", m.ID, ts, m.Author, m.RoomID, m.MessageType, excerpt)
 	}
+	b.WriteString(note)
 
 	return msg(b.String())
 }
