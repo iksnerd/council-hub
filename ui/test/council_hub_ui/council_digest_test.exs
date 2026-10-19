@@ -32,6 +32,23 @@ defmodule CouncilHubUi.CouncilDigestTest do
     end
   end
 
+  describe "get_project_digest/2 decision and synthesis counts" do
+    test "counts live decision and synthesis messages for the room" do
+      room = create_room(%{id: "dg-counts", project: "dg-counts-proj"})
+      create_message(%{room_id: room.id, message_type: "decision"})
+      create_message(%{room_id: room.id, message_type: "decision"})
+      create_message(%{room_id: room.id, message_type: "decision", revised: 1})
+      create_message(%{room_id: room.id, message_type: "synthesis"})
+      create_message(%{room_id: room.id, message_type: "thought"})
+
+      [entry] =
+        Council.get_project_digest("dg-counts-proj", NaiveDateTime.to_iso8601(@yesterday))
+
+      assert entry.decision_count == 2
+      assert entry.synthesis_count == 1
+    end
+  end
+
   describe "get_project_digest/2" do
     test "returns rooms with new messages and an excerpt" do
       room = create_room(%{id: "dg-basic", project: "dg-proj"})

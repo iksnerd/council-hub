@@ -87,6 +87,10 @@ type ClusterDigestResult struct {
 	LatestMessageID string `json:"latest_message_id"`
 	LatestAuthor    string `json:"latest_author"`
 	Tags            string `json:"tags"`
+	// Pointers so an older peer that omits the counts (nil) differs from a
+	// room that really has none (0).
+	DecisionCount  *int `json:"decision_count"`
+	SynthesisCount *int `json:"synthesis_count"`
 }
 
 func formatClusterWarnings(b *strings.Builder, warnings []string) {

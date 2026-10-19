@@ -308,6 +308,23 @@ defmodule CouncilHubUi.ClusterTest do
       assert row.latest_author == "gemini"
       assert row.tags == "stale"
     end
+
+    test "merged rows carry decision_count and synthesis_count" do
+      create_room(%{id: "cluster-digest-counts", project: "test-proj-c"})
+      create_message(%{room_id: "cluster-digest-counts", message_type: "decision"})
+      create_message(%{room_id: "cluster-digest-counts", message_type: "synthesis"})
+      create_message(%{room_id: "cluster-digest-counts", message_type: "synthesis"})
+
+      since =
+        NaiveDateTime.utc_now()
+        |> NaiveDateTime.add(-86400, :second)
+        |> NaiveDateTime.to_iso8601()
+
+      [row] = Cluster.get_digest(%{"project" => "test-proj-c", "since" => since}).results
+
+      assert row.decision_count == 1
+      assert row.synthesis_count == 2
+    end
   end
 
   describe "fan_out failure simulation" do

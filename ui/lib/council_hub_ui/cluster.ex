@@ -198,6 +198,8 @@ defmodule CouncilHubUi.Cluster do
           latest_message_id: Map.get(best, :latest_message_id, ""),
           latest_author: Map.get(best, :latest_author, ""),
           tags: Map.get(best, :tags, ""),
+          decision_count: Map.get(best, :decision_count, 0),
+          synthesis_count: Map.get(best, :synthesis_count, 0),
           source_node: best.source_node
         }
       end)

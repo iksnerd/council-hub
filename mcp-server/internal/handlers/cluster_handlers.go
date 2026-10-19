@@ -134,17 +134,19 @@ func (r *Registry) handleGetDigestCluster(args DigestInput) (*mcp.CallToolResult
 			return nil, ToolOutput{}, fmt.Errorf("decode cluster digest results: %w", err)
 		}
 		legacy := 0
-		taken := 0
+		noCounts := 0
 		for _, d := range remote {
 			if seen[d.RoomID] {
 				continue
 			}
 			seen[d.RoomID] = true
-			taken++
+			if d.DecisionCount == nil || d.SynthesisCount == nil {
+				noCounts++
+			}
 			if d.LatestMessageID == "" {
 				legacy++
 			}
-			rooms = append(rooms, council.DigestEntry{
+			entry := council.DigestEntry{
 				RoomID:          d.RoomID,
 				NewMessages:     d.NewMessageCount,
 				LatestAuthor:    d.LatestAuthor,
@@ -153,13 +155,20 @@ func (r *Registry) handleGetDigestCluster(args DigestInput) (*mcp.CallToolResult
 				LatestMessageID: d.LatestMessageID,
 				PostedFrom:      d.PostedFrom,
 				SourceNode:      d.SourceNode,
-			})
+			}
+			if d.DecisionCount != nil {
+				entry.DecisionCount = *d.DecisionCount
+			}
+			if d.SynthesisCount != nil {
+				entry.SynthesisCount = *d.SynthesisCount
+			}
+			rooms = append(rooms, entry)
 		}
 		if legacy > 0 {
 			warnings = append(warnings, fmt.Sprintf("%d peer room(s) come from a node that does not report latest_message_id/latest_author/tags (older version); those fields are empty", legacy))
 		}
-		if taken > 0 {
-			warnings = append(warnings, "peer rooms do not report decision_count or synthesis_count; those fields are empty")
+		if noCounts > 0 {
+			warnings = append(warnings, fmt.Sprintf("%d peer room(s) come from a node that does not report decision_count or synthesis_count (older version); those fields are empty", noCounts))
 		}
 	}
 

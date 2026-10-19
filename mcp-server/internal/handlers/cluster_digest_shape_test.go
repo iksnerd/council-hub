@@ -138,3 +138,33 @@ func TestDigestClusterNoWarningWhenPeerOnlyEchoesLocalRooms(t *testing.T) {
 		t.Errorf("echoed local room produced warnings: %v", warns)
 	}
 }
+
+func TestDigestClusterPeerCounts(t *testing.T) {
+	reg := digestPeer(t, []map[string]any{
+		{"room_id": "peer-new", "new_message_count": 2, "latest_message_id": "ffffffff-0000-7000-8000-00000000fff1",
+			"decision_count": 3, "synthesis_count": 1, "source_node": "p@1"},
+	})
+	res, _, _ := reg.handleGetDigest(context.Background(), nil, DigestInput{})
+	m := parseDigest(t, resultText(res))
+	for _, x := range m["rooms"].([]any) {
+		r := x.(map[string]any)
+		if r["room_id"] == "peer-new" && (r["decision_count"].(float64) != 3 || r["synthesis_count"].(float64) != 1) {
+			t.Errorf("peer counts not carried: %v", r)
+		}
+	}
+	if warns, _ := m["warnings"].([]any); len(warns) != 0 {
+		t.Errorf("peer supplying counts still warned: %v", warns)
+	}
+}
+
+func TestDigestClusterOlderPeerWithoutCountsWarns(t *testing.T) {
+	reg := digestPeer(t, []map[string]any{
+		{"room_id": "peer-old", "new_message_count": 2, "latest_message_id": "ffffffff-0000-7000-8000-00000000fff1", "source_node": "p@1"},
+	})
+	res, _, _ := reg.handleGetDigest(context.Background(), nil, DigestInput{})
+	m := parseDigest(t, resultText(res))
+	warns, _ := m["warnings"].([]any)
+	if len(warns) != 1 || !strings.Contains(warns[0].(string), "decision_count") {
+		t.Errorf("want one decision_count degrade warning, got %v", warns)
+	}
+}

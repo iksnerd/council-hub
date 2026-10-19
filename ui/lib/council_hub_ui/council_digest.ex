@@ -76,6 +76,8 @@ defmodule CouncilHubUi.CouncilDigest do
       Repo.all(from r in Room, where: r.id in ^active_room_ids, select: {r.id, r.tags})
       |> Map.new()
 
+    {decisions, syntheses} = type_counts_by_room(active_room_ids)
+
     for rid <- active_room_ids do
       latest = Map.get(latest_by_room, rid)
 
@@ -86,6 +88,8 @@ defmodule CouncilHubUi.CouncilDigest do
         latest_message_id: Map.get(latest_id_by_room, rid, ""),
         latest_author: if(latest, do: latest.author, else: ""),
         tags: Map.get(tags_by_room, rid) || "",
+        decision_count: Map.get(decisions, rid, 0),
+        synthesis_count: Map.get(syntheses, rid, 0),
         posted_from: Map.get(posted_from, rid, [])
       }
     end
@@ -119,6 +123,27 @@ defmodule CouncilHubUi.CouncilDigest do
     |> Enum.reject(fn {_, label} -> label == "" end)
     |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
     |> Map.new(fn {rid, labels} -> {rid, labels |> Enum.uniq() |> Enum.sort()} end)
+  end
+
+  # Live decision / synthesis totals per room (Go GetDigest decision_count /
+  # synthesis_count): all-time, not windowed, live messages only.
+  defp type_counts_by_room([]), do: {%{}, %{}}
+
+  defp type_counts_by_room(room_ids) do
+    counts =
+      from(m in Message,
+        where: m.room_id in ^room_ids and m.message_type in ["decision", "synthesis"],
+        group_by: [m.room_id, m.message_type],
+        select: {m.room_id, m.message_type, count(m.id)}
+      )
+      |> live_messages()
+      |> Repo.all()
+
+    pick = fn type ->
+      for {rid, ^type, n} <- counts, into: %{}, do: {rid, n}
+    end
+
+    {pick.("decision"), pick.("synthesis")}
   end
 
   defp latest_head_ids(room_ids, exclude_system?) do
