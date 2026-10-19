@@ -4,6 +4,24 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.63.1] - 2026-10-20
+
+Fixes found by running the 0.63.0 image as a real two-node cluster, plus the follow-ups that were left open after 0.63.0. Schema: one additive column (`rooms.work_items`); a downgrade ignores it.
+
+### Added
+- **Room `work_items` field and `{wi:ID}` links.** A URL template with an `{id}` placeholder (for example `https://tracker.example.com/items/{id}`), set with `create_room`, `get_or_create_room` (gap-fill only) or `update_room`. `{wi:13021}` renders as a link in transcripts, notebooks, `read_room` and the dashboard, the way `{sha:}` does for commits; a room with no template shows the id in a code span.
+- **`posted_from` in the Phoenix UI and peer digests.** The dashboard shows `@basename` beside an author whose working tree differs from their name, and a peer node's digest rows now carry `posted_from`.
+- **Skills.** All five skills refreshed for 0.63.0 (stale `signal_status` and `read_room` facts fixed), two new skills (`council-hub-notebook`, `council-hub-cluster`), trigger evals for every skill, and the marketplace install line in the README. Plugin version 0.3.0.
+- **Docs.** DHCP-reservation guidance for LAN clusters, and the cluster-reads section brought in line with the new default.
+
+### Changed
+- **Default cluster reads keep the local shape.** `get_digest` returns `summary` plus `rooms[]` (each with `source_node`) and honours `limit`, `brief` and `exclude_stale`; before this it returned a different `results[]` shape that ignored them. `list_rooms` hides resolved rooms and pages after the merge; `search_messages` honours `limit`. `search_messages(include_related=true)` and `get_messages(history=true)` stay local. The server's own instructions text now describes cluster-wide-by-default.
+
+### Fixed
+- **The Phoenix read side dropped messages on the same calendar date as `since`.** The Go server stores timestamps as `YYYY-MM-DD HH:MM:SS` and the UI bound dates as `YYYY-MM-DDTHH:MM:SS`; SQLite compares text bytewise and `T` sorts after a space. Digest, message and notebook `since`/`until` filters now bind in the stored format. Existed before 0.63.0; unit tests missed it because they wrote rows through Ecto.
+- **A dead peer stalled default cluster reads for 3 to 5 seconds.** The cluster manager ran `Node.connect` inline, so its status call timed out. Dials now run in tasks, the read path's peer-count lookup has a 1 second timeout and fails open to this node, and a failed lookup is cached for 30 seconds. Measured: worst default read with the peer down went from 3 to 5 seconds to 0.01 seconds, and the cluster recovered about 6 seconds after the peer returned.
+- **A peer's `posted_from` was dropped from the merged digest.**
+
 ## [0.63.0] - 2026-10-20
 
 Burn-down of the open meta-feedback in `council-hub-mcp-feedback`. Schema: additive columns only (`messages.msg_tags`, `messages.posted_from`, `messages.idempotency_key`, `notebooks.deleted_at`); a downgrade ignores them, but an older server would show soft-deleted notebooks as live again.
