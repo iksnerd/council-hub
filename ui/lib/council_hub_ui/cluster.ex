@@ -50,6 +50,17 @@ defmodule CouncilHubUi.Cluster do
   end
 
   @doc """
+  Id/status of every room matching the list filters on every node, deduplicated
+  by id. Returns %{results: [ref_maps], warnings: [strings]}.
+  """
+  def list_room_refs(params) do
+    {results, warnings} = fan_out(:list_room_refs, [params])
+
+    merged = results |> List.flatten() |> Enum.uniq_by(& &1.id)
+    %{results: merged, warnings: warnings}
+  end
+
+  @doc """
   Get room stats across all cluster nodes.
   Returns the first successful result (room typically exists on one node).
   Returns %{results: stats_map | nil, warnings: [strings]}.

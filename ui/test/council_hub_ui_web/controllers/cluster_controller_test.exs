@@ -194,6 +194,32 @@ defmodule CouncilHubUiWeb.ClusterControllerTest do
     end
   end
 
+  describe "POST /api/internal/cluster/room_refs" do
+    test "lists id and status of every matching room without a limit", %{conn: conn} do
+      for n <- 1..3, do: create_room(%{id: "refs-#{n}", project: "refs-proj", status: "resolved"})
+      create_room(%{id: "refs-live", project: "refs-proj", status: "active"})
+
+      create_room(%{
+        id: "refs-private",
+        project: "refs-proj",
+        status: "resolved",
+        visibility: "private"
+      })
+
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> post("/api/internal/cluster/room_refs", %{
+          "project" => "refs-proj",
+          "status" => "resolved"
+        })
+
+      %{"results" => results} = json_response(conn, 200)
+      assert results |> Enum.map(& &1["id"]) |> Enum.sort() == ["refs-1", "refs-2", "refs-3"]
+      assert Enum.all?(results, &(&1["status"] == "resolved"))
+    end
+  end
+
   describe "POST /api/internal/cluster/list_rooms" do
     test "returns rooms as JSON", %{conn: conn} do
       create_room(%{id: "api-room-a", project: "api-proj"})

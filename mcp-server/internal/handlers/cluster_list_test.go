@@ -367,3 +367,52 @@ func TestHandleListRoomsClusterEmpty(t *testing.T) {
 		t.Errorf("expected no-rooms message, got: %s", text)
 	}
 }
+
+func TestHandleListRoomsClusterReportsOmittedResolved(t *testing.T) {
+	var refsParams map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.HasSuffix(r.URL.Path, "/room_refs") {
+			_ = json.NewDecoder(r.Body).Decode(&refsParams)
+			json.NewEncoder(w).Encode(map[string]any{
+				"results": []map[string]any{
+					{"id": "old-a", "status": "resolved", "source_node": "a@1"},
+					{"id": "old-b", "status": "resolved", "source_node": "b@1"},
+					{"id": "old-a", "status": "resolved", "source_node": "b@1"},
+				},
+				"warnings": []string{},
+			})
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]any{
+			"results": []map[string]any{
+				{"id": "live", "description": "d", "status": "active", "project": "p", "updated_at": "2026-04-01T12:00:00", "source_node": "a@1"},
+				{"id": "old-a", "description": "d", "status": "resolved", "project": "p", "updated_at": "2026-04-01T11:00:00", "source_node": "a@1"},
+			},
+			"warnings": []string{},
+		})
+	}))
+	defer server.Close()
+
+	reg := &Registry{HTTPClient: &http.Client{Timeout: 5 * time.Second}, PhoenixURL: server.URL}
+	result, out, err := reg.handleListRoomsCluster(ListRoomsInput{Project: "p"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.OmittedResolved != 2 {
+		t.Errorf("omitted_resolved = %d, want 2 (distinct ids)", out.OmittedResolved)
+	}
+	if !strings.Contains(resultText(result), "2 resolved room(s) not shown") {
+		t.Errorf("missing note: %s", resultText(result))
+	}
+	if refsParams["status"] != "resolved" || refsParams["project"] != "p" {
+		t.Errorf("room_refs params wrong: %v", refsParams)
+	}
+
+	// status=all lifts the filter, so nothing is omitted and no count is asked for.
+	refsParams = nil
+	_, out, _ = reg.handleListRoomsCluster(ListRoomsInput{Project: "p", Status: "all"})
+	if out.OmittedResolved != 0 || refsParams != nil {
+		t.Errorf("status=all should not count: omitted=%d refs=%v", out.OmittedResolved, refsParams)
+	}
+}

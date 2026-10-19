@@ -265,8 +265,8 @@ type ListedRoom struct {
 }
 
 // ListRoomsOutput is list_rooms' structured output. OmittedResolved counts the
-// resolved rooms the default view hid (local view only; cluster_wide does not
-// compute it). Pinned excerpts are local-only: peers do not send them.
+// resolved rooms the default view hid (on a cluster read, the distinct resolved
+// rooms across reachable nodes). Pinned excerpts are local-only: peers do not send them.
 type ListRoomsOutput struct {
 	Rooms           []ListedRoom `json:"rooms"`
 	Warnings        []string     `json:"warnings"`

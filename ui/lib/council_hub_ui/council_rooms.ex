@@ -42,6 +42,29 @@ defmodule CouncilHubUi.CouncilRooms do
   List rooms with optional filters. Mirrors Go ListRooms().
   """
   def list_rooms_filtered(params) when is_map(params) do
+    base = filtered_rooms(params)
+
+    limit = Params.clamp_int(Map.get(params, "limit"), 50, max: 100)
+    offset = Params.clamp_int(Map.get(params, "offset"), 0, min: 0)
+
+    Repo.all(
+      from [room: r] in base, order_by: [desc: r.updated_at], limit: ^limit, offset: ^offset
+    )
+  end
+
+  @doc """
+  Id, status and visibility of every room matching the `list_rooms_filtered/1`
+  filters, with no limit. Backs the cluster's resolved-room count, which needs
+  every match and none of the row bodies.
+  """
+  def list_room_refs(params) when is_map(params) do
+    Repo.all(
+      from [room: r] in filtered_rooms(params),
+        select: %{id: r.id, status: r.status, visibility: r.visibility}
+    )
+  end
+
+  defp filtered_rooms(params) do
     base = from(r in Room, as: :room)
 
     base =
@@ -131,12 +154,7 @@ defmodule CouncilHubUi.CouncilRooms do
           end)
       end
 
-    limit = Params.clamp_int(Map.get(params, "limit"), 50, max: 100)
-    offset = Params.clamp_int(Map.get(params, "offset"), 0, min: 0)
-
-    Repo.all(
-      from [room: r] in base, order_by: [desc: r.updated_at], limit: ^limit, offset: ^offset
-    )
+    base
   end
 
   @doc """

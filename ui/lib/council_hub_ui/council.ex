@@ -13,6 +13,7 @@ defmodule CouncilHubUi.Council do
   defdelegate get_room(id), to: CouncilHubUi.CouncilRooms
   defdelegate get_room_with_messages(room_id), to: CouncilHubUi.CouncilRooms
   defdelegate list_rooms_filtered(params), to: CouncilHubUi.CouncilRooms
+  defdelegate list_room_refs(params), to: CouncilHubUi.CouncilRooms
   defdelegate room_stats(room_id), to: CouncilHubUi.CouncilRooms
   defdelegate room_participants(room_id), to: CouncilHubUi.CouncilRooms
   defdelegate room_participants_with_counts(room_id), to: CouncilHubUi.CouncilRooms

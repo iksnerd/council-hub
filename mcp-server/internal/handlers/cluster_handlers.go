@@ -723,6 +723,7 @@ func (r *Registry) handleListRoomsCluster(args ListRoomsInput) (*mcp.CallToolRes
 	window := limit + offset
 
 	var results []ClusterRoomResult
+	var localResolvedOpts council.ListRoomsOptions
 	if r.Server != nil {
 		var projectNotIn []string
 		if args.ProjectNotIn != "" {
@@ -743,6 +744,8 @@ func (r *Registry) handleListRoomsCluster(args ListRoomsInput) (*mcp.CallToolRes
 		}
 		if hideResolved {
 			opts.ExcludeStatus = "resolved"
+			localResolvedOpts = opts
+			localResolvedOpts.ExcludeStatus, localResolvedOpts.Status = "", "resolved"
 		}
 		localRooms, err := r.Server.ListRoomsFiltered(opts)
 		if err == nil {
@@ -767,7 +770,13 @@ func (r *Registry) handleListRoomsCluster(args ListRoomsInput) (*mcp.CallToolRes
 	if err != nil {
 		if len(results) > 0 {
 			warnings = append(warnings, fmt.Sprintf("peer fan-out unavailable: %s", err.Error()))
-			return r.renderClusterRooms(args, results, warnings)
+			omitted := 0
+			if hideResolved && r.Server != nil {
+				if n, cerr := r.Server.CountRooms(localResolvedOpts); cerr == nil {
+					omitted = n
+				}
+			}
+			return r.renderClusterRooms(args, results, warnings, omitted)
 		}
 		return listRoomsResult(fmt.Sprintf("Error: cluster list rooms failed: %s", err.Error()), newListRoomsOutput(nil, nil))
 	}
@@ -805,15 +814,67 @@ func (r *Registry) handleListRoomsCluster(args ListRoomsInput) (*mcp.CallToolRes
 		results = results[:limit]
 	}
 
-	return r.renderClusterRooms(args, results, warnings)
+	omitted := 0
+	if hideResolved {
+		var counted bool
+		omitted, counted = r.countClusterResolved(params)
+		if !counted {
+			warnings = append(warnings, "resolved-room count covers this node only (peer count unavailable)")
+			if r.Server != nil {
+				if n, cerr := r.Server.CountRooms(localResolvedOpts); cerr == nil {
+					omitted = n
+				}
+			}
+		}
+	}
+	return r.renderClusterRooms(args, results, warnings, omitted)
 }
 
-func (r *Registry) renderClusterRooms(args ListRoomsInput, results []ClusterRoomResult, warnings []string) (*mcp.CallToolResult, ListRoomsOutput, error) {
+// countClusterResolved asks the cluster for the ids of resolved rooms matching
+// the same filters as the listing, and counts the distinct ids (Phoenix fans
+// out to its own node too, so a room seen twice counts once). The bool is false
+// when the call failed.
+func (r *Registry) countClusterResolved(listParams map[string]any) (int, bool) {
+	params := map[string]any{}
+	for k, v := range listParams {
+		params[k] = v
+	}
+	params["status"] = "resolved"
+	delete(params, "limit")
+	delete(params, "offset")
+	raw, _, err := r.clusterCall("room_refs", params)
+	if err != nil {
+		return 0, false
+	}
+	var refs []struct {
+		ID     string `json:"id"`
+		Status string `json:"status"`
+	}
+	if err := json.Unmarshal(raw, &refs); err != nil {
+		return 0, false
+	}
+	ids := map[string]bool{}
+	for _, ref := range refs {
+		if ref.Status == "resolved" {
+			ids[ref.ID] = true
+		}
+	}
+	return len(ids), true
+}
+
+func (r *Registry) renderClusterRooms(args ListRoomsInput, results []ClusterRoomResult, warnings []string, omittedResolved int) (*mcp.CallToolResult, ListRoomsOutput, error) {
+	hiddenNote := ""
+	if omittedResolved > 0 {
+		hiddenNote = fmt.Sprintf("\n(%d resolved room(s) not shown — pass status=resolved or status=all to include them.)\n", omittedResolved)
+	}
 	if len(results) == 0 {
 		var b strings.Builder
 		b.WriteString("No rooms found matching the given filters (cluster-wide).")
+		b.WriteString(hiddenNote)
 		formatClusterWarnings(&b, warnings)
-		return listRoomsResult(b.String(), newListRoomsOutput(nil, warnings))
+		out := newListRoomsOutput(nil, warnings)
+		out.OmittedResolved = omittedResolved
+		return listRoomsResult(b.String(), out)
 	}
 
 	var b strings.Builder
@@ -853,12 +914,15 @@ func (r *Registry) renderClusterRooms(args ListRoomsInput, results []ClusterRoom
 		}
 	}
 
+	b.WriteString(hiddenNote)
 	formatClusterWarnings(&b, warnings)
 	listed := make([]ListedRoom, 0, len(results))
 	for _, rm := range results {
 		listed = append(listed, listedRoomFromCluster(rm))
 	}
-	return listRoomsResult(b.String(), newListRoomsOutput(listed, warnings))
+	out := newListRoomsOutput(listed, warnings)
+	out.OmittedResolved = omittedResolved
+	return listRoomsResult(b.String(), out)
 }
 
 func (r *Registry) handleRoomStatsCluster(args RoomStatsInput) (*mcp.CallToolResult, ToolOutput, error) {

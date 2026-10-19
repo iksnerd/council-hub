@@ -100,6 +100,21 @@ defmodule CouncilHubUiWeb.ClusterController do
     })
   end
 
+  def room_refs(conn, params) do
+    cluster_params =
+      Map.new(
+        ~w(project project_not_in tag status search related_to),
+        &{&1, Map.get(params, &1, "")}
+      )
+
+    result = Cluster.list_room_refs(cluster_params)
+
+    json(conn, %{
+      results: Enum.map(result.results, &Map.take(&1, [:id, :status, :source_node])),
+      warnings: result.warnings
+    })
+  end
+
   def room_stats(conn, params) do
     room_id = Map.get(params, "room_id", "")
 

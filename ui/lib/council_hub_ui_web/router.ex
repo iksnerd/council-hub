@@ -53,6 +53,7 @@ defmodule CouncilHubUiWeb.Router do
     get "/nodes", ClusterController, :nodes
     post "/search_messages", ClusterController, :search_messages
     post "/list_rooms", ClusterController, :list_rooms
+    post "/room_refs", ClusterController, :room_refs
     post "/room_stats", ClusterController, :room_stats
     post "/read_transcript", ClusterController, :read_transcript
     post "/get_messages", ClusterController, :get_messages
