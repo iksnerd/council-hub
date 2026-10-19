@@ -119,6 +119,30 @@ func TestHandleBulkStatusUpdatePartialFailure(t *testing.T) {
 	}
 }
 
+func TestHandleBulkStatusUpdateMessageWriteFailure(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "bulk-fail")
+	if _, err := reg.Server.DB.Exec(`CREATE TRIGGER block_msgs BEFORE INSERT ON messages BEGIN SELECT RAISE(ABORT, 'disk full'); END`); err != nil {
+		t.Fatal(err)
+	}
+
+	res, _, _ := reg.handleBulkStatusUpdate(context.Background(), nil, BulkStatusInput{
+		RoomIDs: "bulk-fail", Status: "resolved", Message: "closing", Author: "tester",
+	})
+	text := resultText(res)
+
+	if strings.Contains(text, "Updated 1 room(s)") {
+		t.Errorf("must not report success when the closing message failed, got: %s", text)
+	}
+	if !strings.Contains(text, "Failed: bulk-fail") || !strings.Contains(text, "disk full") {
+		t.Errorf("expected failure naming room and error, got: %s", text)
+	}
+	room, _ := reg.Server.GetRoom("bulk-fail")
+	if room.Status == "resolved" {
+		t.Errorf("status must not flip when the message could not be written")
+	}
+}
+
 func TestHandleBulkStatusUpdateInvalidStatus(t *testing.T) {
 	reg := setupHandlerTest(t)
 

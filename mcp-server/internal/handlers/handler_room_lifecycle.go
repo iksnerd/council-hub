@@ -141,7 +141,7 @@ func (r *Registry) handleBulkStatusUpdate(ctx context.Context, req *mcp.CallTool
 	}
 
 	parts := strings.Split(args.RoomIDs, ",")
-	var updated, notFound, archived []string
+	var updated, notFound, archived, failed []string
 	for _, p := range parts {
 		roomID := strings.TrimSpace(p)
 		if roomID == "" {
@@ -156,7 +156,12 @@ func (r *Registry) handleBulkStatusUpdate(ctx context.Context, req *mcp.CallTool
 		}
 
 		if args.Message != "" {
-			_, _ = r.Server.PostMessage(roomID, args.Author, args.Message, "decision", "")
+			// Write the closing message first and skip the flip if it fails, so a
+			// room is never reported closed without its closing record.
+			if _, err := r.Server.PostMessage(roomID, args.Author, args.Message, "decision", ""); err != nil {
+				failed = append(failed, fmt.Sprintf("%s (%v)", roomID, err))
+				continue
+			}
 		}
 		if err := r.Server.UpdateStatus(roomID, args.Status); err != nil {
 			notFound = append(notFound, roomID)
@@ -213,6 +218,12 @@ func (r *Registry) handleBulkStatusUpdate(ctx context.Context, req *mcp.CallTool
 				"bulk_status_update is local-only. Check with list_rooms(cluster_wide=true), then use " +
 				"signal_status per room, which routes to the owner automatically.)")
 		}
+	}
+	if len(failed) > 0 {
+		if b.Len() > 0 {
+			b.WriteString("\n")
+		}
+		fmt.Fprintf(&b, "Failed: %s (status not changed)", strings.Join(failed, ", "))
 	}
 	if b.Len() == 0 {
 		return msg("No valid room IDs provided.")
