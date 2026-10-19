@@ -1,3 +1,3 @@
 package council
 
-const Version = "0.62.0"
+const Version = "0.63.0"

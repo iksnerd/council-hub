@@ -311,7 +311,7 @@ Go MCP server (`mcp-server/`) + Phoenix LiveView UI (`ui/`) in one repo, one Doc
 
 ## What's New
 
-Recent highlights: `dry_run` previews for `create_room`/`get_or_create_room` so a caller sees a duplicate-room warning before creating one, not after (v0.62.0); `get_digest`/`read_notebook` say how to fix an oversized-result error, not just how to filter (v0.62.0); cluster self-diagnosis — a node reports when its own advertised address is unreachable, or a peer answers on one address while claiming another (v0.59.0); `level`/`status` notebook clipping cuts a large `current-work` read by over 90% (v0.60.0). Full history in [CHANGELOG.md](CHANGELOG.md).
+Recent highlights: discovery reads go cluster-wide by default when a peer is connected, `edit_notebook delete` is a confirmed soft delete, and `get_digest` takes `limit`/`brief` (v0.63.0); `dry_run` previews for `create_room`/`get_or_create_room` so a caller sees a duplicate-room warning before creating one, not after (v0.62.0); `get_digest`/`read_notebook` say how to fix an oversized-result error, not just how to filter (v0.62.0); cluster self-diagnosis — a node reports when its own advertised address is unreachable, or a peer answers on one address while claiming another (v0.59.0); `level`/`status` notebook clipping cuts a large `current-work` read by over 90% (v0.60.0). Full history in [CHANGELOG.md](CHANGELOG.md).
 
 ## Community
 
