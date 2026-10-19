@@ -307,6 +307,7 @@ make docker-push  # arm64-only fallback; tagged releases publish via docker.yml 
 # Ledger
 make install-hooks # pre-commit checks (gitleaks, personal data, gofmt/vet, mix format) + Council-Room trailer
 make ledger-check  # list commits since the last tag that no room post cites
+make test-hooks    # test the Council-Room hook's duplicate suppression (amend, rebase)
 ```
 
 `make docker-run` publishes the cluster ports to your LAN IP while `COOKIE` is the image default (`council`, which is public), and to all interfaces once you set your own. All-interfaces survives a DHCP address change. A container bound to one IP fails to start after the IP changes, taking `:3001` and `:4000` down with it. Put local values (`COOKIE`, `SEEDS`, `CLUSTER_BIND`) in a gitignored `Makefile.local`.

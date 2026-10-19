@@ -1,4 +1,4 @@
-.PHONY: help docker-build docker-run docker-stop docker-logs docker-push test-all clean
+.PHONY: help docker-build docker-run docker-stop docker-logs docker-push test-all test-hooks ledger-check install-hooks clean
 
 IMAGE    = iksnerd/council-hub
 VERSION ?= latest
@@ -65,6 +65,9 @@ docker-push: ## Build and push image to Docker Hub (VERSION=vX.Y.Z; arm64 only, 
 
 ledger-check: ## List commits since the last tag with no council-hub ledger entry (exits 1 if any — it is a gate)
 	@python3 scripts/ledger-check.py $(if $(SINCE),--since $(SINCE))
+
+test-hooks: ## Test the Council-Room post-commit hook's duplicate suppression (amend, rebase, window)
+	@sh scripts/test-post-commit.sh
 
 install-hooks: ## Enable git hooks: pre-commit checks + Council-Room commit trailer (per-clone)
 	git config core.hooksPath .githooks

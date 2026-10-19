@@ -48,19 +48,48 @@ SHA=$(git rev-parse --short HEAD)
 SUBJECT=$(git log -1 --format=%s)
 PARENT=$(git rev-parse --short HEAD^ 2>/dev/null || echo root)
 
-# `git commit --amend` re-fires post-commit, so a commit revised three times would
-# post three near-identical entries for one piece of work. An amend keeps the same
-# parent and almost always the same subject, so remember that pair and skip a
-# repeat. Deliberately not clever: a genuine second commit with an identical
-# subject on the same parent is rare, and losing that entry costs a manual post
-# while duplicate entries cost the room's signal-to-noise, which is the thing this
-# whole mechanism exists to protect.
+# post-commit also fires when a commit is rewritten, and each rewrite would post
+# another near-identical entry for the same piece of work:
+#   - `git commit --amend` keeps the parent and usually the subject;
+#   - `git rebase` replays every commit onto a NEW parent, so remembering only
+#     (room, parent, subject) misses it, and remembering only the last post misses
+#     every replayed commit but the last.
+# So the marker keeps two kinds of line, and either one suppresses the post:
+#   fp   <room> <parent> <subject>    an amend; kept (last 100), no expiry
+#   seen <epoch> <room> <subject>     a replay; kept for WINDOW seconds
+# Deliberately not clever: two genuinely different commits with the same subject in
+# the same room within WINDOW lose one entry, which costs a manual post, while
+# duplicate entries cost the room's signal-to-noise, which is the thing this whole
+# mechanism exists to protect.
 MARKER="$(git rev-parse --git-dir)/council-last-post"
 FINGERPRINT="$ROOM $PARENT $SUBJECT"
-if [ -f "$MARKER" ] && [ "$(cat "$MARKER")" = "$FINGERPRINT" ]; then
-  echo "council-hub: already logged this commit (amend) — skipping duplicate" >&2
-  exit 0
+KEY="$ROOM $SUBJECT"
+NOW=$(date +%s)
+WINDOW=600
+if [ -f "$MARKER" ]; then
+  if grep -Fxq -- "fp $FINGERPRINT" "$MARKER"; then
+    echo "council-hub: already logged this commit (amend) — skipping duplicate" >&2
+    exit 0
+  fi
+  DUP=""
+  while read -r EP REST; do
+    case "$EP" in ''|*[!0-9]*) continue ;; esac
+    if [ "$REST" = "$KEY" ] && [ $((NOW - EP)) -lt "$WINDOW" ]; then DUP=1; break; fi
+  done <<SEENLIST
+$(sed -n 's/^seen \([0-9][0-9]*\) \(.*\)$/\1 \2/p' "$MARKER")
+SEENLIST
+  if [ -n "$DUP" ]; then
+    echo "council-hub: already logged this commit (rebase/replay) — skipping duplicate" >&2
+    exit 0
+  fi
 fi
+
+record_post() {
+  {
+    [ -f "$MARKER" ] && grep -E '^(fp|seen) ' "$MARKER" | tail -100
+    printf 'fp %s\nseen %s %s\n' "$FINGERPRINT" "$NOW" "$KEY"
+  } > "$MARKER.tmp" && mv "$MARKER.tmp" "$MARKER"
+}
 HOOKS_DIR=$(git rev-parse --show-toplevel)/scripts
 
 # Body only (%b, not %B) so the subject is not repeated under its own heading,
@@ -71,7 +100,7 @@ BODY=$(git log -1 --format=%b | sed '/^Council-[A-Za-z]*:/d')
 
 printf '## %s ({sha:%s})\n\n%s\n' "$SUBJECT" "$SHA" "$BODY" \
   | python3 "$HOOKS_DIR/council-post.py" --room "$ROOM" --author "$AUTHOR" --type "$TYPE" \
-  && printf '%s' "$FINGERPRINT" > "$MARKER" \
+  && record_post \
   || echo "council-hub: ledger entry skipped — the commit itself is fine" >&2
 
 exit 0
