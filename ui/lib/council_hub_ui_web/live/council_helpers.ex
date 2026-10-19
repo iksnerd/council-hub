@@ -136,6 +136,35 @@ defmodule CouncilHubUiWeb.CouncilHelpers do
 
   def resolve_commit_refs(content, _repo), do: content
 
+  @work_item_ref_re ~r/\{wi:([A-Za-z0-9][A-Za-z0-9._-]*)\}/
+
+  @doc """
+  Resolves `{wi:<id>}` tokens into markdown links built from the room's
+  `work_items` URL template (`{id}` is substituted), or a bare `` `id` `` code
+  span when the room has no template. Render-time only; mirrors the Go
+  `ResolveWorkItemRefs`.
+  """
+  def resolve_work_item_refs(content, template) when is_binary(content) do
+    if String.contains?(content, "{wi:") do
+      template = if is_binary(template), do: String.trim(template), else: ""
+
+      Regex.replace(@work_item_ref_re, content, fn _full, id ->
+        if String.contains?(template, "{id}"),
+          do: "[#{id}](#{String.replace(template, "{id}", id)})",
+          else: "`#{id}`"
+      end)
+    else
+      content
+    end
+  end
+
+  def resolve_work_item_refs(content, _template), do: content
+
+  @doc "Applies both `{sha:...}` and `{wi:...}` resolution."
+  def resolve_refs(content, repo, work_items) do
+    content |> resolve_commit_refs(repo) |> resolve_work_item_refs(work_items)
+  end
+
   @doc """
   Converts a room's repo reference (owner/repo, clone URL, or scp remote) into
   its canonical https base URL — e.g. `https://github.com/owner/repo`. Its

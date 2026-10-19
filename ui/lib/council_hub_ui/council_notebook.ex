@@ -75,7 +75,8 @@ defmodule CouncilHubUi.CouncilNotebook do
             supersedes: m.supersedes,
             pinned: m.pinned,
             timestamp: m.timestamp,
-            repo: r.repo
+            repo: r.repo,
+            work_items: coalesce(r.work_items, "")
           }
       )
       |> Enum.reverse()
@@ -168,6 +169,7 @@ defmodule CouncilHubUi.CouncilNotebook do
           pinned: coalesce(m.pinned, false),
           timestamp: m.timestamp,
           repo: coalesce(coalesce(r.repo, rr.repo), ""),
+          work_items: coalesce(coalesce(r.work_items, rr.work_items), ""),
           room_status: coalesce(rr.status, ""),
           room_topic: coalesce(rr.description, ""),
           retracted_at: m.retracted_at,

@@ -21,7 +21,7 @@ defmodule CouncilHubUiWeb.NotebookLive do
       format_timestamp: 1,
       format_date: 1,
       render_markdown: 1,
-      resolve_commit_refs: 2,
+      resolve_refs: 3,
       status_dot_class: 1,
       status_badge_class: 1,
       truncate: 2

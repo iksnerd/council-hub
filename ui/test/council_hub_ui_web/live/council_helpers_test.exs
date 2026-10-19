@@ -162,6 +162,40 @@ defmodule CouncilHubUiWeb.CouncilHelpersTest do
     assert String.contains?(html, "<code")
   end
 
+  # -- resolve_work_item_refs / resolve_refs --
+
+  test "resolve_work_item_refs links {wi:ID} through the room's template" do
+    tmpl = "https://tracker.example.com/items/{id}"
+
+    assert CouncilHelpers.resolve_work_item_refs("see {wi:13021} now", tmpl) ==
+             "see [13021](https://tracker.example.com/items/13021) now"
+  end
+
+  test "resolve_work_item_refs falls back to a code span without a template" do
+    assert CouncilHelpers.resolve_work_item_refs("see {wi:13021}", "") == "see `13021`"
+    assert CouncilHelpers.resolve_work_item_refs("see {wi:13021}", nil) == "see `13021`"
+  end
+
+  test "resolve_work_item_refs leaves token-free text alone" do
+    assert CouncilHelpers.resolve_work_item_refs(
+             "plain {sha:abc1234}",
+             "https://t.example.com/{id}"
+           ) ==
+             "plain {sha:abc1234}"
+  end
+
+  test "resolve_refs applies both commit and work item resolution" do
+    out =
+      CouncilHelpers.resolve_refs(
+        "{wi:7} fixed in {sha:abcdef1}",
+        "owner/repo",
+        "https://tracker.example.com/items/{id}"
+      )
+
+    assert out ==
+             "[7](https://tracker.example.com/items/7) fixed in [`abcdef1`](https://github.com/owner/repo/commit/abcdef1)"
+  end
+
   # -- status_badge_class --
 
   test "status badge classes" do

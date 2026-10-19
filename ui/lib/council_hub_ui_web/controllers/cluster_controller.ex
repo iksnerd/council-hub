@@ -297,6 +297,7 @@ defmodule CouncilHubUiWeb.ClusterController do
       related_rooms: room.related_rooms,
       visibility: Map.get(room, :visibility, "public"),
       repo: Map.get(room, :repo, ""),
+      work_items: Map.get(room, :work_items, ""),
       created_at: format_datetime(room.created_at),
       updated_at: format_datetime(room.updated_at),
       source_node: Map.get(room, :source_node, nil)

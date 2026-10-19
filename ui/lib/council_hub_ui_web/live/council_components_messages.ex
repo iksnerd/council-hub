@@ -40,6 +40,7 @@ defmodule CouncilHubUiWeb.MessageComponents do
 
   attr :msg, :map, required: true
   attr :repo, :string, default: ""
+  attr :work_items, :string, default: ""
   attr :compact, :boolean, default: false
   # Prior versions of an edited message (oldest → newest), or nil when collapsed.
   # Loaded on demand by the "✎ edited" toggle.
@@ -184,7 +185,7 @@ defmodule CouncilHubUiWeb.MessageComponents do
               @compact && "line-clamp-1"
             ]}
           >
-            {raw(render_markdown(resolve_commit_refs(@msg.content, @repo)))}
+            {raw(render_markdown(resolve_refs(@msg.content, @repo, @work_items)))}
           </div>
 
           <%!-- Revision history (expanded via ✎ edited) — prior versions, oldest → newest --%>
@@ -206,7 +207,7 @@ defmodule CouncilHubUiWeb.MessageComponents do
                                                                                               else: ""}
               </span>
               <div class="text-[var(--ch-text-lo)] line-through opacity-70">
-                {raw(render_markdown(resolve_commit_refs(prev.content, @repo)))}
+                {raw(render_markdown(resolve_refs(prev.content, @repo, @work_items)))}
               </div>
             </div>
           </div>
@@ -306,6 +307,7 @@ defmodule CouncilHubUiWeb.MessageComponents do
   attr :msg, :map, required: true
   attr :collapsed, :boolean, default: false
   attr :repo, :string, default: ""
+  attr :work_items, :string, default: ""
 
   def summary_block(assigns) do
     ~H"""
@@ -331,7 +333,7 @@ defmodule CouncilHubUiWeb.MessageComponents do
         "council-prose text-[var(--ch-text-mid)] transition-all",
         if(@collapsed, do: "line-clamp-2 opacity-60", else: "")
       ]}>
-        {raw(render_markdown(resolve_commit_refs(@msg.content, @repo)))}
+        {raw(render_markdown(resolve_refs(@msg.content, @repo, @work_items)))}
       </div>
       <div
         :if={parse_reactions(Map.get(@msg, :reactions)) != %{}}

@@ -375,11 +375,13 @@
               msg={msg}
               collapsed={MapSet.member?(@collapsed_summaries, msg.id)}
               repo={Map.get(@active_room, :repo, "")}
+              work_items={Map.get(@active_room, :work_items, "")}
             />
           <% else %>
             <.message_bubble
               msg={msg}
               repo={Map.get(@active_room, :repo, "")}
+              work_items={Map.get(@active_room, :work_items, "")}
               compact={@view_compact}
               revisions={Map.get(@revisions, msg.id)}
             />

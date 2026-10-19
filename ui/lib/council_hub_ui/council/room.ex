@@ -14,6 +14,7 @@ defmodule CouncilHubUi.Council.Room do
     field :related_rooms, :string, default: ""
     field :visibility, :string, default: "public"
     field :repo, :string, default: ""
+    field :work_items, :string, default: ""
     field :created_at, :naive_datetime
     field :updated_at, :naive_datetime
 

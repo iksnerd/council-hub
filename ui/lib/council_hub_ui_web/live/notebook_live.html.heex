@@ -256,7 +256,9 @@
                       :if={Map.get(entry, :retracted_at) == nil}
                       class="council-prose text-[12px] leading-relaxed"
                     >
-                      {raw(render_markdown(resolve_commit_refs(entry.content, entry.repo)))}
+                      {raw(
+                        render_markdown(resolve_refs(entry.content, entry.repo, entry.work_items))
+                      )}
                     </div>
                   </div>
               <% end %>
@@ -386,7 +388,9 @@
                     "council-prose text-[12px] leading-relaxed",
                     @view_compact && "line-clamp-1"
                   ]}>
-                    {raw(render_markdown(resolve_commit_refs(entry.content, entry.repo)))}
+                    {raw(
+                      render_markdown(resolve_refs(entry.content, entry.repo, entry.work_items))
+                    )}
                   </div>
                   <%!-- Knowledge relations: supersession + typed link graph (read-only here) --%>
                   <div

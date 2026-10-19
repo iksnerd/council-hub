@@ -60,6 +60,20 @@ defmodule CouncilHubUi.CouncilNotebookTest do
       assert Enum.at(entries, 1).repo == ""
     end
 
+    test "carries the owning room's work_items template" do
+      room =
+        create_room(%{
+          id: "nb-wi",
+          project: "wi-proj",
+          work_items: "https://tracker.example.com/items/{id}"
+        })
+
+      create_message(%{room_id: room.id, content: "closed {wi:7}", message_type: "action"})
+
+      [entry] = Council.notebook_entries(%{"project" => "wi-proj"})
+      assert entry.work_items == "https://tracker.example.com/items/{id}"
+    end
+
     test "excludes other projects" do
       seed_project()
 
