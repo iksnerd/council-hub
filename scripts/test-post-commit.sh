@@ -14,6 +14,7 @@ POSTS_LOG="$TMP/posts.log"
 export POSTS_LOG
 trap 'rm -rf "$TMP"' EXIT
 FAILS=0
+SEQ=0
 
 setup_repo() {
   rm -rf "$TMP/repo" && mkdir -p "$TMP/repo/.githooks" "$TMP/repo/scripts" && cd "$TMP/repo"
@@ -35,7 +36,8 @@ PY
 }
 
 commit_file() { # name subject room
-  printf '%s\n' "$1-$(date +%s%N 2>/dev/null || date +%s)-$RANDOM" > "$1.txt"
+  SEQ=$((SEQ + 1))
+  printf '%s\n' "$1-$SEQ-$(date +%s)" > "$1.txt"
   git add "$1.txt"
   git commit -q -m "$2
 

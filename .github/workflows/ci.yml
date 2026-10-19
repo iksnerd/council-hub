@@ -7,6 +7,10 @@ on:
   push:
     tags: [ "v*.*.*" ]
 
+# Nothing here writes to the repo or the API; read-only is enough.
+permissions:
+  contents: read
+
 jobs:
   go-ci:
     name: Go Tests and Linting
@@ -29,11 +33,16 @@ jobs:
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:
-          version: latest
+          # Pinned: a new linter release must not fail a tag build, and tags cannot be moved.
+          version: v2.11.4
           working-directory: mcp-server
 
       - name: Run Go tests
         run: CGO_ENABLED=1 go test -tags sqlite_fts5 -v ./...
+
+      - name: Test the Council-Room post-commit hook
+        working-directory: .
+        run: sh scripts/test-post-commit.sh
 
   elixir-ci:
     name: Elixir Tests and Linting
