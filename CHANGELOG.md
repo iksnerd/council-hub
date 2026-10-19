@@ -4,6 +4,22 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.63.3] - 2026-10-20
+
+Found on the live hub minutes after 0.63.2 was rolled: a cluster is mixed-version during every rolling upgrade, and 0.63.2 broke against a peer still on 0.63.1. No schema change.
+
+### Fixed
+- **A peer on the previous release no longer loses its rooms from a cluster `list_rooms`.** 0.63.2 called a function (`list_rooms_for_cluster`) that a 0.63.1 peer does not have; the call raised `:undef` and the peer's rooms vanished behind a raw exception dump. An older peer is now retried with the previous query, its rooms appear without message counts or pinned excerpts, and the reply carries one readable line per node ("runs an older version (v0.63.1) without list_rooms_for_cluster; ..."). The raw error goes to the log.
+- **The resolved-room count tolerates an older peer.** Its endpoint is retried with the previous query (at most 100 rooms) and the reply says the count may be low. Go used to discard that warning; it now reaches the reply and the structured output.
+- **`search_messages(work_item=...)` returned the whole of an older peer's messages**, because the old peer ignores the parameter, with no warning. The results are now filtered on the reading node and the reply says the peer's list may be short.
+- **A missing `decision_count` or `synthesis_count` from an older peer reads as unknown, not 0**, and an older peer's rooms no longer show "0 msgs".
+
+### Changed
+- Cluster warnings are one readable line per node (unreachable, timed out, older version without X, failed while answering) instead of a raw error tuple.
+- **CLAUDE.md** records the rule: any new cross-node Phoenix function or internal endpoint needs a fallback for the previous release, and is tested with the previous release image as one node.
+
+Verified on a real two-node cluster in both directions (new node reading an old peer: 22 of 22 checks; old node reading a new peer: 7 of 7), plus the same-version run (35 of 35, peer-down 7 of 7, recovery in about 6 seconds).
+
 ## [0.63.2] - 2026-10-20
 
 The cluster-completeness round after 0.63.1: the gaps between the default cluster reads and the local ones, three bugs found by an audit, and fixes to the tooling around the release. No schema change.
