@@ -472,15 +472,16 @@ func (r *Registry) RegisterTools() {
 			"project=… → the TIMELINE: a live query over the ledger, nothing stored. Typed messages (decision, plan, action, synthesis, note) from every room in the project, woven chronologically and grouped by day, with {sha:…} refs resolved. Use it to see how a project unfolded — standups, retros, onboarding. " +
 			"notebook_id=… → a curated NOTEBOOK: a stored outline you assemble with edit_notebook, interleaving prose with transcluded messages and rooms (refs resolve live; nothing is copied). Work items self-sort — room_refs by their room's status, tasks by their own — so a standing list like current-work stays true without hand-editing. Use it for a hand-curated document or a work list. " +
 			"On a large notebook, an oversized-result error means retry with level=1,status=open, not re-reading a saved file — that combination has cut a 237-entry notebook by over 90%. " +
-			"Timeline-only params: types, since, until, after_id (delta reads — the JSON footer carries latest_message_id), limit, cluster_wide. Notebook-only: level, status. The timeline footer lists the project's notebooks. Notebooks are node-local.",
+			"Timeline-only params: types, since, until, after_id (delta reads — the JSON footer carries latest_message_id), cluster_wide. Notebook-only: level, status, entry_id; project and limit also narrow a notebook. The timeline footer lists the project's notebooks. Notebooks are node-local.",
 		InputSchema: schema(nil, map[string]map[string]any{
-			"project":      prop("string", "Project whose rooms are compiled into the timeline (use this OR notebook_id)."),
+			"project":      prop("string", "Timeline: project whose rooms are compiled. With notebook_id: keep only that project's work items (room_refs in the project or with id '<project>-…', tasks labelled '<project>:', '<project>/' or '[<project>]')."),
+			"entry_id":     prop("string", "Notebook only: read ONE entry in full (no notebook_id needed) — e.g. a task whose long label the level clip cut short."),
 			"notebook_id":  prop("string", "Curated notebook outline to read (use this OR project). Created via edit_notebook(action=create)."),
 			"types":        prop("string", "Timeline only: comma-separated message types to include (default: decision,action,synthesis,note). E.g. 'decision' for a decision log, 'decision,action,synthesis,critique' for a wider view."),
 			"since":        prop("string", "Timeline only: ISO timestamp (e.g. 2026-04-01T00:00:00). Only entries at or after this time."),
 			"until":        prop("string", "Timeline only: ISO timestamp (e.g. 2026-04-30T23:59:59). Only entries at or before this time."),
 			"after_id":     prop("string", "Timeline only: return only entries with message ID greater than this value. For delta reads — pair with the latest_message_id from the previous read's JSON footer."),
-			"limit":        prop("string", "Timeline only: max entries (default 100, max 500). When truncating, the most recent entries are kept."),
+			"limit":        prop("string", "Max entries; the most recent are kept. Timeline: default 100, max 500. Notebook: default all, applied after status/project filters."),
 			"level":        prop("string", "Notebook (notebook_id) only: NLS-style structural level-clip. An integer N collapses each prose entry to its markdown headings down to depth N (a table of contents) and clips transcluded message bodies to their first line; tasks and room_refs always render. Omit or 0 for the full outline. The structural counterpart to read_transcript's truncate=line-one."),
 			"status":       prop("string", "Notebook (notebook_id) only: keep only work items in this state — 'open', 'doing' or 'done'. Tasks and room_refs both honour it (a room_ref is open until its room resolves). Omit for everything. Pair with level to answer 'what is open' without rendering finished work — on a large standing notebook the done sections are most of the payload."),
 			"cluster_wide": prop("string", "Timeline only: set to 'true' to compile the timeline from all cluster nodes. Default: local only."),
@@ -500,8 +501,11 @@ func (r *Registry) RegisterTools() {
 				"  start / check / uncheck (entry_id) — move a task to in-progress / done / open\n"+
 				"  move     (entry_id, after_entry_id) — reorder; empty after_entry_id means the top\n"+
 				"  remove   (entry_id) — drop one entry\n"+
-				"  delete   (notebook_id) — remove the whole notebook; referenced messages are untouched",
-				[]string{"create", "add", "update", "start", "check", "uncheck", "move", "remove", "delete"}),
+				"  delete   (notebook_id, confirm) — WHOLE notebook, not one entry (that is remove). confirm must equal the notebook id or its entry count. Soft delete: a markdown snapshot is saved under archives/notebooks and restore undoes it\n"+
+				"  restore  (notebook_id) — undo a delete\n"+
+				"  purge    (notebook_id, confirm) — permanently remove a soft-deleted notebook; cannot be undone",
+				[]string{"create", "add", "update", "start", "check", "uncheck", "move", "remove", "delete", "restore", "purge"}),
+			"confirm":        prop("string", "delete/purge only: must equal the notebook_id or its current entry count. Guards against deleting a whole notebook when you meant one entry."),
 			"notebook_id":    prop("string", "Notebook identifier (required for create, delete, add). E.g. 'release-notes-v1'."),
 			"project":        prop("string", "Project the notebook belongs to (create only). Omit for a GLOBAL notebook — e.g. cross-project TODOs or standing checklists: it can ref messages from any room and is listed in every project's timeline footer and /notebook view."),
 			"title":          prop("string", "Human-readable title (create only)."),

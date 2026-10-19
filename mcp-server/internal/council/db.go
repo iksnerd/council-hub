@@ -379,6 +379,7 @@ func initSchema(db *sql.DB) error {
 		`ALTER TABLE messages ADD COLUMN revised INTEGER DEFAULT 0`,
 		`ALTER TABLE messages ADD COLUMN retracted_at DATETIME`,
 		`ALTER TABLE messages ADD COLUMN retracted_by TEXT DEFAULT ''`,
+		`ALTER TABLE notebooks ADD COLUMN deleted_at DATETIME`,
 	}
 	for _, m := range migrations {
 		_, _ = db.Exec(m) // Ignore "duplicate column" errors for already-migrated DBs

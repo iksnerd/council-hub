@@ -4,7 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
+	"time"
 
 	"council-hub/internal/council"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -26,10 +31,111 @@ type EditNotebookInput struct {
 	RefIDs       string `json:"ref_ids"`
 	Prose        string `json:"prose"`
 	AfterEntryID string `json:"after_entry_id"`
+	// Confirm guards whole-notebook delete and purge: it must equal the
+	// notebook id (or its current entry count).
+	Confirm string `json:"confirm"`
+}
+
+// completionMarkerRe matches a task label that opens with a "this is finished"
+// marker (DONE, done:, COMPLETE, ✅, [x]). Adding such a task does not close
+// anything: a new task starts open, and only action=check closes one.
+var completionMarkerRe = regexp.MustCompile(`(?i)^\s*(\[x\]|✅|done\b|complete(d)?\b)`)
+
+// foreignArgs rejects arguments that belong to a different action. A silently
+// ignored argument is how delete+entry_id wiped a 419-entry notebook (#01a14ee7):
+// the caller meant "remove this entry" and got "delete the notebook".
+func foreignArgs(args EditNotebookInput) string {
+	type field struct{ name, val string }
+	whole := []field{{"entry_id", args.EntryID}, {"ref_id", args.RefID}, {"room_id", args.RoomID},
+		{"ref_ids", args.RefIDs}, {"prose", args.Prose}, {"kind", args.Kind}, {"after_entry_id", args.AfterEntryID}}
+	switch args.Action {
+	case "delete", "restore", "purge":
+		for _, f := range whole {
+			if f.val == "" {
+				continue
+			}
+			if f.name == "entry_id" && args.Action == "delete" {
+				return "Error: delete removes the whole notebook; did you mean remove? (action=remove, entry_id=... drops one entry.)"
+			}
+			return fmt.Sprintf("Error: action=%s takes notebook_id (and confirm), not %s — it acts on the whole notebook.", args.Action, f.name)
+		}
+	case "create":
+		for _, f := range whole {
+			if f.val != "" {
+				return fmt.Sprintf("Error: action=create takes notebook_id, project and title, not %s.", f.name)
+			}
+		}
+	}
+	if args.Confirm != "" && args.Action != "delete" && args.Action != "purge" {
+		return fmt.Sprintf("Error: confirm only applies to action=delete or purge, not %s.", args.Action)
+	}
+	return ""
+}
+
+// entryCount returns a notebook's current entry count, or -1 if unreadable.
+func (r *Registry) entryCount(notebookID string) int {
+	if notebookID == "" {
+		return -1
+	}
+	n, err := r.Server.GetNotebook(notebookID)
+	if err != nil {
+		return -1
+	}
+	return n.EntryCount
+}
+
+// notebookOf resolves the notebook a write targets: the given notebook_id, or
+// the owner of entry_id.
+func (r *Registry) notebookOf(notebookID, entryID string) string {
+	if notebookID != "" {
+		return notebookID
+	}
+	if entryID == "" {
+		return ""
+	}
+	nb, _ := r.Server.EntryNotebookID(entryID)
+	return nb
+}
+
+// countsNote renders "Entries: before → after." for a write's response.
+func countsNote(before, after int) string {
+	if before < 0 || after < 0 {
+		return ""
+	}
+	return fmt.Sprintf(" Entries: %d → %d.", before, after)
+}
+
+var snapshotNameRe = regexp.MustCompile(`[^A-Za-z0-9._-]`)
+
+// snapshotNotebook writes the notebook as markdown into the archives dir before
+// it is deleted, so even a mistaken delete leaves a readable copy on disk.
+// Returns the path, or "" with a reason when there is nowhere to write.
+func (r *Registry) snapshotNotebook(notebookID string) (string, string) {
+	dir := r.Server.NotebookSnapshotDir()
+	if dir == "" {
+		return "", "no snapshot: in-memory database has no archives directory"
+	}
+	text, err := r.outlineText(notebookID, 0, council.OutlineFilter{})
+	if err != nil {
+		return "", "snapshot failed: " + err.Error()
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", "snapshot failed: " + err.Error()
+	}
+	name := fmt.Sprintf("%s-%s.md", snapshotNameRe.ReplaceAllString(notebookID, "_"), time.Now().UTC().Format("20060102T150405Z"))
+	path := filepath.Join(dir, name)
+	if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
+		return "", "snapshot failed: " + err.Error()
+	}
+	return path, ""
 }
 
 func (r *Registry) handleEditNotebook(ctx context.Context, req *mcp.CallToolRequest, args EditNotebookInput) (*mcp.CallToolResult, ToolOutput, error) {
 	msg := textResult
+
+	if e := foreignArgs(args); e != "" {
+		return msg(e)
+	}
 
 	switch args.Action {
 	case "create":
@@ -43,17 +149,56 @@ func (r *Registry) handleEditNotebook(ctx context.Context, req *mcp.CallToolRequ
 			return msg(fmt.Sprintf("Error: %s", err.Error()))
 		}
 		r.Server.Logger.Info("Notebook created", "notebook_id", args.NotebookID, "project", args.Project)
-		return msg(fmt.Sprintf("Notebook '%s' created. Add entries with edit_notebook(action=add, notebook_id=%s, ref_id=<message_id>) or prose sections with action=add, prose=<markdown>. Read it with read_notebook(notebook_id=%s).", args.NotebookID, args.NotebookID, args.NotebookID))
+		return msg(fmt.Sprintf("Notebook '%s' created (0 entries). Add entries with edit_notebook(action=add, notebook_id=%s, ref_id=<message_id>) or prose sections with action=add, prose=<markdown>. Read it with read_notebook(notebook_id=%s).", args.NotebookID, args.NotebookID, args.NotebookID))
 
-	case "delete":
+	case "delete", "purge":
 		if args.NotebookID == "" {
 			return msg("Error: notebook_id is required.")
 		}
-		if err := r.Server.DeleteNotebook(args.NotebookID); err != nil {
+		count := -1
+		if args.Action == "delete" {
+			count = r.entryCount(args.NotebookID)
+			if count < 0 {
+				_, err := r.Server.GetNotebook(args.NotebookID)
+				return msg(fmt.Sprintf("Error: %s", err.Error()))
+			}
+		} else if n, err := r.Server.GetNotebookIncludingDeleted(args.NotebookID); err == nil {
+			count = n.EntryCount
+		}
+		if count >= 0 && args.Confirm != args.NotebookID && args.Confirm != strconv.Itoa(count) {
+			return msg(fmt.Sprintf("Error: action=%s affects the WHOLE notebook '%s' (%d entries). Pass confirm=%s (the notebook id) or confirm=%d (its entry count) to proceed. To drop a single entry use action=remove, entry_id=...", args.Action, args.NotebookID, count, args.NotebookID, count))
+		}
+		if args.Action == "purge" {
+			removed, err := r.Server.PurgeNotebook(args.NotebookID)
+			if err != nil {
+				return msg(fmt.Sprintf("Error: %s", err.Error()))
+			}
+			r.Server.Logger.Warn("Notebook purged", "notebook_id", args.NotebookID, "entries", removed)
+			return msg(fmt.Sprintf("Notebook '%s' PURGED: %d entries permanently removed (referenced messages are untouched). This cannot be undone.", args.NotebookID, removed))
+		}
+		snapPath, snapNote := r.snapshotNotebook(args.NotebookID)
+		removed, err := r.Server.DeleteNotebook(args.NotebookID)
+		if err != nil {
 			return msg(fmt.Sprintf("Error: %s", err.Error()))
 		}
-		r.Server.Logger.Info("Notebook deleted", "notebook_id", args.NotebookID)
-		return msg(fmt.Sprintf("Notebook '%s' deleted (referenced messages are untouched).", args.NotebookID))
+		r.Server.Logger.Info("Notebook soft-deleted", "notebook_id", args.NotebookID, "entries", removed)
+		out := fmt.Sprintf("Notebook '%s' deleted: %d entries removed from view (referenced messages are untouched). Soft delete — entries are kept; undo with edit_notebook(action=restore, notebook_id=%s), or hard-delete with action=purge.", args.NotebookID, removed, args.NotebookID)
+		if snapPath != "" {
+			out += " Markdown snapshot: " + snapPath
+		} else if snapNote != "" {
+			out += " (" + snapNote + ")"
+		}
+		return msg(out)
+
+	case "restore":
+		if args.NotebookID == "" {
+			return msg("Error: notebook_id is required.")
+		}
+		count, err := r.Server.RestoreNotebook(args.NotebookID)
+		if err != nil {
+			return msg(fmt.Sprintf("Error: %s", err.Error()))
+		}
+		return msg(fmt.Sprintf("Notebook '%s' restored with %d entries.", args.NotebookID, count))
 
 	case "add":
 		if args.NotebookID == "" {
@@ -90,6 +235,7 @@ func (r *Registry) handleEditNotebook(ctx context.Context, req *mcp.CallToolRequ
 
 		// Batch add: one call per target was four round trips to put four
 		// room_refs in a notebook. Mirrors update_room's room_ids convention.
+		before := r.entryCount(args.NotebookID)
 		if args.RefIDs != "" {
 			if args.Prose != "" {
 				return msg("Error: ref_ids adds transcluding entries; prose belongs to a single add.")
@@ -134,6 +280,7 @@ func (r *Registry) handleEditNotebook(ctx context.Context, req *mcp.CallToolRequ
 				fmt.Fprintf(&b, ", %d failed", len(failed))
 			}
 			b.WriteString(".")
+			b.WriteString(countsNote(before, r.entryCount(args.NotebookID)))
 			if len(added) > 0 {
 				fmt.Fprintf(&b, "\n**Added:** %s", strings.Join(added, ", "))
 			}
@@ -161,7 +308,14 @@ func (r *Registry) handleEditNotebook(ctx context.Context, req *mcp.CallToolRequ
 			}
 			return msg(fmt.Sprintf("Error: %s", err.Error()))
 		}
-		return msg(fmt.Sprintf("Entry %s added to notebook '%s' (kind: %s).", entryID, args.NotebookID, kind))
+		out := fmt.Sprintf("Entry %s added to notebook '%s' (kind: %s).%s", entryID, args.NotebookID, kind, countsNote(before, r.entryCount(args.NotebookID)))
+		if kind == "task" {
+			if completionMarkerRe.MatchString(args.Prose) {
+				out += " Note: add does not close anything — a new task starts open even though its label reads as finished."
+			}
+			out += fmt.Sprintf(" Close later with action=check, entry_id=%s.", entryID)
+		}
+		return msg(out)
 
 	case "update":
 		if args.EntryID == "" {
@@ -170,45 +324,50 @@ func (r *Registry) handleEditNotebook(ctx context.Context, req *mcp.CallToolRequ
 		if err := validateSize("prose", args.Prose, maxContentLen); err != nil {
 			return msg(fmt.Sprintf("Error: %s", err.Error()))
 		}
+		n := r.entryCount(r.notebookOf(args.NotebookID, args.EntryID))
 		if err := r.Server.UpdateOutlineEntry(args.EntryID, args.Prose); err != nil {
 			return msg(fmt.Sprintf("Error: %s", err.Error()))
 		}
-		return msg(fmt.Sprintf("Entry %s updated.", args.EntryID))
+		return msg(fmt.Sprintf("Entry %s updated.%s", args.EntryID, countsNote(n, n)))
 
 	case "start", "check", "uncheck":
 		if args.EntryID == "" {
 			return msg("Error: entry_id is required.")
 		}
 		status := map[string]string{"start": "doing", "check": "done", "uncheck": "open"}[args.Action]
+		n := r.entryCount(r.notebookOf(args.NotebookID, args.EntryID))
 		if err := r.Server.SetTaskStatus(args.EntryID, status); err != nil {
 			return msg(fmt.Sprintf("Error: %s", err.Error()))
 		}
 		label := map[string]string{"doing": "in progress 🔄", "done": "done ☑", "open": "open ☐"}[status]
-		return msg(fmt.Sprintf("Task %s marked %s.", args.EntryID, label))
+		return msg(fmt.Sprintf("Task %s marked %s.%s", args.EntryID, label, countsNote(n, n)))
 
 	case "remove":
 		if args.EntryID == "" {
 			return msg("Error: entry_id is required.")
 		}
+		nb := r.notebookOf(args.NotebookID, args.EntryID)
+		before := r.entryCount(nb)
 		if err := r.Server.RemoveOutlineEntry(args.EntryID); err != nil {
 			return msg(fmt.Sprintf("Error: %s", err.Error()))
 		}
-		return msg(fmt.Sprintf("Entry %s removed.", args.EntryID))
+		return msg(fmt.Sprintf("Entry %s removed.%s", args.EntryID, countsNote(before, r.entryCount(nb))))
 
 	case "move":
 		if args.EntryID == "" {
 			return msg("Error: entry_id is required.")
 		}
+		n := r.entryCount(r.notebookOf(args.NotebookID, args.EntryID))
 		if err := r.Server.MoveOutlineEntry(args.EntryID, args.AfterEntryID); err != nil {
 			return msg(fmt.Sprintf("Error: %s", err.Error()))
 		}
 		if args.AfterEntryID == "" {
-			return msg(fmt.Sprintf("Entry %s moved to the top.", args.EntryID))
+			return msg(fmt.Sprintf("Entry %s moved to the top.%s", args.EntryID, countsNote(n, n)))
 		}
-		return msg(fmt.Sprintf("Entry %s moved after %s.", args.EntryID, args.AfterEntryID))
+		return msg(fmt.Sprintf("Entry %s moved after %s.%s", args.EntryID, args.AfterEntryID, countsNote(n, n)))
 
 	default:
-		return msg(fmt.Sprintf("Error: unknown action '%s'. Valid actions: create, add, update, check, uncheck, remove, move, delete.", args.Action))
+		return msg(fmt.Sprintf("Error: unknown action '%s'. Valid actions: create, add, update, start, check, uncheck, remove, move, delete, restore, purge.", args.Action))
 	}
 }
 
@@ -228,13 +387,23 @@ func statusWanted(filter, state string) bool {
 	return filter == "" || filter == state
 }
 
-func (r *Registry) renderOutline(notebookID string, level int, status string) (*mcp.CallToolResult, ToolOutput, error) {
-	msg := textResult
-
-	notebook, entries, err := r.Server.GetOutline(notebookID)
+func (r *Registry) renderOutline(notebookID string, level int, f council.OutlineFilter) (*mcp.CallToolResult, ToolOutput, error) {
+	text, err := r.outlineText(notebookID, level, f)
 	if err != nil {
-		return msg(fmt.Sprintf("Error: %s", err.Error()))
+		return textResult(fmt.Sprintf("Error: %s", err.Error()))
 	}
+	return textResult(text)
+}
+
+// outlineText renders a notebook outline as markdown (also used for the
+// pre-delete snapshot). f narrows the work items shown; see council.OutlineFilter.
+func (r *Registry) outlineText(notebookID string, level int, f council.OutlineFilter) (string, error) {
+	status := f.Status
+	notebook, entries, err := r.Server.GetOutlineFiltered(notebookID, f)
+	if err != nil {
+		return "", err
+	}
+	filtered := f.Status != "" || f.Project != "" || f.EntryID != "" || f.Limit > 0
 
 	var b strings.Builder
 	title := notebook.Title
@@ -246,11 +415,19 @@ func (r *Registry) renderOutline(notebookID string, level int, status string) (*
 	if scope == "" {
 		scope = "global (cross-project)"
 	}
-	fmt.Fprintf(&b, "**Notebook:** %s | **Project:** %s | **Entries:** %d\n---\n", notebook.ID, scope, len(entries))
+	fmt.Fprintf(&b, "**Notebook:** %s | **Project:** %s | **Entries:** %d", notebook.ID, scope, notebook.EntryCount)
+	if filtered {
+		fmt.Fprintf(&b, " | **Showing:** %d", len(entries))
+	}
+	b.WriteString("\n---\n")
 
 	if len(entries) == 0 {
+		if filtered && notebook.EntryCount > 0 {
+			b.WriteString("\nNo entries match the filter (status/project/entry_id). Drop a filter to see the rest.\n")
+			return b.String(), nil
+		}
 		fmt.Fprintf(&b, "\nEmpty notebook. Add entries with edit_notebook(action=add, notebook_id=%s, ref_id=<message_id> or prose=<markdown>).\n", notebook.ID)
-		return msg(b.String())
+		return b.String(), nil
 	}
 
 	// Self-sorting entries are pulled out and regrouped so the notebook stays true
@@ -349,7 +526,7 @@ func (r *Registry) renderOutline(notebookID string, level int, status string) (*
 		}
 	}
 
-	return msg(b.String())
+	return b.String(), nil
 }
 
 // roomRefDone reports whether a transcluded room_ref counts as finished work.
