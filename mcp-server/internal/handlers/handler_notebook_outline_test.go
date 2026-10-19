@@ -327,7 +327,7 @@ func TestHandleEditNotebookDelete(t *testing.T) {
 	reg, msgID := setupOutlineHandler(t)
 
 	mustAddEntry(t, reg, EditNotebookInput{NotebookID: "rel-notes", RefID: msgID})
-	text := editNotebook(t, reg, EditNotebookInput{Action: "delete", NotebookID: "rel-notes"})
+	text := editNotebook(t, reg, EditNotebookInput{Action: "delete", NotebookID: "rel-notes", Confirm: "rel-notes"})
 	if !strings.Contains(text, "deleted") {
 		t.Errorf("expected deletion confirmation, got: %s", text)
 	}

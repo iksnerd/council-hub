@@ -3,6 +3,7 @@ package council
 import (
 	"database/sql"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -20,6 +21,10 @@ type Notebook struct {
 	EntryCount int
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
+	// DeletedAt is set by a soft delete (DeleteNotebook). A soft-deleted notebook
+	// is invisible to every read and list but its entries are intact, so
+	// RestoreNotebook can bring it back; PurgeNotebook is the only hard delete.
+	DeletedAt *time.Time
 }
 
 // OutlineEntry is one row of a notebook outline. Kind "prose" carries freeform
@@ -53,9 +58,26 @@ type OutlineEntry struct {
 	RefRepo    string
 	RefFound   bool
 
-	// room_ref only: the room's live status and topic.
-	RefStatus string
-	RefTopic  string
+	// room_ref only: the room's live status, topic, and owning project.
+	RefStatus  string
+	RefTopic   string
+	RefProject string
+}
+
+// OutlineFilter pushes read-time narrowing down into the GetOutline query so
+// entries that will not render are never resolved. Zero value = everything.
+type OutlineFilter struct {
+	// Status keeps only work items (tasks, room_refs) in this state: open, doing
+	// or done. Spine entries (prose, ref, query_ref) are never filtered by it.
+	Status string
+	// Project keeps only work items belonging to the project: a room_ref whose
+	// room is in the project (or whose id starts with "<project>-"), a task whose
+	// label starts with "<project>:", "<project>/" or "[<project>]".
+	Project string
+	// EntryID restricts the result to that single entry (full-text read).
+	EntryID string
+	// Limit keeps only the last N entries after the other filters (0 = all).
+	Limit int
 }
 
 // validOutlineKinds gates the entry kinds accepted by AddOutlineEntry.
@@ -89,6 +111,10 @@ func (s *Server) CreateNotebook(id, project, title string) error {
 	}
 	rows, _ := res.RowsAffected()
 	if rows == 0 {
+		var deleted sql.NullTime
+		if err := s.DB.QueryRow(`SELECT deleted_at FROM notebooks WHERE id = ?`, id).Scan(&deleted); err == nil && deleted.Valid {
+			return fmt.Errorf("notebook '%s' already exists but is soft-deleted — bring it back with edit_notebook(action=restore, notebook_id=%s)", id, id)
+		}
 		return fmt.Errorf("notebook '%s' already exists", id)
 	}
 	return nil
@@ -96,6 +122,21 @@ func (s *Server) CreateNotebook(id, project, title string) error {
 
 // GetNotebook returns a notebook's metadata including its entry count.
 func (s *Server) GetNotebook(id string) (Notebook, error) {
+	var n Notebook
+	err := s.DB.QueryRow(`
+		SELECT id, project, title, created_at, updated_at,
+		       (SELECT COUNT(*) FROM notebook_entries WHERE notebook_id = notebooks.id)
+		FROM notebooks WHERE id = ? AND deleted_at IS NULL`, id,
+	).Scan(&n.ID, &n.Project, &n.Title, &n.CreatedAt, &n.UpdatedAt, &n.EntryCount)
+	if err == sql.ErrNoRows {
+		return n, s.notebookNotFound(id)
+	}
+	return n, err
+}
+
+// GetNotebookIncludingDeleted is GetNotebook that also sees soft-deleted
+// notebooks (for purge confirmation).
+func (s *Server) GetNotebookIncludingDeleted(id string) (Notebook, error) {
 	var n Notebook
 	err := s.DB.QueryRow(`
 		SELECT id, project, title, created_at, updated_at,
@@ -108,6 +149,16 @@ func (s *Server) GetNotebook(id string) (Notebook, error) {
 	return n, err
 }
 
+// notebookNotFound builds the not-found error, pointing at restore when the
+// notebook exists but is soft-deleted.
+func (s *Server) notebookNotFound(id string) error {
+	var deleted sql.NullTime
+	if err := s.DB.QueryRow(`SELECT deleted_at FROM notebooks WHERE id = ?`, id).Scan(&deleted); err == nil && deleted.Valid {
+		return fmt.Errorf("notebook '%s' is soft-deleted — bring it back with edit_notebook(action=restore, notebook_id=%s)", id, id)
+	}
+	return fmt.Errorf("notebook '%s' not found", id)
+}
+
 // ListNotebooks returns notebooks, most recently updated first. With a project
 // it returns that project's notebooks plus global ones (project = "") — global
 // notebooks belong to every view. With an empty project it returns everything.
@@ -115,10 +166,10 @@ func (s *Server) ListNotebooks(project string) ([]Notebook, error) {
 	query := `
 		SELECT id, project, title, created_at, updated_at,
 		       (SELECT COUNT(*) FROM notebook_entries WHERE notebook_id = notebooks.id)
-		FROM notebooks`
+		FROM notebooks WHERE deleted_at IS NULL`
 	var args []any
 	if project != "" {
-		query += ` WHERE project IN (?, '')`
+		query += ` AND project IN (?, '')`
 		args = append(args, normalizeProject(project))
 	}
 	query += ` ORDER BY updated_at DESC`
@@ -140,22 +191,97 @@ func (s *Server) ListNotebooks(project string) ([]Notebook, error) {
 	return notebooks, rows.Err()
 }
 
-// DeleteNotebook removes a notebook and its entries. Referenced ledger
-// messages are untouched — refs are pointers, not copies.
-func (s *Server) DeleteNotebook(id string) error {
+// DeleteNotebook soft-deletes a notebook: it stamps deleted_at and leaves every
+// entry in place, so the notebook vanishes from reads and lists but
+// RestoreNotebook brings it back whole. Returns the number of entries the
+// notebook held. A hard delete needs the explicit PurgeNotebook.
+func (s *Server) DeleteNotebook(id string) (int, error) {
 	s.Mu.Lock()
 	defer s.Mu.Unlock()
 
-	res, err := s.DB.Exec(`DELETE FROM notebooks WHERE id = ?`, id)
+	n, err := s.GetNotebook(id)
 	if err != nil {
-		return err
+		return 0, err
 	}
-	rows, _ := res.RowsAffected()
-	if rows == 0 {
-		return fmt.Errorf("notebook '%s' not found", id)
+	if _, err := s.DB.Exec(`UPDATE notebooks SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?`, id); err != nil {
+		return 0, err
 	}
-	_, err = s.DB.Exec(`DELETE FROM notebook_entries WHERE notebook_id = ?`, id)
-	return err
+	return n.EntryCount, nil
+}
+
+// RestoreNotebook reverses a soft delete and returns the entry count restored.
+func (s *Server) RestoreNotebook(id string) (int, error) {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+
+	var deleted sql.NullTime
+	err := s.DB.QueryRow(`SELECT deleted_at FROM notebooks WHERE id = ?`, id).Scan(&deleted)
+	if err == sql.ErrNoRows {
+		return 0, fmt.Errorf("notebook '%s' not found", id)
+	}
+	if err != nil {
+		return 0, err
+	}
+	if !deleted.Valid {
+		return 0, fmt.Errorf("notebook '%s' is not deleted — nothing to restore", id)
+	}
+	if _, err := s.DB.Exec(`UPDATE notebooks SET deleted_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, id); err != nil {
+		return 0, err
+	}
+	var count int
+	_ = s.DB.QueryRow(`SELECT COUNT(*) FROM notebook_entries WHERE notebook_id = ?`, id).Scan(&count)
+	return count, nil
+}
+
+// PurgeNotebook hard-deletes a notebook and its entries. It only accepts a
+// notebook that was soft-deleted first, so a purge is always a second,
+// deliberate step. Referenced ledger messages are untouched. Returns the
+// number of entries removed.
+func (s *Server) PurgeNotebook(id string) (int, error) {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+
+	var deleted sql.NullTime
+	err := s.DB.QueryRow(`SELECT deleted_at FROM notebooks WHERE id = ?`, id).Scan(&deleted)
+	if err == sql.ErrNoRows {
+		return 0, fmt.Errorf("notebook '%s' not found", id)
+	}
+	if err != nil {
+		return 0, err
+	}
+	if !deleted.Valid {
+		return 0, fmt.Errorf("notebook '%s' is live — soft-delete it first (action=delete), then purge", id)
+	}
+	tx, err := s.DB.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	res, err := tx.Exec(`DELETE FROM notebook_entries WHERE notebook_id = ?`, id)
+	if err != nil {
+		return 0, err
+	}
+	removed, _ := res.RowsAffected()
+	if _, err := tx.Exec(`DELETE FROM notebooks WHERE id = ?`, id); err != nil {
+		return 0, err
+	}
+	return int(removed), tx.Commit()
+}
+
+// NotebookSnapshotDir is where a notebook's markdown snapshot is written before
+// a delete: a "notebooks" subdirectory of the archives dir (kept apart so
+// list_archives, which scans archives/ for room transcripts, never sees them).
+// Empty for an in-memory database, which has no on-disk home.
+func (s *Server) NotebookSnapshotDir() string {
+	if s.DBPath == ":memory:" || s.DBPath == "" {
+		return ""
+	}
+	return filepath.Join(s.archiveDir(), "notebooks")
+}
+
+// EntryNotebookID returns the notebook an entry belongs to.
+func (s *Server) EntryNotebookID(entryID string) (string, error) {
+	return s.entryNotebookLocked(entryID)
 }
 
 // ErrAlreadyReferenced signals that a ref-like entry (ref/room_ref/query_ref)
@@ -448,10 +574,53 @@ func (s *Server) MoveOutlineEntry(entryID, afterEntryID string) error {
 // resolved live. A ref whose message has been deleted comes back with
 // RefFound=false rather than failing the read.
 func (s *Server) GetOutline(notebookID string) (Notebook, []OutlineEntry, error) {
+	return s.GetOutlineFiltered(notebookID, OutlineFilter{})
+}
+
+// outlineFilterSQL turns an OutlineFilter into WHERE fragments. Status and
+// project narrow only work items (task, room_ref); spine entries always pass.
+// Done room_refs are the expensive rows (each joins its latest decision/action),
+// so filtering in SQL means finished work is never resolved at all.
+func outlineFilterSQL(f OutlineFilter) (string, []any) {
+	var clause strings.Builder
+	var args []any
+	if f.EntryID != "" {
+		clause.WriteString(` AND e.id = ?`)
+		args = append(args, f.EntryID)
+	}
+	const roomDone = `(rr.id IS NOT NULL AND rr.status IN ('resolved', 'archived'))`
+	switch f.Status {
+	case "":
+	case "open":
+		clause.WriteString(` AND (e.kind NOT IN ('task', 'room_ref') OR (e.kind = 'task' AND COALESCE(e.status, 'open') = 'open') OR (e.kind = 'room_ref' AND NOT ` + roomDone + `))`)
+	case "doing":
+		clause.WriteString(` AND (e.kind NOT IN ('task', 'room_ref') OR (e.kind = 'task' AND COALESCE(e.status, 'open') = 'doing'))`)
+	case "done":
+		clause.WriteString(` AND (e.kind NOT IN ('task', 'room_ref') OR (e.kind = 'task' AND COALESCE(e.status, 'open') = 'done') OR (e.kind = 'room_ref' AND ` + roomDone + `))`)
+	default:
+		// Unknown state matches no work item (same as the render-time filter did).
+		clause.WriteString(` AND e.kind NOT IN ('task', 'room_ref')`)
+	}
+	if p := normalizeProject(f.Project); p != "" {
+		esc := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(strings.ToLower(p))
+		clause.WriteString(` AND (e.kind NOT IN ('task', 'room_ref')` +
+			` OR (e.kind = 'room_ref' AND (rr.project = ? OR e.ref_id LIKE ? ESCAPE '\'))` +
+			` OR (e.kind = 'task' AND (LOWER(e.prose) LIKE ? ESCAPE '\' OR LOWER(e.prose) LIKE ? ESCAPE '\' OR LOWER(e.prose) LIKE ? ESCAPE '\')))`)
+		args = append(args, p, esc+`-%`, esc+`:%`, esc+`/%`, `[`+esc+`]%`)
+	}
+	return clause.String(), args
+}
+
+// GetOutlineFiltered is GetOutline with read-time narrowing pushed into the
+// query (see OutlineFilter). Entry count in the returned Notebook is the full
+// total, not the filtered count.
+func (s *Server) GetOutlineFiltered(notebookID string, f OutlineFilter) (Notebook, []OutlineEntry, error) {
 	n, err := s.GetNotebook(notebookID)
 	if err != nil {
 		return n, nil, err
 	}
+	f.Status = strings.ToLower(strings.TrimSpace(f.Status))
+	filterSQL, filterArgs := outlineFilterSQL(f)
 
 	// Message refs resolve via m/r; room refs resolve via rr, with the room's
 	// latest decision/action pulled in as the entry's content — so a work-list
@@ -467,7 +636,8 @@ func (s *Server) GetOutline(notebookID string) (Notebook, []OutlineEntry, error)
 		       COALESCE(m.timestamp, lm.timestamp),
 		       COALESCE(r.repo, rr.repo, ''),
 		       COALESCE(rr.status, ''), COALESCE(rr.description, ''),
-		       m.retracted_at, COALESCE(m.retracted_by, '')
+		       m.retracted_at, COALESCE(m.retracted_by, ''),
+		       COALESCE(rr.project, ''), COALESCE(m.revised, 0)
 		FROM notebook_entries e
 		LEFT JOIN messages m ON e.kind = 'ref' AND m.id = e.ref_id
 		LEFT JOIN rooms r ON r.id = m.room_id
@@ -477,16 +647,18 @@ func (s *Server) GetOutline(notebookID string) (Notebook, []OutlineEntry, error)
 			WHERE room_id = rr.id AND message_type IN ('decision', 'action') AND `+liveClause("")+`
 			ORDER BY id DESC LIMIT 1
 		)
-		WHERE e.notebook_id = ?
-		ORDER BY e.position ASC`, notebookID)
+		WHERE e.notebook_id = ?`+filterSQL+`
+		ORDER BY e.position ASC`, append([]any{notebookID}, filterArgs...)...)
 	if err != nil {
 		return n, nil, err
 	}
 	defer func() { _ = rows.Close() }()
 
 	var entries []OutlineEntry
+	var revisedRefs []bool
 	for rows.Next() {
 		var e OutlineEntry
+		var revised bool
 		// COALESCE strips the column's datetime affinity, so the driver hands
 		// back the raw stored string — parse it instead of scanning NullTime.
 		var ts sql.NullString
@@ -495,7 +667,7 @@ func (s *Server) GetOutline(notebookID string) (Notebook, []OutlineEntry, error)
 		if err := rows.Scan(&e.ID, &e.Position, &e.Kind, &e.RefID, &e.Prose, &e.Status,
 			&e.RefFound, &e.RefRoomID, &e.RefAuthor, &e.RefType,
 			&e.RefContent, &e.RefPinned, &ts, &e.RefRepo,
-			&e.RefStatus, &e.RefTopic, &retractedAt, &retractedBy); err != nil {
+			&e.RefStatus, &e.RefTopic, &retractedAt, &retractedBy, &e.RefProject, &revised); err != nil {
 			return n, nil, err
 		}
 		if ts.Valid {
@@ -505,9 +677,14 @@ func (s *Server) GetOutline(notebookID string) (Notebook, []OutlineEntry, error)
 			e.RefContent = DisplayContent(Message{Content: e.RefContent, RetractedAt: retractedAt, RetractedBy: retractedBy})
 		}
 		entries = append(entries, e)
+		revisedRefs = append(revisedRefs, revised)
 	}
 	if err := rows.Err(); err != nil {
 		return n, nil, err
+	}
+	if f.Limit > 0 && len(entries) > f.Limit {
+		entries = entries[len(entries)-f.Limit:]
+		revisedRefs = revisedRefs[len(revisedRefs)-f.Limit:]
 	}
 
 	// Resolve query_refs in Go (a follow-up query each) — "latest <type> in <room>",
@@ -518,7 +695,11 @@ func (s *Server) GetOutline(notebookID string) (Notebook, []OutlineEntry, error)
 		case "query_ref":
 			s.resolveQueryRef(&entries[i])
 		case "ref":
-			s.resolveRefHead(&entries[i])
+			// Only a ref whose stored target was edited (revised=1) can have a
+			// newer head; skip the chain walk for the rest.
+			if revisedRefs[i] {
+				s.resolveRefHead(&entries[i])
+			}
 		}
 	}
 	return n, entries, nil
@@ -601,9 +782,9 @@ func parseStoredTime(s string) time.Time {
 
 func (s *Server) getNotebookLocked(id string) (string, error) {
 	var got string
-	err := s.DB.QueryRow(`SELECT id FROM notebooks WHERE id = ?`, id).Scan(&got)
+	err := s.DB.QueryRow(`SELECT id FROM notebooks WHERE id = ? AND deleted_at IS NULL`, id).Scan(&got)
 	if err == sql.ErrNoRows {
-		return "", fmt.Errorf("notebook '%s' not found", id)
+		return "", s.notebookNotFound(id)
 	}
 	return got, err
 }

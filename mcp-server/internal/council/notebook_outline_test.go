@@ -437,7 +437,7 @@ func TestDeleteNotebook(t *testing.T) {
 	if _, err := s.AddOutlineEntry("ol-nb", "ref", msgID, "", ""); err != nil {
 		t.Fatalf("AddOutlineEntry failed: %v", err)
 	}
-	if err := s.DeleteNotebook("ol-nb"); err != nil {
+	if _, err := s.DeleteNotebook("ol-nb"); err != nil {
 		t.Fatalf("DeleteNotebook failed: %v", err)
 	}
 	if _, err := s.GetNotebook("ol-nb"); err == nil {
@@ -447,7 +447,7 @@ func TestDeleteNotebook(t *testing.T) {
 	if _, err := s.GetMessageByID(msgID); err != nil {
 		t.Errorf("referenced message should survive notebook deletion: %v", err)
 	}
-	if err := s.DeleteNotebook("ghost"); err == nil {
+	if _, err := s.DeleteNotebook("ghost"); err == nil {
 		t.Error("expected error for unknown notebook")
 	}
 }

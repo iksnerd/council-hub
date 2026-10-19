@@ -90,7 +90,7 @@ defmodule CouncilHubUi.CouncilNotebook do
   — they belong to every view. Empty project returns everything.
   """
   def list_notebooks(project \\ "") do
-    base = from n in Notebook, as: :nb
+    base = from n in Notebook, as: :nb, where: is_nil(n.deleted_at)
 
     base =
       if project == "",
@@ -113,7 +113,12 @@ defmodule CouncilHubUi.CouncilNotebook do
     )
   end
 
-  def get_notebook(id), do: Repo.get(Notebook, id)
+  def get_notebook(id) do
+    case Repo.get(Notebook, id) do
+      %Notebook{deleted_at: nil} = nb -> nb
+      _ -> nil
+    end
+  end
 
   @doc """
   A notebook outline's entries in order, with refs transcluded live: message

@@ -390,6 +390,7 @@ func initSchema(db *sql.DB) error {
 		`ALTER TABLE messages ADD COLUMN msg_tags TEXT DEFAULT ''`,
 		`ALTER TABLE messages ADD COLUMN posted_from TEXT DEFAULT ''`,
 		`ALTER TABLE messages ADD COLUMN idempotency_key TEXT DEFAULT ''`,
+		`ALTER TABLE notebooks ADD COLUMN deleted_at DATETIME`,
 	}
 	for _, m := range migrations {
 		_, _ = db.Exec(m) // Ignore "duplicate column" errors for already-migrated DBs

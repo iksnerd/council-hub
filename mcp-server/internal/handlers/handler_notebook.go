@@ -21,6 +21,7 @@ type ReadNotebookInput struct {
 	Limit       string     `json:"limit"`
 	Level       string     `json:"level"`
 	Status      string     `json:"status"`
+	EntryID     string     `json:"entry_id"`
 	ClusterWide StringBool `json:"cluster_wide"`
 }
 
@@ -48,7 +49,14 @@ func (r *Registry) handleReadNotebook(ctx context.Context, req *mcp.CallToolRequ
 	msg := textResult
 
 	// Curated outline mode — notebook_id takes precedence over project.
-	if args.NotebookID != "" {
+	if args.NotebookID != "" || args.EntryID != "" {
+		if args.EntryID != "" && args.NotebookID == "" {
+			nb, err := r.Server.EntryNotebookID(args.EntryID)
+			if err != nil {
+				return msg(fmt.Sprintf("Error: %s", err.Error()))
+			}
+			args.NotebookID = nb
+		}
 		if args.ClusterWide == "true" {
 			return msg("Error: notebook outlines are node-local — read them without cluster_wide.")
 		}
@@ -56,7 +64,19 @@ func (r *Registry) handleReadNotebook(ctx context.Context, req *mcp.CallToolRequ
 		if args.Level != "" {
 			_, _ = fmt.Sscanf(args.Level, "%d", &level)
 		}
-		return r.renderOutline(args.NotebookID, level, strings.ToLower(strings.TrimSpace(args.Status)))
+		limit := 0
+		if args.Limit != "" {
+			_, _ = fmt.Sscanf(args.Limit, "%d", &limit)
+		}
+		if args.EntryID != "" {
+			level = 0 // a single-entry read exists to see the full text
+		}
+		return r.renderOutline(args.NotebookID, level, council.OutlineFilter{
+			Status:  strings.ToLower(strings.TrimSpace(args.Status)),
+			Project: strings.TrimSpace(args.Project),
+			EntryID: strings.TrimSpace(args.EntryID),
+			Limit:   limit,
+		})
 	}
 
 	if args.Project == "" {
