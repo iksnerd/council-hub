@@ -111,12 +111,12 @@ func (r *Registry) resolveInto(id *string) error {
 // "message" type (or empty) omits the trailing "(type)" tag. {sha:...} tokens in
 // the body resolve to commit links using the room's repo (empty repo → bare code
 // spans), matching FormatTranscript.
-func appendMessageBlock(b *strings.Builder, id, ts, author, msgType, content, repo string) {
+func appendMessageBlock(b *strings.Builder, ids *council.ShortIDs, id, ts, author, msgType, content, repo string) {
 	content = council.ResolveCommitRefs(content, repo)
 	if msgType != "" && msgType != "message" {
-		fmt.Fprintf(b, "\n**[#%.8s %s] %s (%s):**\n%s\n", id, ts, author, msgType, content)
+		fmt.Fprintf(b, "\n**[#%s %s] %s (%s):**\n%s\n", ids.Of(id), ts, author, msgType, content)
 	} else {
-		fmt.Fprintf(b, "\n**[#%.8s %s] %s:**\n%s\n", id, ts, author, content)
+		fmt.Fprintf(b, "\n**[#%s %s] %s:**\n%s\n", ids.Of(id), ts, author, content)
 	}
 }
 
@@ -283,4 +283,29 @@ func clientIdentity(req *mcp.CallToolRequest) string {
 		return ""
 	}
 	return strings.TrimSpace(params.ClientInfo.Name)
+}
+
+// roomIDCache hands out per-room ShortIDs for output that spans rooms (the
+// notebook timeline, outlines). One query per room, memoized for the render. A
+// nil cache, or a room it cannot load, prints the plain 8-char prefix.
+type roomIDCache struct {
+	server *council.Server
+	rooms  map[string]*council.ShortIDs
+}
+
+func newRoomIDCache(s *council.Server) *roomIDCache {
+	return &roomIDCache{server: s, rooms: map[string]*council.ShortIDs{}}
+}
+
+// Of returns the display prefix for message id within roomID.
+func (c *roomIDCache) Of(roomID, id string) string {
+	if c == nil || c.server == nil {
+		return (*council.ShortIDs)(nil).Of(id)
+	}
+	ids, ok := c.rooms[roomID]
+	if !ok {
+		ids = c.server.ShortIDsOrDefault(roomID)
+		c.rooms[roomID] = ids
+	}
+	return ids.Of(id)
 }

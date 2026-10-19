@@ -264,8 +264,10 @@ func TestHandleReadTranscriptAfterIDLatestID(t *testing.T) {
 	})
 	text := resultText(res)
 
-	// Header should include latest ID (first 8 chars of UUID)
-	expected := fmt.Sprintf("(latest: #%s)", id3[:8])
+	// Header should include the latest ID as the shortest prefix unique in the room
+	// (at least 8 chars; same-millisecond posts extend it).
+	short := reg.Server.ShortIDsOrDefault("h-transcript-afterid-latest").Of(id3)
+	expected := fmt.Sprintf("(latest: #%s)", short)
 	if !strings.Contains(text, expected) {
 		t.Errorf("expected latest_id in header, got: %s", text)
 	}

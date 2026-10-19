@@ -398,8 +398,9 @@ func (r *Registry) handleGetOrCreateRoom(ctx context.Context, req *mcp.CallToolR
 		messages, _ := r.Server.GetRecentMessages(args.ID, limit)
 		if len(messages) > 0 {
 			fmt.Fprintf(&b, "---\n**Recent messages (%d):**\n", len(messages))
+			ids := r.Server.ShortIDsOrDefault(args.ID)
 			for _, m := range messages {
-				appendMessageBlock(&b, m.ID, utcStamp(m.Timestamp), m.Author, m.MessageType, council.DisplayContent(m), room.Repo)
+				appendMessageBlock(&b, ids, m.ID, utcStamp(m.Timestamp), m.Author, m.MessageType, council.DisplayContent(m), room.Repo)
 			}
 		} else {
 			b.WriteString("No messages yet.\n")
@@ -693,10 +694,11 @@ func (r *Registry) handleReadRoom(ctx context.Context, req *mcp.CallToolRequest,
 		}
 		if lastN > 0 {
 			messages, _ := r.Server.GetRecentMessages(args.RoomID, lastN)
+			ids := r.Server.ShortIDsOrDefault(args.RoomID)
 			if len(messages) > 0 {
 				fmt.Fprintf(&b, "\n---\n**Recent messages (%d):**\n", len(messages))
 				for _, m := range messages {
-					appendMessageBlock(&b, m.ID, utcStamp(m.Timestamp), m.Author, m.MessageType, council.DisplayContent(m), room.Repo)
+					appendMessageBlock(&b, ids, m.ID, utcStamp(m.Timestamp), m.Author, m.MessageType, council.DisplayContent(m), room.Repo)
 				}
 			}
 		}
@@ -772,6 +774,7 @@ func excerptLine(content string, max int) string {
 func (r *Registry) appendRoomSummary(b *strings.Builder, roomID, repo string) {
 	pinned, _ := r.Server.GetPinnedMessage(roomID)
 	latest, _ := r.Server.GetLatestPerType(roomID)
+	ids := r.Server.ShortIDsOrDefault(roomID)
 
 	if pinned == nil && len(latest) == 0 {
 		b.WriteString("\n---\nNo messages yet. Post the first with post_to_room.\n")
@@ -781,7 +784,7 @@ func (r *Registry) appendRoomSummary(b *strings.Builder, roomID, repo string) {
 	b.WriteString("\n---\n")
 	if pinned != nil {
 		b.WriteString("**📌 Pinned:**\n")
-		appendMessageBlock(b, pinned.ID, utcStamp(pinned.Timestamp), pinned.Author, pinned.MessageType, council.DisplayContent(*pinned), repo)
+		appendMessageBlock(b, ids, pinned.ID, utcStamp(pinned.Timestamp), pinned.Author, pinned.MessageType, council.DisplayContent(*pinned), repo)
 	}
 
 	var shown int
@@ -797,7 +800,7 @@ func (r *Registry) appendRoomSummary(b *strings.Builder, roomID, repo string) {
 			if pinned != nil && m.ID == pinned.ID {
 				continue
 			}
-			appendMessageBlock(b, m.ID, utcStamp(m.Timestamp), m.Author, m.MessageType, council.DisplayContent(m), repo)
+			appendMessageBlock(b, ids, m.ID, utcStamp(m.Timestamp), m.Author, m.MessageType, council.DisplayContent(m), repo)
 		}
 	}
 

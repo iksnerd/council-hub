@@ -77,8 +77,9 @@ func (r *Registry) handleSearchMessages(ctx context.Context, req *mcp.CallToolRe
 				b.WriteString("No messages found matching the given filters.")
 			} else {
 				fmt.Fprintf(&b, "Found %d message(s):\n\n", len(messages))
+				semIDs := newRoomIDCache(r.Server)
 				for _, m := range messages {
-					fmt.Fprintf(&b, "**[#%.8s %s] %s (%s):** %s\n\n", m.ID, m.Timestamp.Format("2006-01-02"), m.Author, m.MessageType, council.DisplayContent(m))
+					fmt.Fprintf(&b, "**[#%s %s] %s (%s):** %s\n\n", semIDs.Of(m.RoomID, m.ID), m.Timestamp.Format("2006-01-02"), m.Author, m.MessageType, council.DisplayContent(m))
 				}
 			}
 			return msg(b.String())
