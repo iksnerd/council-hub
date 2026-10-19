@@ -18,6 +18,7 @@ func TestHandleGetDigestCluster(t *testing.T) {
 					"room_id":                "digest-room",
 					"new_message_count":      5,
 					"latest_message_excerpt": "A new important update",
+					"posted_from":            []string{"tree-a", "tree-b"},
 					"source_node":            "node@10.0.0.1",
 				},
 			},
@@ -42,6 +43,9 @@ func TestHandleGetDigestCluster(t *testing.T) {
 	}
 	if !strings.Contains(text, "node@10.0.0.1") {
 		t.Errorf("expected node tag, got: %s", text)
+	}
+	if !strings.Contains(text, "tree-a") || !strings.Contains(text, "tree-b") {
+		t.Errorf("expected peer posted_from to survive the merge, got: %s", text)
 	}
 }
 

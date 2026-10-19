@@ -70,6 +70,13 @@ defmodule CouncilHubUiWeb.MessageComponents do
             <span class="text-[12px] font-semibold" style={"color: #{author_hex(@msg.author)}"}>
               {@msg.author}
             </span>
+            <span
+              :if={posted_from_label(@msg)}
+              class="text-[10px] text-[var(--ch-text-lo)] font-mono"
+              title={"posted from #{Map.get(@msg, :posted_from)}"}
+            >
+              @{posted_from_label(@msg)}
+            </span>
             <span class={[
               "text-[9px] font-medium uppercase tracking-wider px-1.5 py-px rounded",
               type_color(@msg.message_type)
@@ -281,6 +288,13 @@ defmodule CouncilHubUiWeb.MessageComponents do
       </div>
     </div>
     """
+  end
+
+  # `@basename` shown beside the author when it differs from the author (mirror of
+  # the Go transcript header rule). nil hides it.
+  defp posted_from_label(msg) do
+    label = msg |> Map.get(:posted_from) |> CouncilHubUi.CouncilDigest.display_posted_from()
+    if label != "" and label != msg.author, do: label
   end
 
   # Arrow for a typed link: outgoing (this → other) vs incoming (other → this).

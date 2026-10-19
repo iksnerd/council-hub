@@ -77,10 +77,11 @@ type ClusterNotebookResult struct {
 }
 
 type ClusterDigestResult struct {
-	RoomID               string `json:"room_id"`
-	NewMessageCount      int    `json:"new_message_count"`
-	LatestMessageExcerpt string `json:"latest_message_excerpt"`
-	SourceNode           string `json:"source_node"`
+	RoomID               string   `json:"room_id"`
+	NewMessageCount      int      `json:"new_message_count"`
+	LatestMessageExcerpt string   `json:"latest_message_excerpt"`
+	PostedFrom           []string `json:"posted_from,omitempty"`
+	SourceNode           string   `json:"source_node"`
 }
 
 func formatClusterWarnings(b *strings.Builder, warnings []string) {
@@ -196,6 +197,7 @@ func clusterDigestFromLocal(d council.DigestEntry) ClusterDigestResult {
 		RoomID:               d.RoomID,
 		NewMessageCount:      d.NewMessages,
 		LatestMessageExcerpt: d.LatestExcerpt,
+		PostedFrom:           d.PostedFrom,
 		SourceNode:           localSourceNode(),
 	}
 }

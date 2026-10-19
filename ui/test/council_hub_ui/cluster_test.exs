@@ -352,6 +352,22 @@ defmodule CouncilHubUi.ClusterTest do
     end
   end
 
+  describe "get_digest posted_from" do
+    test "carries posted_from through the cluster merge" do
+      create_room(%{id: "cluster-pf-room", project: "pf-proj"})
+      create_message(%{room_id: "cluster-pf-room", posted_from: "/x/tree-a"})
+
+      since =
+        NaiveDateTime.utc_now()
+        |> NaiveDateTime.add(-86400, :second)
+        |> NaiveDateTime.to_iso8601()
+
+      result = Cluster.get_digest(%{"project" => "pf-proj", "since" => since})
+
+      assert hd(result.results).posted_from == ["tree-a"]
+    end
+  end
+
   describe "get_digest edge cases" do
     test "returns empty results for unknown project" do
       result = Cluster.get_digest(%{"project" => "no-such-project-xyz", "since" => ""})

@@ -5,6 +5,36 @@ defmodule CouncilHubUiWeb.CouncilComponentsMessageTest do
 
   alias CouncilHubUiWeb.CouncilComponents
 
+  describe "message_bubble posted_from" do
+    defp bubble(author, posted_from) do
+      render_component(&CouncilComponents.message_bubble/1, %{
+        msg: %{
+          id: "uuid-pf",
+          author: author,
+          content: "body",
+          message_type: "thought",
+          reply_to: "",
+          posted_from: posted_from,
+          timestamp: ~N[2026-03-29 14:00:00]
+        }
+      })
+    end
+
+    test "shows @basename of a path when it differs from the author" do
+      assert bubble("Claude", "/srv/u/my-repo/") =~ "@my-repo"
+    end
+
+    test "shows a client name as-is" do
+      assert bubble("Claude", "claude-code") =~ "@claude-code"
+    end
+
+    test "hidden when equal to the author, empty, or absent" do
+      refute bubble("my-repo", "/srv/u/my-repo") =~ "@my-repo"
+      refute bubble("Claude", "") =~ "@"
+      refute bubble("Claude", nil) =~ "@"
+    end
+  end
+
   describe "message_bubble" do
     test "renders author, type, and content" do
       assigns = %{

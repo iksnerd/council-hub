@@ -6,6 +6,32 @@ defmodule CouncilHubUi.CouncilDigestTest do
 
   @yesterday NaiveDateTime.utc_now() |> NaiveDateTime.add(-86400, :second)
 
+  describe "get_project_digest/2 posted_from" do
+    test "lists distinct sorted basenames of live messages, normalised like Go" do
+      room = create_room(%{id: "dg-pf", project: "dg-pf-proj"})
+      create_message(%{room_id: room.id, posted_from: "/srv/a/zeta/"})
+      create_message(%{room_id: room.id, posted_from: "/srv/b/alpha"})
+      create_message(%{room_id: room.id, posted_from: "/other/alpha"})
+      create_message(%{room_id: room.id, posted_from: "claude-code"})
+      create_message(%{room_id: room.id, posted_from: ""})
+      create_message(%{room_id: room.id, posted_from: "hidden", revised: 1})
+
+      [entry] = Council.get_project_digest("dg-pf-proj", NaiveDateTime.to_iso8601(@yesterday))
+
+      assert entry.posted_from == ["alpha", "claude-code", "zeta"]
+    end
+
+    test "is an empty list when nothing recorded it" do
+      room = create_room(%{id: "dg-pf-none", project: "dg-pf-none-proj"})
+      create_message(%{room_id: room.id})
+
+      [entry] =
+        Council.get_project_digest("dg-pf-none-proj", NaiveDateTime.to_iso8601(@yesterday))
+
+      assert entry.posted_from == []
+    end
+  end
+
   describe "get_project_digest/2" do
     test "returns rooms with new messages and an excerpt" do
       room = create_room(%{id: "dg-basic", project: "dg-proj"})

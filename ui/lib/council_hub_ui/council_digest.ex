@@ -64,13 +64,46 @@ defmodule CouncilHubUi.CouncilDigest do
         {rid, Enum.find(msgs, &(&1.author != "system")) || hd(msgs)}
       end)
 
+    posted_from = posted_from_by_room(active_room_ids, since)
+
     for rid <- active_room_ids do
       %{
         room_id: rid,
         new_message_count: Map.fetch!(counts, rid),
-        latest_message_excerpt: latest_excerpt(Map.get(latest_by_room, rid))
+        latest_message_excerpt: latest_excerpt(Map.get(latest_by_room, rid)),
+        posted_from: Map.get(posted_from, rid, [])
       }
     end
+  end
+
+  @doc """
+  Shortens a posted_from value for display: a path shows only its last element,
+  a trailing slash is tolerated. Mirror of Go displayPostedFrom.
+  """
+  def display_posted_from(nil), do: ""
+
+  def display_posted_from(from) when is_binary(from) do
+    from |> String.trim_trailing("/") |> String.split("/") |> List.last()
+  end
+
+  # Distinct, sorted posted_from labels per room over live messages in the window
+  # (Go attachDigestPostedFrom).
+  defp posted_from_by_room([], _since), do: %{}
+
+  defp posted_from_by_room(room_ids, since) do
+    from(m in Message,
+      where:
+        m.room_id in ^room_ids and m.timestamp > ^since and not is_nil(m.posted_from) and
+          m.posted_from != "",
+      distinct: true,
+      select: {m.room_id, m.posted_from}
+    )
+    |> live_messages()
+    |> Repo.all()
+    |> Enum.map(fn {rid, from} -> {rid, display_posted_from(from)} end)
+    |> Enum.reject(fn {_, label} -> label == "" end)
+    |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+    |> Map.new(fn {rid, labels} -> {rid, labels |> Enum.uniq() |> Enum.sort()} end)
   end
 
   defp latest_head_ids(room_ids, exclude_system?) do

@@ -23,6 +23,9 @@ defmodule CouncilHubUi.Council.Message do
     # renders as a tombstone.
     field :retracted_at, :naive_datetime
     field :retracted_by, :string, default: ""
+    # Working-tree path/basename or MCP client name the message was posted from (Go v0.63.0).
+    field :posted_from, :string, default: ""
+    field :msg_tags, :string, default: ""
     field :timestamp, :naive_datetime
     # Derived (not a column): the ID of a later message that supersedes this one,
     # computed over the loaded set so a superseded message shows its backlink.
