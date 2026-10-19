@@ -134,11 +134,13 @@ func (r *Registry) handleGetDigestCluster(args DigestInput) (*mcp.CallToolResult
 			return nil, ToolOutput{}, fmt.Errorf("decode cluster digest results: %w", err)
 		}
 		legacy := 0
+		taken := 0
 		for _, d := range remote {
 			if seen[d.RoomID] {
 				continue
 			}
 			seen[d.RoomID] = true
+			taken++
 			if d.LatestMessageID == "" {
 				legacy++
 			}
@@ -156,7 +158,7 @@ func (r *Registry) handleGetDigestCluster(args DigestInput) (*mcp.CallToolResult
 		if legacy > 0 {
 			warnings = append(warnings, fmt.Sprintf("%d peer room(s) come from a node that does not report latest_message_id/latest_author/tags (older version); those fields are empty", legacy))
 		}
-		if len(remote) > 0 {
+		if taken > 0 {
 			warnings = append(warnings, "peer rooms do not report decision_count or synthesis_count; those fields are empty")
 		}
 	}

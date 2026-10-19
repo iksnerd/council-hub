@@ -127,3 +127,14 @@ func TestDigestClusterExplicitSameShape(t *testing.T) {
 		t.Errorf("explicit cluster_wide=true shape differs: %v", m)
 	}
 }
+
+func TestDigestClusterNoWarningWhenPeerOnlyEchoesLocalRooms(t *testing.T) {
+	reg := digestPeer(t, []map[string]any{
+		{"room_id": "local-room", "new_message_count": 1, "latest_message_id": "ffffffff-0000-7000-8000-00000000fff1", "source_node": "self@10.0.0.1"},
+	})
+	res, _, _ := reg.handleGetDigest(context.Background(), nil, DigestInput{})
+	m := parseDigest(t, resultText(res))
+	if warns, _ := m["warnings"].([]any); len(warns) != 0 {
+		t.Errorf("echoed local room produced warnings: %v", warns)
+	}
+}
