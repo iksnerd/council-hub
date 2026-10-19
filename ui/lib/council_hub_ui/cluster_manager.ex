@@ -29,6 +29,12 @@ defmodule CouncilHubUi.ClusterManager do
 
   Explicit UI disconnect removes a peer from `known`, so the loop won't undo it.
 
+  Dials never run in the manager process. `Node.connect/1` to a dead address
+  blocks for the dist setup timeout, and `ip_status/1` (called with a 5s
+  timeout by `/api/internal/cluster/nodes`) would queue behind it. Each dial is
+  an unlinked Task, at most one in flight per peer (`dialing`), reporting back
+  with `{:dial_done, ...}`.
+
   ## Own-identity drift
 
   The above only fixes a *peer* going stale — it assumes this node's own
@@ -156,67 +162,60 @@ defmodule CouncilHubUi.ClusterManager do
       |> Enum.concat(Node.list())
       |> MapSet.new()
 
-    # Establish connections on boot.
-    for node <- known do
-      case safe_connect(node) do
-        true ->
-          Logger.info("ClusterManager: connected to #{node}")
-
-        other ->
-          Logger.warning("ClusterManager: could not connect to #{node} (#{inspect(other)})")
-      end
-    end
-
     schedule_reconnect(interval)
 
-    {:ok,
-     %{
-       path: path,
-       peers: peers,
-       known: known,
-       interval: interval,
-       ip_status: NodeIdentity.status(),
-       last_rebind_attempt: nil,
-       # Knowable at boot, so don't learn it by failing a rebind first.
-       self_heal_supported?: not NodeIdentity.static_distribution?(),
-       self_heal_warned?: false,
-       seeds: Keyword.get(opts, :seeds) || System.get_env("COUNCIL_SEEDS", ""),
-       seed_probe: Keyword.get(opts, :seed_probe, &SeedDoctor.probe/1),
-       seed_probe_interval: Keyword.get(opts, :seed_probe_interval, @seed_probe_interval),
-       seed_findings: [],
-       seed_checked_at: nil,
-       seed_warned: MapSet.new(),
-       last_seed_probe: nil,
-       advertised_check: Keyword.get(opts, :advertised_check, &NodeIdentity.advertised_status/0),
-       advertised: NodeIdentity.advertised_status(nil, nil, fn _, _ -> :ok end),
-       advertised_warned?: false,
-       last_advertised_probe: nil
-     }}
+    state = %{
+      path: path,
+      peers: peers,
+      known: known,
+      interval: interval,
+      ip_status: NodeIdentity.status(),
+      last_rebind_attempt: nil,
+      # Knowable at boot, so don't learn it by failing a rebind first.
+      self_heal_supported?: not NodeIdentity.static_distribution?(),
+      self_heal_warned?: false,
+      seeds: Keyword.get(opts, :seeds) || System.get_env("COUNCIL_SEEDS", ""),
+      seed_probe: Keyword.get(opts, :seed_probe, &SeedDoctor.probe/1),
+      seed_probe_interval: Keyword.get(opts, :seed_probe_interval, @seed_probe_interval),
+      seed_findings: [],
+      seed_checked_at: nil,
+      seed_warned: MapSet.new(),
+      last_seed_probe: nil,
+      advertised_check: Keyword.get(opts, :advertised_check, &NodeIdentity.advertised_status/0),
+      advertised: NodeIdentity.advertised_status(nil, nil, fn _, _ -> :ok end),
+      advertised_warned?: false,
+      last_advertised_probe: nil,
+      connect: Keyword.get(opts, :connect, &Node.connect/1),
+      # Peers with a dial in flight. Node.connect/1 to an unreachable address
+      # blocks for the dist setup timeout (several seconds), so it never runs
+      # in this process: one unlinked Task per peer, one at a time.
+      dialing: MapSet.new()
+    }
+
+    # Establish connections on boot, off the init path.
+    {:ok, state, {:continue, :boot_dial}}
   end
 
   @impl true
-  def handle_call({:connect, node_str}, _from, state) do
+  def handle_continue(:boot_dial, state) do
+    {:noreply, dial_all(state, :boot)}
+  end
+
+  @impl true
+  def handle_call({:connect, node_str}, from, state) do
     with :ok <- validate(node_str, state),
          node <- String.to_atom(node_str),
-         true <- safe_connect(node) do
-      peers = MapSet.put(state.peers, node_str)
-      write_peers(state.path, peers)
-      {:reply, :ok, %{state | peers: peers, known: MapSet.put(state.known, node)}}
+         false <- MapSet.member?(state.dialing, node) do
+      # The dial can take seconds against a dead address; do it in a Task and
+      # reply when it lands, so status calls keep answering meanwhile.
+      state = start_dial(state, node, {:user, from, node_str})
+      {:noreply, state}
     else
       {:error, reason} ->
         {:reply, {:error, reason}, state}
 
-      false ->
-        {:reply,
-         {:error,
-          "could not reach #{node_str} — check the IP, that it's running, and the cookie matches"},
-         state}
-
-      :ignored ->
-        {:reply,
-         {:error,
-          "this node is not running in distributed mode (no RELEASE_NODE) — cannot connect peers"},
-         state}
+      true ->
+        {:reply, {:error, "a connection attempt to #{node_str} is already in progress"}, state}
     end
   end
 
@@ -259,16 +258,36 @@ defmodule CouncilHubUi.ClusterManager do
   def handle_info(:reconnect, state) do
     state = maybe_self_heal(state)
 
-    for node <- state.known, node != Node.self(), node not in Node.list() do
-      # Re-dial quietly: a peer that's simply down shouldn't spam the log every tick.
-      safe_connect(node)
-    end
+    # Re-dial quietly: a peer that's simply down shouldn't spam the log every tick.
+    state = dial_all(state, :quiet)
 
     state = maybe_probe_seeds(state)
     state = maybe_probe_advertised(state)
 
     schedule_reconnect(state.interval)
     {:noreply, state}
+  end
+
+  @impl true
+  def handle_info({:dial_done, node, mode, result}, state) do
+    state = %{state | dialing: MapSet.delete(state.dialing, node)}
+
+    case mode do
+      :boot ->
+        if result == true do
+          Logger.info("ClusterManager: connected to #{node}")
+        else
+          Logger.warning("ClusterManager: could not connect to #{node} (#{inspect(result)})")
+        end
+
+        {:noreply, state}
+
+      :quiet ->
+        {:noreply, state}
+
+      {:user, from, node_str} ->
+        {:noreply, finish_user_connect(state, from, node_str, node, result)}
+    end
   end
 
   @impl true
@@ -426,9 +445,7 @@ defmodule CouncilHubUi.ClusterManager do
           {:ok, new_node} ->
             Logger.info("ClusterManager: rebound to #{new_node} — re-dialing known peers")
 
-            for node <- state.known, node != new_node do
-              safe_connect(node)
-            end
+            state = dial_all(state, :quiet)
 
             %{state | ip_status: NodeIdentity.status()}
 
@@ -505,9 +522,65 @@ defmodule CouncilHubUi.ClusterManager do
     end
   end
 
-  # Node.connect returns true | false | :ignored (when not distributed).
-  defp safe_connect(node) when is_atom(node), do: Node.connect(node)
-  defp safe_connect(node) when is_binary(node), do: Node.connect(String.to_atom(node))
+  # Dial every known, disconnected peer that has no attempt in flight.
+  defp dial_all(state, mode) do
+    for node <- state.known,
+        node != Node.self(),
+        node not in Node.list(),
+        not MapSet.member?(state.dialing, node),
+        reduce: state do
+      acc -> start_dial(acc, node, mode)
+    end
+  end
+
+  # Run `state.connect` (Node.connect/1 returns true | false | :ignored) in an
+  # unlinked Task and report back; the manager's mailbox never waits on it.
+  defp start_dial(state, node, mode) do
+    manager = self()
+    connect = state.connect
+
+    Task.start(fn ->
+      result =
+        try do
+          connect.(node)
+        catch
+          kind, reason -> {kind, reason}
+        end
+
+      send(manager, {:dial_done, node, mode, result})
+    end)
+
+    %{state | dialing: MapSet.put(state.dialing, node)}
+  end
+
+  defp finish_user_connect(state, from, node_str, node, true) do
+    peers = MapSet.put(state.peers, node_str)
+    write_peers(state.path, peers)
+    GenServer.reply(from, :ok)
+    %{state | peers: peers, known: MapSet.put(state.known, node)}
+  end
+
+  defp finish_user_connect(state, from, node_str, _node, :ignored) do
+    _ = node_str
+
+    GenServer.reply(
+      from,
+      {:error,
+       "this node is not running in distributed mode (no RELEASE_NODE) — cannot connect peers"}
+    )
+
+    state
+  end
+
+  defp finish_user_connect(state, from, node_str, _node, _other) do
+    GenServer.reply(
+      from,
+      {:error,
+       "could not reach #{node_str} — check the IP, that it's running, and the cookie matches"}
+    )
+
+    state
+  end
 
   defp read_peers(path) do
     case File.read(path) do

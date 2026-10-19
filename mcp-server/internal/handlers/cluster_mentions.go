@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -25,46 +26,67 @@ type ClusterMentionResult struct {
 }
 
 // nodeCountTTL bounds how often a read may cost a Phoenix round trip to learn
-// whether peers are connected. Failures are cached too, so a down Phoenix does
-// not add its connect latency to every read.
+// whether peers are connected.
 const nodeCountTTL = 10 * time.Second
 
+// nodeCountFailTTL is how long a failed lookup (timeout, error, bad status) is
+// remembered as "no peers". It is longer than nodeCountTTL so a hung Phoenix
+// (its ClusterManager stuck dialing a dead peer) costs one short stall per
+// window rather than one per 10 s.
+const nodeCountFailTTL = 30 * time.Second
+
+// nodeProbeTimeout caps the peer-count lookup on the read path. It is separate
+// from HTTPClient's timeout, which sizes the multicall fan-out (5 s).
+var nodeProbeTimeout = 1 * time.Second
+
 // clusterNodeCount asks Phoenix how many nodes the cluster has. It returns 0
-// when that cannot be determined (no Phoenix, UI off, error), so callers stay
-// silent rather than guess.
+// when that cannot be determined (no Phoenix, UI off, error, timeout), so
+// callers fail open to local rather than guess.
 func (r *Registry) clusterNodeCount() int {
 	r.nodeMu.Lock()
 	defer r.nodeMu.Unlock()
-	if !r.nodeAt.IsZero() && time.Since(r.nodeAt) < nodeCountTTL {
+	ttl := nodeCountTTL
+	if r.nodeFailed {
+		ttl = nodeCountFailTTL
+	}
+	if !r.nodeAt.IsZero() && time.Since(r.nodeAt) < ttl {
 		return r.nodeN
 	}
-	r.nodeN = r.fetchClusterNodeCount()
+	r.nodeN, r.nodeFailed = r.fetchClusterNodeCount()
 	r.nodeAt = time.Now()
 	return r.nodeN
 }
 
-func (r *Registry) fetchClusterNodeCount() int {
+// fetchClusterNodeCount returns the node count and whether the lookup failed.
+// "Not configured" and "UI off" are answers, not failures.
+func (r *Registry) fetchClusterNodeCount() (int, bool) {
 	if strings.EqualFold(os.Getenv("COUNCIL_UI"), "off") {
-		return 0
+		return 0, false
 	}
 	if r.HTTPClient == nil || r.PhoenixURL == "" {
-		return 0
+		return 0, false
 	}
-	resp, err := r.HTTPClient.Get(r.PhoenixURL + "/api/internal/cluster/nodes")
+	ctx, cancel := context.WithTimeout(context.Background(), nodeProbeTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, r.PhoenixURL+"/api/internal/cluster/nodes", nil)
 	if err != nil {
-		return 0
+		return 0, true
+	}
+	resp, err := r.HTTPClient.Do(req)
+	if err != nil {
+		return 0, true
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return 0
+		return 0, true
 	}
 	var payload struct {
 		Nodes []json.RawMessage `json:"nodes"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
-		return 0
+		return 0, true
 	}
-	return len(payload.Nodes)
+	return len(payload.Nodes), false
 }
 
 // localOnlyNote is the one-line footer for a read that ran on this node only:

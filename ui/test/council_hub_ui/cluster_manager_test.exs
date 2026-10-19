@@ -254,4 +254,50 @@ defmodule CouncilHubUi.ClusterManagerTest do
         result
     end
   end
+
+  describe "unreachable peer" do
+    # Node.connect/1 to a dead address blocks for the dist setup timeout. That
+    # wait must never sit in the manager's mailbox: /api/internal/cluster/nodes
+    # calls ip_status with a 5s timeout.
+    test "a blocked dial does not block status calls and is not stacked" do
+      test_pid = self()
+      path = Path.join(System.tmp_dir!(), "ch_peers_#{System.unique_integer([:positive])}")
+      File.write!(path, "council_hub@10.0.0.99")
+      on_exit(fn -> File.rm(path) end)
+      name = :"clmgr_slow_#{System.unique_integer([:positive])}"
+
+      slow_connect = fn node ->
+        send(test_pid, {:dial, node, self()})
+
+        receive do
+          :release -> false
+        end
+      end
+
+      {:ok, _} =
+        ClusterManager.start_link(
+          name: name,
+          path: path,
+          reconnect_interval: 20,
+          connect: slow_connect
+        )
+
+      assert_receive {:dial, :"council_hub@10.0.0.99", dialer}, 1_000
+
+      # Several reconnect ticks pass while the dial is stuck.
+      Process.sleep(150)
+
+      {micros, status} = :timer.tc(fn -> ClusterManager.ip_status(name) end)
+      assert is_map(status)
+      assert micros < 200_000
+      assert ClusterManager.advertised_status(name)
+
+      # One attempt in flight per peer: no second dial was started.
+      refute_received {:dial, _, _}
+
+      send(dialer, :release)
+      assert_receive {:dial, :"council_hub@10.0.0.99", next}, 1_000
+      send(next, :release)
+    end
+  end
 end

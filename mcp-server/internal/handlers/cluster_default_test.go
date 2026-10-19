@@ -208,3 +208,54 @@ func TestUIOffNeverCallsPhoenix(t *testing.T) {
 		t.Errorf("COUNCIL_UI=off must not touch Phoenix")
 	}
 }
+
+// A peer-count lookup that hangs (Phoenix's ClusterManager blocked on a dead
+// peer) must cost a default read at most the short probe timeout, fall open to
+// local, and not be retried inside the failure cache window.
+func TestDefaultReadFailsOpenWhenNodeLookupHangs(t *testing.T) {
+	var nodeCalls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/nodes") {
+			nodeCalls.Add(1)
+			select {
+			case <-time.After(6 * time.Second):
+			case <-r.Context().Done():
+			}
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	t.Cleanup(srv.Close)
+
+	reg := setupHandlerTest(t)
+	reg.HTTPClient = &http.Client{Timeout: 5 * time.Second} // production-like multicall timeout
+	reg.PhoenixURL = srv.URL
+	mustCreateRoom(t, reg.Server, "local-room")
+	mustPost(t, reg.Server, "local-room", "alice", "needle from local")
+
+	start := time.Now()
+	res, _, _ := reg.handleSearchMessages(context.Background(), nil, SearchMessagesInput{Query: "needle"})
+	if d := time.Since(start); d > 2*time.Second {
+		t.Fatalf("read took %v with a hung node lookup, want < 2s", d)
+	}
+	if text := resultText(res); !strings.Contains(text, "needle from local") {
+		t.Fatalf("want local result, got: %s", text)
+	}
+
+	start = time.Now()
+	_, _, _ = reg.handleSearchMessages(context.Background(), nil, SearchMessagesInput{Query: "needle"})
+	if d := time.Since(start); d > 500*time.Millisecond {
+		t.Errorf("second read took %v, want it served from the failure cache", d)
+	}
+	if n := nodeCalls.Load(); n != 1 {
+		t.Errorf("node lookup called %d times, want 1 inside the cache window", n)
+	}
+}
+
+func TestNodeCountCacheTTLs(t *testing.T) {
+	if nodeCountFailTTL <= nodeCountTTL {
+		t.Errorf("failure TTL %v must exceed success TTL %v", nodeCountFailTTL, nodeCountTTL)
+	}
+	if nodeProbeTimeout > time.Second {
+		t.Errorf("probe timeout %v must be <= 1s", nodeProbeTimeout)
+	}
+}

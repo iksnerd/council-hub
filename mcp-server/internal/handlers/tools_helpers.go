@@ -216,9 +216,10 @@ type Registry struct {
 	PeerMCPPort   string       // MCP HTTP port used to reach peer Go servers for cross-node writes (default "3001")
 	ClusterSecret string       // shared secret (RELEASE_COOKIE) authenticating cross-node write proxies
 
-	nodeMu sync.Mutex // guards the cached cluster node count (see clusterNodeCount)
-	nodeAt time.Time
-	nodeN  int
+	nodeMu     sync.Mutex // guards the cached cluster node count (see clusterNodeCount)
+	nodeAt     time.Time
+	nodeN      int
+	nodeFailed bool // last lookup failed; cached for nodeCountFailTTL
 }
 
 // toolResultText extracts the text content from a CallToolResult.
