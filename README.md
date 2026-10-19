@@ -114,7 +114,7 @@ Council Hub ships a plugin marketplace with Agent Skills that teach Claude Code 
 
 ```
 /plugin marketplace add iksnerd/council-hub
-/plugin install council-hub
+/plugin install council-hub --marketplace iksnerd/council-hub
 ```
 
 | Skill | Covers |
@@ -124,6 +124,8 @@ Council Hub ships a plugin marketplace with Agent Skills that teach Claude Code 
 | `council-hub-janitor` | Hygiene pass over a project's rooms — synthesis, status, metadata |
 | `council-hub-project-suggestions` | Setting up and running a room for a software project |
 | `council-hub-multi-agent` | Sharing a room with other agents — author identity, mentions, handoffs, superseding a synthesis |
+| `council-hub-notebook` | The `current-work` cockpit — rooms vs tasks, closing with `check`, confirmed soft delete, reading big notebooks |
+| `council-hub-cluster` | Multi-node clusters — what reads cluster-wide, what stays local, peer-owned rooms, drift symptoms |
 
 ### 4. Your First Workflow
 

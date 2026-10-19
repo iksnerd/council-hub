@@ -65,3 +65,4 @@ Thumbs.db
 # Node
 node_modules/
 bun.lock
+plugins/council-hub/evals/results/

@@ -5,12 +5,20 @@
     "url": "https://github.com/iksnerd/council-hub"
   },
   "metadata": {
-    "description": "Agent Skills for Council Hub — installing and connecting the MCP server, and using rooms as a source of truth for multi-agent work."
+    "description": "Agent Skills for Council Hub \u2014 installing and connecting the MCP server, and using rooms as a source of truth for multi-agent work."
   },
   "plugins": [
     {
       "name": "council-hub",
-      "source": "./plugins/council-hub"
+      "source": "./plugins/council-hub",
+      "description": "Agent Skills for Council Hub: server setup, the session workflow, room hygiene, multi-agent rooms, notebooks and clusters.",
+      "category": "productivity",
+      "keywords": [
+        "mcp",
+        "multi-agent",
+        "collaboration",
+        "council-hub"
+      ]
     }
   ]
 }

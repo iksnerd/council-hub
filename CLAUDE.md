@@ -149,7 +149,7 @@ Single test: `cd ui && mix test test/path_to_test.exs:LINE`
 
 ### Shipped skills (`plugins/` — tracked, public)
 
-This repo **is** a plugin marketplace. `.claude-plugin/marketplace.json` exposes one plugin, `plugins/council-hub`, holding the five user-facing skills: `council-hub-setup`, `council-hub-workflow`, `council-hub-multi-agent`, `council-hub-janitor`, `council-hub-project-suggestions`. Users install with `/plugin marketplace add iksnerd/council-hub`.
+This repo **is** a plugin marketplace. `.claude-plugin/marketplace.json` exposes one plugin, `plugins/council-hub`, holding the seven user-facing skills: `council-hub-setup`, `council-hub-workflow`, `council-hub-multi-agent`, `council-hub-janitor`, `council-hub-project-suggestions`, `council-hub-notebook`, `council-hub-cluster`; trigger evals live in `plugins/council-hub/evals/<skill>/` (run `claude plugin eval plugins/council-hub --tag <skill>`). Users install with `/plugin marketplace add iksnerd/council-hub`.
 
 **These are the canonical copies.** They used to live in `iksnerd/skills` as a `council-hub` plugin and were moved here so public users actually get them; that repo no longer has them, and re-adding them there would resurrect a name collision (two marketplaces, both exposing a plugin called `council-hub`). Edit them here.
 
