@@ -105,7 +105,7 @@ EXPOSE 4000 3001 4369 9000
 # its HTTP port (COUNCIL_HTTP_ADDR, default :3001) instead.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
   CMD if [ "$COUNCIL_TRANSPORT" = "stdio" ]; then exit 0; \
-      elif [ "$COUNCIL_UI" = "off" ]; then p="${COUNCIL_HTTP_ADDR:-:3001}"; wget --no-verbose --tries=1 --spider "http://localhost:${p#:}/health" || exit 1; \
+      elif [ "$COUNCIL_UI" = "off" ]; then p="${COUNCIL_HTTP_ADDR:-:3001}"; wget --no-verbose --tries=1 --spider "http://localhost:${p##*:}/health" || exit 1; \
       else wget --no-verbose --tries=1 --spider http://localhost:4000 || exit 1; fi
 
 ENTRYPOINT ["entrypoint.sh"]

@@ -1,4 +1,4 @@
-.PHONY: help docker-build docker-run docker-stop docker-logs docker-push test-all test-hooks ledger-check install-hooks clean
+.PHONY: help docker-build docker-run docker-stop docker-logs docker-push test-all test-hooks test-scripts ledger-check install-hooks clean
 
 IMAGE    = iksnerd/council-hub
 VERSION ?= latest
@@ -68,6 +68,9 @@ ledger-check: ## List commits since the last tag with no council-hub ledger entr
 
 test-hooks: ## Test the Council-Room post-commit hook's duplicate suppression (amend, rebase, window)
 	@sh scripts/test-post-commit.sh
+
+test-scripts: ## Test shell logic shipped in the image (healthcheck port expansion)
+	@sh scripts/test-healthcheck-port.sh
 
 install-hooks: ## Enable git hooks: pre-commit checks + Council-Room commit trailer (per-clone)
 	git config core.hooksPath .githooks
