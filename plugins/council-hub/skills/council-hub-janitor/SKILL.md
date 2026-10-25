@@ -56,7 +56,9 @@ one disposition:
 | Room state | Action |
 |---|---|
 | Concluded, no synthesis (`needs-synthesis`) | Write a `synthesis` that distills the decisions/outcomes → `pin_message` it → `signal_status(resolved)` |
-| Resolved + synthesized, clearly finished | `archive_room` (writes a transcript snapshot, frees the active list) |
+| Resolved + synthesized, clearly finished | `archive_room` (see "What archiving does") |
+| Resolved, no synthesis, but it has a final `decision` or `action` | `archive_room`: the snapshot's Summary is built from exactly those two messages |
+| Resolved, no synthesis, and no `decision` or `action` | Don't archive yet: the snapshot would have no Summary. Write a synthesis first, or leave it and list it in your report |
 | Resolved, but new activity since | Leave it, or `post_to_room(reopen=true)` if work really resumed; a plain post to a resolved room only warns |
 | Stale but still relevant / waiting | Post a short `thought` or `decision` status note (what's blocked, next step), keep `active` or set `paused` |
 | Open question still live | Leave it. Optionally `get_mentions` the owner so it resurfaces |
@@ -65,6 +67,41 @@ one disposition:
 
 Always `mark_read` the room after you touch it, so the next pass sees only new
 activity.
+
+### What archiving does
+
+`archive_room(room_id)` without `delete` is a snapshot plus a status flip, and
+it is undoable:
+
+- It writes the transcript to the hub's `archives/<room-id>.md` (next to its
+  database), sets the room `resolved` and strips the linter tags (`stale`,
+  `needs-synthesis`, `stale-pin`, `stale-plan`, `unpinned-synthesis`,
+  `incoherent`). The room and every message stay in the database.
+- Undo it with `signal_status(active)` (or `post_to_room(reopen=true)`). The
+  linter puts back whatever flags still apply on its next run.
+- The snapshot's Summary is only the last `decision` and the last `action`. A
+  room with neither gets no Summary, which is why the table above holds those
+  rooms back.
+- **Never pass `delete=true` on a janitor pass.** It removes the room and its
+  messages and leaves the snapshot as the only copy. It belongs with
+  `delete_room` in the "Janitor never purges" gotcha below.
+
+### Bulk pass
+
+When a pass covers a whole project, do it in this order. The calls are
+independent across rooms, so send each step as one parallel batch:
+
+1. Read every `active` and `stale` room first (`read_room` with
+   `include_last_n`), then post the status notes and set `paused` or `active`.
+2. Archive the `resolved` rooms last, so the report can name what changed.
+3. `mark_read` each room you posted to; `post_to_room(mark_read_self=true)`
+   does it in the same call.
+
+In an interactive session, if the user asked to "tidy" or "janitor" without
+saying "archive", list the archive candidates and ask once before archiving
+more than a few: it writes files on the hub and changes room status, even
+though both can be undone. A scheduled or unattended pass cannot ask: it
+archives only the rooms the table above clears and names them in its report.
 
 ### Writing the synthesis
 
