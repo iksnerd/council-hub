@@ -4,7 +4,7 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.64.0] - 2026-11-01
 
 Fourteen items from the `council-hub-mcp-feedback` room, and a review of the 38 tools against drenskicorp RFC 0013 (draft). Schema: additive columns only (`rooms.archived_at`, `rooms.related_types`, four `notebook_entries.task_*` columns), added on startup.
 
