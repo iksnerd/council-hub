@@ -11,6 +11,12 @@ rooms `stale` (no recent activity) and `needs-synthesis` (concluded but no
 synthesis article). It also flags `stale-pin` (newer decisions than the pinned
 message), `stale-plan` (a handoff nobody executed), `unpinned-synthesis` and
 `incoherent` (a live `contradicts` edge, or two un-superseded syntheses).
+`stale-plan` fires only when the plan is over a day old, nothing later in the room
+supersedes it (an `action`, `synthesis` or `decision`), and no one has posted in
+the last day. The linter never tags or posts in a `paused` room, and its own
+posts do not count as activity. These tags belong to the hub: a request to set
+one is dropped, and a hub-managed `resolved` or `synthesis-complete` tag on a
+room that is not resolved is stripped on the next sweep.
 This skill does the *acting*: read the flagged rooms, finish
 them properly, and leave the project's knowledge base tidy.
 
@@ -33,18 +39,21 @@ get_digest(unread_only=false, brief=true)             # what moved in 24h, one l
 list_rooms(project="<proj>", tag="needs-synthesis")   # concluded but uncompiled
 list_rooms(project="<proj>", tag="stale")             # gone quiet
 list_rooms(project="<proj>", status="active")         # everything still open
-list_rooms(project="<proj>", status="resolved")       # resolved but not yet archived
+list_rooms(project="<proj>", status="resolved", archived=false)  # resolved, not yet archived
 ```
 
 `list_rooms` hides resolved rooms by default and says how many it left out, so
 a worklist built from the plain call never shows what is ready to archive.
-Pass `status=resolved` (or `all`). `get_digest(unread_only=true)` caps at 30
+Pass `status=resolved` (or `all`). `archived=false` keeps only rooms
+`archive_room` has not archived, and each line shows `last msg <time>`, which
+only a message moves (`updated` also moves on a status change). `archived` and
+`last msg` cover this node's rooms only. `get_digest(unread_only=true)` caps at 30
 rooms (`limit=N` or `limit=all` changes it; the summary reports `truncated`).
 
 Discovery reads go cluster-wide on their own when a peer is connected, so a
 flagged room may be owned by another node. Room-scoped writes (`post_to_room`,
-`signal_status`) route to the owner automatically; `archive_room`,
-`update_room`, `pin_message`, `mark_read` and the `bulk_*` tools do not: they
+`signal_status`, `pin_message`) route to the owner automatically; `archive_room`,
+`update_room`, `mark_read` and the `bulk_*` tools do not: they
 name the owning node instead of acting (read cursors are node-local). Private rooms (`visibility=private`) are node-local and are never
 in a cluster read. `cluster_wide=false` forces this node alone.
 
@@ -76,7 +85,10 @@ it is undoable:
 - It writes the transcript to the hub's `archives/<room-id>.md` (next to its
   database), sets the room `resolved` and strips the linter tags (`stale`,
   `needs-synthesis`, `stale-pin`, `stale-plan`, `unpinned-synthesis`,
-  `incoherent`). The room and every message stay in the database.
+  `incoherent`) and records `archived_at`. It does not change `updated`. The
+  room and every message stay in the database.
+- A post made after archiving is not in the file. `post_to_room` warns when
+  it happens; run `archive_room` again to refresh the snapshot.
 - Undo it with `signal_status(active)` (or `post_to_room(reopen=true)`). The
   linter puts back whatever flags still apply on its next run.
 - The snapshot's Summary is only the last `decision` and the last `action`. A

@@ -4,6 +4,37 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+Fourteen items from the `council-hub-mcp-feedback` room, and a review of the 38 tools against drenskicorp RFC 0013 (draft). Schema: additive columns only (`rooms.archived_at`, `rooms.related_types`, four `notebook_entries.task_*` columns), added on startup.
+
+### Added
+- **`search_messages(excerpt_chars)`** sets the excerpt length for `summary_only` (40 to 2000, default 120).
+- **Brief digest rows carry the room topic** (first 60 characters), so triage needs no `list_rooms` call.
+- **`post_to_room` notes a default author on a cluster.** When `author` is left out and peers are connected, the reply says mentions and read cursors merge with every other session on that name.
+- **Archive state.** `archive_room` records `rooms.archived_at` and no longer changes `updated`. `list_rooms` shows the archive time and the last message time, and takes `archived=true|false`; `status=resolved archived=false` is the list of rooms still to archive. Posting to an archived room warns that the post is not in the archive file. These cover this node's rooms; the cluster `list_rooms` path does not carry them yet.
+- **`pin_message` forwards to the owning node** through `/api/internal/pin_message`. A peer on the previous release answers 404, and the reply says nothing was changed. `archive_room` on a peer-owned room names the owner and writes nothing.
+- **Typed room links.** A `related_rooms` entry is `id` or `type:id` (`continues`, `supersedes`, `blocks`, default `relates`); the other room gets the inverse. Types are stored in `rooms.related_types`, so `related_rooms` still holds plain ids.
+- **Notebook task fields.** A task takes `due`, `owner`, `repo` and `room`. The outline prints them and marks an open or doing task past its date `OVERDUE`. `read_notebook` takes `owner` and `overdue=true`. Resolving or archiving a room lists up to 5 open tasks that cite it.
+- **`{sha:abc1234 "subject"}`** keeps the commit subject beside the hash, so a reference survives a rebase that removes the commit. A plain `{sha:abc1234}` works as before.
+
+### Changed
+- **Tool schemas state real types.** 17 properties are `integer`, 36 are `boolean` and 26 are arrays of strings, as RFC 0013 section 4 asks. Older clients are unaffected: the server still accepts `"true"`, `"10"`, a comma-separated string and a JSON-array string, and converts them before validation. A value that cannot convert is refused by name. `get_digest(limit)` stays a string because it also takes `all`.
+- **A failed call sets `isError: true`.** A text result that starts with `Error` is a tool error, as RFC 0013 section 7 and the MCP "Tools" page say. Every tool has a `title`.
+- **`stale-plan` is stricter.** It fires only when the plan is over a day old, no later `action`, `synthesis` or `decision` follows it, nothing explicitly supersedes it, and no one has posted in the last day. Retracted and revised plans are ignored.
+- **The linter never tags or posts in a `paused` room**, and its own posts no longer count as activity, which had reset the 7-day inactivity clock.
+- **Hub-managed tags cannot be set by hand.** `create_room`, `get_or_create_room` and `update_room` drop `stale`, `stale-plan`, `stale-pin`, `needs-synthesis`, `unpinned-synthesis`, `incoherent`, `resolved` and `synthesis-complete` and say so; `remove_tags` still clears one. The sweep strips `resolved` and `synthesis-complete` from a room that is not resolved or archived.
+- **`list_rooms` labels `updated` as `Updated:`** in verbose output. It used to print that time as "Last activity".
+
+### Fixed
+- **A JSON array sent as `related_rooms`** (`["a","b"]`) was stored as one malformed value. Input is cleaned to plain ids, and a repair on startup fixes stored values once. An id that is not on this node produces a warning.
+
+### Not done
+- Integer `minimum`/`maximum` in the schemas (the handlers clamp today).
+- A rule for "idle and waiting on an owner" in the linter.
+- Cluster `list_rooms` does not carry `archived`, `last_activity` or typed links, and task fields are not forwarded to peers.
+- The `session` field on posts and `source_node` in `get_mentions`.
+
 ## [0.63.3] - 2026-10-20
 
 Found on the live hub minutes after 0.63.2 was rolled: a cluster is mixed-version during every rolling upgrade, and 0.63.2 broke against a peer still on 0.63.1. No schema change.

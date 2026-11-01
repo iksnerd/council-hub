@@ -24,6 +24,26 @@ fan out across a cluster, so the cockpit lives on one node.
 Never hand-edit a `room_ref` to reflect a status change, and never hand-sort
 tasks: both self-sort into In progress / Open / Done.
 
+## Give a task a date, an owner or a room
+
+A task takes four optional fields: `due` (`YYYY-MM-DD`), `owner` (free text, such as
+an agent name or `OWNER`), `repo` and `room`.
+
+```
+edit_notebook(action=add, kind=task, prose="Rotate the signing key",
+              due="2026-11-15", owner="OWNER", repo="iksnerd/ctxgraph")
+edit_notebook(action=update, entry_id=<full entry id>, due="")   # an empty string clears a field
+```
+
+The outline prints the fields after the label. An open or doing task past its `due`
+date (UTC) is marked `OVERDUE`. To list only those, call
+`read_notebook(notebook_id=current-work, overdue=true)`. To list one owner's tasks,
+pass `owner=<name>`. Both narrow the result to tasks.
+
+When a task has a `room`, resolving or archiving that room lists the tasks still
+open for it. Nothing closes by itself: close each one with `check`, or point it at
+another room with `update`.
+
 ## Close a task with `check`
 
 ```

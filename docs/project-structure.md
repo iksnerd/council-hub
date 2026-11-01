@@ -30,17 +30,20 @@ council-hub/
       mountinfo.go                      SharedFSWarning: warns when the DB sits on a shared filesystem (Docker bind mount)
       embedder.go                       Ollama embedder interface
       vectors.go                        Vector storage and semantic search
-      janitor.go                        Knowledge Linter + DB integrity sweep (6h cycle)
+      janitor.go                        Knowledge Linter + DB integrity sweep (6h cycle); owns the hub-managed tag lists
+      related.go                        related_rooms parsing and repair, typed links (continues, supersedes, blocks) and their inverses
     internal/handlers/
       tools_helpers.go                  Registry, schema helpers, validation
       tools_register.go                 All 38 MCP tool registrations
       templates.go                      Room template definitions
       timefmt.go                        ISO-8601 UTC timestamp rendering for tool output
       validation_hints.go               Rewrites unknown-parameter errors to name the accepted parameters
+      lenient_inputs.go                 Typed tool schemas: coerces legacy string arguments before validation, decodes typed values into handler strings
       cluster.go                        Cluster HTTP helper
       cluster_types.go                  Cluster response types
       cluster_handlers.go               Cluster-wide tool variants
       cluster_writes.go                 Cross-node write/status proxies
+      cluster_pin.go                    pin_message forwarding to the owning node (/api/internal/pin_message)
       cluster_mentions.go               Cluster-wide get_mentions fan-out and cached peer node count
       cluster_default.go                Cluster reads on by default when a peer is connected (COUNCIL_CLUSTER_READS=local opts out)
       handler_message_query.go          search_messages, get_messages, get_mentions
