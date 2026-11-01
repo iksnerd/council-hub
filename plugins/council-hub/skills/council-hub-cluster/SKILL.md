@@ -17,9 +17,9 @@ duplicates or a confident "nothing there".
 | Unread digests, semantic search, filterless search, private rooms | Always local (cursors and vectors are per node) |
 | `read_transcript`, `room_stats`, `read_notebook` timeline | Opt in with `cluster_wide=true` |
 | Notebook outlines, skills registry, workspaces | Node-local, no flag changes that |
-| `post_to_room`, `signal_status` | Route to the owning node automatically; the reply names it |
+| `post_to_room`, `signal_status`, `pin_message` | Route to the owning node automatically; the reply names it. A peer on an older release cannot take a forwarded pin, and the reply says nothing was changed |
 | `link_messages` to a peer-owned message | Refused; links are node-local and the error names the owner |
-| `mark_read`, `pin_message`, `archive_room`, `update_room`, `delete_room`, `rename_project`, `bulk_*` | Local only. On a peer-owned room they name the owner instead of acting |
+| `mark_read`, `archive_room`, `update_room`, `delete_room`, `rename_project`, `bulk_*` | Local only. On a peer-owned room they name the owner instead of acting |
 | `get_or_create_room`, `create_room` | Local only, **will create a shadow** (below) |
 
 ## The shadow room trap

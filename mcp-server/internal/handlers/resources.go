@@ -185,12 +185,12 @@ behaves exactly like a local one. (Network exposure — who can open the dashboa
   read_transcript or read_notebook to fan those out. Results are tagged with the owning node; unreachable
   nodes produce a warning, not an error. Operators can set COUNCIL_CLUSTER_READS=local to make every cluster read opt-in.
 - **Some writes route to the owning node automatically**, no parameter needed:
-  post_to_room (including ` + "`pin=true`" + `, which is applied on the owner) and signal_status.
+  post_to_room (including ` + "`pin=true`" + `, which is applied on the owner), pin_message and signal_status.
   Together those close a peer-owned room out end to end from any node: post the synthesis with
   ` + "`pin=true`" + `, then ` + "`signal_status(resolved)`" + `. Proxied writes are authenticated
   by the shared cluster cookie.
-- **Every other room-scoped tool is local-only** — pin_message, mark_read, archive_room,
-  fork_thread, update_room, move_messages, and the bulk_* tools act only on rooms this node owns.
+- **Every other room-scoped tool is local-only** — mark_read, archive_room (its file lands on the
+  node that runs it, so for a peer's room it writes nothing and names the owner), fork_thread, update_room, move_messages, and the bulk_* tools act only on rooms this node owns.
   When you aim one at a peer's room the error **names the owning node and the remedy**. Read that
   as "run it there", never as "the room is gone": creating it locally would fork the room into a
   shadow copy that never reconciles.
@@ -252,7 +252,7 @@ a missed one costs a clobbered commit.
 Build and maintain it:
 
 1. ` + "`edit_notebook(action=create, notebook_id=current-work, title=Current Work)`" + ` — no project = global
-2. ` + "`edit_notebook(action=add, notebook_id=current-work, kind=room_ref, ref_id=<room_id>)`" + ` — one entry per thread of work; or ` + "`kind=task, prose=<label>`" + ` for a lightweight checklist item
+2. ` + "`edit_notebook(action=add, notebook_id=current-work, kind=room_ref, ref_id=<room_id>)`" + ` — one entry per thread of work; or ` + "`kind=task, prose=<label>`" + ` for a lightweight checklist item (optionally with ` + "`due`" + `, ` + "`owner`" + `, ` + "`repo`" + ` and ` + "`room`" + `; ` + "`read_notebook(overdue=true)`" + ` lists the late ones)
 3. ` + "`read_notebook(notebook_id=current-work)`" + ` — entries self-sort: room_refs grouped **In flight / Done** by room status, tasks grouped **In progress / Open / Done** by their own status
 4. Finishing work = ` + "`signal_status(room_id=…, status=resolved)`" + ` for a thread, or ` + "`edit_notebook(action=check, entry_id=…)`" + ` for a task — the item moves itself to Done; never hand-edit the list to mark things off. Use ` + "`action=start`" + ` to flag what you're actively on.
 
@@ -330,7 +330,7 @@ the registry; anything tied to this repo / agent / machine → a skill file or C
 ## Tips
 
 - Use **read_transcript(truncate=line-one)** for a dense, scannable overview of a long room — first line of each message only; pair with **show=author** to strip IDs/timestamps for a clean read (a composable "view" over the same ledger)
-- Use **summary_only=true** in search_messages to save tokens on large result sets
+- Use **summary_only=true** in search_messages to save tokens on large result sets (widen the 120-character excerpt with excerpt_chars)
 - Use **include_related=true** on read_transcript to pull related room summaries in one call
 - Use **get_concept_map** to navigate complex project topologies; add ` + "`infer_from=project`" + ` or ` + "`infer_from=tags`" + ` to auto-discover rooms without explicit links
 - Use **fork_thread** when a sub-conversation in a room has grown into its own topic — creates the new room, moves messages, and links both rooms in one call
@@ -481,13 +481,13 @@ const janitorResource = `# Council Hub — Janitor (Room Hygiene Pass)
 A periodic hygiene pass over one project's rooms. The built-in Knowledge Linter
 already tags rooms ` + "`stale`" + `, ` + "`needs-synthesis`" + `, ` + "`stale-pin`" + `
 (an active room whose pinned summary predates 5+ recent decision/action updates),
-` + "`stale-plan`" + ` (an active room with a ` + "`plan`" + ` but no follow-on ` + "`action`" + ` — an
-unexecuted handoff), ` + "`unpinned-synthesis`" + ` (a room has a synthesis but no pinned living TL;DR),
+` + "`stale-plan`" + ` (an active room whose ` + "`plan`" + ` is over a day old with no later ` + "`action`" + `,
+` + "`synthesis`" + ` or ` + "`decision`" + ` and no post in the last day — an unexecuted handoff; never raised in a paused room), ` + "`unpinned-synthesis`" + ` (a room has a synthesis but no pinned living TL;DR),
 and ` + "`incoherent`" + ` (the coherence linter: a live ` + "`contradicts`" + `
 edge with no reconciling synthesis, or a ` + "`duplicates`" + ` edge between two un-superseded
 syntheses) every 6h; this playbook acts on those flags. The linter auto-clears a
 flag once its condition no longer holds — ` + "`stale`" + ` on the next non-system post,
-` + "`needs-synthesis`" + ` on a synthesis, ` + "`stale-pin`" + `/` + "`unpinned-synthesis`" + ` on a re-pin, ` + "`stale-plan`" + ` on an action,
+` + "`needs-synthesis`" + ` on a synthesis, ` + "`stale-pin`" + `/` + "`unpinned-synthesis`" + ` on a re-pin, ` + "`stale-plan`" + ` on an action, synthesis or decision,
 ` + "`incoherent`" + ` on a synthesis or superseding post.
 
 **Hard rule:** never destroy signal. The ledger is append-only — edits post a new
@@ -516,7 +516,7 @@ Private rooms are node-local — skip in cluster context (or pass cluster_wide=t
 
 - Concluded, no synthesis → write a ` + "`synthesis`" + ` (decision/outcome first, then
   rationale, then open follow-ups) → pin_message → signal_status(resolved).
-- Resolved + synthesized + finished → archive_room.
+- Resolved + synthesized + finished → archive_room (list_rooms(status=resolved, archived=false) lists the ones not yet archived; a post after archiving is not in the file, so archive again).
 - Stale but still live/blocked → post a short ` + "`thought`" + `/` + "`decision`" + ` status
   note; keep active or set paused.
 - Stale pin (busy room) → write a fresh ` + "`synthesis`" + ` capturing current state and
@@ -527,7 +527,7 @@ Private rooms are node-local — skip in cluster context (or pass cluster_wide=t
   redundant message to declare a winner, or post a ` + "`synthesis`" + ` reconciling the two
   (clears ` + "`incoherent`" + `).
 - Open question still live → leave it; get_mentions the owner to resurface.
-- Metadata drift → fix tags / related_rooms / project via update_room (never content).
+- Metadata drift → fix tags / related_rooms / project via update_room (never content). The linter's tags and resolved/synthesis-complete are hub-managed: update_room drops an attempt to set one.
 - Ambiguous → leave it; report to the user.
 
 Always mark_read after touching a room.
