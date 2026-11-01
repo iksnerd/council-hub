@@ -178,5 +178,47 @@
         </div>
       <% end %>
     </div>
+    <%!-- Tool usage --%>
+    <div class="bg-[var(--ch-surface)] border border-[var(--ch-border)] rounded-lg p-4">
+      <h2 class="text-[10px] font-medium text-[var(--ch-text-lo)] uppercase tracking-[0.15em] mb-3">
+        Tool usage
+      </h2>
+      <%= case @tool_usage do %>
+        <% :unavailable -> %>
+          <p class="text-[12px] text-[var(--ch-text-xs)] italic">
+            Not counting yet (the server has not created the usage table).
+          </p>
+        <% {:ok, []} -> %>
+          <p class="text-[12px] text-[var(--ch-text-xs)] italic">Not counting yet (no rows).</p>
+        <% {:ok, rows} -> %>
+          <p class="text-[10px] font-mono text-[var(--ch-text-xs)] mb-2">
+            counted since {rows
+            |> Enum.map(& &1.first_used)
+            |> Enum.reject(&is_nil/1)
+            |> Enum.min(fn -> "—" end)} · names and totals only
+          </p>
+          <table class="w-full text-[11px] font-mono">
+            <thead class="text-[var(--ch-text-lo)] text-left">
+              <tr>
+                <th>tool</th><th>calls</th><th>errors</th><th>last used</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr :for={r <- rows} class="text-[var(--ch-text-mid)]">
+                <td>{r.tool}</td>
+                <td>{r.calls}</td>
+                <td>{r.errors}</td>
+                <td>
+                  <%= if r.calls == 0 do %>
+                    <span class="italic text-[var(--ch-text-xs)]">never called</span>
+                  <% else %>
+                    {r.last_used}
+                  <% end %>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+      <% end %>
+    </div>
   </div>
 </div>

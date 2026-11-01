@@ -62,4 +62,29 @@ defmodule CouncilHubUi.HealthStatsTest do
       assert is_nil(stats.coverage_pct)
     end
   end
+
+  describe "tool_usage" do
+    test "is :unavailable when the table does not exist yet" do
+      Ecto.Adapters.SQL.query!(Repo, "DROP TABLE IF EXISTS tool_usage", [])
+      assert HealthStats.tool_usage() == :unavailable
+    end
+
+    test "reads rows sorted by calls, never-called included" do
+      Ecto.Adapters.SQL.query!(
+        Repo,
+        "CREATE TABLE IF NOT EXISTS tool_usage (tool TEXT PRIMARY KEY, calls INTEGER NOT NULL DEFAULT 0, errors INTEGER NOT NULL DEFAULT 0, first_used DATETIME, last_used DATETIME)",
+        []
+      )
+
+      Ecto.Adapters.SQL.query!(
+        Repo,
+        "INSERT INTO tool_usage VALUES ('a_tool', 0, 0, '2026-11-01 10:00:00', NULL), ('b_tool', 5, 1, '2026-11-01 10:00:00', '2026-11-01 11:00:00')",
+        []
+      )
+
+      assert {:ok, [b, a]} = HealthStats.tool_usage()
+      assert %{tool: "b_tool", calls: 5, errors: 1} = b
+      assert %{tool: "a_tool", calls: 0, last_used: nil} = a
+    end
+  end
 end

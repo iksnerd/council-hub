@@ -96,6 +96,7 @@ defmodule CouncilHubUiWeb.StatusLive do
     |> assign(:peers, peers)
     |> assign(:ip_status, ip_status)
     |> assign(:stats, HealthStats.db_stats())
+    |> assign(:tool_usage, HealthStats.tool_usage())
     |> assign(:short_node_fun, &short_node/1)
     |> assign(
       :warnings,

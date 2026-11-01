@@ -220,6 +220,8 @@ type Registry struct {
 	PeerMCPPort   string       // MCP HTTP port used to reach peer Go servers for cross-node writes (default "3001")
 	ClusterSecret string       // shared secret (RELEASE_COOKIE) authenticating cross-node write proxies
 
+	usage *usageCounter // tool-call counter (usage.go)
+
 	nodeMu     sync.Mutex // guards the cached cluster node count (see clusterNodeCount)
 	nodeAt     time.Time
 	nodeN      int

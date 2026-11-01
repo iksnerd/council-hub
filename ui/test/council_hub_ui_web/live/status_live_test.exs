@@ -11,6 +11,7 @@ defmodule CouncilHubUiWeb.StatusLiveTest do
       assert html =~ "Cluster peers"
       assert html =~ "Database"
       assert html =~ "Semantic search"
+      assert html =~ "Tool usage"
       # node identity is always present (at minimum nonode@nohost in test)
       assert html =~ to_string(Node.self())
     end

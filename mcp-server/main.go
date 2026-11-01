@@ -150,6 +150,9 @@ func healthHandler(cs *council.Server, phoenixURL string, httpClient *http.Clien
 				"running":  atomic.LoadInt32(&cs.EmbedJobRunning) == 1,
 			}
 		}
+		if u := handlers.UsageSummary(cs.DB); u != nil {
+			body["tool_usage"] = u
+		}
 		if result := clusterNodes(phoenixURL, httpClient); result != nil {
 			body["cluster_nodes"] = result.Nodes
 			if result.VersionMismatch {
@@ -295,6 +298,7 @@ func main() {
 		ClusterSecret: os.Getenv("RELEASE_COOKIE"),
 	}
 	reg.RegisterTools()
+	defer reg.StopUsage()
 	reg.RegisterResources()
 
 	cs.MCP.AddReceivingMiddleware(loggingMiddleware(logger))

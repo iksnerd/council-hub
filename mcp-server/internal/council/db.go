@@ -344,6 +344,15 @@ func initSchema(db *sql.DB) error {
 		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
 
+	-- Usage counter: tool name and totals only. No arguments, text, author or room ids.
+	CREATE TABLE IF NOT EXISTS tool_usage (
+		tool TEXT PRIMARY KEY,
+		calls INTEGER NOT NULL DEFAULT 0,
+		errors INTEGER NOT NULL DEFAULT 0,
+		first_used DATETIME,
+		last_used DATETIME
+	);
+
 	CREATE TABLE IF NOT EXISTS workspaces (
 		author TEXT NOT NULL,
 		workspace TEXT NOT NULL,

@@ -31,6 +31,12 @@ Environment variables for the MCP server, the Phoenix web UI, and clustering.
 | `ERL_FLAGS` | `+S 2:2 +SDio 1 +sbwt none +sbwtdcpu none +sbwtdio none` | BEAM flags. The default caps schedulers and disables busy-waiting, which cuts idle memory and CPU by about a quarter. Export your own to override |
 | `COUNCIL_FORCE_SSL` | — | `true` redirects http→https. Only enable behind a reverse proxy that sets `x-forwarded-proto`; the server does not terminate TLS, and localhost is always exempt |
 
+### Tool usage counter
+
+The server counts tool calls so simplification work can use real usage. The `tool_usage` table stores, per registered tool: its name, a call count, an error count, and first and last use. It stores no arguments, message text, author or room id, and names that are not registered tools are ignored. Counts are batched in memory and written every few seconds and on shutdown; if the buffer fills, counts are dropped rather than slowing a call.
+
+It shows on `/health` as `tool_usage` (top 10 by calls, `never_called`, `counting_since`) and on the `/status` page (every tool, never-called ones marked). Counts are per node. To reset, delete the rows: `DELETE FROM tool_usage;`.
+
 ## Clustering
 
 | Variable | Default | Description |

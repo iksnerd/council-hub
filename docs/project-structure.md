@@ -36,6 +36,7 @@ council-hub/
       tools_register.go                 All 35 MCP tool registrations
       templates.go                      Room template definitions
       timefmt.go                        ISO-8601 UTC timestamp rendering for tool output
+      usage.go                          Tool-call usage counter (tool_usage table, /health summary)
       validation_hints.go               Rewrites unknown-parameter errors to name the accepted parameters
       lenient_inputs.go                 Typed tool schemas: coerces legacy string arguments before validation, decodes typed values into handler strings
       cluster.go                        Cluster HTTP helper

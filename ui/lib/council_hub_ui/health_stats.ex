@@ -67,4 +67,30 @@ defmodule CouncilHubUi.HealthStats do
   rescue
     _ -> nil
   end
+
+  @doc """
+  Tool-call usage counted by the Go server (`tool_usage`: name and totals only).
+  Returns `{:ok, rows}` sorted by calls (most first), each row a map with
+  `:tool, :calls, :errors, :first_used, :last_used`, or `:unavailable` when the
+  table does not exist yet (older DB read before the Go server migrated).
+  """
+  def tool_usage do
+    sql = """
+    SELECT tool, calls, errors, first_used, last_used FROM tool_usage
+    ORDER BY calls DESC, tool ASC
+    """
+
+    case Ecto.Adapters.SQL.query(Repo, sql, []) do
+      {:ok, %{rows: rows}} ->
+        {:ok,
+         for [tool, calls, errors, first, last] <- rows do
+           %{tool: tool, calls: calls, errors: errors, first_used: first, last_used: last}
+         end}
+
+      _ ->
+        :unavailable
+    end
+  rescue
+    _ -> :unavailable
+  end
 end

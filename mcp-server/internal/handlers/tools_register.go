@@ -13,6 +13,7 @@ import (
 func (r *Registry) RegisterTools() {
 	r.installLegacyCoercion()
 	r.installValidationHints()
+	r.installUsageCounter()
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "create_room",
 		Title:       "Create room",
