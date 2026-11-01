@@ -11,14 +11,16 @@ import (
 )
 
 func (r *Registry) RegisterTools() {
+	r.installLegacyCoercion()
 	r.installValidationHints()
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "create_room",
+		Title:       "Create room",
 		Description: "Create a new council room (virtual workspace) for a topic or task. Prefer get_or_create_room — it returns existing content instead of silently no-opping on a name clash, avoiding duplicate rooms. Does nothing if the room already exists. Related rooms are automatically linked in both directions. Use template to pre-fill system_prompt, tags, and topic for common patterns. Pass dry_run=true to preview the similar-rooms check before a duplicate exists, instead of after.",
 		InputSchema: schema(nil, map[string]map[string]any{
 			"id":      prop("string", "Unique room identifier (e.g. auth-migration-v2). Node-local: it cannot see a room owned by a cluster peer, so on a project that spans machines run list_rooms(project=..., cluster_wide=true) first. Creating anyway will name any peer rooms in the same project."),
 			"room_id": prop("string", "Alias for id — either spelling is accepted"),
-			"dry_run": prop("string", "Set to 'true' to preview — same similar-rooms and peer-project checks, nothing written. Check this before a real call whenever a name/topic/tags collision is plausible; otherwise the duplicate already exists by the time the advisory notice shows it."),
+			"dry_run": prop("boolean", "Set to 'true' to preview — same similar-rooms and peer-project checks, nothing written. Check this before a real call whenever a name/topic/tags collision is plausible; otherwise the duplicate already exists by the time the advisory notice shows it."),
 			"template": prop("string", "Pre-fill system_prompt, tags, and topic for a common pattern. "+
 				"Available templates — brainstorm (open-ended idea exploration; tags: brainstorm,exploration), "+
 				"bug (single bug investigation lifecycle; tags: bug,investigation), "+
@@ -29,9 +31,9 @@ func (r *Registry) RegisterTools() {
 			"topic":         prop("string", "What this room is about"),
 			"project":       prop("string", "Project grouping for filtering"),
 			"tech_stack":    prop("string", "Technologies involved"),
-			"tags":          prop("string", "Comma-separated labels. Hub-managed tags (stale, stale-plan, stale-pin, needs-synthesis, unpinned-synthesis, incoherent, resolved, synthesis-complete) are ignored."),
+			"tags":          arrayProp("Comma-separated labels. Hub-managed tags (stale, stale-plan, stale-pin, needs-synthesis, unpinned-synthesis, incoherent, resolved, synthesis-complete) are ignored."),
 			"system_prompt": prop("string", "Instructions injected into transcripts for LLM context"),
-			"related_rooms": prop("string", "Comma-separated IDs of related rooms; a JSON array string is also accepted. Optional link type as type:id (continues, supersedes, blocks; default relates), e.g. 'continues:old-room, other-room'. Bidirectional: the linked room gets the inverse (continued-by, superseded-by, blocked-by). IDs matching no room on this node are kept with a warning"),
+			"related_rooms": arrayProp("Comma-separated IDs of related rooms; a JSON array string is also accepted. Optional link type as type:id (continues, supersedes, blocks; default relates), e.g. 'continues:old-room, other-room'. Bidirectional: the linked room gets the inverse (continued-by, superseded-by, blocked-by). IDs matching no room on this node are kept with a warning"),
 			"visibility":    prop("string", "'public' (default) or 'private'. Private rooms are node-local — excluded from all cluster fan-out (cluster-wide reads and cross-node writes); they live only on this node."),
 			"repo":          prop("string", "Optional git repo for this room (owner/repo, an https clone URL, or git@host:owner/repo). Enables {sha:<hash>} tokens in messages to render as commit links in transcripts and the dashboard. GitHub/Gitea-style commit URLs."),
 			"work_items":    prop("string", "Optional issue-tracker URL template containing {id}, e.g. https://tracker.example.com/items/{id} (http:// or https:// only). Enables {wi:<id>} tokens in messages to render as links to that work item."),
@@ -40,26 +42,28 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "get_or_create_room",
+		Title:       "Get or create room",
 		Description: "Get an existing room (with recent messages) or create it if it does not exist. Prefer this over create_room in almost all cases — it returns existing content, avoids duplicates, and saves 2-3 round trips. On an existing room it also backfills metadata: any of topic/project/tech_stack/tags/system_prompt/related_rooms/repo you pass that the room is still missing gets filled in (gap-fill only — an already-set field is never overwritten; use update_room to change one). So a room created before a project/tag convention can adopt it just by calling get_or_create_room again with the field set. Pass dry_run=true to preview the create/backfill (including the similar-rooms check) before anything is written.",
 		InputSchema: schema(nil, map[string]map[string]any{
 			"id":            prop("string", "Room identifier \u2014 returns existing room if found, creates if not. Node-local: it cannot see a room owned by a cluster peer, so on a project that spans machines run list_rooms(project=..., cluster_wide=true) first. Creating anyway will name any peer rooms in the same project."),
 			"room_id":       prop("string", "Alias for id — either spelling is accepted"),
-			"dry_run":       prop("string", "Set to 'true' to preview — same similar-rooms/peer-project checks and backfill-candidate list, nothing written. Check this before a real call whenever a name/topic/tags collision is plausible; otherwise the duplicate already exists by the time the advisory notice shows it."),
+			"dry_run":       prop("boolean", "Set to 'true' to preview — same similar-rooms/peer-project checks and backfill-candidate list, nothing written. Check this before a real call whenever a name/topic/tags collision is plausible; otherwise the duplicate already exists by the time the advisory notice shows it."),
 			"topic":         prop("string", "Topic (set on create; backfilled on an existing room only if its topic is empty)"),
 			"project":       prop("string", "Project grouping (set on create; backfilled on an existing room only if its project is empty)"),
 			"tech_stack":    prop("string", "Technologies (set on create; backfilled on an existing room only if its tech_stack is empty)"),
-			"tags":          prop("string", "Comma-separated labels (set on create; backfilled on an existing room only if its tags are empty)"),
+			"tags":          arrayProp("Comma-separated labels (set on create; backfilled on an existing room only if its tags are empty)"),
 			"system_prompt": prop("string", "Instructions (set on create; backfilled on an existing room only if its system_prompt is empty)"),
-			"related_rooms": prop("string", "Comma-separated related room IDs, each optionally type:id with type continues|supersedes|blocks (default relates); a JSON array string is also accepted (set on create; backfilled on an existing room only if it has none)"),
+			"related_rooms": arrayProp("Comma-separated related room IDs, each optionally type:id with type continues|supersedes|blocks (default relates); a JSON array string is also accepted (set on create; backfilled on an existing room only if it has none)"),
 			"visibility":    prop("string", "'public' (default) or 'private', used only when creating. Private rooms are node-local — excluded from all cluster fan-out."),
 			"repo":          prop("string", "Optional git repo (owner/repo or clone URL). Set on create; backfilled on an existing room only if it has no repo. Enables {sha:<hash>} commit-link resolution in this room's transcripts."),
 			"work_items":    prop("string", "Optional issue-tracker URL template containing {id} (http/https). Set on create; backfilled on an existing room only if it has none. Enables {wi:<id>} link resolution in this room's transcripts."),
-			"last_n":        prop("string", "Number of recent messages to return for existing rooms (default 5, max 50)"),
+			"last_n":        prop("integer", "Number of recent messages to return for existing rooms (default 5, max 50)"),
 		}),
 	}, plainTool(r.handleGetOrCreateRoom))
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "post_to_room",
+		Title:       "Post to room",
 		Description: "Post a message to a council room's ledger. Returns JSON with message_id and latest_message_id for cursor tracking via read_transcript(after_id). Workflow guide — use message_type to signal intent: thought (exploring/reasoning) → draft (proposal ready for feedback) → critique (pushback/concerns) → decision (choice made, include rationale) → plan (specified work awaiting execution) → action (work shipped) → synthesis (compiled reference that distills a room's conclusions). Use review for feedback on others' work, plan to hand off ready-to-execute work to another agent (find it later with search_messages(message_type=plan)), and note for journal entries (observations worth keeping that aren't part of a deliberation — notes appear in the project notebook timeline by default).",
 		InputSchema: schema([]string{"room_id"}, map[string]map[string]any{
 			"room_id": prop("string", "Target room ID"),
@@ -72,14 +76,14 @@ func (r *Registry) RegisterTools() {
 				"read_transcript(mode=changelog)) skip it, so an untyped post goes uncounted in the project notebook and decision log. "+
 				"Per-type when-to-use guidance: load_resources(uri=council://message-types)."),
 			"reply_to":        prop("string", "Message ID this is a reply to — full UUID or a transcript's 8-char #prefix, looked up in the room you post to first (a prefix shared with another room is not ambiguity); write room#prefix to target another room. Unknown or ambiguous refs error. Renders as 're: #…' in transcripts"),
-			"mentions":        prop("string", "Comma-separated agent names to explicitly notify (e.g. 'claude,gemini-cli'). Mentioned agents can call get_mentions on startup to find threads awaiting their input."),
+			"mentions":        arrayProp("Comma-separated agent names to explicitly notify (e.g. 'claude,gemini-cli'). Mentioned agents can call get_mentions on startup to find threads awaiting their input."),
 			"supersedes":      prop("string", "Message ID this one replaces (e.g. an earlier synthesis) — full UUID or an 8-char #prefix (resolved; unknown or ambiguous refs error). Renders as 'supersedes #x' so tooling can dim the dead version. Pinning a new synthesis over an old one sets this automatically."),
-			"mark_read_self":  prop("string", "Set 'true' to advance your own read cursor to this new message — folds the end-of-session mark_read into the post (uses author as the agent identity)."),
-			"pin":             prop("string", "Set 'true' to pin this message as the room's current pin (auto-unpins the previous one), folding the post→pin dance into one call. Use for the synthesis/decision you want surfaced as the room's living abstract — no separate pin_message round-trip or message_id plumbing. Works cross-node too: on a room owned by a peer the pin is applied on the owner, and the response says whether it landed."),
+			"mark_read_self":  prop("boolean", "Set 'true' to advance your own read cursor to this new message — folds the end-of-session mark_read into the post (uses author as the agent identity)."),
+			"pin":             prop("boolean", "Set 'true' to pin this message as the room's current pin (auto-unpins the previous one), folding the post→pin dance into one call. Use for the synthesis/decision you want surfaced as the room's living abstract — no separate pin_message round-trip or message_id plumbing. Works cross-node too: on a room owned by a peer the pin is applied on the owner, and the response says whether it landed."),
 			"workspace":       prop("string", "Absolute path of the working tree you are in (your cwd). Optional. If another participant posted from the same tree in the last 24h, the response warns you — disjoint file edits are safe, a shared git index is not. Limits and rationale: council://guide → Sharing a Working Tree."),
-			"force":           prop("string", "Set 'true' with pin=true to replace a pin that another author set in the last 12h. Without it such a pin is kept, the message still posts, and the response names the pin it would have replaced."),
-			"reopen":          prop("string", "Set 'true' to flip a resolved room back to active as part of this post. Without it, posting to a resolved room still works but the response warns the room is resolved."),
-			"tags":            prop("string", "Comma-separated tags stored on this message (e.g. 'meta-feedback'). Message-level, distinct from room tags."),
+			"force":           prop("boolean", "Set 'true' with pin=true to replace a pin that another author set in the last 12h. Without it such a pin is kept, the message still posts, and the response names the pin it would have replaced."),
+			"reopen":          prop("boolean", "Set 'true' to flip a resolved room back to active as part of this post. Without it, posting to a resolved room still works but the response warns the room is resolved."),
+			"tags":            arrayProp("Comma-separated tags stored on this message (e.g. 'meta-feedback'). Message-level, distinct from room tags."),
 			"links":           prop("string", "Typed links from this message, 'relation:#id' pairs comma-separated (e.g. 'refines:#01a0b156,contradicts:#019ec14a'). Relations as link_messages. An id may be written room#prefix. An unknown relation or ambiguous id rejects the whole post; nothing is written."),
 			"idempotency_key": prop("string", "Any string unique to this logical post. If the call times out and you are unsure it landed, retry with the same key: a repeat by the same author in the same room returns the first message's id instead of posting twice."),
 		}),
@@ -87,6 +91,7 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "signal_status",
+		Title:       "Signal status",
 		Description: "Update a room's status. Use 'paused' when blocked or waiting (not done, just on hold). Use 'resolved' when the goal is complete — typically after posting a synthesis and pinning it. Use 'active' to reopen a paused or mistakenly closed room. Works on rooms owned by another cluster node: the change is transparently forwarded to the owner, the same way post_to_room proxies a write, so a room can be closed out from any node.",
 		InputSchema: schema([]string{"room_id", "status"}, map[string]map[string]any{
 			"room_id": prop("string", "Target room ID"),
@@ -95,22 +100,24 @@ func (r *Registry) RegisterTools() {
 	}, plainTool(r.handleSignalStatus))
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
-		Name: "bulk_status_update",
+		Name:  "bulk_status_update",
+		Title: "Bulk status update",
 		Description: "Update the status of multiple rooms in one call. Optionally post a closing message to each room. " +
 			"Use this at the end of a planning session when 3+ rooms have all decisions made and no further discussion is expected — " +
 			"e.g. after a sprint review, after shipping a feature, or when closing out a bug investigation cluster. " +
 			"Set auto_archive_days=N to also archive (and remove) any room transitioned to 'resolved' whose last activity is N+ days old, collapsing two admin steps into one.",
 		InputSchema: schema([]string{"room_ids", "status"}, map[string]map[string]any{
-			"room_ids":          prop("string", "Comma-separated room IDs (e.g. bug-123,bug-456,feature-x)"),
+			"room_ids":          arrayProp("Comma-separated room IDs (e.g. bug-123,bug-456,feature-x)"),
 			"status":            prop("string", "One of: active, paused, resolved"),
 			"message":           prop("string", "Optional closing message to post to each room before updating status"),
 			"author":            prop("string", "Author name for the closing message (required if message is provided)"),
-			"auto_archive_days": prop("string", "When set with status='resolved', any room whose last activity is N+ days old is also archived and deleted. Use 0 or omit to skip auto-archive."),
+			"auto_archive_days": prop("integer", "When set with status='resolved', any room whose last activity is N+ days old is also archived and deleted. Use 0 or omit to skip auto-archive."),
 		}),
 	}, plainTool(r.handleBulkStatusUpdate))
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
-		Name: "bulk_visibility",
+		Name:  "bulk_visibility",
+		Title: "Bulk visibility",
 		Description: "Set room visibility ('public' or 'private') across many rooms in one call. " +
 			"Private rooms are node-local — excluded from all cluster fan-out (cluster-wide reads and cross-node writes); public rooms are shared across the cluster. " +
 			"Specify exactly one target: all='true' (every room on this node, uncapped), project='<name>' (every room in a project), or room_ids='a,b,c'. " +
@@ -118,14 +125,15 @@ func (r *Registry) RegisterTools() {
 			"Unlike update_room's where_project (capped at 100), all='true' really means every room.",
 		InputSchema: schema([]string{"visibility"}, map[string]map[string]any{
 			"visibility": prop("string", "'public' or 'private' (required)."),
-			"all":        prop("string", "Set to 'true' to target every room on this node. Uncapped. Mutually exclusive with project/room_ids."),
+			"all":        prop("boolean", "Set to 'true' to target every room on this node. Uncapped. Mutually exclusive with project/room_ids."),
 			"project":    prop("string", "Target every room in this project. Mutually exclusive with all/room_ids."),
-			"room_ids":   prop("string", "Comma-separated room IDs to target (e.g. bug-123,feature-x). Mutually exclusive with all/project."),
+			"room_ids":   arrayProp("Comma-separated room IDs to target (e.g. bug-123,feature-x). Mutually exclusive with all/project."),
 		}),
 	}, plainTool(r.handleBulkVisibility))
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
-		Name: "rename_project",
+		Name:  "rename_project",
+		Title: "Rename project",
 		Description: "Rewrite the `project` field on every room currently assigned to `from`, replacing it with `to`. " +
 			"Both names are slugified the same way as create_room/update_room writes, so callers don't need to pre-normalize. " +
 			"Use after a repository or product gets renamed — avoids hand-fixing 15+ rooms per rename.",
@@ -137,39 +145,41 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "list_rooms",
+		Title:       "List rooms",
 		Description: "List council rooms, optionally filtered by project, tag, status, or keyword search. Returns compact one-line-per-room format by default (saves ~60-80% tokens vs verbose). Set verbose=true for full metadata. Tip: filter by tag='needs-synthesis', tag='stale', tag='stale-pin', tag='stale-plan', or tag='incoherent' to find rooms flagged by the Knowledge Linter.",
 		InputSchema: schema(nil, map[string]map[string]any{
 			"project":        prop("string", "Filter by project name"),
-			"project_not_in": prop("string", "Comma-separated project names to EXCLUDE. Useful for triaging deprecated-project graveyards (e.g. project_not_in='active-proj-a,active-proj-b' surfaces every room whose project is anything else)."),
+			"project_not_in": arrayProp("Comma-separated project names to EXCLUDE. Useful for triaging deprecated-project graveyards (e.g. project_not_in='active-proj-a,active-proj-b' surfaces every room whose project is anything else)."),
 			"tag":            prop("string", "Filter by tag"),
 			"status":         prop("string", "Filter by status: active, paused, resolved, or all. Default (omitted): active and paused only; the reply says how many resolved rooms were left out."),
 			"search":         prop("string", "Keyword search across room ID, topic/description, and tags. Multi-word queries use AND (all words must match); if nothing matches, falls back to OR so over-specified queries still find the room."),
 			"compact":        prop("string", "Deprecated — compact output is the default; kept so existing callers passing compact=false still work (it maps to verbose)."),
-			"archived":       prop("string", "'true' = only rooms archive_room has archived (archived_at set); 'false' = only rooms never archived. With status=resolved, archived=false is the worklist of rooms still to archive. Each listed room shows its archive time and last message time."),
+			"archived":       prop("boolean", "'true' = only rooms archive_room has archived (archived_at set); 'false' = only rooms never archived. With status=resolved, archived=false is the worklist of rooms still to archive. Each listed room shows its archive time and last message time."),
 			"related_to":     prop("string", "Filter to rooms whose related_rooms list contains this room ID. Returns the flat neighborhood around a specific room — pairs with compact listing for a data-dense alternative to get_concept_map."),
-			"limit":          prop("string", "Max rooms to return (default 50, max 100); the reply says how many matching rooms were left out."),
-			"offset":         prop("string", "Offset for pagination (default 0)"),
-			"verbose":        prop("string", "Set to 'true' for full metadata per room (system_prompt, tech_stack, tags, related_rooms)"),
-			"cluster_wide":   prop("string", "'true' searches all cluster nodes. Default: cluster-wide when peers are connected (COUNCIL_CLUSTER_READS=local turns that off); 'false' forces this node only."),
+			"limit":          prop("integer", "Max rooms to return (default 50, max 100); the reply says how many matching rooms were left out."),
+			"offset":         prop("integer", "Offset for pagination (default 0)"),
+			"verbose":        prop("boolean", "Set to 'true' for full metadata per room (system_prompt, tech_stack, tags, related_rooms)"),
+			"cluster_wide":   prop("boolean", "'true' searches all cluster nodes. Default: cluster-wide when peers are connected (COUNCIL_CLUSTER_READS=local turns that off); 'false' forces this node only."),
 		}),
-	}, r.handleListRooms)
+	}, lenientTool(r.handleListRooms))
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "update_room",
+		Title:       "Update room",
 		Description: "Update a room's metadata. Only provided fields are changed; omitted fields are left unchanged. Returns the full updated room state. Related rooms are bidirectionally linked. Use room_ids (comma-separated) to patch multiple rooms in one call. Use where_project to apply the same patch (especially add_tags/remove_tags) to every room in a project in one call. Use add_tags/remove_tags for surgical tag mutations without overwriting all existing tags. Hub-managed tags (stale, stale-plan, stale-pin, needs-synthesis, unpinned-synthesis, incoherent, resolved, synthesis-complete) are set and cleared by the Knowledge Linter and room status; they are ignored here, and the janitor strips status tags that contradict the room.",
 		InputSchema: schema([]string{}, map[string]map[string]any{
 			"room_id":           prop("string", "Target room ID (single room)"),
-			"room_ids":          prop("string", "Comma-separated room IDs for batch updates — use instead of or alongside room_id"),
+			"room_ids":          arrayProp("Comma-separated room IDs for batch updates — use instead of or alongside room_id"),
 			"where_project":     prop("string", "Apply this patch to every room currently in the given project. Combine with add_tags/remove_tags to bulk-tag a project in one call. Combines with room_id/room_ids if both supplied."),
 			"topic":             prop("string", "New topic/description"),
 			"project":           prop("string", "New project grouping"),
 			"tech_stack":        prop("string", "New tech stack"),
-			"tags":              prop("string", "New comma-separated tags (overwrites existing)"),
-			"add_tags":          prop("string", "Comma-separated tags to add to existing tags"),
-			"remove_tags":       prop("string", "Comma-separated tags to remove from existing tags"),
+			"tags":              arrayProp("New comma-separated tags (overwrites existing)"),
+			"add_tags":          arrayProp("Comma-separated tags to add to existing tags"),
+			"remove_tags":       arrayProp("Comma-separated tags to remove from existing tags"),
 			"system_prompt":     prop("string", "New system prompt"),
-			"related_rooms":     prop("string", "Comma-separated IDs of related rooms, each optionally type:id with type continues|supersedes|blocks (default relates); a JSON array string is also accepted. REPLACES the whole list (the response names any removed IDs); bidirectional: the linked room gets the inverse type (continued-by, superseded-by, blocked-by)"),
-			"add_related_rooms": prop("string", "Comma-separated room IDs (optionally type:id) to merge into the existing related_rooms list (nothing removed; existing link types are kept). Mutually exclusive with related_rooms."),
+			"related_rooms":     arrayProp("Comma-separated IDs of related rooms, each optionally type:id with type continues|supersedes|blocks (default relates); a JSON array string is also accepted. REPLACES the whole list (the response names any removed IDs); bidirectional: the linked room gets the inverse type (continued-by, superseded-by, blocked-by)"),
+			"add_related_rooms": arrayProp("Comma-separated room IDs (optionally type:id) to merge into the existing related_rooms list (nothing removed; existing link types are kept). Mutually exclusive with related_rooms."),
 			"visibility":        prop("string", "'public' or 'private'. Set 'private' to make the room node-local (excluded from cluster fan-out); 'public' to re-expose it to the cluster."),
 			"repo":              prop("string", "Set the room's git repo (owner/repo or clone URL) for {sha:<hash>} commit-link resolution. An empty value leaves the existing repo unchanged."),
 			"work_items":        prop("string", "Set the room's issue-tracker URL template (must contain {id}, http/https) for {wi:<id>} link resolution. An empty value leaves the existing template unchanged."),
@@ -178,18 +188,20 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "read_room",
+		Title:       "Read room",
 		Description: "Read a room's metadata (topic, project, tech_stack, tags, status, system_prompt) plus a quick orient: by default it folds in the pinned message + latest-per-type (the read_transcript(mode=summary) view) so one call shows you the room, not just its header. For the full sequential history use read_transcript; pass include_last_n to inline the raw last N messages instead of the summary. Use include_related_summaries=true to also fetch the topic, system_prompt, and pinned message of each related room — lateral context in one call. Also warns when two participants have declared the same working tree (see post_to_room's workspace param) — they share a git index even when talking in different rooms.",
 		InputSchema: schema([]string{"room_id"}, map[string]map[string]any{
 			"room_id":                   prop("string", "Target room ID"),
-			"include_related_summaries": prop("string", "Set to 'true' to append topic, system_prompt, and pinned message from each related room."),
-			"include_last_n":            prop("string", "Append the last N messages inline after room metadata (max 50). Saves a separate get_messages call."),
-			"limit":                     prop("string", "Alias for include_last_n."),
-			"cluster_wide":              prop("string", "'true' fetches this room from the cluster node that owns it. Default: tries this node first, then the cluster if it is not here (COUNCIL_CLUSTER_READS=local turns that off); 'false' forces this node only."),
+			"include_related_summaries": prop("boolean", "Set to 'true' to append topic, system_prompt, and pinned message from each related room."),
+			"include_last_n":            prop("integer", "Append the last N messages inline after room metadata (max 50). Saves a separate get_messages call."),
+			"limit":                     prop("integer", "Alias for include_last_n."),
+			"cluster_wide":              prop("boolean", "'true' fetches this room from the cluster node that owns it. Default: tries this node first, then the cluster if it is not here (COUNCIL_CLUSTER_READS=local turns that off); 'false' forces this node only."),
 		}),
 	}, plainTool(r.handleReadRoom))
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "delete_room",
+		Title:       "Delete room",
 		Description: "Permanently delete a council room and all its messages. This cannot be undone.",
 		InputSchema: schema([]string{"room_id"}, map[string]map[string]any{
 			"room_id": prop("string", "Target room ID"),
@@ -201,17 +213,17 @@ func (r *Registry) RegisterTools() {
 		"author":          prop("string", "Filter by author name"),
 		"message_type":    prop("string", "Filter by type: message, thought, draft, decision, plan, action, review, critique, synthesis, note. Use 'synthesis' to find compiled knowledge articles, or 'plan' to surface specified-but-unexecuted work across a project."),
 		"room_id":         prop("string", "Scope search to a specific room"),
-		"room_ids":        prop("string", "Comma-separated room IDs to search across a subset (e.g. bug-123,bug-456). Use instead of room_id for multi-room scoping."),
-		"include_related": prop("string", "Set to 'true' to automatically include the room's related_rooms in the search scope (requires room_id). Expands search to 1-level neighbours without specifying room_ids manually."),
+		"room_ids":        arrayProp("Comma-separated room IDs to search across a subset (e.g. bug-123,bug-456). Use instead of room_id for multi-room scoping."),
+		"include_related": prop("boolean", "Set to 'true' to automatically include the room's related_rooms in the search scope (requires room_id). Expands search to 1-level neighbours without specifying room_ids manually."),
 		"project":         prop("string", "Scope search to rooms in this project"),
-		"limit":           prop("string", "Max results to return (default 20, max 100)"),
+		"limit":           prop("integer", "Max results to return (default 20, max 100)"),
 		"since":           prop("string", "ISO timestamp (e.g. 2026-04-01T00:00:00). Only return messages at or after this time."),
 		"until":           prop("string", "ISO timestamp (e.g. 2026-04-03T23:59:59). Only return messages at or before this time."),
-		"summary_only":    prop("string", "Set to 'true' for compact output: id, author, timestamp, room, type, and 120-char excerpt"),
-		"excerpt_chars":   prop("string", "With summary_only: excerpt length in characters (default 120, 40-2000). Widen it when the facts sit late in long posts, instead of re-fetching each hit with full_content"),
-		"full_content":    prop("string", "Set to 'true' to return the full un-truncated message body instead of a 300-char snippet"),
+		"summary_only":    prop("boolean", "Set to 'true' for compact output: id, author, timestamp, room, type, and 120-char excerpt"),
+		"excerpt_chars":   prop("integer", "With summary_only: excerpt length in characters (default 120, 40-2000). Widen it when the facts sit late in long posts, instead of re-fetching each hit with full_content"),
+		"full_content":    prop("boolean", "Set to 'true' to return the full un-truncated message body instead of a 300-char snippet"),
 		"work_item":       prop("string", "Exact work-item id (letters, digits, '.', '_', '-'): only messages containing the literal token {wi:ID}. Free-text spellings such as 'ABC 12' are not matched. Combines with the other filters by AND; not available with semantic."),
-		"cluster_wide":    prop("string", "'true' searches all cluster nodes. Default: cluster-wide when peers are connected (COUNCIL_CLUSTER_READS=local turns that off); 'false' forces this node only. Semantic search is always node-local."),
+		"cluster_wide":    prop("boolean", "'true' searches all cluster nodes. Default: cluster-wide when peers are connected (COUNCIL_CLUSTER_READS=local turns that off); 'false' forces this node only. Semantic search is always node-local."),
 	}
 	// Only expose semantic param when an embedding provider is configured.
 	// Avoids agents wasting turns on a feature that will return an error.
@@ -220,37 +232,41 @@ func (r *Registry) RegisterTools() {
 	}
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "search_messages",
+		Title:       "Search messages",
 		Description: "Search messages across rooms by keyword, author, type, or time range. Prefer over read_transcript when: room has 20+ messages, you need cross-room results, or you're filtering by author/type/time window. Use read_transcript when you need a room's full sequential context. Returns snippets with message IDs; use get_messages to fetch full content. Use summary_only=true for compact results (id, author, timestamp, 120-char excerpt; widen with excerpt_chars). Use full_content=true to bypass snippet truncation. Use include_related=true to automatically include related rooms in the search scope. Use work_item=ID for an exact lookup of messages that carry the {wi:ID} token. Note: when cluster_wide=true, semantic search runs locally only (sqlite-vec is node-local) and remote nodes fall back to keyword search with a warning.",
 		InputSchema: schema(nil, searchProps),
 	}, plainTool(r.handleSearchMessages))
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "get_messages",
+		Title:       "Get messages",
 		Description: "Fetch specific messages by ID, browse a room's recent messages, or delta-read new messages since a known ID. Supports: message_ids for specific fetch, room_id+last_n for browsing, room_id+after_id for 'give me everything new since X'. Set history=true with message_ids to see each message's full append-only edit chain (every preserved version, oldest → newest). For formatted transcripts with room context, use read_transcript instead.",
 		InputSchema: schema(nil, map[string]map[string]any{
-			"message_ids":  prop("string", "Comma-separated message IDs (e.g. 48,52,55) — each accepts a full ID or an unambiguous ID prefix (e.g. from a transcript)"),
+			"message_ids":  arrayProp("Comma-separated message IDs (e.g. 48,52,55) — each accepts a full ID or an unambiguous ID prefix (e.g. from a transcript)"),
 			"room_id":      prop("string", "Browse messages from this room (alternative to message_ids)"),
-			"last_n":       prop("string", "Number of recent messages to fetch when using room_id (default 10, max 50)"),
-			"limit":        prop("string", "With room_id: alias for last_n when browsing; with after_id/before_id: page size (default 50, max 200). The reply gives the cursor for the next page."),
+			"last_n":       prop("integer", "Number of recent messages to fetch when using room_id (default 10, max 50)"),
+			"limit":        prop("integer", "With room_id: alias for last_n when browsing; with after_id/before_id: page size (default 50, max 200). The reply gives the cursor for the next page."),
 			"before_id":    prop("string", "Return the messages just older than this ID (requires room_id), in chronological order. Page backwards with limit."),
 			"after_id":     prop("string", "Return only messages with ID greater than this value (requires room_id). For delta reads without transcript formatting."),
-			"cluster_wide": prop("string", "'true' fetches messages from all cluster nodes. Default: cluster-wide when peers are connected and message_ids is given (COUNCIL_CLUSTER_READS=local turns that off); 'false' forces this node only. Room reads stay local."),
-			"history":      prop("string", "Set to 'true' (with message_ids) to return each message's full revision history — every preserved version in the append-only edit chain, oldest to newest."),
+			"cluster_wide": prop("boolean", "'true' fetches messages from all cluster nodes. Default: cluster-wide when peers are connected and message_ids is given (COUNCIL_CLUSTER_READS=local turns that off); 'false' forces this node only. Room reads stay local."),
+			"history":      prop("boolean", "Set to 'true' (with message_ids) to return each message's full revision history — every preserved version in the append-only edit chain, oldest to newest."),
 		}),
 	}, plainTool(r.handleGetMessages))
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "room_stats",
+		Title:       "Room stats",
 		Description: "Get lightweight statistics for one or more rooms: message count, latest_message_id (for after_id cursor), participants with per-author counts, type breakdown, first/last activity timestamps, and the pinned message with a count of messages posted since it (a one-call 'is the pin stale?' check). Use room_ids for batch pre-screening before committing to full transcript reads.",
 		InputSchema: schema(nil, map[string]map[string]any{
 			"room_id":      prop("string", "Single target room ID."),
-			"room_ids":     prop("string", "Comma-separated room IDs for batch stats (e.g. room-a,room-b). Use instead of or alongside room_id."),
-			"cluster_wide": prop("string", "Set to 'true' to fetch stats from all cluster nodes. Default: local only."),
+			"room_ids":     arrayProp("Comma-separated room IDs for batch stats (e.g. room-a,room-b). Use instead of or alongside room_id."),
+			"cluster_wide": prop("boolean", "Set to 'true' to fetch stats from all cluster nodes. Default: local only."),
 		}),
 	}, plainTool(r.handleRoomStats))
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "update_message",
+		Title:       "Update message",
 		Description: "Edit a message — append-only. Nothing is overwritten: this posts a NEW revision carrying the new content and links it back to the prior version via `revises`, so every version is preserved as an immutable, addressable node (the NLS Journal property). Reads collapse to the newest version (the head) and mark it ✎ edited; the prior versions stay walkable via get_links (revises / revised_by). Use for: (1) maintaining living documents like status tables or running summaries, (2) correcting errors. The new head inherits the original's reply/supersedes links and pin. Use expected_content to prevent lost updates when multiple agents may edit the same message.",
 		InputSchema: schema([]string{"message_id"}, map[string]map[string]any{
 			"message_id":       prop("string", "ID of the message to edit (must be the current head — editing an already-revised node returns the head to edit instead). Accepts a full ID or an unambiguous ID prefix (e.g. from a transcript)."),
@@ -264,7 +280,8 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "pin_message",
-		Description: "Pin a message as the living TL;DR for a room. Use after posting a synthesis or decision that captures the room's current state — pinned messages appear first in every transcript read, giving newcomers instant context. Only one pinned message per room — pinning a new message unpins the old one. Pinning an already-pinned message unpins it (toggle). Local-only: for a room owned by another cluster node use post_to_room(pin=true), which routes to the owner; aiming this at one names the owning node rather than reporting the message missing.",
+		Title:       "Pin message",
+		Description: "Pin a message as the living TL;DR for a room. Use after posting a synthesis or decision that captures the room's current state — pinned messages appear first in every transcript read, giving newcomers instant context. Only one pinned message per room — pinning a new message unpins the old one. Pinning an already-pinned message unpins it (toggle). For a room owned by another cluster node the pin is forwarded to the owner and the reply names it; a peer on an older release cannot take a forwarded pin, and the reply then says nothing was changed.",
 		InputSchema: schema([]string{"room_id", "message_id"}, map[string]map[string]any{
 			"room_id":    prop("string", "Target room ID"),
 			"message_id": prop("string", "ID of the message to pin/unpin — accepts a full ID or an unambiguous ID prefix (e.g. from a transcript)"),
@@ -273,6 +290,7 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "react_to_message",
+		Title:       "React to message",
 		Description: "Add or remove an emoji reaction on a message. Toggle behavior: reacting with the same emoji by the same author removes it. Reactions are lightweight agreement/acknowledgment signals — use instead of posting a full message when a simple thumbs-up or checkmark suffices.",
 		InputSchema: schema([]string{"message_id", "emoji", "author"}, map[string]map[string]any{
 			"message_id": prop("string", "ID of the message to react to — accepts a full ID or an unambiguous ID prefix (e.g. from a transcript)"),
@@ -283,6 +301,7 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "link_messages",
+		Title:       "Link messages",
 		Description: "Assert a typed link between two messages, building an addressable knowledge graph over the ledger. Relations: refines, contradicts, implements, duplicates, depends-on, relates, informs. Use informs to wire a journal note to the deliberation it provides context for (note → decision/action) — the notebook timeline then weaves the note's `↳ informs` connections in, and get_links on the decision surfaces the notes that inform it, so journal context becomes connective tissue rather than a dead-end entry. (The reply and supersedes edges are recorded automatically via post_to_room's reply_to/supersedes params, and revises/revised_by via update_message edits — link_messages is for the richer semantic edges.) Idempotent on (from, to, relation). Use get_links to traverse the graph from any message.",
 		InputSchema: schema([]string{"from_id", "to_id", "relation"}, map[string]map[string]any{
 			"from_id":  prop("string", "Source message ID (the one making the assertion) — accepts a full ID or an unambiguous ID prefix"),
@@ -294,15 +313,17 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "get_links",
+		Title:       "Get links",
 		Description: "Show a message's neighborhood in the link graph: outgoing edges (what it points at) and incoming edges — the backlinks (what points at it). Merges explicit typed links (link_messages) with the implicit reply, supersedes, and revises/revised_by edges, so you see the whole graph around a node — including the append-only edit history (walk revised_by from any version to the latest). Use to find what refines/contradicts/supersedes/revises a given synthesis or decision. Pass depth>1 (max 5) for a link-distance view — a breadth-first walk of everything within N hops, grouped by distance.",
 		InputSchema: schema([]string{"message_id"}, map[string]map[string]any{
 			"message_id": prop("string", "Message ID to fetch the link neighborhood for — accepts a full ID or an unambiguous ID prefix"),
-			"depth":      prop("string", "Hops to traverse (default 1 = immediate links; max 5). depth>1 returns a link-distance neighborhood grouped by distance."),
+			"depth":      prop("integer", "Hops to traverse (default 1 = immediate links; max 5). depth>1 returns a link-distance neighborhood grouped by distance."),
 		}),
 	}, plainTool(r.handleGetLinks))
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "unlink_messages",
+		Title:       "Unlink messages",
 		Description: "Remove an explicit typed link by its ID (from link_messages or get_links output). Implicit reply/supersedes/revises edges can't be removed here — they're structural (reply/supersedes set at post time; revises is permanent append-only edit history).",
 		InputSchema: schema([]string{"link_id"}, map[string]map[string]any{
 			"link_id": prop("string", "ID of the link to remove"),
@@ -311,38 +332,42 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "delete_messages",
+		Title:       "Delete messages",
 		Description: "Retract messages — the immutable counterpart to deletion. By default this tombstones the messages (sets retracted_at): the nodes, their content, and their links all survive, and they render as \"[retracted]\" — so the knowledge graph never dangles. Provide a comma-separated list of message IDs. Use dry_run=true to preview. Retraction is reversible: pass restore=true to bring tombstoned messages back. Pass purge=true ONLY for content that must not persist (a leaked secret, PII): purge hard-deletes the rows and cascade-removes their links, permanently destroying signal — prefer retract for everything else. Purge requires exact full message IDs (prefixes are not resolved — a typo'd prefix must never hard-delete the wrong message).",
 		InputSchema: schema([]string{"message_ids"}, map[string]map[string]any{
-			"message_ids": prop("string", "Comma-separated message IDs to retract (or restore/purge) — each accepts a full ID or an unambiguous ID prefix"),
-			"dry_run":     prop("string", "Set to 'true' to preview without executing. Returns message details (id, author, timestamp, room, excerpt)."),
+			"message_ids": arrayProp("Comma-separated message IDs to retract (or restore/purge) — each accepts a full ID or an unambiguous ID prefix"),
+			"dry_run":     prop("boolean", "Set to 'true' to preview without executing. Returns message details (id, author, timestamp, room, excerpt)."),
 			"author":      prop("string", "Optional name of the agent retracting (recorded as retracted_by)"),
-			"purge":       prop("string", "Set to 'true' to permanently destroy instead of retract — hard-deletes the rows and their links. Use only for secrets/PII that must not persist. Requires exact full message IDs (prefixes are not resolved)."),
-			"restore":     prop("string", "Set to 'true' to reverse a retraction — clears the tombstone so the messages render normally again."),
+			"purge":       prop("boolean", "Set to 'true' to permanently destroy instead of retract — hard-deletes the rows and their links. Use only for secrets/PII that must not persist. Requires exact full message IDs (prefixes are not resolved)."),
+			"restore":     prop("boolean", "Set to 'true' to reverse a retraction — clears the tombstone so the messages render normally again."),
 		}),
 	}, plainTool(r.handleDeleteMessages))
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "move_messages",
+		Title:       "Move messages",
 		Description: "Move messages from their current room to a different room, preserving all metadata (author, timestamp, type, reply_to). Useful when a conversation thread drifts off-topic and belongs in a more appropriate room. Returns the count of moved messages and their new room. Note: message IDs and content are unchanged — existing references and cursors remain valid.",
 		InputSchema: schema([]string{"message_ids", "target_room_id"}, map[string]map[string]any{
-			"message_ids":    prop("string", "Comma-separated message IDs to move (e.g. abc123,def456) — each accepts a full ID or an unambiguous ID prefix"),
+			"message_ids":    arrayProp("Comma-separated message IDs to move (e.g. abc123,def456) — each accepts a full ID or an unambiguous ID prefix"),
 			"target_room_id": prop("string", "Room ID to move the messages into"),
 		}),
 	}, plainTool(r.handleMoveMessages))
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "get_mentions",
+		Title:       "Get mentions",
 		Description: "Find messages mentioning an agent. The match is a case-insensitive SUBSTRING of the mentions list, not an exact agent match, so a name that is a prefix of another ('claude' vs 'claude-code') returns both, and a name spelled differently from how it was mentioned ('gemini-cli' vs 'Gemini CLI') returns neither. Use one stable, distinctive author name per agent. Call this at session start to check if any threads await your input before running get_digest. Returns recent messages where the agent was mentioned via the mentions param in post_to_room, ordered newest-first. Pass project to scope mentions to one project's rooms — mirrors get_digest(project) so the session-start pair stays consistent.",
 		InputSchema: schema([]string{"author"}, map[string]map[string]any{
 			"author":       prop("string", "Agent name to search mentions for (e.g. 'claude', 'gemini-cli'). Matched as a case-insensitive substring, so keep it stable and distinctive — read cursors (mark_read) key off the same string, and changing it replays your whole backlog"),
 			"project":      prop("string", "Optionally scope mentions to rooms in this project (slug-normalized, same as get_digest)"),
-			"cluster_wide": prop("string", "'true' also searches mentions on all cluster nodes. Default: cluster-wide when peers are connected (COUNCIL_CLUSTER_READS=local turns that off); 'false' forces this node only and the reply then ends with a 'local node only; N nodes in the cluster' line."),
-			"limit":        prop("string", "Max results to return (default 20, max 100)"),
+			"cluster_wide": prop("boolean", "'true' also searches mentions on all cluster nodes. Default: cluster-wide when peers are connected (COUNCIL_CLUSTER_READS=local turns that off); 'false' forces this node only and the reply then ends with a 'local node only; N nodes in the cluster' line."),
+			"limit":        prop("integer", "Max results to return (default 20, max 100)"),
 		}),
 	}, plainTool(r.handleGetMentions))
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
-		Name: "mark_read",
+		Name:  "mark_read",
+		Title: "Mark read",
 		Description: "Persist a read cursor for this agent in a room. After reading a room's messages, call mark_read with the latest message ID — then use get_digest(unread_only=true) on your next session to see only what changed since you last looked. " +
 			"Cursors are stored per agent per room, so multiple agents can track their own positions independently.",
 		InputSchema: schema([]string{"room_id", "cursor"}, map[string]map[string]any{
@@ -354,12 +379,14 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "list_archives",
+		Title:       "List archives",
 		Description: "List all archived room transcripts with file size and archive date. Archives are created by archive_room.",
 		InputSchema: schema(nil, map[string]map[string]any{}),
 	}, plainTool(r.handleListArchives))
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "read_archive",
+		Title:       "Read archive",
 		Description: "Read an archived room transcript by room ID. Returns the full markdown content saved by archive_room.",
 		InputSchema: schema([]string{"room_id"}, map[string]map[string]any{
 			"room_id": prop("string", "Room ID of the archive to read (e.g. auth-migration)"),
@@ -368,10 +395,11 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "archive_room",
+		Title:       "Archive room",
 		Description: "Export a room's transcript to a markdown file in the archives directory, with an auto-generated Summary section. Use when a room is fully resolved and no longer needs active participation — archiving preserves the record and marks the room resolved so it leaves the active work list. Stamps archived_at (shown by list_rooms; filter with archived=true|false) without bumping the room's updated_at. A post made after archiving is not in the file: re-run archive_room to refresh it. Set delete=true to remove the room after archiving (common for completed sprints or resolved bugs).",
 		InputSchema: schema([]string{"room_id"}, map[string]map[string]any{
 			"room_id": prop("string", "Target room ID"),
-			"delete":  prop("string", "Set to 'true' to delete room after archiving"),
+			"delete":  prop("boolean", "Set to 'true' to delete room after archiving"),
 		}),
 	}, plainTool(r.handleArchiveRoom))
 
@@ -441,25 +469,28 @@ func (r *Registry) RegisterTools() {
 	}
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "check_room_health",
+		Title:       "Check room health",
 		Description: "Check all active rooms for attention signals. Flags: 'needs-synthesis' (rooms with decisions but no synthesis article — write one!), 'stale' (active rooms with no activity for 7+ days — resolve or revive), 'stale-pin' (active rooms whose pinned summary predates 5+ recent decision/action updates — post a fresh synthesis and re-pin), 'stale-plan' (active rooms with a plan but no follow-on action — an unexecuted handoff), 'unpinned-synthesis' (a synthesis exists but no message is pinned — pin the living TL;DR), 'incoherent' (the coherence linter: a live `contradicts` edge with no reconciling synthesis, or a `duplicates` edge between two un-superseded syntheses — supersede the loser or post a reconciling synthesis). Also reports projects with lots of decided work but no curated notebook. By default this posts system warnings into newly flagged rooms; pass dry_run=true to report current flags without writing. Pass exclude_stale=true to hide the inactive-room graveyard from the rendered list. Runs automatically every 6h in the background.",
 		InputSchema: schema(nil, map[string]map[string]any{
-			"dry_run":       prop("string", "Set to 'true' to report current health tags without running the mutating linter sweep."),
-			"exclude_stale": prop("string", "Set to 'true' to hide rooms flagged only as stale from the rendered result."),
-			"limit":         prop("string", "Max rooms to return in rooms[] (most recent first). The summary is still computed over the full set, and summary.truncated reports how many were dropped, so the tallies stay honest. Use it when the digest overflows: unread_only and exclude_stale filter by state, neither bounds the count, and a project with hundreds of rooms overflows with both set."),
+			"dry_run":       prop("boolean", "Set to 'true' to report current health tags without running the mutating linter sweep."),
+			"exclude_stale": prop("boolean", "Set to 'true' to hide rooms flagged only as stale from the rendered result."),
+			"limit":         prop("integer", "Max rooms to return in rooms[] (most recent first). The summary is still computed over the full set, and summary.truncated reports how many were dropped, so the tallies stay honest. Use it when the digest overflows: unread_only and exclude_stale filter by state, neither bounds the count, and a project with hundreds of rooms overflows with both set."),
 		}),
 	}, plainTool(roomHealthHandler))
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
-		Name: "regenerate_embeddings",
+		Name:  "regenerate_embeddings",
+		Title: "Regenerate embeddings",
 		Description: "Trigger an on-demand semantic-search embedding job in the background (returns immediately — a backfill can take minutes to hours cold). Requires COUNCIL_OLLAMA_URL to be configured. " +
 			"Default mode backfills only messages/rooms missing a vector (the same thing that already runs automatically on startup and every 10 minutes — use this to force it now instead of waiting, e.g. right after enabling COUNCIL_OLLAMA_URL or after a data-hygiene fix). " +
 			"Pass full=true to clear every existing vector first and re-embed everything from scratch — needed after switching COUNCIL_EMBED_MODEL, since old vectors are the wrong dimension/space and a missing-only scan would skip them. " +
 			"At most one embedding job (this, the background ticker, or another trigger) runs at a time; triggering while one is in flight reports that instead of starting a second.",
 		InputSchema: schema(nil, map[string]map[string]any{
-			"full": prop("string", "Set to 'true' to clear and recompute every vector instead of only filling in missing ones."),
+			"full": prop("boolean", "Set to 'true' to clear and recompute every vector instead of only filling in missing ones."),
 		}),
 	}, plainTool(r.handleRegenerateEmbeddings))
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
-		Name: "read_transcript",
+		Name:  "read_transcript",
+		Title: "Read transcript",
 		Description: "Read one or more room transcripts. Pass room_ids (comma-separated) to batch-read multiple rooms in one call — each is rendered with the same mode/last_n settings. " +
 			"For a single room use room_id. Modes: " +
 			"summary (pinned message + latest per type — best for orientation before diving in), " +
@@ -468,13 +499,13 @@ func (r *Registry) RegisterTools() {
 			"Other options: last_n for the most recent N messages, after_id for delta reads (always includes pinned for context), include_related=true to append related room summaries.",
 		InputSchema: schema(nil, map[string]map[string]any{
 			"room_id":         prop("string", "Target room ID (use this OR room_ids, not both)"),
-			"room_ids":        prop("string", "Comma-separated room IDs for batch reads (e.g. room-a,room-b,room-c). Each room rendered with the same mode/last_n settings."),
-			"last_n":          prop("string", "Return only the last N messages (default: all). Keeps room header and system prompt."),
+			"room_ids":        arrayProp("Comma-separated room IDs for batch reads (e.g. room-a,room-b,room-c). Each room rendered with the same mode/last_n settings."),
+			"last_n":          prop("integer", "Return only the last N messages (default: all). Keeps room header and system prompt."),
 			"after_id":        prop("string", "Return only messages with ID greater than this value. For delta reads after context compaction."),
 			"mode":            enumProp("string", "summary — pinned + latest per type (best for orientation); changelog — decisions + actions chronologically; work_items — structured export for sprint retros, release notes, ADO/GitHub Issues, or cross-room project status.", []string{"summary", "changelog", "work_items"}),
-			"include_related": prop("string", "Set to 'true' to append a summary of each related room after the main transcript. Resolves related_rooms automatically."),
-			"cluster_wide":    prop("string", "Set to 'true' to fetch the transcript from the remote cluster node that owns it."),
-			"show":            prop("string", "View filter — comma list of which metadata to render: ids, author, time, reactions. When set, ONLY those are shown (content is always shown); omit for all. E.g. show='author' for a clean author+content scan."),
+			"include_related": prop("boolean", "Set to 'true' to append a summary of each related room after the main transcript. Resolves related_rooms automatically."),
+			"cluster_wide":    prop("boolean", "Set to 'true' to fetch the transcript from the remote cluster node that owns it."),
+			"show":            arrayProp("View filter — comma list of which metadata to render: ids, author, time, reactions. When set, ONLY those are shown (content is always shown); omit for all. E.g. show='author' for a clean author+content scan."),
 			"truncate":        prop("string", "Set to 'line-one' to clip each message to its first line — a dense, scannable overview of a long room (Engelbart's line-clip ViewSpec). Default: full bodies."),
 			"author":          prop("string", "View filter — only render messages whose author matches (case-insensitive substring, so 'claude' matches 'Claude Code (Opus)')."),
 			"message_type":    prop("string", "View filter — only render messages of this type (e.g. decision, action, synthesis)."),
@@ -484,7 +515,8 @@ func (r *Registry) RegisterTools() {
 	}, plainTool(r.handleReadTranscript))
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
-		Name: "read_notebook",
+		Name:  "read_notebook",
+		Title: "Read notebook",
 		Description: "Read a project's dev notebook — which of two things you get depends on the param you pass. " +
 			"project=… → the TIMELINE: a live query over the ledger, nothing stored. Typed messages (decision, plan, action, synthesis, note) from every room in the project, woven chronologically and grouped by day, with {sha:…} refs resolved. Use it to see how a project unfolded — standups, retros, onboarding. " +
 			"notebook_id=… → a curated NOTEBOOK: a stored outline you assemble with edit_notebook, interleaving prose with transcluded messages and rooms (refs resolve live; nothing is copied). Work items self-sort — room_refs by their room's status, tasks by their own — so a standing list like current-work stays true without hand-editing. Use it for a hand-curated document or a work list. " +
@@ -494,21 +526,22 @@ func (r *Registry) RegisterTools() {
 			"project":      prop("string", "Timeline: project whose rooms are compiled. With notebook_id: keep only that project's work items (room_refs in the project or with id '<project>-…', tasks labelled '<project>:', '<project>/' or '[<project>]')."),
 			"entry_id":     prop("string", "Notebook only: read ONE entry in full (no notebook_id needed) — e.g. a task whose long label the level clip cut short."),
 			"notebook_id":  prop("string", "Curated notebook outline to read (use this OR project). Created via edit_notebook(action=create)."),
-			"types":        prop("string", "Timeline only: comma-separated message types to include (default: decision,action,synthesis,note). E.g. 'decision' for a decision log, 'decision,action,synthesis,critique' for a wider view."),
+			"types":        arrayProp("Timeline only: comma-separated message types to include (default: decision,action,synthesis,note). E.g. 'decision' for a decision log, 'decision,action,synthesis,critique' for a wider view."),
 			"since":        prop("string", "Timeline only: ISO timestamp (e.g. 2026-04-01T00:00:00). Only entries at or after this time."),
 			"until":        prop("string", "Timeline only: ISO timestamp (e.g. 2026-04-30T23:59:59). Only entries at or before this time."),
 			"after_id":     prop("string", "Timeline only: return only entries with message ID greater than this value. For delta reads — pair with the latest_message_id from the previous read's JSON footer."),
-			"limit":        prop("string", "Max entries; the most recent are kept. Timeline: default 100, max 500. Notebook: default all, applied after status/project filters."),
-			"level":        prop("string", "Notebook (notebook_id) only: NLS-style structural level-clip. An integer N collapses each prose entry to its markdown headings down to depth N (a table of contents) and clips transcluded message bodies to their first line; tasks and room_refs always render. Omit or 0 for the full outline. The structural counterpart to read_transcript's truncate=line-one."),
+			"limit":        prop("integer", "Max entries; the most recent are kept. Timeline: default 100, max 500. Notebook: default all, applied after status/project filters."),
+			"level":        prop("integer", "Notebook (notebook_id) only: NLS-style structural level-clip. An integer N collapses each prose entry to its markdown headings down to depth N (a table of contents) and clips transcluded message bodies to their first line; tasks and room_refs always render. Omit or 0 for the full outline. The structural counterpart to read_transcript's truncate=line-one."),
 			"status":       prop("string", "Notebook (notebook_id) only: keep only work items in this state — 'open', 'doing' or 'done'. Tasks and room_refs both honour it (a room_ref is open until its room resolves). Omit for everything. Pair with level to answer 'what is open' without rendering finished work — on a large standing notebook the done sections are most of the payload."),
 			"owner":        prop("string", "Notebook (notebook_id) only: keep only tasks whose owner field equals this (case-insensitive). Narrows the result to tasks."),
-			"overdue":      prop("string", "Notebook (notebook_id) only: 'true' keeps only open or doing tasks whose due date (YYYY-MM-DD) is before today (UTC). Narrows the result to tasks."),
-			"cluster_wide": prop("string", "Timeline only: set to 'true' to compile the timeline from all cluster nodes. Default: local only."),
+			"overdue":      prop("boolean", "Notebook (notebook_id) only: 'true' keeps only open or doing tasks whose due date (YYYY-MM-DD) is before today (UTC). Narrows the result to tasks."),
+			"cluster_wide": prop("boolean", "Timeline only: set to 'true' to compile the timeline from all cluster nodes. Default: local only."),
 		}),
 	}, plainTool(r.handleReadNotebook))
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
-		Name: "edit_notebook",
+		Name:  "edit_notebook",
+		Title: "Edit notebook",
 		Description: "Curate a notebook outline — the hand-assembled counterpart to read_notebook's timeline. An outline is an ordered list of entries: prose (markdown you write), ref (a ledger message, transcluded live so the outline can't drift from it), room_ref (a room's live status), query_ref (the latest <type> in a room, resolved live), and task (a checklist item with its own state). " +
 			"Two ways to track work, both self-sorting: a room_ref tracks a whole thread (signal_status(resolved) checks it off — never hand-edited); a task is a checklist item for work not worth its own room. The 'current-work' global notebook is the canonical place to drive dev tasks from. " +
 			"Entry IDs appear in read_notebook(notebook_id=…) as *(entry #…)* — pass the full ID, since UUIDv7 prefixes collide within a millisecond. Create without a project for a GLOBAL notebook. Notebooks are node-local. See the action param for what each action needs.",
@@ -532,7 +565,7 @@ func (r *Registry) RegisterTools() {
 			"kind":           enumProp("string", "Entry kind for add. ref_id implies 'ref' and prose implies 'prose'; pass kind=room_ref explicitly with ref_id=<room_id> to track a room's live state, kind=query_ref with ref_id=<room_id>:<message_type> to transclude 'the latest <type> in <room>' (resolved live — a structural address, not a frozen ID), or kind=task with prose=<label> for a first-class checklist item you check/uncheck.", []string{"ref", "room_ref", "query_ref", "prose", "task"}),
 			"ref_id":         prop("string", "What to transclude: a message ID (kind=ref, accepts a full ID or an unambiguous ID prefix), a room ID (kind=room_ref), or 'room_id:message_type' (kind=query_ref, e.g. 'auth-room:synthesis'). Must exist on this node. Ref-like adds are idempotent — re-adding a target already referenced in the notebook is a no-op that returns the existing entry, so it's safe to repeat across sessions without creating duplicate refs."),
 			"room_id":        prop("string", "Alias for ref_id — accepted because kind=room_ref's target is a room id"),
-			"ref_ids":        prop("string", "Comma-separated targets for a batch add (same kind for all) — the multi-entry counterpart to ref_id, mirroring update_room's room_ids. Entries land in the order given. Per-target outcome is reported: already-referenced targets are skipped as no-ops and one bad ID doesn't abort the rest. Mutually exclusive with ref_id, and not for prose."),
+			"ref_ids":        arrayProp("Comma-separated targets for a batch add (same kind for all) — the multi-entry counterpart to ref_id, mirroring update_room's room_ids. Entries land in the order given. Per-target outcome is reported: already-referenced targets are skipped as no-ops and one bad ID doesn't abort the rest. Mutually exclusive with ref_id, and not for prose."),
 			"prose":          prop("string", "Markdown content (add with kind=prose, or update) — also the task label (add with kind=task)."),
 			"after_entry_id": prop("string", "Position control for add and move: the entry to land after. Omit on add to append; empty on move means the top."),
 			"due":            prop("string", "Task only (add kind=task, or update): due date YYYY-MM-DD. Open or doing tasks past it render OVERDUE; read_notebook(overdue=true) lists them. On update an empty string clears it."),
@@ -544,16 +577,18 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "get_concept_map",
+		Title:       "Get concept map",
 		Description: "Traverse the conceptual relationship graph between rooms starting from a given room. Returns a flat Markdown list grouped by depth, showing how topics relate across the project. Use this to orient yourself within a complex project topology. Set infer_from to discover rooms not yet explicitly linked.",
 		InputSchema: schema([]string{"room_id"}, map[string]map[string]any{
 			"room_id":    prop("string", "The starting room ID for the graph traversal."),
-			"max_depth":  prop("string", "The maximum depth to traverse (default 3, max 5)."),
+			"max_depth":  prop("integer", "The maximum depth to traverse (default 3, max 5)."),
 			"infer_from": prop("string", "Auto-include rooms related by shared metadata instead of only following explicit related_rooms links. Values: 'project' (same project), 'tags' (any shared tag), 'project,tags' (both). Useful when related_rooms links haven't been set up yet."),
 		}),
 	}, plainTool(r.handleGetConceptMap))
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
-		Name: "fork_thread",
+		Name:  "fork_thread",
+		Title: "Fork thread",
 		Description: "Fork a message thread into a new room in one step: creates the new room, moves start_message_id and all subsequent messages from its source room, and links both rooms bidirectionally. " +
 			"Use when a conversation in one room has grown into its own distinct topic. " +
 			"Replaces the manual create_room → move_messages → update_room × 2 sequence.",
@@ -562,12 +597,13 @@ func (r *Registry) RegisterTools() {
 			"new_room_id":      prop("string", "ID for the new room to create (must not already exist)."),
 			"topic":            prop("string", "Description for the new room. Defaults to 'Forked from <source_room>'."),
 			"project":          prop("string", "Project for the new room. Defaults to the source room's project."),
-			"tags":             prop("string", "Comma-separated tags for the new room."),
+			"tags":             arrayProp("Comma-separated tags for the new room."),
 		}),
 	}, plainTool(r.handleForkThread))
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
-		Name: "load_resources",
+		Name:  "load_resources",
+		Title: "Load resources",
 		Description: "Fetch council-hub skill guides (usage patterns, message types, workflow templates). " +
 			"Call with no args on your first session to see what's available. " +
 			"Pass uri=council://guide for core concepts and the session-start workflow, " +
@@ -580,7 +616,8 @@ func (r *Registry) RegisterTools() {
 	}, plainTool(r.handleLoadResources))
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
-		Name: "get_digest",
+		Name:  "get_digest",
+		Title: "Get digest",
 		Description: "Get a project activity and knowledge health digest as JSON: {summary, rooms}. The summary header tallies total / with_unread / stale / needs_synthesis / stale_pin / incoherent so you can triage at scale (\"35 stale, skip the graveyard\") without scanning every entry. Each rooms[] entry has room_id, new_messages, latest_message_id, latest_excerpt, tags, decision_count, synthesis_count, posted_from (distinct working trees/clients that posted in the window; omitted when brief). " +
 			"Rooms flagged by check_room_health (stale, needs-synthesis, incoherent) are included. Call second at session start (after get_mentions) to see what changed and what needs attention. " +
 			"Machine-readable — parse rooms[].room_id and rooms[].latest_message_id directly for delta reads. " +
@@ -591,17 +628,18 @@ func (r *Registry) RegisterTools() {
 		InputSchema: schema(nil, map[string]map[string]any{
 			"project":       prop("string", "Filter to rooms in this project (optional — omit for all projects). Exact field match, not keyword search: a room created without its project set won't match. If you get zero rooms, the response carries a hint pointing at list_rooms(search=…)."),
 			"since":         prop("string", "ISO timestamp (e.g. 2026-03-31T12:00:00). Defaults to 24 hours ago if omitted. Ignored when unread_only=true."),
-			"unread_only":   prop("string", "Set to 'true' to return only rooms with messages newer than your stored cursor. Requires agent param (or uses 'default'). Use after mark_read to see only what changed since your last session."),
+			"unread_only":   prop("boolean", "Set to 'true' to return only rooms with messages newer than your stored cursor. Requires agent param (or uses 'default'). Use after mark_read to see only what changed since your last session."),
 			"agent":         prop("string", "Your agent name, used to look up stored read cursors. Only relevant when unread_only=true. Defaults to 'default'."),
-			"cluster_wide":  prop("string", "'true' fetches the digest from all cluster nodes. Default: cluster-wide when peers are connected, except unread_only (node-local cursors) (COUNCIL_CLUSTER_READS=local turns that off); 'false' forces this node only."),
+			"cluster_wide":  prop("boolean", "'true' fetches the digest from all cluster nodes. Default: cluster-wide when peers are connected, except unread_only (node-local cursors) (COUNCIL_CLUSTER_READS=local turns that off); 'false' forces this node only."),
 			"limit":         prop("string", "Cap rooms[] at N (positive integer), most-unread first under unread_only, most-recent first otherwise. 'all' lifts the default unread_only cap of 30. The summary still counts every room and reports summary.truncated."),
-			"brief":         prop("string", "Set to 'true' for one compact entry per room (room_id, new_messages, latest_message_id) with no excerpt or tags — the cheap session-start form. Fetch detail with get_messages(room_id, after_id=...)."),
-			"exclude_stale": prop("string", "Set to 'true' to omit the inactive-room graveyard (rooms flagged `stale` with no new messages) from rooms[]. The summary header still counts them (and reports hidden_stale). Drift flags on live rooms (stale-pin, stale-plan) are never hidden."),
+			"brief":         prop("boolean", "Set to 'true' for one compact entry per room (room_id, new_messages, latest_message_id) with no excerpt or tags — the cheap session-start form. Fetch detail with get_messages(room_id, after_id=...)."),
+			"exclude_stale": prop("boolean", "Set to 'true' to omit the inactive-room graveyard (rooms flagged `stale` with no new messages) from rooms[]. The summary header still counts them (and reports hidden_stale). Drift flags on live rooms (stale-pin, stale-plan) are never hidden."),
 		}),
 	}, plainTool(r.handleGetDigest))
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
-		Name: "register_skill",
+		Name:  "register_skill",
+		Title: "Register skill",
 		Description: "Register (or update) a task playbook in the methodology registry — the H-LAM/T Methodology/Training leg made queryable from inside the DKR. Where rooms hold dialog and notebooks hold compiled knowledge, the skills registry holds standing \"how we do X\" know-how that any agent can discover from any node, even without the skill files on its local disk. " +
 			"Upserts by name — registering the same name again updates it in place. Provide a one-line description and when_to_use (the discovery card an agent scans), an optional content body (the fuller playbook), project (omit for a global skill listed in every project), tags, and source (where the canonical version lives — a skill directory or URL). " +
 			"Set remove='true' to delete a skill. Discover entries with query_skills_registry. Node-local in v1.",
@@ -611,15 +649,16 @@ func (r *Registry) RegisterTools() {
 			"when_to_use": prop("string", "Trigger conditions — when an agent should reach for this playbook (e.g. 'shipping a new version vX.Y.Z')."),
 			"content":     prop("string", "Optional fuller playbook body (markdown). The registry is discovery-first; this carries the steps when you want them inline, returned by query_skills_registry(name=…)."),
 			"project":     prop("string", "Project scope. Omit for a GLOBAL skill — listed in every project's registry view (cross-project methodology)."),
-			"tags":        prop("string", "Comma-separated labels for filtering (e.g. 'release,ci,docker')."),
+			"tags":        arrayProp("Comma-separated labels for filtering (e.g. 'release,ci,docker')."),
 			"source":      prop("string", "Pointer to where the canonical skill lives — a skill directory path or URL."),
-			"remove":      prop("string", "Set to 'true' to delete the named skill from the registry."),
+			"remove":      prop("boolean", "Set to 'true' to delete the named skill from the registry."),
 			"append":      prop("string", "Add this text to the end of the registered playbook instead of replacing it. The skill must already exist; the discovery card (description, when_to_use, project, tags, source) is preserved unless this call also sets it. Mutually exclusive with content — use it to add a dated reading or a new section without re-transmitting the whole body."),
 		}),
 	}, plainTool(r.handleRegisterSkill))
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
-		Name: "query_skills_registry",
+		Name:  "query_skills_registry",
+		Title: "Query skills registry",
 		Description: "Discover task playbooks registered in the DKR — Engelbart's Methodology/Training leg, queryable like everything else. Returns the registry as a scannable catalog (name → description, when-to-use, tags, source); pass name=<skill> to fetch one skill's full playbook (content body included). " +
 			"Filter with query (case-insensitive substring across name/description/when-to-use/content), project (returns the project's skills plus global ones), or tag. Use this to answer \"what's the playbook for X?\" from any agent or node. " +
 			"This is the agent-extensible counterpart to the fixed council:// usage guides (load_resources): those document council-hub itself; the registry holds project-specific know-how that agents contribute. Node-local in v1.",

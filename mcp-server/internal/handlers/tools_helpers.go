@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"context"
 	"council-hub/internal/council"
 	"encoding/json"
 	"fmt"
@@ -40,9 +39,14 @@ func (b *StringBool) UnmarshalJSON(data []byte) error {
 // textResult wraps a plain-text response in the standard MCP tool-result tuple
 // that every handler returns. Handlers alias it as `msg := textResult` so the
 // terse `msg("...")` call sites stay unchanged.
+//
+// A text that opens with "Error" is flagged isError: drenskicorp RFC 0013 section
+// 7 (and MCP's "Tools" page) make an argument or execution problem a tool error,
+// so a client can tell failure from success without reading the text.
 func textResult(text string) (*mcp.CallToolResult, ToolOutput, error) {
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{&mcp.TextContent{Text: text}},
+		IsError: strings.HasPrefix(text, "Error"),
 	}, ToolOutput{Message: text}, nil
 }
 
@@ -238,18 +242,6 @@ type ToolOutput struct {
 	Message string `json:"message"`
 }
 
-// plainTool adapts a text-only handler so the SDK neither derives an
-// outputSchema nor emits structuredContent for it. Registering such a handler
-// with ToolOutput advertised a {"message": string} schema and echoed the
-// markdown a second time as structuredContent; the Content text is the real
-// result. Tools with real structured output (list_rooms) register directly.
-func plainTool[In any](h func(context.Context, *mcp.CallToolRequest, In) (*mcp.CallToolResult, ToolOutput, error)) func(context.Context, *mcp.CallToolRequest, In) (*mcp.CallToolResult, any, error) {
-	return func(ctx context.Context, req *mcp.CallToolRequest, in In) (*mcp.CallToolResult, any, error) {
-		res, _, err := h(ctx, req, in)
-		return res, nil, err
-	}
-}
-
 // ListedRoom is one row of list_rooms' structured output, built from the same
 // data the markdown renderer prints.
 type ListedRoom struct {
@@ -364,6 +356,16 @@ func schema(required []string, props map[string]map[string]any) map[string]any {
 
 func prop(typ, desc string) map[string]any {
 	return map[string]any{"type": typ, "description": desc}
+}
+
+// arrayProp is a list of strings. A comma-separated string (the old spelling) and
+// a JSON-array string are still accepted; see installLegacyCoercion.
+func arrayProp(desc string) map[string]any {
+	return map[string]any{
+		"type":        "array",
+		"items":       map[string]any{"type": "string"},
+		"description": desc + " (An array of strings; a comma-separated string is also accepted.)",
+	}
 }
 
 func enumProp(typ, desc string, enum []string) map[string]any {
