@@ -29,7 +29,7 @@ func (r *Registry) RegisterTools() {
 			"topic":         prop("string", "What this room is about"),
 			"project":       prop("string", "Project grouping for filtering"),
 			"tech_stack":    prop("string", "Technologies involved"),
-			"tags":          prop("string", "Comma-separated labels"),
+			"tags":          prop("string", "Comma-separated labels. Hub-managed tags (stale, stale-plan, stale-pin, needs-synthesis, unpinned-synthesis, incoherent, resolved, synthesis-complete) are ignored."),
 			"system_prompt": prop("string", "Instructions injected into transcripts for LLM context"),
 			"related_rooms": prop("string", "Comma-separated IDs of related rooms — bidirectional: linked rooms automatically link back"),
 			"visibility":    prop("string", "'public' (default) or 'private'. Private rooms are node-local — excluded from all cluster fan-out (cluster-wide reads and cross-node writes); they live only on this node."),
@@ -156,7 +156,7 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "update_room",
-		Description: "Update a room's metadata. Only provided fields are changed; omitted fields are left unchanged. Returns the full updated room state. Related rooms are bidirectionally linked. Use room_ids (comma-separated) to patch multiple rooms in one call. Use where_project to apply the same patch (especially add_tags/remove_tags) to every room in a project in one call. Use add_tags/remove_tags for surgical tag mutations without overwriting all existing tags.",
+		Description: "Update a room's metadata. Only provided fields are changed; omitted fields are left unchanged. Returns the full updated room state. Related rooms are bidirectionally linked. Use room_ids (comma-separated) to patch multiple rooms in one call. Use where_project to apply the same patch (especially add_tags/remove_tags) to every room in a project in one call. Use add_tags/remove_tags for surgical tag mutations without overwriting all existing tags. Hub-managed tags (stale, stale-plan, stale-pin, needs-synthesis, unpinned-synthesis, incoherent, resolved, synthesis-complete) are set and cleared by the Knowledge Linter and room status; they are ignored here, and the janitor strips status tags that contradict the room.",
 		InputSchema: schema([]string{}, map[string]map[string]any{
 			"room_id":           prop("string", "Target room ID (single room)"),
 			"room_ids":          prop("string", "Comma-separated room IDs for batch updates — use instead of or alongside room_id"),

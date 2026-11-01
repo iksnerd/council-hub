@@ -446,6 +446,7 @@ func TestLintStalePlans(t *testing.T) {
 	cs := setupTestServer(t)
 	mustCreateRoom(t, cs, "lint-plan")
 	mustPostTyped(t, cs, "lint-plan", "Claude", "Here's the plan to execute", "plan")
+	backdateRoom(cs, "lint-plan", "-2 days")
 
 	cs.lintStalePlans()
 
@@ -486,6 +487,7 @@ func TestLintStalePlansReopensOnNewerPlan(t *testing.T) {
 	mustPostTyped(t, cs, "lint-plan-reopen", "Gemini", "did v1", "action")
 	// A newer plan with no action after it — the latest handoff is unexecuted.
 	mustPostTyped(t, cs, "lint-plan-reopen", "Claude", "plan v2", "plan")
+	backdateRoom(cs, "lint-plan-reopen", "-2 days")
 
 	cs.lintStalePlans()
 
@@ -513,6 +515,7 @@ func TestLintStalePlansIdempotent(t *testing.T) {
 	cs := setupTestServer(t)
 	mustCreateRoom(t, cs, "lint-plan-idem")
 	mustPostTyped(t, cs, "lint-plan-idem", "Claude", "the plan", "plan")
+	backdateRoom(cs, "lint-plan-idem", "-2 days")
 
 	cs.lintStalePlans()
 	cs.lintStalePlans()

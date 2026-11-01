@@ -87,7 +87,38 @@ type DeleteRoomInput struct {
 	RoomID string `json:"room_id"`
 }
 
+// managedTagsNote is appended to a room tool's reply when hub-managed tags were
+// dropped from the caller's input.
+func managedTagsNote(removed []string) string {
+	return "\nNote: ignored hub-managed tag(s) " + strings.Join(removed, ", ") +
+		". The Knowledge Linter and room status own these; they cannot be set by hand."
+}
+
+// appendNote adds note to the text of a room tool's result.
+func appendNote(res *mcp.CallToolResult, out ToolOutput, err error, note string) (*mcp.CallToolResult, ToolOutput, error) {
+	if err != nil || note == "" || res == nil {
+		return res, out, err
+	}
+	for _, c := range res.Content {
+		if tc, ok := c.(*mcp.TextContent); ok {
+			tc.Text += note
+			break
+		}
+	}
+	out.Message += note
+	return res, out, err
+}
+
 func (r *Registry) handleCreateRoom(ctx context.Context, req *mcp.CallToolRequest, args CreateRoomInput) (*mcp.CallToolResult, ToolOutput, error) {
+	note := ""
+	if clean, removed := council.StripManagedTags(args.Tags); len(removed) > 0 {
+		args.Tags, note = clean, managedTagsNote(removed)
+	}
+	res, out, err := r.createRoom(ctx, req, args)
+	return appendNote(res, out, err, note)
+}
+
+func (r *Registry) createRoom(ctx context.Context, req *mcp.CallToolRequest, args CreateRoomInput) (*mcp.CallToolResult, ToolOutput, error) {
 	msg := textResult
 
 	roomID, aerr := resolveAlias(args.ID, "id", args.RoomID, "room_id")
@@ -235,6 +266,15 @@ func writeCreateRoomInfoLines(b *strings.Builder, args CreateRoomInput) {
 }
 
 func (r *Registry) handleGetOrCreateRoom(ctx context.Context, req *mcp.CallToolRequest, args GetOrCreateRoomInput) (*mcp.CallToolResult, ToolOutput, error) {
+	note := ""
+	if clean, removed := council.StripManagedTags(args.Tags); len(removed) > 0 {
+		args.Tags, note = clean, managedTagsNote(removed)
+	}
+	res, out, err := r.getOrCreateRoom(ctx, req, args)
+	return appendNote(res, out, err, note)
+}
+
+func (r *Registry) getOrCreateRoom(ctx context.Context, req *mcp.CallToolRequest, args GetOrCreateRoomInput) (*mcp.CallToolResult, ToolOutput, error) {
 	msg := textResult
 
 	roomID, aerr := resolveAlias(args.ID, "id", args.RoomID, "room_id")
@@ -536,6 +576,22 @@ func (r *Registry) handleUpdateRoom(ctx context.Context, req *mcp.CallToolReques
 		return msg("Error: " + err.Error())
 	}
 
+	// Hub-managed tags (linter flags, status mirrors) cannot be set by hand. remove_tags
+	// stays open so a wrong flag can still be cleared. A `tags` overwrite carries the
+	// room's current linter flags over, since they describe live state, not the caller's labels.
+	note := ""
+	overwrite := args.Tags != ""
+	var removedAll []string
+	if clean, removed := council.StripManagedTags(args.Tags); len(removed) > 0 {
+		args.Tags, removedAll = clean, append(removedAll, removed...)
+	}
+	if clean, removed := council.StripManagedTags(args.AddTags); len(removed) > 0 {
+		args.AddTags, removedAll = clean, append(removedAll, removed...)
+	}
+	if len(removedAll) > 0 {
+		note = managedTagsNote(removedAll)
+	}
+
 	var updated []string
 	if args.Topic != "" {
 		updated = append(updated, "topic")
@@ -587,7 +643,15 @@ func (r *Registry) handleUpdateRoom(ctx context.Context, req *mcp.CallToolReques
 				related = strings.Join(mergeIDLists(before, splitIDList(args.AddRelatedRooms)), ",")
 			}
 		}
-		if err := r.Server.UpdateRoom(id, args.Topic, args.Project, args.TechStack, args.Tags, args.AddTags, args.RemoveTags, args.SystemPrompt, related); err != nil {
+		tags := args.Tags
+		if overwrite && tags != "" {
+			if cur, gerr := r.Server.GetRoom(id); gerr == nil {
+				for _, lt := range council.LinterTagsIn(cur.Tags) {
+					tags += "," + lt
+				}
+			}
+		}
+		if err := r.Server.UpdateRoom(id, args.Topic, args.Project, args.TechStack, tags, args.AddTags, args.RemoveTags, args.SystemPrompt, related); err != nil {
 			fmt.Fprintf(&b, "Error updating '%s': %s\n", id, err.Error())
 			continue
 		}
@@ -647,7 +711,7 @@ func (r *Registry) handleUpdateRoom(ctx context.Context, req *mcp.CallToolReques
 		}
 	}
 
-	return msg(strings.TrimRight(b.String(), "\n"))
+	return msg(strings.TrimRight(b.String(), "\n") + note)
 }
 
 // mergeIDLists appends the IDs of add not already in base, preserving order.

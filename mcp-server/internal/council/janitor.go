@@ -50,6 +50,7 @@ func (s *Server) RunJanitor(ctx context.Context) {
 }
 
 func (s *Server) JanitorSweep() LintResult {
+	s.reconcileManagedTags()
 	ns := s.lintNeedsSynthesis()
 	st := s.lintStaleRooms()
 	sp := s.lintStalePins()
@@ -102,6 +103,99 @@ func (s *Server) FlaggedRooms(tags ...string) map[string][]string {
 	return flagged
 }
 
+// LinterTags are the room tags the Knowledge Linter applies and clears itself.
+// StatusTags mirror room status or lifecycle and are owned by the hub too. Neither
+// set is user-settable through create_room/update_room: a hand-set copy drifts from
+// the state it claims to describe (an `active` room tagged `resolved`).
+var (
+	LinterTags = []string{"stale", "stale-plan", "stale-pin", "needs-synthesis", "unpinned-synthesis", "incoherent"}
+	StatusTags = []string{"resolved", "synthesis-complete"}
+)
+
+func inList(list []string, t string) bool {
+	for _, m := range list {
+		if t == m {
+			return true
+		}
+	}
+	return false
+}
+
+// StripManagedTags drops hub-managed tags from user-supplied comma-separated
+// tags and returns the cleaned CSV plus the tags it removed.
+func StripManagedTags(tags string) (string, []string) {
+	var kept, removed []string
+	for _, t := range strings.Split(tags, ",") {
+		t = strings.TrimSpace(t)
+		if t == "" {
+			continue
+		}
+		if inList(LinterTags, t) || inList(StatusTags, t) {
+			removed = append(removed, t)
+		} else {
+			kept = append(kept, t)
+		}
+	}
+	return strings.Join(kept, ","), removed
+}
+
+// LinterTagsIn returns the linter-owned tags present in a CSV, so an overwrite of
+// a room's tags can carry them over.
+func LinterTagsIn(tags string) []string {
+	var out []string
+	for _, t := range strings.Split(tags, ",") {
+		if t = strings.TrimSpace(t); inList(LinterTags, t) {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+// reconcileManagedTags strips status tags that contradict the room's actual
+// status (`resolved`/`synthesis-complete` on a room that is not resolved or
+// archived) and linter flags on paused rooms. Returns the rooms it changed.
+func (s *Server) reconcileManagedTags() []string {
+	rows, err := s.DB.Query(`SELECT id, status, COALESCE(tags, '') FROM rooms WHERE tags IS NOT NULL AND tags != ''`)
+	if err != nil {
+		s.Logger.Error("Linter: failed to query tags for reconcile", "error", err)
+		return nil
+	}
+	type fix struct{ id, tags string }
+	var fixes []fix
+	for rows.Next() {
+		var id, status, tags string
+		if err := rows.Scan(&id, &status, &tags); err != nil {
+			continue
+		}
+		newTags := tags
+		if status != "resolved" && status != "archived" {
+			for _, t := range StatusTags {
+				newTags = removeTag(newTags, t)
+			}
+		}
+		if status == "paused" {
+			for _, t := range LinterTags {
+				newTags = removeTag(newTags, t)
+			}
+		}
+		if newTags != tags {
+			fixes = append(fixes, fix{id, newTags})
+		}
+	}
+	_ = rows.Close()
+	var changed []string
+	for _, f := range fixes {
+		s.Mu.Lock()
+		_, err := s.DB.Exec(`UPDATE rooms SET tags = ? WHERE id = ?`, f.tags, f.id)
+		s.Mu.Unlock()
+		if err == nil {
+			s.Logger.Info("Linter: reconciled managed tags", "room_id", f.id)
+			changed = append(changed, f.id)
+		}
+	}
+	return changed
+}
+
 // hasTag checks whether a comma-separated tag string contains an exact tag.
 func hasTag(tags, tag string) bool {
 	for _, t := range strings.Split(tags, ",") {
@@ -144,6 +238,12 @@ func appendTag(tags, tag string) string {
 // tag under lock, post the notice, log. Returns true if the tag update
 // succeeded (a post failure is logged but doesn't make the flag itself fail).
 func (s *Server) flagAndNotify(roomID, currentTags, tag, content string) bool {
+	// A paused room is parked on purpose (often waiting on its owner); a linter
+	// notice there is noise and the tag would only outlive the pause.
+	var status string
+	if err := s.DB.QueryRow(`SELECT status FROM rooms WHERE id = ?`, roomID).Scan(&status); err == nil && status == "paused" {
+		return false
+	}
 	newTags := appendTag(currentTags, tag)
 	s.Mu.Lock()
 	_, err := s.DB.Exec(`UPDATE rooms SET tags = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, newTags, roomID)
@@ -202,7 +302,7 @@ func (s *Server) lintNeedsSynthesis() []string {
 		  AND (
 		    (SELECT COUNT(*) FROM messages WHERE room_id = rooms.id AND message_type = 'decision') >= ?
 		    OR
-		    (SELECT COUNT(*) FROM messages WHERE room_id = rooms.id) >= ?
+		    (SELECT COUNT(*) FROM messages WHERE room_id = rooms.id AND author != 'system') >= ?
 		  )
 	`
 	content := "### Knowledge Linter\nThis room contains decisions but lacks a `synthesis` message. " +
@@ -215,7 +315,8 @@ func (s *Server) lintStaleRooms() []string {
 		SELECT id, tags FROM rooms
 		WHERE status = 'active'
 		  AND created_at < datetime('now', '-1 day')
-		  AND (SELECT MAX(timestamp) FROM messages WHERE room_id = rooms.id) < datetime('now', '-7 days')
+		  AND COALESCE((SELECT MAX(timestamp) FROM messages WHERE room_id = rooms.id AND author != 'system'),
+		        (SELECT MAX(timestamp) FROM messages WHERE room_id = rooms.id)) < datetime('now', '-7 days')
 	`
 	content := "### Knowledge Linter\nThis room has been inactive for over 7 days. " +
 		"Please review the context and either update the `status` to `paused`/`resolved`, or post an update to resume work."
@@ -291,18 +392,37 @@ func (s *Server) lintStalePins() []string {
 // picked up. The `stale-plan` tag auto-clears in postMessageCore when an `action` lands
 // (whose UUIDv7 id is necessarily newer than every existing plan).
 func (s *Server) lintStalePlans() []string {
+	// The latest live plan is "unexecuted" only when nothing since has answered it:
+	//   - no `action` after it (the original rule);
+	//   - no `synthesis` or `decision` after it (the room moved on: the plan was
+	//     superseded by a conclusion even if no action was posted);
+	//   - no message explicitly superseding it;
+	//   - it is older than the grace period (a plan posted minutes ago is not a
+	//     handoff that was never picked up);
+	//   - the room has seen no genuine (non-system) activity inside the grace period.
 	query := `
 		SELECT r.id, COALESCE(r.tags, '')
 		FROM rooms r
 		JOIN (
-			SELECT room_id, MAX(id) AS plan_id
-			FROM messages WHERE message_type = 'plan'
+			SELECT room_id, MAX(id) AS plan_id, MAX(timestamp) AS plan_ts
+			FROM messages WHERE message_type = 'plan' AND ` + liveClause("messages") + `
 			GROUP BY room_id
 		) p ON p.room_id = r.id
 		WHERE r.status = 'active'
+		  AND p.plan_ts < datetime('now', '-1 day')
 		  AND NOT EXISTS (
 		    SELECT 1 FROM messages a
-		    WHERE a.room_id = r.id AND a.message_type = 'action' AND a.id > p.plan_id
+		    WHERE a.room_id = r.id AND a.id > p.plan_id
+		      AND a.message_type IN ('action', 'synthesis', 'decision')
+		      AND ` + liveClause("a") + `
+		  )
+		  AND NOT EXISTS (
+		    SELECT 1 FROM messages x WHERE x.room_id = r.id AND x.supersedes = p.plan_id
+		  )
+		  AND NOT EXISTS (
+		    SELECT 1 FROM messages x
+		    WHERE x.room_id = r.id AND x.author != 'system'
+		      AND x.timestamp >= datetime('now', '-1 day')
 		  )
 	`
 	content := "### Knowledge Linter\nThis room has a `plan` (specified work awaiting execution) with no " +
