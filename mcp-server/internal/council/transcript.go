@@ -88,7 +88,7 @@ func FormatTranscriptView(room Room, messages []Message, v ViewSpec) string {
 		fmt.Fprintf(&b, "**Tags:** %s\n", room.Tags)
 	}
 	if room.RelatedRooms != "" {
-		fmt.Fprintf(&b, "**Related Rooms:** %s\n", room.RelatedRooms)
+		fmt.Fprintf(&b, "**Related Rooms:** %s\n", room.RelatedDisplay())
 	}
 	b.WriteString("---\n")
 

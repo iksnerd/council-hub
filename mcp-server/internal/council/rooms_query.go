@@ -52,7 +52,7 @@ func (s *Server) ListRoomsFiltered(opts ListRoomsOptions) ([]Room, error) {
 // id/description/tags LIKE clauses.
 func (s *Server) listRoomsMatch(opts ListRoomsOptions, words []string, searchJoin string) ([]Room, error) {
 	where, args := roomFilterSQL(opts, words, searchJoin)
-	query := `SELECT id, description, status, project, tech_stack, tags, system_prompt, related_rooms, created_at, updated_at, archived_at FROM rooms WHERE 1=1` + where
+	query := `SELECT id, description, status, project, tech_stack, tags, system_prompt, related_rooms, COALESCE(related_types, ''), created_at, updated_at, archived_at FROM rooms WHERE 1=1` + where
 
 	query += ` ORDER BY updated_at DESC LIMIT ? OFFSET ?`
 
@@ -78,7 +78,7 @@ func (s *Server) listRoomsMatch(opts ListRoomsOptions, words []string, searchJoi
 	var rooms []Room
 	for rows.Next() {
 		var r Room
-		if err := rows.Scan(&r.ID, &r.Description, &r.Status, &r.Project, &r.TechStack, &r.Tags, &r.SystemPrompt, &r.RelatedRooms, &r.CreatedAt, &r.UpdatedAt, &r.ArchivedAt); err != nil {
+		if err := rows.Scan(&r.ID, &r.Description, &r.Status, &r.Project, &r.TechStack, &r.Tags, &r.SystemPrompt, &r.RelatedRooms, &r.RelatedTypes, &r.CreatedAt, &r.UpdatedAt, &r.ArchivedAt); err != nil {
 			return nil, err
 		}
 		rooms = append(rooms, r)

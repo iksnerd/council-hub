@@ -222,6 +222,7 @@ func (r *Registry) createRoom(ctx context.Context, req *mcp.CallToolRequest, arg
 	var b strings.Builder
 	fmt.Fprintf(&b, "Room '%s' created.\n", args.ID)
 	writeCreateRoomInfoLines(&b, args)
+	b.WriteString(r.danglingRelatedWarning(args.RelatedRooms))
 
 	// Advisory duplicate check — never blocks creation.
 	r.appendSimilarRooms(&b, args.ID, args.Topic, args.Project, args.Tags)
@@ -249,7 +250,7 @@ func writeCreateRoomInfoLines(b *strings.Builder, args CreateRoomInput) {
 		fmt.Fprintf(b, "**Tags:** %s\n", args.Tags)
 	}
 	if args.RelatedRooms != "" {
-		fmt.Fprintf(b, "**Related rooms:** %s (bidirectional links created)\n", args.RelatedRooms)
+		b.WriteString(relatedEcho(args.RelatedRooms))
 	}
 	if args.Repo != "" {
 		fmt.Fprintf(b, "**Repo:** %s ({sha:...} tokens resolve to commit links)\n", args.Repo)
@@ -320,7 +321,8 @@ func (r *Registry) getOrCreateRoom(ctx context.Context, req *mcp.CallToolRequest
 				fmt.Fprintf(&b, "**Tags:** %s\n", args.Tags)
 			}
 			if args.RelatedRooms != "" {
-				fmt.Fprintf(&b, "**Related rooms:** %s (bidirectional links created)\n", args.RelatedRooms)
+				b.WriteString(relatedEcho(args.RelatedRooms))
+				b.WriteString(r.danglingRelatedWarning(args.RelatedRooms))
 			}
 			if args.Repo != "" {
 				fmt.Fprintf(&b, "**Repo:** %s ({sha:...} tokens resolve to commit links)\n", args.Repo)
@@ -638,9 +640,11 @@ func (r *Registry) handleUpdateRoom(ctx context.Context, req *mcp.CallToolReques
 		if args.RelatedRooms != "" || args.AddRelatedRooms != "" {
 			if cur, gerr := r.Server.GetRoom(id); gerr == nil {
 				before = splitIDList(cur.RelatedRooms)
-			}
-			if args.AddRelatedRooms != "" {
-				related = strings.Join(mergeIDLists(before, splitIDList(args.AddRelatedRooms)), ",")
+				if args.AddRelatedRooms != "" {
+					related = council.MergeRelated(cur, args.AddRelatedRooms)
+				}
+			} else if args.AddRelatedRooms != "" {
+				related = args.AddRelatedRooms
 			}
 		}
 		tags := args.Tags
@@ -676,12 +680,18 @@ func (r *Registry) handleUpdateRoom(ctx context.Context, req *mcp.CallToolReques
 		r.Server.Logger.Info("Room updated", "room_id", id, "fields", fieldsLabel)
 		fmt.Fprintf(&b, "Room '%s' updated: %s.\n", id, fieldsLabel)
 		if args.RelatedRooms != "" {
-			if removed := subtractIDs(before, splitIDList(args.RelatedRooms)); len(removed) > 0 {
+			var afterIDs []string
+			for _, ref := range council.ParseRelated(args.RelatedRooms) {
+				afterIDs = append(afterIDs, ref.ID)
+			}
+			if removed := subtractIDs(before, afterIDs); len(removed) > 0 {
 				fmt.Fprintf(&b, "Removed related rooms: %s. related_rooms replaces the whole list; use add_related_rooms to merge instead.\n", strings.Join(removed, ", "))
 			}
-			fmt.Fprintf(&b, "Related rooms now: %s\n", args.RelatedRooms)
+			fmt.Fprintf(&b, "Related rooms now: %s\n", council.FormatRelated(council.ParseRelated(args.RelatedRooms)))
+			b.WriteString(r.danglingRelatedWarning(args.RelatedRooms))
 		} else if args.AddRelatedRooms != "" {
 			fmt.Fprintf(&b, "Related rooms now: %s\n", related)
+			b.WriteString(r.danglingRelatedWarning(args.AddRelatedRooms))
 		}
 	}
 
@@ -699,7 +709,7 @@ func (r *Registry) handleUpdateRoom(ctx context.Context, req *mcp.CallToolReques
 				fmt.Fprintf(&b, "\n- Tags: %s", room.Tags)
 			}
 			if room.RelatedRooms != "" {
-				fmt.Fprintf(&b, "\n- Related rooms: %s", room.RelatedRooms)
+				fmt.Fprintf(&b, "\n- Related rooms: %s", room.RelatedDisplay())
 			}
 			if room.Repo != "" {
 				fmt.Fprintf(&b, "\n- Repo: %s", room.Repo)
@@ -714,17 +724,20 @@ func (r *Registry) handleUpdateRoom(ctx context.Context, req *mcp.CallToolReques
 	return msg(strings.TrimRight(b.String(), "\n") + note)
 }
 
-// mergeIDLists appends the IDs of add not already in base, preserving order.
-func mergeIDLists(base, add []string) []string {
-	seen := map[string]bool{}
-	out := make([]string, 0, len(base)+len(add))
-	for _, id := range append(append([]string{}, base...), add...) {
-		if !seen[id] {
-			seen[id] = true
-			out = append(out, id)
-		}
+// relatedEcho renders the cleaned related_rooms list back to the caller, so a
+// malformed input is visibly normalised rather than silently reshaped.
+func relatedEcho(raw string) string {
+	return fmt.Sprintf("**Related rooms:** %s (bidirectional links created)\n", council.FormatRelated(council.ParseRelated(raw)))
+}
+
+// danglingRelatedWarning names related IDs that match no room on this node.
+// A warning, never an error: the room may live on a peer or be created later.
+func (r *Registry) danglingRelatedWarning(raw string) string {
+	missing := r.Server.MissingRooms(raw)
+	if len(missing) == 0 {
+		return ""
 	}
-	return out
+	return fmt.Sprintf("⚠️ Related room(s) not found on this node: %s. Kept as written; no reverse link was created. Check the spelling, or ignore if the room lives on a peer.\n", strings.Join(missing, ", "))
 }
 
 // subtractIDs returns the IDs in before that are absent from after.
@@ -793,7 +806,7 @@ func (r *Registry) handleReadRoom(ctx context.Context, req *mcp.CallToolRequest,
 		fmt.Fprintf(&b, "**System Prompt:** %s\n", room.SystemPrompt)
 	}
 	if room.RelatedRooms != "" {
-		fmt.Fprintf(&b, "**Related Rooms:** %s\n", room.RelatedRooms)
+		fmt.Fprintf(&b, "**Related Rooms:** %s\n", room.RelatedDisplay())
 	}
 	if room.Visibility == "private" {
 		fmt.Fprintf(&b, "**Visibility:** private (node-local — excluded from cluster fan-out)\n")

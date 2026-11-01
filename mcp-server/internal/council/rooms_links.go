@@ -1,41 +1,43 @@
 package council
 
-import "strings"
-
-// syncReverseLinks ensures that if room A lists B in related_rooms, B also lists A.
+// syncReverseLinks ensures that if room A lists B in related_rooms, B also lists
+// A, with the inverse link type (see related.go).
 // Must be called while s.Mu is held.
-func (s *Server) syncReverseLinks(roomID, relatedRooms string) {
-	if relatedRooms == "" {
-		return
-	}
-	for _, rel := range strings.Split(relatedRooms, ",") {
-		rel = strings.TrimSpace(rel)
-		if rel == "" {
+func (s *Server) syncReverseLinks(roomID string, refs []RelatedRef) {
+	for _, ref := range refs {
+		if ref.ID == "" || ref.ID == roomID {
 			continue
 		}
-		var existing string
-		err := s.DB.QueryRow(`SELECT related_rooms FROM rooms WHERE id = ?`, rel).Scan(&existing)
+		var target Room
+		err := s.DB.QueryRow(`SELECT related_rooms, COALESCE(related_types, '') FROM rooms WHERE id = ?`, ref.ID).
+			Scan(&target.RelatedRooms, &target.RelatedTypes)
 		if err != nil {
 			continue // target room doesn't exist, skip
 		}
-		// Check if roomID is already in the target's related_rooms
-		already := false
-		for _, r := range strings.Split(existing, ",") {
-			if strings.TrimSpace(r) == roomID {
-				already = true
+		inverse := relatedInverse[ref.Type]
+		existing := target.RelatedRefs()
+		changed := false
+		found := false
+		for i := range existing {
+			if existing[i].ID == roomID {
+				found = true
+				if existing[i].Type == RelatedDefaultType && inverse != RelatedDefaultType {
+					existing[i].Type = inverse
+					changed = true
+				}
 				break
 			}
 		}
-		if !already {
-			updated := existing
-			if updated == "" {
-				updated = roomID
-			} else {
-				updated = updated + ", " + roomID
-			}
-			if _, err := s.DB.Exec(`UPDATE rooms SET related_rooms = ? WHERE id = ?`, updated, rel); err != nil {
-				s.Logger.Warn("syncReverseLinks: failed to update related_rooms", "room", rel, "error", err)
-			}
+		if !found {
+			existing = append(existing, RelatedRef{ID: roomID, Type: inverse})
+			changed = true
+		}
+		if !changed {
+			continue
+		}
+		ids, types := RelatedColumns(existing)
+		if _, err := s.DB.Exec(`UPDATE rooms SET related_rooms = ?, related_types = ? WHERE id = ?`, ids, types, ref.ID); err != nil {
+			s.Logger.Warn("syncReverseLinks: failed to update related_rooms", "room", ref.ID, "error", err)
 		}
 	}
 }
@@ -44,32 +46,33 @@ func (s *Server) syncReverseLinks(roomID, relatedRooms string) {
 // Must be called while s.Mu is held.
 func (s *Server) removeRoomFromRelatedLinks(roomID string) {
 	rows, err := s.DB.Query(
-		`SELECT id, related_rooms FROM rooms WHERE related_rooms LIKE '%' || ? || '%'`,
+		`SELECT id, related_rooms, COALESCE(related_types, '') FROM rooms WHERE related_rooms LIKE '%' || ? || '%'`,
 		roomID,
 	)
 	if err != nil {
 		s.Logger.Warn("removeRoomFromRelatedLinks: query failed", "error", err)
 		return
 	}
-	type update struct{ id, newRR string }
+	type update struct{ id, ids, types string }
 	var updates []update
 	for rows.Next() {
-		var id, rr string
-		if err := rows.Scan(&id, &rr); err != nil {
+		var id string
+		var r Room
+		if err := rows.Scan(&id, &r.RelatedRooms, &r.RelatedTypes); err != nil {
 			continue
 		}
-		var kept []string
-		for _, rel := range strings.Split(rr, ",") {
-			rel = strings.TrimSpace(rel)
-			if rel != "" && rel != roomID {
-				kept = append(kept, rel)
+		var kept []RelatedRef
+		for _, ref := range r.RelatedRefs() {
+			if ref.ID != roomID {
+				kept = append(kept, ref)
 			}
 		}
-		updates = append(updates, update{id, strings.Join(kept, ", ")})
+		ids, types := RelatedColumns(kept)
+		updates = append(updates, update{id, ids, types})
 	}
 	_ = rows.Close()
 	for _, u := range updates {
-		if _, err := s.DB.Exec(`UPDATE rooms SET related_rooms = ? WHERE id = ?`, u.newRR, u.id); err != nil {
+		if _, err := s.DB.Exec(`UPDATE rooms SET related_rooms = ?, related_types = ? WHERE id = ?`, u.ids, u.types, u.id); err != nil {
 			s.Logger.Warn("removeRoomFromRelatedLinks: update failed", "room", u.id, "error", err)
 		}
 	}

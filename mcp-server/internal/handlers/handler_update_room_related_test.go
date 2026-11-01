@@ -18,7 +18,7 @@ func TestHandleUpdateRoomRelatedRoomsReportsRemoved(t *testing.T) {
 	if !strings.Contains(text, "Removed related rooms: rel-a") {
 		t.Errorf("expected removed ids listed, got: %s", text)
 	}
-	if !strings.Contains(text, "rel-b,rel-c") {
+	if !strings.Contains(text, "rel-b, rel-c") {
 		t.Errorf("expected final list, got: %s", text)
 	}
 	if !strings.Contains(text, "add_related_rooms") {

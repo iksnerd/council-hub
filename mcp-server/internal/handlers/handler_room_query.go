@@ -189,7 +189,7 @@ func (r *Registry) handleListRooms(ctx context.Context, req *mcp.CallToolRequest
 				fmt.Fprintf(&b, "  Tech: %s\n", rm.TechStack)
 			}
 			if rm.RelatedRooms != "" {
-				fmt.Fprintf(&b, "  Related: %s\n", rm.RelatedRooms)
+				fmt.Fprintf(&b, "  Related: %s\n", rm.RelatedDisplay())
 			}
 			if lid, ok := latestIDs[rm.ID]; ok {
 				fmt.Fprintf(&b, "  Latest msg: %.8s\n", lid)

@@ -52,9 +52,11 @@ func (s *Server) CreateRoom(id, description, project, techStack, tags, systemPro
 	project = normalizeProject(project)
 	tags = normalizeTags(tags)
 
+	refs := ParseRelated(relatedRooms)
+	relIDs, relTypes := RelatedColumns(refs)
 	res, err := s.DB.Exec(
-		`INSERT OR IGNORE INTO rooms (id, description, project, tech_stack, tags, system_prompt, related_rooms) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		id, description, project, techStack, tags, systemPrompt, relatedRooms,
+		`INSERT OR IGNORE INTO rooms (id, description, project, tech_stack, tags, system_prompt, related_rooms, related_types) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		id, description, project, techStack, tags, systemPrompt, relIDs, relTypes,
 	)
 	if err != nil {
 		return err
@@ -67,7 +69,7 @@ func (s *Server) CreateRoom(id, description, project, techStack, tags, systemPro
 		return err
 	}
 
-	s.syncReverseLinks(id, relatedRooms)
+	s.syncReverseLinks(id, refs)
 
 	// Embed room description + system prompt (non-fatal)
 	s.EmbedAsync("room_vectors", id, roomEmbedText(id, description, systemPrompt))
@@ -78,9 +80,9 @@ func (s *Server) CreateRoom(id, description, project, techStack, tags, systemPro
 func (s *Server) GetRoom(roomID string) (Room, error) {
 	var r Room
 	err := s.DB.QueryRow(
-		`SELECT id, description, status, project, tech_stack, tags, system_prompt, related_rooms, COALESCE(visibility, 'public'), COALESCE(repo, ''), COALESCE(work_items, ''), created_at, updated_at, archived_at FROM rooms WHERE id = ?`,
+		`SELECT id, description, status, project, tech_stack, tags, system_prompt, related_rooms, COALESCE(related_types, ''), COALESCE(visibility, 'public'), COALESCE(repo, ''), COALESCE(work_items, ''), created_at, updated_at, archived_at FROM rooms WHERE id = ?`,
 		roomID,
-	).Scan(&r.ID, &r.Description, &r.Status, &r.Project, &r.TechStack, &r.Tags, &r.SystemPrompt, &r.RelatedRooms, &r.Visibility, &r.Repo, &r.WorkItems, &r.CreatedAt, &r.UpdatedAt, &r.ArchivedAt)
+	).Scan(&r.ID, &r.Description, &r.Status, &r.Project, &r.TechStack, &r.Tags, &r.SystemPrompt, &r.RelatedRooms, &r.RelatedTypes, &r.Visibility, &r.Repo, &r.WorkItems, &r.CreatedAt, &r.UpdatedAt, &r.ArchivedAt)
 	if err != nil {
 		return r, err
 	}
@@ -241,9 +243,11 @@ func (s *Server) UpdateRoom(roomID, description, project, techStack, tags, addTa
 		setClauses = append(setClauses, "system_prompt = ?")
 		args = append(args, systemPrompt)
 	}
+	refs := ParseRelated(relatedRooms)
 	if relatedRooms != "" {
-		setClauses = append(setClauses, "related_rooms = ?")
-		args = append(args, relatedRooms)
+		relIDs, relTypes := RelatedColumns(refs)
+		setClauses = append(setClauses, "related_rooms = ?", "related_types = ?")
+		args = append(args, relIDs, relTypes)
 	}
 
 	query := fmt.Sprintf("UPDATE rooms SET %s WHERE id = ?", strings.Join(setClauses, ", "))
@@ -258,7 +262,7 @@ func (s *Server) UpdateRoom(roomID, description, project, techStack, tags, addTa
 		return fmt.Errorf("room '%s' not found", roomID)
 	}
 
-	s.syncReverseLinks(roomID, relatedRooms)
+	s.syncReverseLinks(roomID, refs)
 
 	// Re-embed if description or system_prompt changed (non-fatal)
 	if description != "" || systemPrompt != "" {

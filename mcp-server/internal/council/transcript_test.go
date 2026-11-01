@@ -103,7 +103,7 @@ func TestTranscriptWithRelatedRooms(t *testing.T) {
 	msgs, _ := cs.GetTranscript("linked-room")
 	transcript := FormatTranscript(room, msgs)
 
-	if !strings.Contains(transcript, "**Related Rooms:** other-room,another-room") {
+	if !strings.Contains(transcript, "**Related Rooms:** other-room, another-room") {
 		t.Error("transcript missing related rooms")
 	}
 }

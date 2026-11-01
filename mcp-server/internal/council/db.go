@@ -24,6 +24,7 @@ type Room struct {
 	Tags         string
 	SystemPrompt string
 	RelatedRooms string
+	RelatedTypes string // "id=type,..." for non-default link types; see related.go
 	Visibility   string // "public" (default) or "private" (node-local, excluded from cluster fan-out)
 	Repo         string // optional git repo ref (owner/repo or URL) for {sha:...} commit-link resolution
 	WorkItems    string // optional issue-tracker URL template with {id}, for {wi:...} link resolution
@@ -214,6 +215,12 @@ func NewServer(dbPath string, logger *slog.Logger) (*Server, error) {
 		return nil, fmt.Errorf("failed to self-heal database: %w", err)
 	}
 
+	if n, err := repairRelatedRooms(db, logger); err != nil {
+		logger.Warn("related_rooms repair failed", "error", err)
+	} else if n > 0 {
+		logger.Info("normalised malformed related_rooms", "rooms", n)
+	}
+
 	mcpServer := mcp.NewServer(&mcp.Implementation{
 		Name:    "council-hub",
 		Version: Version,
@@ -397,6 +404,7 @@ func initSchema(db *sql.DB) error {
 		`ALTER TABLE messages ADD COLUMN idempotency_key TEXT DEFAULT ''`,
 		`ALTER TABLE notebooks ADD COLUMN deleted_at DATETIME`,
 		`ALTER TABLE rooms ADD COLUMN archived_at DATETIME`,
+		`ALTER TABLE rooms ADD COLUMN related_types TEXT DEFAULT ''`,
 	}
 	for _, m := range migrations {
 		_, _ = db.Exec(m) // Ignore "duplicate column" errors for already-migrated DBs
