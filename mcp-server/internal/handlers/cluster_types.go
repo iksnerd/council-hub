@@ -50,6 +50,13 @@ type ClusterRoomResult struct {
 	// read cursor is deliberately not carried: it is node-local state.
 	MessageCount  *int   `json:"message_count"`
 	PinnedExcerpt string `json:"pinned_excerpt"`
+	// ArchivedAt, LastActivity and RelatedTypes come from peers on v0.64.0+; an
+	// older peer omits them, which reads as empty here. Empty therefore means
+	// "none or unknown", and the Phoenix reply carries the warning that says
+	// which (never treat it as proof a room was not archived).
+	ArchivedAt   string `json:"archived_at,omitempty"`
+	LastActivity string `json:"last_activity,omitempty"`
+	RelatedTypes string `json:"related_types,omitempty"`
 }
 
 // ClusterStatsResult represents room stats from a cluster-wide query.
@@ -142,6 +149,7 @@ func mapClusterRoom(r ClusterRoomResult) council.Room {
 		Tags:         r.Tags,
 		SystemPrompt: r.SystemPrompt,
 		RelatedRooms: r.RelatedRooms,
+		RelatedTypes: r.RelatedTypes,
 		Repo:         r.Repo,
 		WorkItems:    r.WorkItems,
 		CreatedAt:    parseClusterTime(r.CreatedAt),
@@ -175,7 +183,13 @@ func clusterMessageFromLocal(m council.Message) ClusterSearchResult {
 }
 
 func clusterRoomFromLocal(r council.Room) ClusterRoomResult {
+	archivedAt := ""
+	if r.ArchivedAt != nil {
+		archivedAt = r.ArchivedAt.UTC().Format("2006-01-02T15:04:05")
+	}
 	return ClusterRoomResult{
+		ArchivedAt:   archivedAt,
+		RelatedTypes: r.RelatedTypes,
 		ID:           r.ID,
 		Description:  r.Description,
 		Status:       r.Status,

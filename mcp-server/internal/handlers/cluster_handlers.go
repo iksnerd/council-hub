@@ -754,6 +754,11 @@ func (r *Registry) handleListRoomsCluster(args ListRoomsInput) (*mcp.CallToolRes
 	case status == "" && args.Search == "" && args.RelatedTo == "":
 		hideResolved = true
 	}
+	switch args.Archived {
+	case "", "true", "false":
+	default:
+		return listRoomsResult(fmt.Sprintf("Error: archived must be 'true' or 'false', got '%s'.", args.Archived), newListRoomsOutput(nil, nil))
+	}
 	// Each node returns its first limit+offset rooms; the page is cut after the
 	// merge, since a per-node offset would skip the wrong rows.
 	window := limit + offset
@@ -770,6 +775,7 @@ func (r *Registry) handleListRoomsCluster(args ListRoomsInput) (*mcp.CallToolRes
 			}
 		}
 		opts := council.ListRoomsOptions{
+			Archived:     args.Archived,
 			Project:      args.Project,
 			ProjectNotIn: projectNotIn,
 			Tag:          args.Tag,
@@ -791,8 +797,12 @@ func (r *Registry) handleListRoomsCluster(args ListRoomsInput) (*mcp.CallToolRes
 			}
 			counts := r.Server.GetMessageCounts()
 			pins := r.Server.GetPinnedExcerpts(ids)
+			activity := r.Server.GetLastActivity()
 			for _, rm := range localRooms {
 				cr := clusterRoomFromLocal(rm)
+				if la, ok := activity[rm.ID]; ok {
+					cr.LastActivity = la.UTC().Format("2006-01-02T15:04:05")
+				}
 				n := counts[rm.ID]
 				cr.MessageCount = &n
 				cr.PinnedExcerpt = pins[rm.ID]
@@ -808,6 +818,7 @@ func (r *Registry) handleListRoomsCluster(args ListRoomsInput) (*mcp.CallToolRes
 		"status":         status,
 		"search":         args.Search,
 		"related_to":     args.RelatedTo,
+		"archived":       args.Archived,
 		"limit":          strconv.Itoa(window),
 		"offset":         "0",
 	}
@@ -965,7 +976,15 @@ func (r *Registry) renderClusterRooms(args ListRoomsInput, results []ClusterRoom
 			if pin := listedPin(rm); pin != "" {
 				counts += " | 📌 " + pin
 			}
-			fmt.Fprintf(&b, "- [%s] **%s** | %s | %s%s | %s | %s\n", rm.SourceNode, rm.ID, project, rm.Status, counts, topic, updatedAt)
+			status := rm.Status
+			if at := parseClusterTime(rm.ArchivedAt); !at.IsZero() {
+				status += " (archived " + utcStampMinute(at) + ")"
+			}
+			lastMsg := ""
+			if la := parseClusterTime(rm.LastActivity); !la.IsZero() {
+				lastMsg = " | last msg " + utcStampMinute(la)
+			}
+			fmt.Fprintf(&b, "- [%s] **%s** | %s | %s%s | %s | %s%s\n", rm.SourceNode, rm.ID, project, status, counts, topic, updatedAt, lastMsg)
 		}
 	} else {
 		for _, rm := range results {
@@ -984,9 +1003,15 @@ func (r *Registry) renderClusterRooms(args ListRoomsInput, results []ClusterRoom
 				fmt.Fprintf(&b, "  Tech: %s\n", rm.TechStack)
 			}
 			if rm.RelatedRooms != "" {
-				fmt.Fprintf(&b, "  Related: %s\n", rm.RelatedRooms)
+				fmt.Fprintf(&b, "  Related: %s\n", mapClusterRoom(rm).RelatedDisplay())
 			}
 			fmt.Fprintf(&b, "  Last activity: %s\n", rm.UpdatedAt)
+			if la := parseClusterTime(rm.LastActivity); !la.IsZero() {
+				fmt.Fprintf(&b, "  Last message: %s\n", utcStamp(la))
+			}
+			if at := parseClusterTime(rm.ArchivedAt); !at.IsZero() {
+				fmt.Fprintf(&b, "  Archived: %s\n", utcStamp(at))
+			}
 		}
 	}
 

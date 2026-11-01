@@ -53,9 +53,13 @@ defmodule CouncilHubUi.CouncilRooms do
   end
 
   @doc """
-  `list_rooms_filtered/1` plus two per-room extras the cluster listing shows:
-  `message_count` (head revisions, as Go GetMessageCounts) and `pinned_excerpt`
-  (the pinned head message, one line, tombstone-masked; "" when none). Computed
+  `list_rooms_filtered/1` plus three per-room extras the cluster listing shows:
+  `message_count` (head revisions, as Go GetMessageCounts), `pinned_excerpt`
+  (the pinned head message, one line, tombstone-masked; "" when none) and
+  `last_activity` (newest message time, as Go GetLastActivity; nil with no
+  messages). The row also carries the room's `archived_at` and `related_types`.
+  A row from a node that predates these lacks the keys, which is how the caller
+  tells "unknown" from "never archived". Computed
   on the node that owns each room, since every node has its own database. The
   read cursor is deliberately absent: it is node-local.
   """
@@ -79,8 +83,18 @@ defmodule CouncilHubUi.CouncilRooms do
       |> Repo.all()
       |> Map.new(&{&1.room_id, pin_excerpt(&1)})
 
+    activity =
+      from(m in Message,
+        where: m.room_id in ^ids,
+        group_by: m.room_id,
+        select: {m.room_id, max(m.timestamp)}
+      )
+      |> Repo.all()
+      |> Map.new()
+
     Enum.map(rooms, fn room ->
       room
+      |> Map.put(:last_activity, Map.get(activity, room.id))
       |> Map.put(:message_count, Map.get(counts, room.id, 0))
       |> Map.put(:pinned_excerpt, Map.get(pins, room.id, ""))
     end)
@@ -158,6 +172,13 @@ defmodule CouncilHubUi.CouncilRooms do
         nil -> base
         "" -> base
         s -> from([room: r] in base, where: r.status == ^s)
+      end
+
+    base =
+      case Map.get(params, "archived") do
+        "true" -> from([room: r] in base, where: not is_nil(r.archived_at))
+        "false" -> from([room: r] in base, where: is_nil(r.archived_at))
+        _ -> base
       end
 
     base =

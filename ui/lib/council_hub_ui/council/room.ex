@@ -15,6 +15,9 @@ defmodule CouncilHubUi.Council.Room do
     field :visibility, :string, default: "public"
     field :repo, :string, default: ""
     field :work_items, :string, default: ""
+    # Written by the Go server only; read here for the cluster listing.
+    field :related_types, :string, default: ""
+    field :archived_at, :naive_datetime
     field :created_at, :naive_datetime
     field :updated_at, :naive_datetime
 

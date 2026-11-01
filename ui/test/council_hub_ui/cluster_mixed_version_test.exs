@@ -19,11 +19,18 @@ defmodule CouncilHubUi.ClusterMixedVersionTest do
   defp opts(peer, fallback \\ fn _, _ -> {:ok, []} end) do
     [
       nodes: [Node.self(), @peer],
-      multicall: fn nodes, Cluster, :local_query, [func, args] ->
-        Enum.map(nodes, fn
-          @peer -> peer.(func)
-          _ -> {:ok, Cluster.local_query(func, args)}
-        end)
+      multicall: fn
+        nodes, Cluster, :local_query, [func, args] ->
+          Enum.map(nodes, fn
+            @peer -> peer.(func)
+            _ -> {:ok, Cluster.local_query(func, args)}
+          end)
+
+        nodes, Cluster, :supports?, [feature] ->
+          Enum.map(nodes, fn
+            @peer -> peer.({:supports?, feature})
+            _ -> {:ok, Cluster.supports?(feature)}
+          end)
       end,
       call: fn @peer, func, args -> fallback.(func, args) end,
       version: fn @peer -> "0.63.1" end
@@ -70,7 +77,10 @@ defmodule CouncilHubUi.ClusterMixedVersionTest do
     test "a healthy peer is not retried and adds no warning" do
       o =
         opts(
-          fn :list_rooms_for_cluster -> {:ok, [Map.put(old_room("fine"), :message_count, 3)]} end,
+          fn
+            :list_rooms_for_cluster -> {:ok, [Map.put(old_room("fine"), :message_count, 3)]}
+            {:supports?, _} -> {:ok, true}
+          end,
           fn _, _ -> flunk("must not retry a healthy peer") end
         )
 
@@ -85,6 +95,68 @@ defmodule CouncilHubUi.ClusterMixedVersionTest do
       assert [warning] = result.warnings
       assert warning =~ to_string(@peer)
       refute warning =~ "undef"
+    end
+  end
+
+  describe "list_rooms/2 against a v0.63.x peer (has the function, lacks the v0.64 fields)" do
+    # What an old peer returns: no archived_at / last_activity / related_types keys.
+    defp v063_peer(extra \\ %{}) do
+      fn
+        :list_rooms_for_cluster -> {:ok, [Map.merge(old_room("theirs"), extra)]}
+        {:supports?, _} -> {:ok, false}
+      end
+    end
+
+    test "warns once, keeps the rooms, and does not invent archive state" do
+      create_room(%{id: "mine", project: "p"})
+      result = Cluster.list_rooms(%{"project" => "p"}, opts(v063_peer()))
+
+      theirs = Enum.find(result.results, &(&1.id == "theirs"))
+      refute Map.has_key?(theirs, :archived_at)
+      refute Map.has_key?(theirs, :last_activity)
+
+      assert [warning] = result.warnings
+      assert warning =~ to_string(@peer)
+      assert warning =~ "older version (v0.63.1) without archived/last_activity"
+      refute warning =~ "archived filter"
+    end
+
+    test "with an archived filter the warning says the filter was not applied to it" do
+      create_room(%{id: "mine", project: "p", archived_at: ~N[2026-10-01 00:00:00]})
+      result = Cluster.list_rooms(%{"project" => "p", "archived" => "true"}, opts(v063_peer()))
+
+      # this node filtered; the old peer's room is kept, not silently dropped or trusted
+      assert Enum.sort(Enum.map(result.results, & &1.id)) == ["mine", "theirs"]
+      assert [warning] = result.warnings
+      assert warning =~ "archived filter was not applied"
+    end
+
+    test "a current peer adds no warning" do
+      peer = fn
+        :list_rooms_for_cluster ->
+          {:ok, [Map.merge(old_room("theirs"), %{archived_at: nil, last_activity: nil})]}
+
+        {:supports?, _} ->
+          {:ok, true}
+      end
+
+      result = Cluster.list_rooms(%{"archived" => "false"}, opts(peer))
+      assert result.warnings == []
+    end
+
+    test "a peer already warned about is not warned twice" do
+      o =
+        opts(
+          fn
+            {:supports?, _} -> {:ok, false}
+            f -> undef(f)
+          end,
+          fn :list_rooms_filtered, _ -> {:ok, [old_room("theirs")]} end
+        )
+
+      result = Cluster.list_rooms(%{}, o)
+      assert [warning] = result.warnings
+      assert warning =~ "list_rooms_for_cluster"
     end
   end
 

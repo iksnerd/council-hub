@@ -278,6 +278,38 @@ defmodule CouncilHubUiWeb.ClusterControllerTest do
       assert room["source_node"] != nil
     end
 
+    test "carries archived_at, last_activity and related_types, and filters on archived",
+         %{conn: conn} do
+      create_room(%{
+        id: "arch-yes",
+        project: "arch-p",
+        archived_at: ~N[2026-10-30 12:34:56],
+        related_rooms: "old",
+        related_types: "old=continues"
+      })
+
+      create_room(%{id: "arch-no", project: "arch-p"})
+      create_message(%{room_id: "arch-yes", content: "hi", timestamp: ~N[2026-10-31 01:02:03]})
+
+      list = fn params ->
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> post("/api/internal/cluster/list_rooms", Map.put(params, "project", "arch-p"))
+        |> json_response(200)
+        |> Map.fetch!("results")
+      end
+
+      rows = Map.new(list.(%{}), &{&1["id"], &1})
+      assert rows["arch-yes"]["archived_at"] == "2026-10-30T12:34:56"
+      assert rows["arch-yes"]["last_activity"] == "2026-10-31T01:02:03"
+      assert rows["arch-yes"]["related_types"] == "old=continues"
+      # known and empty, not omitted
+      assert %{"archived_at" => nil, "last_activity" => nil} = rows["arch-no"]
+
+      assert Enum.map(list.(%{"archived" => "true"}), & &1["id"]) == ["arch-yes"]
+      assert Enum.map(list.(%{"archived" => "false"}), & &1["id"]) == ["arch-no"]
+    end
+
     test "returns empty for no match", %{conn: conn} do
       conn =
         conn

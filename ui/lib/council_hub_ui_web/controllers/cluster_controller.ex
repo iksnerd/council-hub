@@ -89,6 +89,7 @@ defmodule CouncilHubUiWeb.ClusterController do
       "status" => Map.get(params, "status", ""),
       "search" => Map.get(params, "search", ""),
       "related_to" => Map.get(params, "related_to", ""),
+      "archived" => Map.get(params, "archived", ""),
       "limit" => Params.clamp_int(Map.get(params, "limit"), 50, max: 100),
       "offset" => Params.clamp_int(Map.get(params, "offset"), 0, min: 0)
     }
@@ -104,7 +105,7 @@ defmodule CouncilHubUiWeb.ClusterController do
   def room_refs(conn, params) do
     cluster_params =
       Map.new(
-        ~w(project project_not_in tag status search related_to),
+        ~w(project project_not_in tag status search related_to archived),
         &{&1, Map.get(params, &1, "")}
       )
 
@@ -321,6 +322,20 @@ defmodule CouncilHubUiWeb.ClusterController do
       updated_at: format_datetime(room.updated_at),
       source_node: Map.get(room, :source_node, nil)
     }
+    |> put_if_known(room, :archived_at)
+    |> put_if_known(room, :last_activity)
+    |> put_if_known(room, :related_types)
+  end
+
+  # A node that predates archived_at / last_activity / related_types sends rows
+  # without the key. Leave it out of the JSON then, so the Go side sees
+  # "unknown" and not "never archived" (null) or "no typed links" ("").
+  defp put_if_known(out, room, key) do
+    case Map.fetch(room, key) do
+      {:ok, %NaiveDateTime{} = dt} -> Map.put(out, key, format_datetime(dt))
+      {:ok, value} -> Map.put(out, key, value)
+      :error -> out
+    end
   end
 
   defp serialize_stats(nil), do: nil

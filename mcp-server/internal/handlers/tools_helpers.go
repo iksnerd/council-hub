@@ -301,7 +301,15 @@ func splitCSV(s string) []string {
 }
 
 func listedRoomFromCluster(rm ClusterRoomResult) ListedRoom {
+	rfc := func(ts string) string {
+		if t := parseClusterTime(ts); !t.IsZero() {
+			return t.UTC().Format(time.RFC3339)
+		}
+		return ""
+	}
 	return ListedRoom{
+		ArchivedAt:    rfc(rm.ArchivedAt),
+		LastActivity:  rfc(rm.LastActivity),
 		ID:            rm.ID,
 		Topic:         rm.Description,
 		Status:        rm.Status,

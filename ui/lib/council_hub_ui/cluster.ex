@@ -42,6 +42,8 @@ defmodule CouncilHubUi.Cluster do
     {results, warnings} =
       fan_out(:list_rooms_for_cluster, [params], opts)
 
+    warnings = note_old_room_peers(results, warnings, params, opts)
+
     merged =
       results
       |> List.flatten()
@@ -235,7 +237,7 @@ defmodule CouncilHubUi.Cluster do
   @doc false
   # Capability probe: peers that predate a feature answer :undef to this very
   # call, which is how a cross-node feature learns the peer cannot do it.
-  def supports?(feature), do: feature in [:work_item]
+  def supports?(feature), do: feature in [:work_item, :room_archive_fields]
 
   # Functions added after v0.63.1, with the previous-release call to retry a
   # node with when it answers :undef. `degraded` says what that node's rows
@@ -254,6 +256,55 @@ defmodule CouncilHubUi.Cluster do
       degraded: "resolved-room count may be low (counted from at most 100 of its rooms)"
     }
   }
+
+  # v0.64.0 rooms carry archived_at, last_activity and related_types, and the
+  # listing takes an `archived` filter. A peer on the previous release answers
+  # the call but sends none of that and ignores the filter, so its rooms cannot
+  # honestly be post-filtered (a missing archived_at means "unknown", not
+  # "never archived"). Say so, once per node. A node that already has a warning
+  # (unreachable, or retried with the old function) is not warned twice.
+  defp note_old_room_peers(results, warnings, params, opts) do
+    peers = Keyword.get(opts, :nodes, [Node.self() | Node.list()]) -- [Node.self()]
+    filtered? = Map.get(params, "archived") in ["true", "false"]
+
+    contributing =
+      results |> List.flatten() |> Enum.map(&Map.get(&1, :source_node)) |> MapSet.new()
+
+    candidates =
+      Enum.filter(peers, fn node ->
+        name = Atom.to_string(node)
+
+        not Enum.any?(warnings, &String.starts_with?(&1, name)) and
+          (filtered? or MapSet.member?(contributing, name))
+      end)
+
+    if candidates == [] do
+      warnings
+    else
+      multicall = Keyword.get(opts, :multicall, &default_multicall/4)
+
+      old =
+        Enum.zip(
+          candidates,
+          multicall.(candidates, __MODULE__, :supports?, [:room_archive_fields])
+        )
+        |> Enum.flat_map(fn
+          {_node, {:ok, true}} -> []
+          {node, _} -> [node]
+        end)
+
+      lost =
+        if filtered?,
+          do:
+            "its rooms show no archive state, last message time or link types, and the archived filter was not applied to them",
+          else: "its rooms show no archive state, last message time or link types"
+
+      warnings ++
+        Enum.map(old, fn node ->
+          "#{node} runs an older version#{version_suffix(node, opts)} without archived/last_activity; #{lost}"
+        end)
+    end
+  end
 
   # A search whose `work_item` an older peer ignores returns that peer's
   # unfiltered top-N. Filter it here (exact {wi:ID} token, as the new query
