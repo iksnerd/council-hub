@@ -262,6 +262,11 @@ type ListedRoom struct {
 	PinnedExcerpt string   `json:"pinned_excerpt,omitempty"`
 	SourceNode    string   `json:"source_node,omitempty"`
 	Updated       string   `json:"updated"`
+	// ArchivedAt is when archive_room last wrote the transcript file; empty if never.
+	ArchivedAt string `json:"archived_at,omitempty"`
+	// LastActivity is the newest message's time; unlike Updated, archiving and
+	// status changes do not move it.
+	LastActivity string `json:"last_activity,omitempty"`
 }
 
 // ListRoomsOutput is list_rooms' structured output. OmittedResolved counts the

@@ -343,3 +343,35 @@ func (s *Server) GetRoomsNeedingSummary(threshold int) ([]string, error) {
 	}
 	return roomIDs, rows.Err()
 }
+
+// GetLastActivity returns, per room, the timestamp of its newest message. Only
+// messages move it: archiving, status flips and metadata edits bump
+// rooms.updated_at but not this, so it answers "when did anyone last say
+// something here". Rooms with no messages are absent from the map.
+func (s *Server) GetLastActivity() map[string]time.Time {
+	out := make(map[string]time.Time)
+	rows, err := s.DB.Query(`SELECT room_id, MAX(timestamp) FROM messages GROUP BY room_id`)
+	if err != nil {
+		return out
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var roomID string
+		var raw any
+		if err := rows.Scan(&roomID, &raw); err != nil {
+			continue
+		}
+		switch v := raw.(type) {
+		case time.Time:
+			out[roomID] = v.UTC()
+		case string:
+			for _, layout := range []string{"2006-01-02 15:04:05", time.RFC3339, "2006-01-02T15:04:05Z", "2006-01-02 15:04:05.999999999-07:00"} {
+				if t, perr := time.Parse(layout, v); perr == nil {
+					out[roomID] = t.UTC()
+					break
+				}
+			}
+		}
+	}
+	return out
+}

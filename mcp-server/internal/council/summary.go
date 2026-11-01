@@ -124,7 +124,7 @@ func (s *Server) ArchiveRoom(roomID string) (string, error) {
 
 	cleanTags := removeTag(removeTag(removeTag(removeTag(removeTag(removeTag(room.Tags, "needs-synthesis"), "stale"), "stale-pin"), "stale-plan"), "unpinned-synthesis"), "incoherent")
 	s.Mu.Lock()
-	_, err = s.DB.Exec(`UPDATE rooms SET status = 'resolved', tags = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, cleanTags, roomID)
+	_, err = s.DB.Exec(`UPDATE rooms SET status = 'resolved', tags = ?, archived_at = CURRENT_TIMESTAMP WHERE id = ?`, cleanTags, roomID)
 	s.Mu.Unlock()
 	if err != nil {
 		return "", fmt.Errorf("failed to mark room archived: %w", err)

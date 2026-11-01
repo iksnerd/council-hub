@@ -78,9 +78,9 @@ func (s *Server) CreateRoom(id, description, project, techStack, tags, systemPro
 func (s *Server) GetRoom(roomID string) (Room, error) {
 	var r Room
 	err := s.DB.QueryRow(
-		`SELECT id, description, status, project, tech_stack, tags, system_prompt, related_rooms, COALESCE(visibility, 'public'), COALESCE(repo, ''), COALESCE(work_items, ''), created_at, updated_at FROM rooms WHERE id = ?`,
+		`SELECT id, description, status, project, tech_stack, tags, system_prompt, related_rooms, COALESCE(visibility, 'public'), COALESCE(repo, ''), COALESCE(work_items, ''), created_at, updated_at, archived_at FROM rooms WHERE id = ?`,
 		roomID,
-	).Scan(&r.ID, &r.Description, &r.Status, &r.Project, &r.TechStack, &r.Tags, &r.SystemPrompt, &r.RelatedRooms, &r.Visibility, &r.Repo, &r.WorkItems, &r.CreatedAt, &r.UpdatedAt)
+	).Scan(&r.ID, &r.Description, &r.Status, &r.Project, &r.TechStack, &r.Tags, &r.SystemPrompt, &r.RelatedRooms, &r.Visibility, &r.Repo, &r.WorkItems, &r.CreatedAt, &r.UpdatedAt, &r.ArchivedAt)
 	if err != nil {
 		return r, err
 	}

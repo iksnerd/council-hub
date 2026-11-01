@@ -29,6 +29,8 @@ type Room struct {
 	WorkItems    string // optional issue-tracker URL template with {id}, for {wi:...} link resolution
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
+	// ArchivedAt is when archive_room last wrote this room's transcript file; nil if never.
+	ArchivedAt *time.Time
 }
 
 // Message represents a message in a council room.
@@ -394,6 +396,7 @@ func initSchema(db *sql.DB) error {
 		`ALTER TABLE messages ADD COLUMN posted_from TEXT DEFAULT ''`,
 		`ALTER TABLE messages ADD COLUMN idempotency_key TEXT DEFAULT ''`,
 		`ALTER TABLE notebooks ADD COLUMN deleted_at DATETIME`,
+		`ALTER TABLE rooms ADD COLUMN archived_at DATETIME`,
 	}
 	for _, m := range migrations {
 		_, _ = db.Exec(m) // Ignore "duplicate column" errors for already-migrated DBs

@@ -344,6 +344,10 @@ func (r *Registry) applyPost(in internalPostRequest) (postOutcome, error) {
 		return out, nil
 	}
 
+	if room.ArchivedAt != nil {
+		out.Notes = append(out.Notes, fmt.Sprintf("⚠️ This room was archived %s: your message is not in the archive file. Re-run archive_room(room_id=%q) to refresh it.", room.ArchivedAt.UTC().Format("2006-01-02 15:04Z"), in.RoomID))
+	}
+
 	if room.Status == "resolved" {
 		if in.Reopen == "true" {
 			if uerr := r.Server.UpdateStatus(in.RoomID, "active"); uerr != nil {

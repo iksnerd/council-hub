@@ -12,6 +12,7 @@ type ListRoomsOptions struct {
 	ExcludeStatus string // drop rooms in this status (list_rooms hides resolved by default)
 	Search        string
 	RelatedTo     string // filter to rooms whose related_rooms contains this room ID
+	Archived      string // "true": only rooms with archived_at set; "false": only rooms without; "": both
 	Limit, Offset int
 }
 
@@ -51,7 +52,7 @@ func (s *Server) ListRoomsFiltered(opts ListRoomsOptions) ([]Room, error) {
 // id/description/tags LIKE clauses.
 func (s *Server) listRoomsMatch(opts ListRoomsOptions, words []string, searchJoin string) ([]Room, error) {
 	where, args := roomFilterSQL(opts, words, searchJoin)
-	query := `SELECT id, description, status, project, tech_stack, tags, system_prompt, related_rooms, created_at, updated_at FROM rooms WHERE 1=1` + where
+	query := `SELECT id, description, status, project, tech_stack, tags, system_prompt, related_rooms, created_at, updated_at, archived_at FROM rooms WHERE 1=1` + where
 
 	query += ` ORDER BY updated_at DESC LIMIT ? OFFSET ?`
 
@@ -77,7 +78,7 @@ func (s *Server) listRoomsMatch(opts ListRoomsOptions, words []string, searchJoi
 	var rooms []Room
 	for rows.Next() {
 		var r Room
-		if err := rows.Scan(&r.ID, &r.Description, &r.Status, &r.Project, &r.TechStack, &r.Tags, &r.SystemPrompt, &r.RelatedRooms, &r.CreatedAt, &r.UpdatedAt); err != nil {
+		if err := rows.Scan(&r.ID, &r.Description, &r.Status, &r.Project, &r.TechStack, &r.Tags, &r.SystemPrompt, &r.RelatedRooms, &r.CreatedAt, &r.UpdatedAt, &r.ArchivedAt); err != nil {
 			return nil, err
 		}
 		rooms = append(rooms, r)
@@ -119,6 +120,12 @@ func roomFilterSQL(opts ListRoomsOptions, words []string, searchJoin string) (st
 	if opts.ExcludeStatus != "" {
 		q += ` AND status != ?`
 		args = append(args, opts.ExcludeStatus)
+	}
+	switch opts.Archived {
+	case "true":
+		q += ` AND archived_at IS NOT NULL`
+	case "false":
+		q += ` AND archived_at IS NULL`
 	}
 	if opts.RelatedTo != "" {
 		q += ` AND (',' || related_rooms || ',') LIKE '%,' || ? || ',%'`

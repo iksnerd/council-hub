@@ -18,6 +18,7 @@ type ListRoomsInput struct {
 	Status       string     `json:"status"`
 	Search       string     `json:"search"`
 	RelatedTo    string     `json:"related_to"`
+	Archived     string     `json:"archived"`
 	Compact      string     `json:"compact"` // deprecated: compact is now default; kept for backwards compat
 	Verbose      string     `json:"verbose"`
 	ClusterWide  StringBool `json:"cluster_wide"`
@@ -86,7 +87,13 @@ func (r *Registry) handleListRooms(ctx context.Context, req *mcp.CallToolRequest
 	case status == "" && args.Search == "" && args.RelatedTo == "":
 		hideResolved = true
 	}
+	switch args.Archived {
+	case "", "true", "false":
+	default:
+		return listRoomsResult(fmt.Sprintf("Error: archived must be 'true' or 'false', got '%s'.", args.Archived), newListRoomsOutput(nil, nil))
+	}
 	listOpts := council.ListRoomsOptions{
+		Archived:     args.Archived,
 		Project:      args.Project,
 		ProjectNotIn: projectNotIn,
 		Tag:          args.Tag,
@@ -136,6 +143,7 @@ func (r *Registry) handleListRooms(ctx context.Context, req *mcp.CallToolRequest
 	msgCounts := r.Server.GetMessageCounts()
 	pinnedExcerpts := r.Server.GetPinnedExcerpts(roomIDs)
 	latestIDs := r.Server.GetLatestMessageIDs()
+	lastActivity := r.Server.GetLastActivity()
 
 	useVerbose := args.Verbose == "true" || args.Compact == "false"
 	if !useVerbose {
@@ -150,10 +158,18 @@ func (r *Registry) handleListRooms(ctx context.Context, req *mcp.CallToolRequest
 			if lid, ok := latestIDs[rm.ID]; ok {
 				cursor = fmt.Sprintf(" | cursor:%.8s", lid)
 			}
+			status := rm.Status
+			if rm.ArchivedAt != nil {
+				status += " (archived " + utcStampMinute(*rm.ArchivedAt) + ")"
+			}
+			lastMsg := ""
+			if la, ok := lastActivity[rm.ID]; ok {
+				lastMsg = " | last msg " + utcStampMinute(la)
+			}
 			if excerpt, ok := pinnedExcerpts[rm.ID]; ok {
-				fmt.Fprintf(&b, "- **%s** | %s | %s | %d msgs%s | 📌 %s | %s | %s\n", rm.ID, project, rm.Status, count, cursor, excerpt, topic, utcStampMinute(rm.UpdatedAt))
+				fmt.Fprintf(&b, "- **%s** | %s | %s | %d msgs%s | 📌 %s | %s | %s%s\n", rm.ID, project, status, count, cursor, excerpt, topic, utcStampMinute(rm.UpdatedAt), lastMsg)
 			} else {
-				fmt.Fprintf(&b, "- **%s** | %s | %s | %d msgs%s | %s | %s\n", rm.ID, project, rm.Status, count, cursor, topic, utcStampMinute(rm.UpdatedAt))
+				fmt.Fprintf(&b, "- **%s** | %s | %s | %d msgs%s | %s | %s%s\n", rm.ID, project, status, count, cursor, topic, utcStampMinute(rm.UpdatedAt), lastMsg)
 			}
 		}
 	} else {
@@ -178,7 +194,13 @@ func (r *Registry) handleListRooms(ctx context.Context, req *mcp.CallToolRequest
 			if lid, ok := latestIDs[rm.ID]; ok {
 				fmt.Fprintf(&b, "  Latest msg: %.8s\n", lid)
 			}
-			fmt.Fprintf(&b, "  Last activity: %s\n", utcStamp(rm.UpdatedAt))
+			fmt.Fprintf(&b, "  Updated: %s\n", utcStamp(rm.UpdatedAt))
+			if la, ok := lastActivity[rm.ID]; ok {
+				fmt.Fprintf(&b, "  Last message: %s\n", utcStamp(la))
+			}
+			if rm.ArchivedAt != nil {
+				fmt.Fprintf(&b, "  Archived: %s\n", utcStamp(*rm.ArchivedAt))
+			}
 		}
 	}
 
@@ -192,6 +214,12 @@ func (r *Registry) handleListRooms(ctx context.Context, req *mcp.CallToolRequest
 		lr := listedRoomFromCluster(clusterRoomFromLocal(rm))
 		lr.PinnedExcerpt = pinnedExcerpts[rm.ID]
 		lr.Updated = rm.UpdatedAt.UTC().Format(time.RFC3339)
+		if rm.ArchivedAt != nil {
+			lr.ArchivedAt = rm.ArchivedAt.UTC().Format(time.RFC3339)
+		}
+		if la, ok := lastActivity[rm.ID]; ok {
+			lr.LastActivity = la.UTC().Format(time.RFC3339)
+		}
 		listed = append(listed, lr)
 	}
 	out := newListRoomsOutput(listed, nil)

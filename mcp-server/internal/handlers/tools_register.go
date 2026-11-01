@@ -145,6 +145,7 @@ func (r *Registry) RegisterTools() {
 			"status":         prop("string", "Filter by status: active, paused, resolved, or all. Default (omitted): active and paused only; the reply says how many resolved rooms were left out."),
 			"search":         prop("string", "Keyword search across room ID, topic/description, and tags. Multi-word queries use AND (all words must match); if nothing matches, falls back to OR so over-specified queries still find the room."),
 			"compact":        prop("string", "Deprecated — compact output is the default; kept so existing callers passing compact=false still work (it maps to verbose)."),
+			"archived":       prop("string", "'true' = only rooms archive_room has archived (archived_at set); 'false' = only rooms never archived. With status=resolved, archived=false is the worklist of rooms still to archive. Each listed room shows its archive time and last message time."),
 			"related_to":     prop("string", "Filter to rooms whose related_rooms list contains this room ID. Returns the flat neighborhood around a specific room — pairs with compact listing for a data-dense alternative to get_concept_map."),
 			"limit":          prop("string", "Max rooms to return (default 50, max 100); the reply says how many matching rooms were left out."),
 			"offset":         prop("string", "Offset for pagination (default 0)"),
@@ -367,7 +368,7 @@ func (r *Registry) RegisterTools() {
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "archive_room",
-		Description: "Export a room's transcript to a markdown file in the archives directory, with an auto-generated Summary section. Use when a room is fully resolved and no longer needs active participation — archiving preserves the record and marks the room resolved so it leaves the active work list. Set delete=true to remove the room after archiving (common for completed sprints or resolved bugs).",
+		Description: "Export a room's transcript to a markdown file in the archives directory, with an auto-generated Summary section. Use when a room is fully resolved and no longer needs active participation — archiving preserves the record and marks the room resolved so it leaves the active work list. Stamps archived_at (shown by list_rooms; filter with archived=true|false) without bumping the room's updated_at. A post made after archiving is not in the file: re-run archive_room to refresh it. Set delete=true to remove the room after archiving (common for completed sprints or resolved bugs).",
 		InputSchema: schema([]string{"room_id"}, map[string]map[string]any{
 			"room_id": prop("string", "Target room ID"),
 			"delete":  prop("string", "Set to 'true' to delete room after archiving"),
