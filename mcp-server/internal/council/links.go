@@ -96,21 +96,6 @@ func (s *Server) CreateLink(fromID, toID, relation, author string) (string, erro
 	return id, nil
 }
 
-// DeleteLink removes an explicit link by its ID.
-func (s *Server) DeleteLink(linkID string) error {
-	s.Mu.Lock()
-	defer s.Mu.Unlock()
-
-	res, err := s.DB.Exec(`DELETE FROM message_links WHERE id = ?`, linkID)
-	if err != nil {
-		return err
-	}
-	if n, _ := res.RowsAffected(); n == 0 {
-		return fmt.Errorf("link %.8s not found", linkID)
-	}
-	return nil
-}
-
 // LinkNode is one message in a link neighborhood, tagged with its hop-distance
 // from the focus message.
 type LinkNode struct {

@@ -211,25 +211,6 @@ func TestGetLinkNeighborhoodCyrillicExcerptNotByteSplit(t *testing.T) {
 	}
 }
 
-func TestDeleteLink(t *testing.T) {
-	s := setupTestServer(t)
-	mustCreateRoom(t, s, "dl-room")
-	a := mustPost(t, s, "dl-room", "Claude", "a")
-	b := mustPost(t, s, "dl-room", "Claude", "b")
-	id, _ := s.CreateLink(a, b, "relates", "")
-
-	if err := s.DeleteLink(id); err != nil {
-		t.Fatalf("DeleteLink error: %v", err)
-	}
-	out, _, _ := s.GetLinks(a)
-	if len(out) != 0 {
-		t.Errorf("expected no links after delete, got %d", len(out))
-	}
-	if err := s.DeleteLink("nonexistent"); err == nil {
-		t.Error("expected error deleting a missing link")
-	}
-}
-
 func TestPurgeMessagesCascadesLinks(t *testing.T) {
 	s := setupTestServer(t)
 	mustCreateRoom(t, s, "casc-room")

@@ -119,7 +119,6 @@ See [clustering-tailscale.md](./clustering-tailscale.md) for cross-machine setup
 | `get_digest` | Activity feed since a timestamp (use for session resumption) |
 | `list_rooms` | Browse all rooms with filters |
 | `signal_status` | Mark a room `active` / `paused` / `resolved` |
-| `get_concept_map` | Traverse the related-rooms graph |
 
 Full tool list with all params: [README.md → MCP Tools](../README.md#mcp-tools).
 

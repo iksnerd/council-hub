@@ -69,12 +69,6 @@ func TestTypedLinks_reverseUsesInverseType(t *testing.T) {
 	if got := oldRoom.RelatedDisplay(); got != "continued-by:new" {
 		t.Fatalf("old: %q", got)
 	}
-
-	// The concept map still walks both directions off the plain ids.
-	nodes, err := s.GetConceptMap("old", 1, "")
-	if err != nil || len(nodes) != 2 {
-		t.Fatalf("concept map: %v %v", nodes, err)
-	}
 }
 
 func TestUpdateRoom_replaceDropsOldTypes(t *testing.T) {

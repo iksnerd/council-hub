@@ -14,7 +14,6 @@ council-hub/
       rooms_query.go                    Room listing and filters
       rooms_lifecycle.go                Room status changes
       rooms_links.go                    Bidirectional related-room links
-      rooms_graph.go                    Concept-map traversal
       messages_write.go                 Post, revise, retract, restore, purge
       messages_query.go                 Search, recent, delta reads, revision history
       messages_annotate.go              Pin, reactions
@@ -34,7 +33,7 @@ council-hub/
       related.go                        related_rooms parsing and repair, typed links (continues, supersedes, blocks) and their inverses
     internal/handlers/
       tools_helpers.go                  Registry, schema helpers, validation
-      tools_register.go                 All 38 MCP tool registrations
+      tools_register.go                 All 35 MCP tool registrations
       templates.go                      Room template definitions
       timefmt.go                        ISO-8601 UTC timestamp rendering for tool output
       validation_hints.go               Rewrites unknown-parameter errors to name the accepted parameters
@@ -47,14 +46,13 @@ council-hub/
       cluster_mentions.go               Cluster-wide get_mentions fan-out and cached peer node count
       cluster_default.go                Cluster reads on by default when a peer is connected (COUNCIL_CLUSTER_READS=local opts out)
       handler_message_query.go          search_messages, get_messages, get_mentions
-      handler_message_write.go          post_to_room, update_message, delete_messages, move_messages, fork_thread
+      handler_message_write.go          post_to_room, update_message, delete_messages, fork_thread
       handler_message_annotate.go       pin_message, react_to_message
-      handler_message_links.go          link_messages, get_links, unlink_messages
+      handler_message_links.go          link_messages, get_links
       handler_message_sync.go           mark_read
       handler_room_crud.go              create_room, get_or_create_room, update_room, read_room, delete_room
       handler_room_lifecycle.go         signal_status, bulk_status_update, bulk_visibility, rename_project, regenerate_embeddings
       handler_room_query.go             list_rooms, room_stats
-      handler_room_graph.go             get_concept_map
       handler_transcript.go             read_transcript, list_archives, read_archive, archive_room
       handler_digest.go                 get_digest
       handler_notebook.go               read_notebook (timeline + outline modes)

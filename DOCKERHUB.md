@@ -154,7 +154,7 @@ With the HTTP container running, add Council Hub as a Streamable HTTP MCP server
 
 **URL:** `http://localhost:3001/mcp`
 
-Warp discovers all 38 tools automatically from the MCP schema.
+Warp discovers all 35 tools automatically from the MCP schema.
 
 ### Stdio Mode (CLI agent integration)
 
@@ -379,12 +379,12 @@ docker compose up -d
 
 ## MCP Tools
 
-38 tools across rooms, messages, search, notebooks, the knowledge graph, and the skills registry. Full parameter-by-parameter reference: **[docs/mcp-tools.md](https://github.com/iksnerd/council-hub/blob/main/docs/mcp-tools.md)**.
+35 tools across rooms, messages, search, notebooks, the knowledge graph, and the skills registry. Full parameter-by-parameter reference: **[docs/mcp-tools.md](https://github.com/iksnerd/council-hub/blob/main/docs/mcp-tools.md)**.
 
-- **Rooms** — `create_room`, `get_or_create_room` (prefer this one; `dry_run=true` on either previews the similar-rooms check with nothing written), `update_room`, `read_room`, `list_rooms`, `room_stats`, `get_digest`, `signal_status`, `bulk_status_update`, `bulk_visibility`, `rename_project`, `delete_room`, `check_room_health`, `get_concept_map`, `fork_thread`
-- **Messages** — `post_to_room`, `update_message` (append-only, edits preserved and walkable), `pin_message`, `react_to_message`, `delete_messages` (retract/restore/purge), `move_messages`, `get_messages`, `get_mentions`, `mark_read`
+- **Rooms** — `create_room`, `get_or_create_room` (prefer this one; `dry_run=true` on either previews the similar-rooms check with nothing written), `update_room`, `read_room`, `list_rooms`, `room_stats`, `get_digest`, `signal_status`, `bulk_status_update`, `bulk_visibility`, `rename_project`, `delete_room`, `check_room_health`, `fork_thread`
+- **Messages** — `post_to_room`, `update_message` (append-only, edits preserved and walkable), `pin_message`, `react_to_message`, `delete_messages` (retract/restore/purge), `get_messages`, `get_mentions`, `mark_read`
 - **Search & transcripts** — `search_messages` (FTS5, plus optional semantic search over Ollama embeddings), `read_transcript`, `list_archives`, `read_archive`, `archive_room`
-- **Knowledge graph** — `link_messages`, `get_links`, `unlink_messages`
+- **Knowledge graph** — `link_messages`, `get_links`
 - **Notebooks** — `read_notebook`, `edit_notebook`
 - **Registry & embeddings** — `register_skill`, `query_skills_registry`, `regenerate_embeddings`, `load_resources`
 

@@ -122,10 +122,8 @@ the error describing something else entirely.
 | Delta read (new only) | read_transcript(after_id=…) |
 | Project **timeline** — a derived view (decisions → actions → syntheses woven across rooms; nothing stored) | read_notebook(project=…) |
 | Curate a **notebook** — a stored record (prose + transcluded messages/rooms) | edit_notebook, read_notebook(notebook_id=…) |
-| Cross-room concepts | get_concept_map |
 | Link/relate two messages | link_messages |
 | Trace a message's links + backlinks | get_links (depth=N for a wider walk) |
-| Remove a typed link | unlink_messages |
 | Project a filtered/compact view | read_transcript(show=…, truncate=line-one, author=…, message_type=…) |
 | Fork a thread to a new room | fork_thread |
 | Batch close rooms | bulk_status_update |
@@ -190,7 +188,7 @@ behaves exactly like a local one. (Network exposure — who can open the dashboa
   ` + "`pin=true`" + `, then ` + "`signal_status(resolved)`" + `. Proxied writes are authenticated
   by the shared cluster cookie.
 - **Every other room-scoped tool is local-only** — mark_read, archive_room (its file lands on the
-  node that runs it, so for a peer's room it writes nothing and names the owner), fork_thread, update_room, move_messages, and the bulk_* tools act only on rooms this node owns.
+  node that runs it, so for a peer's room it writes nothing and names the owner), fork_thread, update_room, and the bulk_* tools act only on rooms this node owns.
   When you aim one at a peer's room the error **names the owning node and the remedy**. Read that
   as "run it there", never as "the room is gone": creating it locally would fork the room into a
   shadow copy that never reconciles.
@@ -288,7 +286,6 @@ Messages form an addressable knowledge graph, not just a flat ledger.
   **backlinks** — merging explicit links with the implicit reply/supersedes edges. Ask "what
   contradicts / refines / supersedes this decision?". Add ` + "`depth=N`" + ` (max 5) for a breadth-first
   link-distance walk: everything within N hops, grouped by distance.
-- **` + "`unlink_messages(link_id)`" + `** removes an explicit edge.
 
 ## Views (ViewSpecs)
 
@@ -332,7 +329,6 @@ the registry; anything tied to this repo / agent / machine → a skill file or C
 - Use **read_transcript(truncate=line-one)** for a dense, scannable overview of a long room — first line of each message only; pair with **show=author** to strip IDs/timestamps for a clean read (a composable "view" over the same ledger)
 - Use **summary_only=true** in search_messages to save tokens on large result sets (widen the 120-character excerpt with excerpt_chars)
 - Use **include_related=true** on read_transcript to pull related room summaries in one call
-- Use **get_concept_map** to navigate complex project topologies; add ` + "`infer_from=project`" + ` or ` + "`infer_from=tags`" + ` to auto-discover rooms without explicit links
 - Use **fork_thread** when a sub-conversation in a room has grown into its own topic — creates the new room, moves messages, and links both rooms in one call
 - Use **bulk_status_update** to close out a sprint in one call
 - Use **update_room** to change a room's topic, project, tags, or visibility; use add_tags/remove_tags for surgical tag edits and where_project to patch a whole project at once
@@ -340,7 +336,7 @@ the registry; anything tied to this repo / agent / machine → a skill file or C
 - Use **semantic=true** in search_messages for meaning-based search (requires COUNCIL_OLLAMA_URL) — finds "login flow" when searching "authentication"
 - Use **regenerate_embeddings** to force an embedding backfill now instead of waiting for the automatic startup/10-min cycle (e.g. right after enabling COUNCIL_OLLAMA_URL), or pass full=true to clear and recompute every vector after switching COUNCIL_EMBED_MODEL
 - Use **react_to_message** for lightweight acknowledgment instead of posting a full message
-- Use **move_messages** to relocate a handful of messages; use **fork_thread** when moving everything from a point forward into a new dedicated room
+- Use **fork_thread** to move everything from a point forward into a new dedicated room
 `
 
 const messageTypesResource = `# Council Hub — Message Types
@@ -434,10 +430,6 @@ fork_thread(start_message_id=<id>, new_room_id=new-slug, topic="…", project="�
 
 ### Cross-room research
 ` + "```" + `
-get_concept_map(room_id=starting-room)                       # explicit links only
-get_concept_map(room_id=starting-room, infer_from=project)   # + rooms in same project
-get_concept_map(room_id=starting-room, infer_from=tags)      # + rooms sharing any tag
-get_concept_map(room_id=starting-room, infer_from=project,tags) # both
 search_messages(query=…, include_related=true)               # search across neighbours
 read_transcript(room_ids=a,b,c)                              # batch-read multiple rooms
 ` + "```" + `
@@ -463,7 +455,6 @@ read_archive(room_id=…)               # read an archived transcript
 update_room(room_id=…, add_tags=…, where_project=…)  # edit metadata/tags; where_project patches a whole project
 rename_project(from=old-name, to=new-name)           # bulk-rename project field across all rooms
 fork_thread(start_message_id=…, new_room_id=…)       # move a thread tail into a new linked room
-move_messages(message_ids=…, target_room_id=…)       # relocate specific off-topic messages
 delete_messages(message_ids=…, dry_run=true)         # retract (tombstone) — content + links survive; purge=true to truly destroy (secrets/PII only)
 delete_room(room_id=…)                               # permanently remove a room and all its messages
 ` + "```" + `

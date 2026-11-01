@@ -170,7 +170,7 @@ post_to_room(
 ## Linking rooms
 
 If the project has sub-rooms (e.g. `myapp-search-quality`, `myapp-deploy`), set `related_rooms`
-on each so `get_concept_map` and navigation work. Update with `update_room(related_rooms="...")`.
+on each so navigation works. Update with `update_room(related_rooms="...")`.
 
 ## Logging tool suggestions for the Council Hub dev team
 

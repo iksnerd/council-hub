@@ -155,7 +155,7 @@ func (r *Registry) RegisterTools() {
 			"search":         prop("string", "Keyword search across room ID, topic/description, and tags. Multi-word queries use AND (all words must match); if nothing matches, falls back to OR so over-specified queries still find the room."),
 			"compact":        prop("string", "Deprecated — compact output is the default; kept so existing callers passing compact=false still work (it maps to verbose)."),
 			"archived":       prop("boolean", "'true' = only rooms archive_room has archived (archived_at set); 'false' = only rooms never archived. With status=resolved, archived=false is the worklist of rooms still to archive. Each listed room shows its archive time and last message time."),
-			"related_to":     prop("string", "Filter to rooms whose related_rooms list contains this room ID. Returns the flat neighborhood around a specific room — pairs with compact listing for a data-dense alternative to get_concept_map."),
+			"related_to":     prop("string", "Filter to rooms whose related_rooms list contains this room ID. Returns the flat neighborhood around a specific room — pairs with compact listing for a data-dense view."),
 			"limit":          prop("integer", "Max rooms to return (default 50, max 100); the reply says how many matching rooms were left out."),
 			"offset":         prop("integer", "Offset for pagination (default 0)"),
 			"verbose":        prop("boolean", "Set to 'true' for full metadata per room (system_prompt, tech_stack, tags, related_rooms)"),
@@ -322,15 +322,6 @@ func (r *Registry) RegisterTools() {
 	}, plainTool(r.handleGetLinks))
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
-		Name:        "unlink_messages",
-		Title:       "Unlink messages",
-		Description: "Remove an explicit typed link by its ID (from link_messages or get_links output). Implicit reply/supersedes/revises edges can't be removed here — they're structural (reply/supersedes set at post time; revises is permanent append-only edit history).",
-		InputSchema: schema([]string{"link_id"}, map[string]map[string]any{
-			"link_id": prop("string", "ID of the link to remove"),
-		}),
-	}, plainTool(r.handleUnlinkMessages))
-
-	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "delete_messages",
 		Title:       "Delete messages",
 		Description: "Retract messages — the immutable counterpart to deletion. By default this tombstones the messages (sets retracted_at): the nodes, their content, and their links all survive, and they render as \"[retracted]\" — so the knowledge graph never dangles. Provide a comma-separated list of message IDs. Use dry_run=true to preview. Retraction is reversible: pass restore=true to bring tombstoned messages back. Pass purge=true ONLY for content that must not persist (a leaked secret, PII): purge hard-deletes the rows and cascade-removes their links, permanently destroying signal — prefer retract for everything else. Purge requires exact full message IDs (prefixes are not resolved — a typo'd prefix must never hard-delete the wrong message).",
@@ -342,16 +333,6 @@ func (r *Registry) RegisterTools() {
 			"restore":     prop("boolean", "Set to 'true' to reverse a retraction — clears the tombstone so the messages render normally again."),
 		}),
 	}, plainTool(r.handleDeleteMessages))
-
-	mcp.AddTool(r.Server.MCP, &mcp.Tool{
-		Name:        "move_messages",
-		Title:       "Move messages",
-		Description: "Move messages from their current room to a different room, preserving all metadata (author, timestamp, type, reply_to). Useful when a conversation thread drifts off-topic and belongs in a more appropriate room. Returns the count of moved messages and their new room. Note: message IDs and content are unchanged — existing references and cursors remain valid.",
-		InputSchema: schema([]string{"message_ids", "target_room_id"}, map[string]map[string]any{
-			"message_ids":    arrayProp("Comma-separated message IDs to move (e.g. abc123,def456) — each accepts a full ID or an unambiguous ID prefix"),
-			"target_room_id": prop("string", "Room ID to move the messages into"),
-		}),
-	}, plainTool(r.handleMoveMessages))
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "get_mentions",
@@ -576,22 +557,11 @@ func (r *Registry) RegisterTools() {
 	}, plainTool(r.handleEditNotebook))
 
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
-		Name:        "get_concept_map",
-		Title:       "Get concept map",
-		Description: "Traverse the conceptual relationship graph between rooms starting from a given room. Returns a flat Markdown list grouped by depth, showing how topics relate across the project. Use this to orient yourself within a complex project topology. Set infer_from to discover rooms not yet explicitly linked.",
-		InputSchema: schema([]string{"room_id"}, map[string]map[string]any{
-			"room_id":    prop("string", "The starting room ID for the graph traversal."),
-			"max_depth":  prop("integer", "The maximum depth to traverse (default 3, max 5)."),
-			"infer_from": prop("string", "Auto-include rooms related by shared metadata instead of only following explicit related_rooms links. Values: 'project' (same project), 'tags' (any shared tag), 'project,tags' (both). Useful when related_rooms links haven't been set up yet."),
-		}),
-	}, plainTool(r.handleGetConceptMap))
-
-	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:  "fork_thread",
 		Title: "Fork thread",
 		Description: "Fork a message thread into a new room in one step: creates the new room, moves start_message_id and all subsequent messages from its source room, and links both rooms bidirectionally. " +
 			"Use when a conversation in one room has grown into its own distinct topic. " +
-			"Replaces the manual create_room → move_messages → update_room × 2 sequence.",
+			"Replaces the manual create_room → repost → update_room × 2 sequence.",
 		InputSchema: schema([]string{"start_message_id", "new_room_id"}, map[string]map[string]any{
 			"start_message_id": prop("string", "ID of the first message to move — this message and all later messages in the same room are relocated. Accepts a full ID or an unambiguous ID prefix."),
 			"new_room_id":      prop("string", "ID for the new room to create (must not already exist)."),

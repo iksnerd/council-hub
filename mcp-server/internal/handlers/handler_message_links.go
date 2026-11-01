@@ -25,11 +25,6 @@ type GetLinksInput struct {
 	Depth     string `json:"depth"`
 }
 
-// UnlinkMessagesInput represents the parameters for removing a link.
-type UnlinkMessagesInput struct {
-	LinkID string `json:"link_id"`
-}
-
 func (r *Registry) handleLinkMessages(ctx context.Context, req *mcp.CallToolRequest, args LinkMessagesInput) (*mcp.CallToolResult, ToolOutput, error) {
 	msg := textResult
 
@@ -51,7 +46,7 @@ func (r *Registry) handleLinkMessages(ctx context.Context, req *mcp.CallToolRequ
 	}
 
 	// Full link ID (not #%.8s) — like get_links, this output must be pastable
-	// straight into another tool's id parameter (unlink_messages).
+	// straight into another tool's id parameter.
 	r.Server.Logger.Info("Link created", "from", args.FromID, "to", args.ToID, "relation", args.Relation)
 	return msg(fmt.Sprintf("Linked #%s --%s--> #%s (link #%s).", args.FromID, strings.ToLower(args.Relation), args.ToID, id))
 }
@@ -104,18 +99,6 @@ func (r *Registry) locateMessageOwner(id string) (node, room string) {
 		}
 	}
 	return "", ""
-}
-
-func (r *Registry) handleUnlinkMessages(ctx context.Context, req *mcp.CallToolRequest, args UnlinkMessagesInput) (*mcp.CallToolResult, ToolOutput, error) {
-	msg := textResult
-
-	if args.LinkID == "" {
-		return msg("Error: link_id is required.")
-	}
-	if err := r.Server.DeleteLink(args.LinkID); err != nil {
-		return msg(fmt.Sprintf("Error: %s", err.Error()))
-	}
-	return msg(fmt.Sprintf("Link #%s removed.", args.LinkID))
 }
 
 func (r *Registry) handleGetLinks(ctx context.Context, req *mcp.CallToolRequest, args GetLinksInput) (*mcp.CallToolResult, ToolOutput, error) {

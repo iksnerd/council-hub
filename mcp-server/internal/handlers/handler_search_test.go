@@ -488,60 +488,6 @@ func TestHandleSearchMessagesIncludeRelatedNoRelated(t *testing.T) {
 	}
 }
 
-// ========== move_messages ==========
-
-func TestHandleMoveMessages(t *testing.T) {
-	reg := setupHandlerTest(t)
-	mustCreateRoom(t, reg.Server, "mv-src-h")
-	mustCreateRoom(t, reg.Server, "mv-dst-h")
-	id1 := mustPost(t, reg.Server, "mv-src-h", "Claude", "move this")
-	id2 := mustPost(t, reg.Server, "mv-src-h", "Gemini", "move this too")
-
-	res, _, _ := reg.handleMoveMessages(context.Background(), nil, MoveMessagesInput{
-		MessageIDs:   id1 + "," + id2,
-		TargetRoomID: "mv-dst-h",
-	})
-	text := resultText(res)
-	if !strings.Contains(text, "Moved 2 message(s)") {
-		t.Errorf("expected success message, got: %s", text)
-	}
-}
-
-func TestHandleMoveMessagesTargetNotFound(t *testing.T) {
-	reg := setupHandlerTest(t)
-	mustCreateRoom(t, reg.Server, "mv-src-notfound")
-	id := mustPost(t, reg.Server, "mv-src-notfound", "Claude", "hello")
-
-	res, _, _ := reg.handleMoveMessages(context.Background(), nil, MoveMessagesInput{
-		MessageIDs:   id,
-		TargetRoomID: "does-not-exist",
-	})
-	text := resultText(res)
-	if !strings.Contains(text, "Error") {
-		t.Errorf("expected error for missing target room, got: %s", text)
-	}
-}
-
-func TestHandleMoveMessagesMissingIDs(t *testing.T) {
-	reg := setupHandlerTest(t)
-	res, _, _ := reg.handleMoveMessages(context.Background(), nil, MoveMessagesInput{
-		TargetRoomID: "some-room",
-	})
-	if !strings.Contains(resultText(res), "Error") {
-		t.Errorf("expected error for missing message_ids")
-	}
-}
-
-func TestHandleMoveMessagesMissingTarget(t *testing.T) {
-	reg := setupHandlerTest(t)
-	res, _, _ := reg.handleMoveMessages(context.Background(), nil, MoveMessagesInput{
-		MessageIDs: "abc123",
-	})
-	if !strings.Contains(resultText(res), "Error") {
-		t.Errorf("expected error for missing target_room_id")
-	}
-}
-
 // summary_only cuts each hit at 120 characters, which loses the facts that sit
 // late in a long post; excerpt_chars lets the caller widen it without paying
 // for full_content on every hit.

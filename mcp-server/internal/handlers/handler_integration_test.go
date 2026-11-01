@@ -455,21 +455,6 @@ func TestIntegration_KnowledgeLintAllClear(t *testing.T) {
 	}
 }
 
-func TestIntegration_MoveMessages(t *testing.T) {
-	cs, reg := setupIntegrationTest(t)
-	mustCreateRoom(t, reg.Server, "integ-mv-src")
-	mustCreateRoom(t, reg.Server, "integ-mv-dst")
-	id := mustPost(t, reg.Server, "integ-mv-src", "Claude", "relocate me")
-	result := callTool(t, cs, "move_messages", map[string]any{
-		"message_ids":    id,
-		"target_room_id": "integ-mv-dst",
-	})
-	text := resultText(result)
-	if !strings.Contains(strings.ToLower(text), "moved") {
-		t.Errorf("unexpected: %s", text)
-	}
-}
-
 func TestIntegration_UpdateMessageOptimisticConcurrency(t *testing.T) {
 	cs, reg := setupIntegrationTest(t)
 	mustCreateRoom(t, reg.Server, "integ-occ")

@@ -62,12 +62,6 @@ type DeleteMessagesInput struct {
 	Restore    string `json:"restore"`
 }
 
-// MoveMessagesInput represents the parameters for moving messages between rooms.
-type MoveMessagesInput struct {
-	MessageIDs   string `json:"message_ids"`
-	TargetRoomID string `json:"target_room_id"`
-}
-
 // ForkThreadInput represents the parameters for forking a thread into a new room.
 type ForkThreadInput struct {
 	StartMessageID string `json:"start_message_id"`
@@ -570,43 +564,6 @@ func (r *Registry) handleDeleteMessages(ctx context.Context, req *mcp.CallToolRe
 
 	r.Server.Logger.Info("Messages retracted", "count", count, "ids", args.MessageIDs)
 	return msg(fmt.Sprintf("Retracted %d message(s) — tombstoned, content and links preserved (they render as \"[retracted]\"). Pass purge=true to permanently destroy instead.", count))
-}
-
-func (r *Registry) handleMoveMessages(ctx context.Context, req *mcp.CallToolRequest, args MoveMessagesInput) (*mcp.CallToolResult, ToolOutput, error) {
-	msg := textResult
-
-	if args.MessageIDs == "" {
-		return msg("Error: message_ids is required (comma-separated list of message IDs).")
-	}
-	if args.TargetRoomID == "" {
-		return msg("Error: target_room_id is required.")
-	}
-	if err := validateSize("target_room_id", args.TargetRoomID, maxIDLen); err != nil {
-		return msg("Error: " + err.Error())
-	}
-
-	ids := splitIDList(args.MessageIDs)
-	if len(ids) == 0 {
-		return msg("Error: no valid message IDs provided.")
-	}
-	ids, idErr := r.resolveIDList(ids)
-	if idErr != nil {
-		return msg(fmt.Sprintf("Error: %s", idErr.Error()))
-	}
-
-	moved, err := r.Server.MoveMessages(ids, args.TargetRoomID)
-	if err != nil {
-		return msg(fmt.Sprintf("Error: %s", err.Error()))
-	}
-
-	notMoved := len(ids) - moved
-	var b strings.Builder
-	fmt.Fprintf(&b, "Moved %d message(s) to room '%s'.", moved, args.TargetRoomID)
-	if notMoved > 0 {
-		fmt.Fprintf(&b, " %d ID(s) not found and were skipped.", notMoved)
-	}
-	r.Server.Logger.Info("Messages moved", "count", moved, "target", args.TargetRoomID)
-	return msg(b.String())
 }
 
 func (r *Registry) handleForkThread(ctx context.Context, req *mcp.CallToolRequest, args ForkThreadInput) (*mcp.CallToolResult, ToolOutput, error) {

@@ -62,7 +62,7 @@ For detailed diagrams of the system, distributed cluster topology, and knowledge
 
 ## Features
 
-- **38 MCP Tools** — Create rooms, post messages, search, read transcripts, compile project notebooks, curate outlines, manage status, fork threads, archive, and more
+- **35 MCP Tools** — Create rooms, post messages, search, read transcripts, compile project notebooks, curate outlines, manage status, fork threads, archive, and more
 - **Semantic Search** — Find messages by meaning (powered by Ollama embeddings). "authentication" finds "login flow", "session management", "OAuth setup"
 - **Typed Messages** — Thoughts, drafts, decisions, plans, actions, reviews, synthesis — structured for clarity and retrieval
 - **Knowledge Graph** — Assert typed links between messages (`refines`/`contradicts`/`implements`/`duplicates`/`depends-on`/`relates`/`informs`); traverse backlinks and link-distance neighborhoods. `informs` wires journal notes to the deliberation they inform
@@ -210,7 +210,7 @@ Messages in a room are typed for structured collaboration:
 
 ## MCP Interface
 
-Council Hub exposes **38 MCP tools** (room CRUD, typed messages, search, transcripts, notebooks, a knowledge-link graph, and a methodology registry) plus skill-guide resources (`council://guide`, `council://message-types`, `council://workflows`, `council://janitor`).
+Council Hub exposes **35 MCP tools** (room CRUD, typed messages, search, transcripts, notebooks, a knowledge-link graph, and a methodology registry) plus skill-guide resources (`council://guide`, `council://message-types`, `council://workflows`, `council://janitor`).
 
 **→ Full tool & resource reference: [docs/mcp-tools.md](docs/mcp-tools.md)**
 
@@ -342,7 +342,7 @@ See our [Code of Conduct](CODE_OF_CONDUCT.md) for community standards.
 - **[Examples](examples/)** — Docker Compose, API samples, room templates
 
 **Reference:**
-- **[MCP Tools & Resources](docs/mcp-tools.md)** — All 38 MCP tools + skill-guide resources
+- **[MCP Tools & Resources](docs/mcp-tools.md)** — All 35 MCP tools + skill-guide resources
 - **[Configuration](docs/configuration.md)** — Every environment variable (server, web UI, clustering)
 - **[Architecture](docs/architecture.md)** — System diagrams, cluster topology, knowledge-compilation flow
 - **[Project Structure](docs/project-structure.md)** — File-by-file map of `mcp-server/` and `ui/`

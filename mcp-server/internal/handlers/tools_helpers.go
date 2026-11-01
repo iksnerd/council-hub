@@ -65,7 +65,7 @@ func splitIDList(s string) []string {
 // resolveIDList resolves each id in ids via ResolveMessageID (exact match, or a
 // unique prefix). An id that doesn't resolve is passed through unchanged — this
 // covers both "genuinely doesn't exist" (the caller's own not-found reporting,
-// e.g. delete_messages/move_messages listing skipped IDs, already handles that
+// e.g. delete_messages listing skipped IDs, already handles that
 // fine) and an infra failure resolving it (e.g. the DB going away mid-request —
 // don't mask that as "not found"; let the real operation attempt against the
 // same DB and surface its own accurate error). An *ambiguous* prefix is the one

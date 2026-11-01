@@ -42,24 +42,6 @@ func TestHandleLinkInvalidRelation(t *testing.T) {
 	}
 }
 
-func TestHandleUnlinkMessages(t *testing.T) {
-	reg := setupHandlerTest(t)
-	mustCreateRoom(t, reg.Server, "h-unlink")
-	a := mustPost(t, reg.Server, "h-unlink", "Claude", "a")
-	b := mustPost(t, reg.Server, "h-unlink", "Claude", "b")
-	id, _ := reg.Server.CreateLink(a, b, "relates", "")
-
-	res, _, _ := reg.handleUnlinkMessages(context.Background(), nil, UnlinkMessagesInput{LinkID: id})
-	if !strings.Contains(resultText(res), "removed") {
-		t.Errorf("expected removal confirmation, got: %s", resultText(res))
-	}
-
-	out, _, _ := reg.Server.GetLinks(a)
-	if len(out) != 0 {
-		t.Errorf("expected no links after unlink, got %d", len(out))
-	}
-}
-
 func TestHandleGetLinksNoLinks(t *testing.T) {
 	reg := setupHandlerTest(t)
 	mustCreateRoom(t, reg.Server, "h-nolinks")
