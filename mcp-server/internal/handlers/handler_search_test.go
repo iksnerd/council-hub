@@ -541,3 +541,27 @@ func TestHandleMoveMessagesMissingTarget(t *testing.T) {
 		t.Errorf("expected error for missing target_room_id")
 	}
 }
+
+// summary_only cuts each hit at 120 characters, which loses the facts that sit
+// late in a long post; excerpt_chars lets the caller widen it without paying
+// for full_content on every hit.
+func TestHandleSearchMessagesSummaryOnlyExcerptChars(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "h-search-excerpt")
+	body := strings.Repeat("filler ", 40) + "LATEFACT " + strings.Repeat("tail ", 40)
+	mustPostTyped(t, reg.Server, "h-search-excerpt", "Claude", body, "thought")
+
+	def, _, _ := reg.handleSearchMessages(context.Background(), nil, SearchMessagesInput{
+		RoomID: "h-search-excerpt", SummaryOnly: "true",
+	})
+	if strings.Contains(resultText(def), "LATEFACT") {
+		t.Error("default summary excerpt should cut before the late fact")
+	}
+
+	wide, _, _ := reg.handleSearchMessages(context.Background(), nil, SearchMessagesInput{
+		RoomID: "h-search-excerpt", SummaryOnly: "true", ExcerptChars: "400",
+	})
+	if !strings.Contains(resultText(wide), "LATEFACT") {
+		t.Errorf("excerpt_chars=400 should reach the late fact: %s", resultText(wide))
+	}
+}

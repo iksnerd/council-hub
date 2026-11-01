@@ -89,8 +89,10 @@ func (r *Registry) handlePostToRoom(ctx context.Context, req *mcp.CallToolReques
 	// author defaults to the connected client's name — the only identity this
 	// server actually knows. Without it, the rejection lands after the whole
 	// body has been transmitted, so the retry pays for the content twice.
+	authorDefaulted := false
 	if args.Author == "" {
 		args.Author = clientIdentity(req)
+		authorDefaulted = args.Author != ""
 	}
 
 	if args.RoomID == "" || args.Author == "" || args.Message == "" {
@@ -119,6 +121,9 @@ func (r *Registry) handlePostToRoom(ctx context.Context, req *mcp.CallToolReques
 	// read before recording self, which is the order the note describes: who else is
 	// in this tree, then note that we are too.
 	workspaceNote := ""
+	if authorDefaulted && r.peersConnected() {
+		workspaceNote = defaultAuthorClusterNote(args.Author)
+	}
 	if args.Workspace != "" {
 		if err := validateSize("workspace", args.Workspace, maxWorkspaceLen); err != nil {
 			return msg("Error: " + err.Error())
@@ -127,7 +132,7 @@ func (r *Registry) handlePostToRoom(ctx context.Context, req *mcp.CallToolReques
 		if werr != nil {
 			r.Server.Logger.Warn("shared-workspace lookup failed", "author", args.Author, "error", werr)
 		} else {
-			workspaceNote = council.SharedWorkspaceWarning(council.NormalizeWorkspace(args.Workspace), peers)
+			workspaceNote += council.SharedWorkspaceWarning(council.NormalizeWorkspace(args.Workspace), peers)
 		}
 		if werr := r.Server.RecordWorkspace(args.Author, args.RoomID, args.Workspace); werr != nil {
 			r.Server.Logger.Warn("workspace record failed", "author", args.Author, "error", werr)
@@ -684,4 +689,11 @@ func pinConfirmation(replacedPin string) string {
 		return " 📌 pinned"
 	}
 	return fmt.Sprintf(" 📌 pinned (replaced #%s)", replacedPin)
+}
+
+// defaultAuthorClusterNote tells a poster that used the client's default name on
+// a cluster that mentions and read cursors key off that string, so every session
+// on the same default name shares them.
+func defaultAuthorClusterNote(author string) string {
+	return fmt.Sprintf("\n\nNote: posted under the default author name %q while the cluster has peers; get_mentions and read cursors (mark_read) merge with every other session using that name. Pass a distinctive author to keep them apart.", author)
 }

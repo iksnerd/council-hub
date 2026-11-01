@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -658,5 +659,22 @@ func TestIntegration_UnknownPropertyIsRejectedByName(t *testing.T) {
 	}
 	if !strings.Contains(reported, "topick") {
 		t.Errorf("expected the rejection to name the unknown property, got: %s", reported)
+	}
+}
+
+// With peers connected, a post under the client's default name merges mentions
+// and read cursors with every other session on that name; the result must say so.
+func TestIntegration_PostWithDefaultAuthorWarnsOnCluster(t *testing.T) {
+	cs, reg := setupIntegrationTest(t)
+	reg.nodeN, reg.nodeAt = 2, time.Now()
+	callTool(t, cs, "create_room", map[string]any{"id": "author-warn", "topic": "x"})
+
+	defaulted := resultText(callTool(t, cs, "post_to_room", map[string]any{"room_id": "author-warn", "message": "no author"}))
+	if !strings.Contains(defaulted, "default author name") {
+		t.Errorf("defaulted author on a cluster should warn: %s", defaulted)
+	}
+	named := resultText(callTool(t, cs, "post_to_room", map[string]any{"room_id": "author-warn", "author": "me-1", "message": "named"}))
+	if strings.Contains(named, "default author name") {
+		t.Errorf("explicit author should not warn: %s", named)
 	}
 }

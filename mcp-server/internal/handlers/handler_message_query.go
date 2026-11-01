@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"council-hub/internal/council"
@@ -22,6 +23,7 @@ type SearchMessagesInput struct {
 	Since          string     `json:"since"`
 	Until          string     `json:"until"`
 	SummaryOnly    string     `json:"summary_only"`
+	ExcerptChars   string     `json:"excerpt_chars"`
 	FullContent    string     `json:"full_content"`
 	ClusterWide    StringBool `json:"cluster_wide"`
 	Semantic       string     `json:"semantic"`
@@ -180,7 +182,7 @@ func (r *Registry) handleSearchMessages(ctx context.Context, req *mcp.CallToolRe
 		for _, m := range messages {
 			ts := m.Timestamp.Format("2006-01-02 15:04")
 			excerpt := council.DisplayContent(m)
-			excerpt = council.TruncateRunes(excerpt, 120, " ", 80)
+			excerpt = council.TruncateRunes(excerpt, excerptLimit(args.ExcerptChars), " ", 80)
 			// Replace newlines in excerpt for single-line display
 			excerpt = strings.ReplaceAll(excerpt, "\n", " ")
 			// Full ID: this is the designated lookup surface for get_messages, so
@@ -420,4 +422,22 @@ func (r *Registry) handleGetMentions(ctx context.Context, req *mcp.CallToolReque
 	b.WriteString(note)
 
 	return msg(b.String())
+}
+
+// Bounds for search_messages(excerpt_chars): summary_only's default cut, and the
+// range a caller may widen or narrow it to.
+const (
+	defaultExcerptChars = 120
+	minExcerptChars     = 40
+	maxExcerptChars     = 2000
+)
+
+// excerptLimit parses excerpt_chars, falling back to the default on an empty or
+// unparseable value and clamping the rest into [minExcerptChars, maxExcerptChars].
+func excerptLimit(raw string) int {
+	n, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil {
+		return defaultExcerptChars
+	}
+	return min(max(n, minExcerptChars), maxExcerptChars)
 }

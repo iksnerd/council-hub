@@ -120,6 +120,8 @@ type DigestEntry struct {
 	DecisionCount   int    `json:"decision_count"`
 	SynthesisCount  int    `json:"synthesis_count"`
 	LatestMessageID string `json:"latest_message_id"`
+	// Topic is the room's description. Local rows only; peer rows leave it empty.
+	Topic string `json:"topic,omitempty"`
 	// PostedFrom lists the distinct posted_from labels (working-tree basenames or
 	// client names) of the live messages in the digest window, sorted. Omitted when
 	// none recorded one.
@@ -154,6 +156,7 @@ func (s *Server) GetDigest(project, since string) ([]DigestEntry, error) {
 		       lm.retracted_at as latest_retracted_at,
 		       COALESCE(lm.retracted_by, '') as latest_retracted_by,
 		       COALESCE(r.tags, '') as tags,
+		       COALESCE(r.description, '') as topic,
 		       (SELECT COUNT(*) FROM messages WHERE room_id = m.room_id AND message_type = 'decision' AND ` + liveClause("") + `) as decision_count,
 		       (SELECT COUNT(*) FROM messages WHERE room_id = m.room_id AND message_type = 'synthesis' AND ` + liveClause("") + `) as synthesis_count,
 		       COALESCE((SELECT MAX(id) FROM messages WHERE room_id = m.room_id), '') as latest_message_id
@@ -185,7 +188,7 @@ func (s *Server) GetDigest(project, since string) ([]DigestEntry, error) {
 		var d DigestEntry
 		var retractedAt sql.NullTime
 		var retractedBy string
-		if err := rows.Scan(&d.RoomID, &d.NewMessages, &d.LatestAuthor, &d.LatestExcerpt, &retractedAt, &retractedBy, &d.Tags, &d.DecisionCount, &d.SynthesisCount, &d.LatestMessageID); err != nil {
+		if err := rows.Scan(&d.RoomID, &d.NewMessages, &d.LatestAuthor, &d.LatestExcerpt, &retractedAt, &retractedBy, &d.Tags, &d.Topic, &d.DecisionCount, &d.SynthesisCount, &d.LatestMessageID); err != nil {
 			return nil, err
 		}
 		d.LatestExcerpt = DisplayContent(Message{Content: d.LatestExcerpt, RetractedAt: retractedAt, RetractedBy: retractedBy})

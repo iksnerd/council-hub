@@ -35,7 +35,12 @@ type digestBriefEntry struct {
 	NewMessages     int    `json:"new_messages"`
 	LatestMessageID string `json:"latest_message_id"`
 	SourceNode      string `json:"source_node,omitempty"`
+	// Topic is the room's description clipped to briefTopicChars, so a brief row
+	// says what the room is about without a second list_rooms call.
+	Topic string `json:"topic,omitempty"`
 }
+
+const briefTopicChars = 60
 
 // digestSummary is the at-a-glance health header prepended to the digest so an
 // agent can triage at scale ("35 stale, skip the graveyard") without scanning
@@ -85,7 +90,7 @@ func marshalDigest(summary digestSummary, rooms []council.DigestEntry, brief boo
 	}
 	out := make([]digestBriefEntry, 0, len(rooms))
 	for _, e := range rooms {
-		out = append(out, digestBriefEntry{RoomID: e.RoomID, NewMessages: e.NewMessages, LatestMessageID: e.LatestMessageID, SourceNode: e.SourceNode})
+		out = append(out, digestBriefEntry{RoomID: e.RoomID, NewMessages: e.NewMessages, LatestMessageID: e.LatestMessageID, SourceNode: e.SourceNode, Topic: council.TruncateRunes(e.Topic, briefTopicChars, " ", 30)})
 	}
 	return json.MarshalIndent(digestBriefResponse{Summary: summary, Rooms: out, Hint: hint, Note: note, Warnings: warnings}, "", "  ")
 }

@@ -188,3 +188,20 @@ func TestGetDigestShowsPostedFromFullNotBrief(t *testing.T) {
 		t.Errorf("brief must not carry posted_from: %s", resultText(res))
 	}
 }
+
+// A brief row had no topic, so triage needed a second list_rooms call to learn
+// what a room was about.
+func TestDigestBriefRowCarriesRoomTopic(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "brief-topic", func(r *testRoom) { r.description = "Shipping the thing" })
+	mustPost(t, reg.Server, "brief-topic", "alice", "news")
+
+	res, _, _ := reg.handleGetDigest(context.Background(), nil, DigestInput{Brief: "true", ClusterWide: "false"})
+	rooms := parseDigest(t, resultText(res))["rooms"].([]any)
+	if len(rooms) == 0 {
+		t.Fatal("no rooms")
+	}
+	if got := rooms[0].(map[string]any)["topic"]; got != "Shipping the thing" {
+		t.Errorf("brief row topic = %v", got)
+	}
+}

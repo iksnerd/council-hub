@@ -713,7 +713,7 @@ func (r *Registry) renderClusterSearch(args SearchMessagesInput, results []Clust
 			if len(ts) > 16 {
 				ts = ts[:16]
 			}
-			excerpt := council.TruncateRunes(council.DisplayContent(mapClusterMessage(m)), 120, " ", 80)
+			excerpt := council.TruncateRunes(council.DisplayContent(mapClusterMessage(m)), excerptLimit(args.ExcerptChars), " ", 80)
 			excerpt = strings.ReplaceAll(excerpt, "\n", " ")
 			fmt.Fprintf(&b, "- [%s] #%s | %s | %s | %s | %s | %s\n", m.SourceNode, m.ID, ts, m.Author, m.RoomID, m.MessageType, excerpt)
 		}
