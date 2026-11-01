@@ -115,6 +115,9 @@ func (r *Registry) handleSignalStatus(ctx context.Context, req *mcp.CallToolRequ
 			fmt.Fprintf(&b, "\n**Project:** %s", room.Project)
 		}
 	}
+	if args.Status == "resolved" {
+		b.WriteString(r.openTasksNote(args.RoomID))
+	}
 	return msg(b.String())
 }
 

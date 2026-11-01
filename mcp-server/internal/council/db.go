@@ -405,6 +405,10 @@ func initSchema(db *sql.DB) error {
 		`ALTER TABLE notebooks ADD COLUMN deleted_at DATETIME`,
 		`ALTER TABLE rooms ADD COLUMN archived_at DATETIME`,
 		`ALTER TABLE rooms ADD COLUMN related_types TEXT DEFAULT ''`,
+		`ALTER TABLE notebook_entries ADD COLUMN task_due TEXT DEFAULT ''`,
+		`ALTER TABLE notebook_entries ADD COLUMN task_owner TEXT DEFAULT ''`,
+		`ALTER TABLE notebook_entries ADD COLUMN task_repo TEXT DEFAULT ''`,
+		`ALTER TABLE notebook_entries ADD COLUMN task_room TEXT DEFAULT ''`,
 	}
 	for _, m := range migrations {
 		_, _ = db.Exec(m) // Ignore "duplicate column" errors for already-migrated DBs

@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -49,6 +50,10 @@ type OutlineEntry struct {
 	// room. Non-task entries carry the column default "open" but ignore it.
 	Status string
 
+	// task only: optional structured fields. Due is YYYY-MM-DD; Owner is free
+	// text; Repo and Room are an owner/repo slug and a room id. Empty = unset.
+	Due, Owner, Repo, Room string
+
 	RefRoomID    string
 	RefAuthor    string
 	RefType      string
@@ -79,6 +84,99 @@ type OutlineFilter struct {
 	EntryID string
 	// Limit keeps only the last N entries after the other filters (0 = all).
 	Limit int
+	// Owner keeps only tasks whose owner matches (case-insensitive). Overdue
+	// keeps only open/doing tasks whose due date is before Today. Either one
+	// narrows the result to tasks alone.
+	Owner   string
+	Overdue bool
+	// Today is the YYYY-MM-DD used for Overdue; empty means today (UTC).
+	Today string
+}
+
+// dateRe gates the task due field.
+var dateRe = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
+
+// TaskFields carries the optional structured fields of a task. A nil pointer
+// leaves the stored value alone; a pointer to "" clears it.
+type TaskFields struct {
+	Due, Owner, Repo, Room *string
+}
+
+// Empty reports whether no field is set.
+func (t TaskFields) Empty() bool {
+	return t.Due == nil && t.Owner == nil && t.Repo == nil && t.Room == nil
+}
+
+// TaskOverdue reports whether an open or doing task with the given due date is
+// past due on today (both YYYY-MM-DD). Computed at render, never stored.
+func TaskOverdue(status, due, today string) bool {
+	return due != "" && status != "done" && due < today
+}
+
+// SetTaskFields updates the structured fields of a task entry.
+func (s *Server) SetTaskFields(entryID string, f TaskFields) error {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+
+	if f.Due != nil {
+		*f.Due = strings.TrimSpace(*f.Due)
+		if *f.Due != "" && !dateRe.MatchString(*f.Due) {
+			return fmt.Errorf("invalid due '%s' (must be YYYY-MM-DD)", *f.Due)
+		}
+	}
+	var kind, notebookID string
+	err := s.DB.QueryRow(`SELECT kind, notebook_id FROM notebook_entries WHERE id = ?`, entryID).Scan(&kind, &notebookID)
+	if err == sql.ErrNoRows {
+		return fmt.Errorf("entry '%s' not found", entryID)
+	}
+	if err != nil {
+		return err
+	}
+	if kind != "task" {
+		return fmt.Errorf("entry '%s' is a %s, not a task — due/owner/repo/room apply to tasks only", entryID, kind)
+	}
+	for col, v := range map[string]*string{"task_due": f.Due, "task_owner": f.Owner, "task_repo": f.Repo, "task_room": f.Room} {
+		if v == nil {
+			continue
+		}
+		if _, err := s.DB.Exec(`UPDATE notebook_entries SET `+col+` = ? WHERE id = ?`, strings.TrimSpace(*v), entryID); err != nil {
+			return err
+		}
+	}
+	_, err = s.DB.Exec(`UPDATE notebooks SET updated_at = CURRENT_TIMESTAMP WHERE id = ?`, notebookID)
+	return err
+}
+
+// OpenTasksForRoom lists open and doing tasks, in live notebooks, whose room
+// field is roomID or whose label mentions it. Used to remind the caller when a
+// room closes; nothing is closed automatically.
+func (s *Server) OpenTasksForRoom(roomID string) ([]OutlineEntry, error) {
+	roomID = strings.TrimSpace(roomID)
+	if roomID == "" {
+		return nil, nil
+	}
+	esc := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(strings.ToLower(roomID))
+	rows, err := s.DB.Query(`
+		SELECT e.id, e.notebook_id, e.prose, COALESCE(e.status, 'open')
+		FROM notebook_entries e JOIN notebooks n ON n.id = e.notebook_id
+		WHERE e.kind = 'task' AND COALESCE(e.status, 'open') != 'done' AND n.deleted_at IS NULL
+		  AND (e.task_room = ? OR LOWER(e.prose) LIKE ? ESCAPE '\')
+		ORDER BY e.notebook_id, e.position`, roomID, "%"+esc+"%")
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var out []OutlineEntry
+	for rows.Next() {
+		var e OutlineEntry
+		var nb string
+		if err := rows.Scan(&e.ID, &nb, &e.Prose, &e.Status); err != nil {
+			return nil, err
+		}
+		e.RefID = nb // notebook the task lives in
+		out = append(out, e)
+	}
+	return out, rows.Err()
 }
 
 // validOutlineKinds gates the entry kinds accepted by AddOutlineEntry.
@@ -609,6 +707,21 @@ func outlineFilterSQL(f OutlineFilter) (string, []any) {
 			` OR (e.kind = 'task' AND (LOWER(e.prose) LIKE ? ESCAPE '\' OR LOWER(e.prose) LIKE ? ESCAPE '\' OR LOWER(e.prose) LIKE ? ESCAPE '\')))`)
 		args = append(args, p, esc+`-%`, esc+`:%`, esc+`/%`, `[`+esc+`]%`)
 	}
+	if f.Owner != "" || f.Overdue {
+		clause.WriteString(` AND e.kind = 'task'`)
+	}
+	if o := strings.TrimSpace(f.Owner); o != "" {
+		clause.WriteString(` AND LOWER(COALESCE(e.task_owner, '')) = ?`)
+		args = append(args, strings.ToLower(o))
+	}
+	if f.Overdue {
+		today := f.Today
+		if today == "" {
+			today = time.Now().UTC().Format("2006-01-02")
+		}
+		clause.WriteString(` AND COALESCE(e.status, 'open') != 'done' AND COALESCE(e.task_due, '') != '' AND e.task_due < ?`)
+		args = append(args, today)
+	}
 	return clause.String(), args
 }
 
@@ -639,7 +752,8 @@ func (s *Server) GetOutlineFiltered(notebookID string, f OutlineFilter) (Noteboo
 		       COALESCE(r.work_items, rr.work_items, ''),
 		       COALESCE(rr.status, ''), COALESCE(rr.description, ''),
 		       m.retracted_at, COALESCE(m.retracted_by, ''),
-		       COALESCE(rr.project, ''), COALESCE(m.revised, 0)
+		       COALESCE(rr.project, ''), COALESCE(m.revised, 0),
+		       COALESCE(e.task_due, ''), COALESCE(e.task_owner, ''), COALESCE(e.task_repo, ''), COALESCE(e.task_room, '')
 		FROM notebook_entries e
 		LEFT JOIN messages m ON e.kind = 'ref' AND m.id = e.ref_id
 		LEFT JOIN rooms r ON r.id = m.room_id
@@ -669,7 +783,8 @@ func (s *Server) GetOutlineFiltered(notebookID string, f OutlineFilter) (Noteboo
 		if err := rows.Scan(&e.ID, &e.Position, &e.Kind, &e.RefID, &e.Prose, &e.Status,
 			&e.RefFound, &e.RefRoomID, &e.RefAuthor, &e.RefType,
 			&e.RefContent, &e.RefPinned, &ts, &e.RefRepo, &e.RefWorkItems,
-			&e.RefStatus, &e.RefTopic, &retractedAt, &retractedBy, &e.RefProject, &revised); err != nil {
+			&e.RefStatus, &e.RefTopic, &retractedAt, &retractedBy, &e.RefProject, &revised,
+			&e.Due, &e.Owner, &e.Repo, &e.Room); err != nil {
 			return n, nil, err
 		}
 		if ts.Valid {

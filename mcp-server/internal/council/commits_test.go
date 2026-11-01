@@ -33,6 +33,19 @@ func TestResolveCommitRefsWithRepo(t *testing.T) {
 	}
 }
 
+func TestResolveCommitRefsSubject(t *testing.T) {
+	got := ResolveCommitRefs(`fixed {sha:abc1234 "fix poller"} and {sha:def5678}`, "")
+	want := "fixed `abc1234` “fix poller” and `def5678`"
+	if got != want {
+		t.Fatalf("got %q want %q", got, want)
+	}
+	got = ResolveCommitRefs(`{sha:abc1234 "fix poller"}`, "alice/widgets")
+	want = "[`abc1234`](https://github.com/alice/widgets/commit/abc1234) “fix poller”"
+	if got != want {
+		t.Fatalf("got %q want %q", got, want)
+	}
+}
+
 func TestResolveCommitRefsShortHashNotTruncated(t *testing.T) {
 	// A 7-char hash is displayed verbatim; the link still uses the full token.
 	got := ResolveCommitRefs("see {sha:abc1234}", "owner/repo")

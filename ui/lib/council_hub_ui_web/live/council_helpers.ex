@@ -108,7 +108,7 @@ defmodule CouncilHubUiWeb.CouncilHelpers do
   # code. The two must stay byte-for-byte identical (regexes, short-SHA rule, URL
   # normalization). Their paired tests are load-bearing — if you change one side,
   # change the other and update both test files.
-  @commit_ref_re ~r/\{sha:([0-9a-fA-F]{7,40})\}/
+  @commit_ref_re ~r/\{sha:([0-9a-fA-F]{7,40})(?:\s+"([^"}]*)")?\}/
   @owner_repo_re ~r/^[\w.-]+\/[\w.-]+$/
   @scp_remote_re ~r/^[\w.-]+@([\w.-]+):(.+)$/
 
@@ -122,12 +122,15 @@ defmodule CouncilHubUiWeb.CouncilHelpers do
     if String.contains?(content, "{sha:") do
       base = repo_url(repo)
 
-      Regex.replace(@commit_ref_re, content, fn _full, hash ->
+      Regex.replace(@commit_ref_re, content, fn _full, hash, subject ->
         short = String.slice(hash, 0, 7)
 
+        subject = String.trim(subject)
+        suffix = if subject == "", do: "", else: " “#{subject}”"
+
         if base == "",
-          do: "`#{short}`",
-          else: "[`#{short}`](#{base}/commit/#{hash})"
+          do: "`#{short}`" <> suffix,
+          else: "[`#{short}`](#{base}/commit/#{hash})" <> suffix
       end)
     else
       content

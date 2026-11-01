@@ -501,6 +501,8 @@ func (r *Registry) RegisterTools() {
 			"limit":        prop("string", "Max entries; the most recent are kept. Timeline: default 100, max 500. Notebook: default all, applied after status/project filters."),
 			"level":        prop("string", "Notebook (notebook_id) only: NLS-style structural level-clip. An integer N collapses each prose entry to its markdown headings down to depth N (a table of contents) and clips transcluded message bodies to their first line; tasks and room_refs always render. Omit or 0 for the full outline. The structural counterpart to read_transcript's truncate=line-one."),
 			"status":       prop("string", "Notebook (notebook_id) only: keep only work items in this state — 'open', 'doing' or 'done'. Tasks and room_refs both honour it (a room_ref is open until its room resolves). Omit for everything. Pair with level to answer 'what is open' without rendering finished work — on a large standing notebook the done sections are most of the payload."),
+			"owner":        prop("string", "Notebook (notebook_id) only: keep only tasks whose owner field equals this (case-insensitive). Narrows the result to tasks."),
+			"overdue":      prop("string", "Notebook (notebook_id) only: 'true' keeps only open or doing tasks whose due date (YYYY-MM-DD) is before today (UTC). Narrows the result to tasks."),
 			"cluster_wide": prop("string", "Timeline only: set to 'true' to compile the timeline from all cluster nodes. Default: local only."),
 		}),
 	}, plainTool(r.handleReadNotebook))
@@ -514,7 +516,7 @@ func (r *Registry) RegisterTools() {
 			"action": enumProp("string", "What to do, and what each needs:\n"+
 				"  create   (notebook_id, project?, title?) — new empty notebook; omit project for a global one\n"+
 				"  add      (notebook_id, ref_id|ref_ids|prose, kind?, after_entry_id?) — omit after_entry_id to append\n"+
-				"  update   (entry_id, prose) — rewrite a prose section or a task's label\n"+
+				"  update   (entry_id, prose?, due?, owner?, repo?, room?) — rewrite a prose section or a task's label, and/or set a task's structured fields\n"+
 				"  start / check / uncheck (entry_id) — move a task to in-progress / done / open\n"+
 				"  move     (entry_id, after_entry_id) — reorder; empty after_entry_id means the top\n"+
 				"  remove   (entry_id) — drop one entry\n"+
@@ -533,6 +535,10 @@ func (r *Registry) RegisterTools() {
 			"ref_ids":        prop("string", "Comma-separated targets for a batch add (same kind for all) — the multi-entry counterpart to ref_id, mirroring update_room's room_ids. Entries land in the order given. Per-target outcome is reported: already-referenced targets are skipped as no-ops and one bad ID doesn't abort the rest. Mutually exclusive with ref_id, and not for prose."),
 			"prose":          prop("string", "Markdown content (add with kind=prose, or update) — also the task label (add with kind=task)."),
 			"after_entry_id": prop("string", "Position control for add and move: the entry to land after. Omit on add to append; empty on move means the top."),
+			"due":            prop("string", "Task only (add kind=task, or update): due date YYYY-MM-DD. Open or doing tasks past it render OVERDUE; read_notebook(overdue=true) lists them. On update an empty string clears it."),
+			"owner":          prop("string", "Task only (add kind=task, or update): who owns it, free text such as an agent name. Filter with read_notebook(owner=...). Empty string clears it on update."),
+			"repo":           prop("string", "Task only (add kind=task, or update): the repo the task concerns, e.g. owner/name. Empty string clears it on update."),
+			"room":           prop("string", "Task only (add kind=task, or update): id of the room the task belongs to. When that room resolves or is archived the reply lists tasks still open for it. Empty string clears it on update."),
 		}),
 	}, plainTool(r.handleEditNotebook))
 

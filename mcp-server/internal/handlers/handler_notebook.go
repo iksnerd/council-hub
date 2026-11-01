@@ -22,6 +22,8 @@ type ReadNotebookInput struct {
 	Level       string     `json:"level"`
 	Status      string     `json:"status"`
 	EntryID     string     `json:"entry_id"`
+	Owner       string     `json:"owner"`
+	Overdue     StringBool `json:"overdue"`
 	ClusterWide StringBool `json:"cluster_wide"`
 }
 
@@ -76,6 +78,8 @@ func (r *Registry) handleReadNotebook(ctx context.Context, req *mcp.CallToolRequ
 			Project: strings.TrimSpace(args.Project),
 			EntryID: strings.TrimSpace(args.EntryID),
 			Limit:   limit,
+			Owner:   strings.TrimSpace(args.Owner),
+			Overdue: strings.EqualFold(string(args.Overdue), "true"),
 		})
 	}
 

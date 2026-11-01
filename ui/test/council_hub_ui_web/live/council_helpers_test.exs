@@ -144,6 +144,17 @@ defmodule CouncilHubUiWeb.CouncilHelpersTest do
     assert CouncilHelpers.resolve_commit_refs("fixed {sha:deadbeef}", "") == "fixed `deadbee`"
   end
 
+  test "resolve_commit_refs keeps the quoted commit subject beside the SHA" do
+    assert CouncilHelpers.resolve_commit_refs(
+             ~s({sha:abc1234 "fix poller"} and {sha:def5678}),
+             ""
+           ) ==
+             "`abc1234` “fix poller” and `def5678`"
+
+    assert CouncilHelpers.resolve_commit_refs(~s({sha:abc1234 "fix poller"}), "alice/widgets") ==
+             "[`abc1234`](https://github.com/alice/widgets/commit/abc1234) “fix poller”"
+  end
+
   test "resolve_commit_refs leaves non-matching tokens and token-free text alone" do
     assert CouncilHelpers.resolve_commit_refs("{sha:short} {sha:nothex!}", "o/r") ==
              "{sha:short} {sha:nothex!}"

@@ -15,7 +15,10 @@ import (
 // commitRefRe matches {sha:<hash>} tokens where hash is 7–40 hex characters.
 var workItemRefRe = regexp.MustCompile(`\{wi:([A-Za-z0-9][A-Za-z0-9._-]*)\}`)
 
-var commitRefRe = regexp.MustCompile(`\{sha:([0-9a-fA-F]{7,40})\}`)
+// An optional quoted subject may follow the hash: {sha:abc1234 "subject"}. The
+// subject survives a rebase that rewrites the SHA. Quotes inside it are not
+// supported (use single quotes).
+var commitRefRe = regexp.MustCompile(`\{sha:([0-9a-fA-F]{7,40})(?:\s+"([^"}]*)")?\}`)
 
 // ownerRepoRe matches a bare GitHub-style owner/repo slug.
 var ownerRepoRe = regexp.MustCompile(`^[\w.-]+/[\w.-]+$`)
@@ -65,15 +68,21 @@ func ResolveCommitRefs(content, repo string) string {
 	}
 	base := commitBaseURL(repo)
 	return commitRefRe.ReplaceAllStringFunc(content, func(tok string) string {
-		full := commitRefRe.FindStringSubmatch(tok)[1]
+		m := commitRefRe.FindStringSubmatch(tok)
+		full := m[1]
+		subject := strings.TrimSpace(m[2])
+		suffix := ""
+		if subject != "" {
+			suffix = " \u201c" + subject + "\u201d"
+		}
 		short := full
 		if len(short) > 7 {
 			short = short[:7]
 		}
 		if base == "" {
-			return "`" + short + "`"
+			return "`" + short + "`" + suffix
 		}
-		return "[`" + short + "`](" + base + "/commit/" + full + ")"
+		return "[`" + short + "`](" + base + "/commit/" + full + ")" + suffix
 	})
 }
 

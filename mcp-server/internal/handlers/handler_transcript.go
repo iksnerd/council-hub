@@ -410,5 +410,6 @@ func (r *Registry) handleArchiveRoom(ctx context.Context, req *mcp.CallToolReque
 		r.Server.Logger.Info("Room archived", "room_id", args.RoomID, "path", archivePath)
 	}
 
+	result += r.openTasksNote(args.RoomID)
 	return msg(result)
 }

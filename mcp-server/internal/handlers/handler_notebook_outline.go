@@ -28,10 +28,16 @@ type EditNotebookInput struct {
 	// RoomID is an accepted alias for RefID. For kind=room_ref the value *is* a
 	// room id, and room_id is what every room-scoped tool calls it — so it is
 	// the spelling an agent carries in from the call it just made (#01a0b156).
-	RoomID       string `json:"room_id"`
-	RefIDs       string `json:"ref_ids"`
-	Prose        string `json:"prose"`
-	AfterEntryID string `json:"after_entry_id"`
+	RoomID string `json:"room_id"`
+	RefIDs string `json:"ref_ids"`
+	Prose  string `json:"prose"`
+	// Task-only structured fields (add/update). Pointers so update can tell
+	// "not given" from "clear it" (empty string).
+	Due          *string `json:"due"`
+	Owner        *string `json:"owner"`
+	Repo         *string `json:"repo"`
+	Room         *string `json:"room"`
+	AfterEntryID string  `json:"after_entry_id"`
 	// Confirm guards whole-notebook delete and purge: it must equal the
 	// notebook id (or its current entry count).
 	Confirm string `json:"confirm"`
@@ -67,8 +73,28 @@ func foreignArgs(args EditNotebookInput) string {
 			}
 		}
 	}
+	if !args.taskFields().Empty() && args.Action != "add" && args.Action != "update" {
+		return fmt.Sprintf("Error: due/owner/repo/room apply to action=add (kind=task) or update, not %s.", args.Action)
+	}
 	if args.Confirm != "" && args.Action != "delete" && args.Action != "purge" {
 		return fmt.Sprintf("Error: confirm only applies to action=delete or purge, not %s.", args.Action)
+	}
+	return ""
+}
+
+func (a EditNotebookInput) taskFields() council.TaskFields {
+	return council.TaskFields{Due: a.Due, Owner: a.Owner, Repo: a.Repo, Room: a.Room}
+}
+
+// checkTaskFields rejects a bad due date before anything is written.
+func checkTaskFields(f council.TaskFields) string {
+	if f.Due != nil {
+		d := strings.TrimSpace(*f.Due)
+		if d != "" {
+			if _, err := time.Parse("2006-01-02", d); err != nil {
+				return fmt.Sprintf("Error: invalid due '%s' (must be YYYY-MM-DD).", d)
+			}
+		}
 	}
 	return ""
 }
@@ -224,6 +250,9 @@ func (r *Registry) handleEditNotebook(ctx context.Context, req *mcp.CallToolRequ
 			args.RefID == "" && args.RefIDs == "" {
 			return msg(fmt.Sprintf("Error: kind=%s needs the target in ref_id (alias: room_id), or several in ref_ids. None was supplied.", args.Kind))
 		}
+		if e := checkTaskFields(args.taskFields()); e != "" {
+			return msg(e)
+		}
 		kind := args.Kind
 		if kind == "" {
 			// Infer: a ref means a ref, prose means a prose section.
@@ -237,6 +266,9 @@ func (r *Registry) handleEditNotebook(ctx context.Context, req *mcp.CallToolRequ
 		// Batch add: one call per target was four round trips to put four
 		// room_refs in a notebook. Mirrors update_room's room_ids convention.
 		before := r.entryCount(args.NotebookID)
+		if !args.taskFields().Empty() && (kind != "task" || args.RefIDs != "") {
+			return msg("Error: due/owner/repo/room apply to a single kind=task add.")
+		}
 		if args.RefIDs != "" {
 			if args.Prose != "" {
 				return msg("Error: ref_ids adds transcluding entries; prose belongs to a single add.")
@@ -309,6 +341,11 @@ func (r *Registry) handleEditNotebook(ctx context.Context, req *mcp.CallToolRequ
 			}
 			return msg(fmt.Sprintf("Error: %s", err.Error()))
 		}
+		if kind == "task" && !args.taskFields().Empty() {
+			if err := r.Server.SetTaskFields(entryID, args.taskFields()); err != nil {
+				return msg(fmt.Sprintf("Entry %s added, but its fields were not saved: %s", entryID, err.Error()))
+			}
+		}
 		out := fmt.Sprintf("Entry %s added to notebook '%s' (kind: %s).%s", entryID, args.NotebookID, kind, countsNote(before, r.entryCount(args.NotebookID)))
 		if kind == "task" {
 			if completionMarkerRe.MatchString(args.Prose) {
@@ -326,8 +363,19 @@ func (r *Registry) handleEditNotebook(ctx context.Context, req *mcp.CallToolRequ
 			return msg(fmt.Sprintf("Error: %s", err.Error()))
 		}
 		n := r.entryCount(r.notebookOf(args.NotebookID, args.EntryID))
-		if err := r.Server.UpdateOutlineEntry(args.EntryID, args.Prose); err != nil {
+		tf := args.taskFields()
+		if e := checkTaskFields(tf); e != "" {
+			return msg(e)
+		}
+		if args.Prose == "" && !tf.Empty() {
+			// Fields-only update: leave the label alone.
+		} else if err := r.Server.UpdateOutlineEntry(args.EntryID, args.Prose); err != nil {
 			return msg(fmt.Sprintf("Error: %s", err.Error()))
+		}
+		if !tf.Empty() {
+			if err := r.Server.SetTaskFields(args.EntryID, tf); err != nil {
+				return msg(fmt.Sprintf("Error: %s", err.Error()))
+			}
 		}
 		return msg(fmt.Sprintf("Entry %s updated.%s", args.EntryID, countsNote(n, n)))
 
@@ -404,8 +452,12 @@ func (r *Registry) outlineText(notebookID string, level int, f council.OutlineFi
 	if err != nil {
 		return "", err
 	}
-	filtered := f.Status != "" || f.Project != "" || f.EntryID != "" || f.Limit > 0
+	filtered := f.Status != "" || f.Project != "" || f.EntryID != "" || f.Limit > 0 || f.Owner != "" || f.Overdue
 
+	today := f.Today
+	if today == "" {
+		today = time.Now().UTC().Format("2006-01-02")
+	}
 	outlineIDs := newRoomIDCache(r.Server)
 	var b strings.Builder
 	title := notebook.Title
@@ -500,19 +552,19 @@ func (r *Registry) outlineText(notebookID string, level int, f council.OutlineFi
 	if len(doingTasks) > 0 && statusWanted(status, "doing") {
 		fmt.Fprintf(&b, "\n## 🔄 In progress (%d)\n", len(doingTasks))
 		for _, e := range doingTasks {
-			renderTask(&b, e, level)
+			renderTask(&b, e, level, today)
 		}
 	}
 	if len(openTasks) > 0 && statusWanted(status, "open") {
 		fmt.Fprintf(&b, "\n## ☐ Open (%d)\n", len(openTasks))
 		for _, e := range openTasks {
-			renderTask(&b, e, level)
+			renderTask(&b, e, level, today)
 		}
 	}
 	if len(doneTasks) > 0 && statusWanted(status, "done") {
 		fmt.Fprintf(&b, "\n## ☑ Done (%d)\n", len(doneTasks))
 		for _, e := range doneTasks {
-			renderTask(&b, e, level)
+			renderTask(&b, e, level, today)
 		}
 	}
 	if len(inFlight) > 0 && statusWanted(status, "open") {
@@ -565,7 +617,7 @@ func renderRoomRef(b *strings.Builder, e council.OutlineEntry, level int) {
 // renderTask writes one checklist item — a markdown checkbox carrying the task
 // label and its addressable entry ID (so it can be started, checked, or edited).
 // The box reflects status: [ ] open, [~] doing, [x] done.
-func renderTask(b *strings.Builder, e council.OutlineEntry, level int) {
+func renderTask(b *strings.Builder, e council.OutlineEntry, level int, today string) {
 	box := "[ ]"
 	switch e.Status {
 	case "done":
@@ -577,7 +629,33 @@ func renderTask(b *strings.Builder, e council.OutlineEntry, level int) {
 	if level > 0 {
 		label = clipLabel(label)
 	}
-	fmt.Fprintf(b, "- %s %s *(entry %s)*\n", box, label, e.ID)
+	fmt.Fprintf(b, "- %s %s%s *(entry %s)*\n", box, label, taskMeta(e, today), e.ID)
+}
+
+// taskMeta renders a task's structured fields as a trailing bracket, with an
+// OVERDUE marker for open/doing tasks past due. Empty when nothing is set.
+func taskMeta(e council.OutlineEntry, today string) string {
+	var parts []string
+	if e.Due != "" {
+		d := "due " + e.Due
+		if council.TaskOverdue(e.Status, e.Due, today) {
+			d += " OVERDUE"
+		}
+		parts = append(parts, d)
+	}
+	if e.Owner != "" {
+		parts = append(parts, "owner "+e.Owner)
+	}
+	if e.Repo != "" {
+		parts = append(parts, "repo "+e.Repo)
+	}
+	if e.Room != "" {
+		parts = append(parts, "room "+e.Room)
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return " [" + strings.Join(parts, " \u00b7 ") + "]"
 }
 
 // clipLabel shortens a work-item label to its first sentence, or to
@@ -689,4 +767,25 @@ func (r *Registry) appendNotebookList(b *strings.Builder, project string) {
 		}
 		fmt.Fprintf(b, "- **%s**%s — %s (%d entries)\n", n.ID, scope, title, n.EntryCount)
 	}
+}
+
+// openTasksNote lists open and doing notebook tasks that cite roomID (in their
+// room field or label) and says how to close or move them. It never closes
+// anything. Empty when no task cites the room.
+func (r *Registry) openTasksNote(roomID string) string {
+	tasks, err := r.Server.OpenTasksForRoom(roomID)
+	if err != nil || len(tasks) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "\n\n**%d open notebook task(s) cite this room:**", len(tasks))
+	for i, t := range tasks {
+		if i == 5 {
+			fmt.Fprintf(&b, "\n- … and %d more", len(tasks)-5)
+			break
+		}
+		fmt.Fprintf(&b, "\n- [%s] %s (notebook %s, entry %s)", t.Status, clipLabel(strings.ReplaceAll(strings.TrimSpace(t.Prose), "\n", " ")), t.RefID, t.ID)
+	}
+	b.WriteString("\nNothing was closed. Close with edit_notebook(action=check, entry_id=...), or move to another room with action=update, entry_id=..., room=<room_id>.")
+	return b.String()
 }
