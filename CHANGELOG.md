@@ -4,6 +4,27 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.65.0] - 2026-11-01
+
+The stability release: every open Council Hub item is either built or closed with a reason, three unused tools are gone, and the server now counts its own tool calls so the next cut can use real usage. Schema: one new table (`tool_usage`); no column changes.
+
+### Added
+- **Tool-call counter.** The server counts calls and errors per tool (name, totals, first and last use; nothing else is stored). Counts show on `/health` as `tool_usage` and on `/status` under "Tool usage", with never-called tools marked. They are per node. Reset with `DELETE FROM tool_usage;`.
+- **Cluster `list_rooms` carries the archive state.** A peer room's archive time, last message time and typed links now print in a cluster read, and `archived=true|false` filters every node. A peer on 0.63.x shows none of these and ignores the filter; one warning per such peer says so.
+- **Integer parameters advertise their ranges** (`minimum`/`maximum`) in the tool schemas, for example `search_messages(limit)` up to 100 and `get_links(depth)` up to 5. An out-of-range value is still clamped, not refused.
+
+### Changed
+- **`search_messages.semantic` is advertised as a boolean** (it was a string whenever an embedder was configured, the one property the 0.64.0 retype missed).
+- **A JSON number or boolean sent to a string parameter is accepted**, for example `get_digest(limit=2)`; before, only `"2"` worked.
+- **`get_mentions` clamps an over-100 `limit` to 100.** It used to reset it to the default of 20.
+- The council plugin is at 0.5.0.
+
+### Removed
+- **`unlink_messages`, `move_messages` and `get_concept_map`.** None was called in 3,295 recorded calls, and nothing outside the handlers, docs and one skill sentence used them. The tool count is now 35. To relocate a thread tail use `fork_thread`. `link_messages` is idempotent and links are append-only, so a wrong link stays in place. `get_links` is unchanged, and `related_rooms` with `list_rooms(related_to=...)` still cover room neighbourhoods.
+
+### Closed without building
+Recorded with reasons in the room `council-hub-v0650-leftovers-20261101`: a `session` field on posts, `source_node` in `get_mentions` (peer rows already carry it), a linter rule for rooms idle while waiting on an owner, task-field forwarding to peers (notebooks are node-local), the April audit items, and the file-scoped claims engine.
+
 ## [0.64.0] - 2026-11-01
 
 Fourteen items from the `council-hub-mcp-feedback` room, and a review of the 38 tools against drenskicorp RFC 0013 (draft). Schema: additive columns only (`rooms.archived_at`, `rooms.related_types`, four `notebook_entries.task_*` columns), added on startup.

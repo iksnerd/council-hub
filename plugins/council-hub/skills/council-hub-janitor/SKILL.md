@@ -46,8 +46,9 @@ list_rooms(project="<proj>", status="resolved", archived=false)  # resolved, not
 a worklist built from the plain call never shows what is ready to archive.
 Pass `status=resolved` (or `all`). `archived=false` keeps only rooms
 `archive_room` has not archived, and each line shows `last msg <time>`, which
-only a message moves (`updated` also moves on a status change). `archived` and
-`last msg` cover this node's rooms only. `get_digest(unread_only=true)` caps at 30
+only a message moves (`updated` also moves on a status change). A cluster read
+shows both for every node; a peer on an older release shows neither and the
+reply warns about it. `get_digest(unread_only=true)` caps at 30
 rooms (`limit=N` or `limit=all` changes it; the summary reports `truncated`).
 
 Discovery reads go cluster-wide on their own when a peer is connected, so a
