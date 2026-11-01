@@ -385,6 +385,14 @@ func (r *Registry) handleArchiveRoom(ctx context.Context, req *mcp.CallToolReque
 		return msg("Error: room_id is required.")
 	}
 
+	// The archive file lands next to the DB of the node that runs this, so for a
+	// peer-owned room say so up front and write nothing here.
+	if _, gerr := r.Server.GetRoom(args.RoomID); gerr != nil {
+		if owner, lerr := r.locateRoomOwner(args.RoomID); lerr == nil && owner != "" {
+			return msg(fmt.Sprintf("Error: room '%s' lives on cluster node '%s'. Nothing was archived or deleted. archive_room writes the archive file next to the owning node's database, so run archive_room from a session on that node.", args.RoomID, owner))
+		}
+	}
+
 	archivePath, err := r.Server.ArchiveRoom(args.RoomID)
 	if err != nil {
 		return msg(fmt.Sprintf("Error: %s%s", err.Error(), r.remoteRoomNote(args.RoomID, remedyLocalOnly)))

@@ -333,6 +333,7 @@ func main() {
 		// Cross-node write receiver (authenticated by the shared cluster secret).
 		mux.HandleFunc("/api/internal/post_to_room", reg.InternalPostHandler())
 		mux.HandleFunc("/api/internal/signal_status", reg.InternalStatusHandler())
+		mux.HandleFunc("/api/internal/pin_message", reg.InternalPinHandler())
 		// UI write endpoints (localhost-only, no auth — for the Phoenix dashboard
 		// compose box and the notebook "pin into outline" button).
 		mux.HandleFunc("/api/ui/post", reg.UIPostHandler())

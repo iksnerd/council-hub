@@ -24,6 +24,7 @@ const clusterSecretHeader = "X-Council-Cluster-Secret"
 const (
 	internalPostPath   = "/api/internal/post_to_room"
 	internalStatusPath = "/api/internal/signal_status"
+	internalPinPath    = "/api/internal/pin_message"
 )
 
 // internalPostRequest is the body forwarded to a peer node's internal write endpoint.

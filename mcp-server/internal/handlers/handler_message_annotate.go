@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -31,6 +32,24 @@ func (r *Registry) handlePinMessage(ctx context.Context, req *mcp.CallToolReques
 	}
 	if args.MessageID == "" {
 		return msg("Error: message_id is required.")
+	}
+	// A room on a peer: forward to the owner and say so, rather than failing
+	// locally and leaving the caller to guess where the write went.
+	if _, gerr := r.Server.GetRoom(args.RoomID); gerr != nil {
+		if owner, lerr := r.locateRoomOwner(args.RoomID); lerr == nil && owner != "" {
+			out, perr := r.proxyPinMessage(owner, args.RoomID, args.MessageID)
+			if errors.Is(perr, errPeerLacksEndpoint) {
+				return msg(fmt.Sprintf("Error: room '%s' lives on cluster node '%s', which runs an older version that cannot take a forwarded pin. Nothing was changed. Use post_to_room(pin=true), or run pin_message from a session on that node.", args.RoomID, owner))
+			}
+			if perr != nil {
+				return msg(fmt.Sprintf("Error: room '%s' is owned by cluster node '%s' but the pin could not be forwarded (nothing was changed): %s", args.RoomID, owner, perr.Error()))
+			}
+			verb := "pinned"
+			if !out.Pinned {
+				verb = "unpinned"
+			}
+			return msg(fmt.Sprintf("Message #%.8s %s in room '%s' (forwarded to cluster node %s).", out.MessageID, verb, args.RoomID, owner))
+		}
 	}
 	// Room-scoped first: a prefix shared with a message in another room is not
 	// ambiguity. A genuine in-room collision still lists each match with its room
