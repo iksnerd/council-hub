@@ -57,7 +57,7 @@ func (r *Registry) RegisterTools() {
 			"visibility":    prop("string", "'public' (default) or 'private', used only when creating. Private rooms are node-local — excluded from all cluster fan-out."),
 			"repo":          prop("string", "Optional git repo (owner/repo or clone URL). Set on create; backfilled on an existing room only if it has no repo. Enables {sha:<hash>} commit-link resolution in this room's transcripts."),
 			"work_items":    prop("string", "Optional issue-tracker URL template containing {id} (http/https). Set on create; backfilled on an existing room only if it has none. Enables {wi:<id>} link resolution in this room's transcripts."),
-			"last_n":        prop("integer", "Number of recent messages to return for existing rooms (default 5, max 50)"),
+			"last_n":        intMax("Number of recent messages to return for existing rooms (default 5, max 50)", 50),
 		}),
 	}, plainTool(r.handleGetOrCreateRoom))
 
@@ -156,8 +156,8 @@ func (r *Registry) RegisterTools() {
 			"compact":        prop("string", "Deprecated — compact output is the default; kept so existing callers passing compact=false still work (it maps to verbose)."),
 			"archived":       prop("boolean", "'true' = only rooms archive_room has archived (archived_at set); 'false' = only rooms never archived. With status=resolved, archived=false is the worklist of rooms still to archive. Each listed room shows its archive time and last message time."),
 			"related_to":     prop("string", "Filter to rooms whose related_rooms list contains this room ID. Returns the flat neighborhood around a specific room — pairs with compact listing for a data-dense view."),
-			"limit":          prop("integer", "Max rooms to return (default 50, max 100); the reply says how many matching rooms were left out."),
-			"offset":         prop("integer", "Offset for pagination (default 0)"),
+			"limit":          intMax("Max rooms to return (default 50, max 100); the reply says how many matching rooms were left out.", 100),
+			"offset":         intMin("Offset for pagination (default 0)", 0),
 			"verbose":        prop("boolean", "Set to 'true' for full metadata per room (system_prompt, tech_stack, tags, related_rooms)"),
 			"cluster_wide":   prop("boolean", "'true' searches all cluster nodes. Default: cluster-wide when peers are connected (COUNCIL_CLUSTER_READS=local turns that off); 'false' forces this node only."),
 		}),
@@ -193,8 +193,8 @@ func (r *Registry) RegisterTools() {
 		InputSchema: schema([]string{"room_id"}, map[string]map[string]any{
 			"room_id":                   prop("string", "Target room ID"),
 			"include_related_summaries": prop("boolean", "Set to 'true' to append topic, system_prompt, and pinned message from each related room."),
-			"include_last_n":            prop("integer", "Append the last N messages inline after room metadata (max 50). Saves a separate get_messages call."),
-			"limit":                     prop("integer", "Alias for include_last_n."),
+			"include_last_n":            intMax("Append the last N messages inline after room metadata (max 50). Saves a separate get_messages call.", 50),
+			"limit":                     intMax("Alias for include_last_n.", 50),
 			"cluster_wide":              prop("boolean", "'true' fetches this room from the cluster node that owns it. Default: tries this node first, then the cluster if it is not here (COUNCIL_CLUSTER_READS=local turns that off); 'false' forces this node only."),
 		}),
 	}, plainTool(r.handleReadRoom))
@@ -216,11 +216,11 @@ func (r *Registry) RegisterTools() {
 		"room_ids":        arrayProp("Comma-separated room IDs to search across a subset (e.g. bug-123,bug-456). Use instead of room_id for multi-room scoping."),
 		"include_related": prop("boolean", "Set to 'true' to automatically include the room's related_rooms in the search scope (requires room_id). Expands search to 1-level neighbours without specifying room_ids manually."),
 		"project":         prop("string", "Scope search to rooms in this project"),
-		"limit":           prop("integer", "Max results to return (default 20, max 100)"),
+		"limit":           intMax("Max results to return (default 20, max 100)", 100),
 		"since":           prop("string", "ISO timestamp (e.g. 2026-04-01T00:00:00). Only return messages at or after this time."),
 		"until":           prop("string", "ISO timestamp (e.g. 2026-04-03T23:59:59). Only return messages at or before this time."),
 		"summary_only":    prop("boolean", "Set to 'true' for compact output: id, author, timestamp, room, type, and 120-char excerpt"),
-		"excerpt_chars":   prop("integer", "With summary_only: excerpt length in characters (default 120, 40-2000). Widen it when the facts sit late in long posts, instead of re-fetching each hit with full_content"),
+		"excerpt_chars":   intRange("With summary_only: excerpt length in characters (default 120, 40-2000). Widen it when the facts sit late in long posts, instead of re-fetching each hit with full_content", 40, 2000),
 		"full_content":    prop("boolean", "Set to 'true' to return the full un-truncated message body instead of a 300-char snippet"),
 		"work_item":       prop("string", "Exact work-item id (letters, digits, '.', '_', '-'): only messages containing the literal token {wi:ID}. Free-text spellings such as 'ABC 12' are not matched. Combines with the other filters by AND; not available with semantic."),
 		"cluster_wide":    prop("boolean", "'true' searches all cluster nodes. Default: cluster-wide when peers are connected (COUNCIL_CLUSTER_READS=local turns that off); 'false' forces this node only. Semantic search is always node-local."),
@@ -228,7 +228,7 @@ func (r *Registry) RegisterTools() {
 	// Only expose semantic param when an embedding provider is configured.
 	// Avoids agents wasting turns on a feature that will return an error.
 	if r.Server.Embedder != nil {
-		searchProps["semantic"] = prop("string", "Set to 'true' for vector similarity search instead of keyword matching. Finds conceptually similar messages even without exact keyword overlap. Requires COUNCIL_OLLAMA_URL (already configured on this server).")
+		searchProps["semantic"] = prop("boolean", "Set to 'true' for vector similarity search instead of keyword matching. Finds conceptually similar messages even without exact keyword overlap. Requires COUNCIL_OLLAMA_URL (already configured on this server).")
 	}
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "search_messages",
@@ -244,8 +244,8 @@ func (r *Registry) RegisterTools() {
 		InputSchema: schema(nil, map[string]map[string]any{
 			"message_ids":  arrayProp("Comma-separated message IDs (e.g. 48,52,55) — each accepts a full ID or an unambiguous ID prefix (e.g. from a transcript)"),
 			"room_id":      prop("string", "Browse messages from this room (alternative to message_ids)"),
-			"last_n":       prop("integer", "Number of recent messages to fetch when using room_id (default 10, max 50)"),
-			"limit":        prop("integer", "With room_id: alias for last_n when browsing; with after_id/before_id: page size (default 50, max 200). The reply gives the cursor for the next page."),
+			"last_n":       intMax("Number of recent messages to fetch when using room_id (default 10, max 50)", 50),
+			"limit":        intMax("With room_id: alias for last_n when browsing; with after_id/before_id: page size (default 50, max 200). The reply gives the cursor for the next page.", 200),
 			"before_id":    prop("string", "Return the messages just older than this ID (requires room_id), in chronological order. Page backwards with limit."),
 			"after_id":     prop("string", "Return only messages with ID greater than this value (requires room_id). For delta reads without transcript formatting."),
 			"cluster_wide": prop("boolean", "'true' fetches messages from all cluster nodes. Default: cluster-wide when peers are connected and message_ids is given (COUNCIL_CLUSTER_READS=local turns that off); 'false' forces this node only. Room reads stay local."),
@@ -317,7 +317,7 @@ func (r *Registry) RegisterTools() {
 		Description: "Show a message's neighborhood in the link graph: outgoing edges (what it points at) and incoming edges — the backlinks (what points at it). Merges explicit typed links (link_messages) with the implicit reply, supersedes, and revises/revised_by edges, so you see the whole graph around a node — including the append-only edit history (walk revised_by from any version to the latest). Use to find what refines/contradicts/supersedes/revises a given synthesis or decision. Pass depth>1 (max 5) for a link-distance view — a breadth-first walk of everything within N hops, grouped by distance.",
 		InputSchema: schema([]string{"message_id"}, map[string]map[string]any{
 			"message_id": prop("string", "Message ID to fetch the link neighborhood for — accepts a full ID or an unambiguous ID prefix"),
-			"depth":      prop("integer", "Hops to traverse (default 1 = immediate links; max 5). depth>1 returns a link-distance neighborhood grouped by distance."),
+			"depth":      intMax("Hops to traverse (default 1 = immediate links; max 5). depth>1 returns a link-distance neighborhood grouped by distance.", 5),
 		}),
 	}, plainTool(r.handleGetLinks))
 
@@ -342,7 +342,7 @@ func (r *Registry) RegisterTools() {
 			"author":       prop("string", "Agent name to search mentions for (e.g. 'claude', 'gemini-cli'). Matched as a case-insensitive substring, so keep it stable and distinctive — read cursors (mark_read) key off the same string, and changing it replays your whole backlog"),
 			"project":      prop("string", "Optionally scope mentions to rooms in this project (slug-normalized, same as get_digest)"),
 			"cluster_wide": prop("boolean", "'true' also searches mentions on all cluster nodes. Default: cluster-wide when peers are connected (COUNCIL_CLUSTER_READS=local turns that off); 'false' forces this node only and the reply then ends with a 'local node only; N nodes in the cluster' line."),
-			"limit":        prop("integer", "Max results to return (default 20, max 100)"),
+			"limit":        intMax("Max results to return (default 20, max 100)", 100),
 		}),
 	}, plainTool(r.handleGetMentions))
 
@@ -512,7 +512,7 @@ func (r *Registry) RegisterTools() {
 			"until":        prop("string", "Timeline only: ISO timestamp (e.g. 2026-04-30T23:59:59). Only entries at or before this time."),
 			"after_id":     prop("string", "Timeline only: return only entries with message ID greater than this value. For delta reads — pair with the latest_message_id from the previous read's JSON footer."),
 			"limit":        prop("integer", "Max entries; the most recent are kept. Timeline: default 100, max 500. Notebook: default all, applied after status/project filters."),
-			"level":        prop("integer", "Notebook (notebook_id) only: NLS-style structural level-clip. An integer N collapses each prose entry to its markdown headings down to depth N (a table of contents) and clips transcluded message bodies to their first line; tasks and room_refs always render. Omit or 0 for the full outline. The structural counterpart to read_transcript's truncate=line-one."),
+			"level":        intMin("Notebook (notebook_id) only: NLS-style structural level-clip. An integer N collapses each prose entry to its markdown headings down to depth N (a table of contents) and clips transcluded message bodies to their first line; tasks and room_refs always render. Omit or 0 for the full outline. The structural counterpart to read_transcript's truncate=line-one.", 0),
 			"status":       prop("string", "Notebook (notebook_id) only: keep only work items in this state — 'open', 'doing' or 'done'. Tasks and room_refs both honour it (a room_ref is open until its room resolves). Omit for everything. Pair with level to answer 'what is open' without rendering finished work — on a large standing notebook the done sections are most of the payload."),
 			"owner":        prop("string", "Notebook (notebook_id) only: keep only tasks whose owner field equals this (case-insensitive). Narrows the result to tasks."),
 			"overdue":      prop("boolean", "Notebook (notebook_id) only: 'true' keeps only open or doing tasks whose due date (YYYY-MM-DD) is before today (UTC). Narrows the result to tasks."),

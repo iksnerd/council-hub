@@ -358,6 +358,26 @@ func prop(typ, desc string) map[string]any {
 	return map[string]any{"type": typ, "description": desc}
 }
 
+// intProp is an integer property with an advertised range. The handlers clamp an
+// out-of-range value, so the coercion middleware clamps it too (see propSpec)
+// rather than letting the validator refuse what has always worked.
+func intProp(desc string, min, max *int) map[string]any {
+	p := prop("integer", desc)
+	if min != nil {
+		p["minimum"] = *min
+	}
+	if max != nil {
+		p["maximum"] = *max
+	}
+	return p
+}
+
+func intMax(desc string, max int) map[string]any { return intProp(desc, nil, &max) }
+func intMin(desc string, min int) map[string]any { return intProp(desc, &min, nil) }
+func intRange(desc string, min, max int) map[string]any {
+	return intProp(desc, &min, &max)
+}
+
 // arrayProp is a list of strings. A comma-separated string (the old spelling) and
 // a JSON-array string are still accepted; see installLegacyCoercion.
 func arrayProp(desc string) map[string]any {

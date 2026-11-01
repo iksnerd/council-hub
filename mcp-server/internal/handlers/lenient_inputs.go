@@ -125,16 +125,55 @@ func lenientTool[In, Out any](h func(context.Context, *mcp.CallToolRequest, In) 
 
 var intLiteral = regexp.MustCompile(`^-?\d+$`)
 
-// coerceValue converts one legacy string argument to the type the schema
-// declares for it. ok is false when the value is already right or cannot be
-// converted, in which case it is left for the validator.
-func coerceValue(raw json.RawMessage, schemaType string) (json.RawMessage, bool) {
+// propSpec is what the coercion middleware needs to know about one property:
+// its schema type and, for an integer, the advertised range.
+type propSpec struct {
+	Type     string
+	Min, Max *int64
+}
+
+// clampInt pins n into the property's advertised range. The handlers have always
+// clamped, so an out-of-range value keeps working rather than failing validation.
+func (p propSpec) clampInt(n int64) int64 {
+	if p.Min != nil && n < *p.Min {
+		n = *p.Min
+	}
+	if p.Max != nil && n > *p.Max {
+		n = *p.Max
+	}
+	return n
+}
+
+// coerceValue converts one argument to the type the schema declares for it. ok is
+// false when the value is already right or cannot be converted, in which case it
+// is left for the validator.
+func coerceValue(raw json.RawMessage, spec propSpec) (json.RawMessage, bool) {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 {
+		return nil, false
+	}
 	var s string
-	if json.Unmarshal(raw, &s) != nil {
-		return nil, false // not a string: already typed
+	if json.Unmarshal(trimmed, &s) != nil {
+		// Not a string. A native number or boolean aimed at a string property
+		// (get_digest.limit takes "all" too) becomes its string form; a native
+		// integer aimed at an integer property is clamped into range.
+		switch spec.Type {
+		case "string":
+			if bytes.Equal(trimmed, []byte("true")) || bytes.Equal(trimmed, []byte("false")) ||
+				trimmed[0] == '-' || (trimmed[0] >= '0' && trimmed[0] <= '9') {
+				return mustMarshalString(string(trimmed)), true
+			}
+		case "integer":
+			if n, err := strconv.ParseInt(string(trimmed), 10, 64); err == nil {
+				if c := spec.clampInt(n); c != n {
+					return json.RawMessage(strconv.FormatInt(c, 10)), true
+				}
+			}
+		}
+		return nil, false
 	}
 	s = strings.TrimSpace(s)
-	switch schemaType {
+	switch spec.Type {
 	case "boolean":
 		switch strings.ToLower(s) {
 		case "true":
@@ -145,7 +184,7 @@ func coerceValue(raw json.RawMessage, schemaType string) (json.RawMessage, bool)
 	case "integer":
 		if intLiteral.MatchString(s) {
 			if n, err := strconv.ParseInt(s, 10, 64); err == nil {
-				return json.RawMessage(strconv.FormatInt(n, 10)), true
+				return json.RawMessage(strconv.FormatInt(spec.clampInt(n), 10)), true
 			}
 		}
 	case "array":
@@ -171,7 +210,7 @@ func trimmedNonEmpty(in []string) []string {
 func mustMarshal(v any) json.RawMessage { b, _ := json.Marshal(v); return b }
 
 // coerceArguments rewrites args in place against one tool's property types.
-func coerceArguments(args json.RawMessage, propTypes map[string]string) json.RawMessage {
+func coerceArguments(args json.RawMessage, propTypes map[string]propSpec) json.RawMessage {
 	var m map[string]json.RawMessage
 	if json.Unmarshal(args, &m) != nil || m == nil {
 		return args
@@ -199,7 +238,7 @@ func coerceArguments(args json.RawMessage, propTypes map[string]string) json.Raw
 // validates it. The tool property types are read once, from the registered schemas.
 func (r *Registry) installLegacyCoercion() {
 	var once sync.Once
-	types := map[string]map[string]string{}
+	types := map[string]map[string]propSpec{}
 	r.Server.MCP.AddReceivingMiddleware(func(next mcp.MethodHandler) mcp.MethodHandler {
 		return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
 			if method != "tools/call" {
@@ -217,7 +256,7 @@ func (r *Registry) installLegacyCoercion() {
 				}
 				if lt, ok := listed.(*mcp.ListToolsResult); ok {
 					for _, tool := range lt.Tools {
-						types[tool.Name] = schemaPropertyTypes(tool.InputSchema)
+						types[tool.Name] = schemaPropertySpecs(tool.InputSchema)
 					}
 				}
 			})
@@ -229,19 +268,30 @@ func (r *Registry) installLegacyCoercion() {
 	})
 }
 
-func schemaPropertyTypes(inputSchema any) map[string]string {
+func schemaPropertySpecs(inputSchema any) map[string]propSpec {
 	raw, _ := json.Marshal(inputSchema)
 	var s struct {
 		Properties map[string]struct {
-			Type string `json:"type"`
+			Type    string   `json:"type"`
+			Minimum *float64 `json:"minimum"`
+			Maximum *float64 `json:"maximum"`
 		} `json:"properties"`
 	}
 	if json.Unmarshal(raw, &s) != nil {
 		return nil
 	}
-	out := make(map[string]string, len(s.Properties))
+	out := make(map[string]propSpec, len(s.Properties))
 	for k, v := range s.Properties {
-		out[k] = v.Type
+		spec := propSpec{Type: v.Type}
+		if v.Minimum != nil {
+			n := int64(*v.Minimum)
+			spec.Min = &n
+		}
+		if v.Maximum != nil {
+			n := int64(*v.Maximum)
+			spec.Max = &n
+		}
+		out[k] = spec
 	}
 	return out
 }
