@@ -121,6 +121,60 @@ defmodule CouncilHubUi.McpClient do
       {:error, :request_failed}
   end
 
+  @doc """
+  Read the built-in Tailscale node's status from the Go server. Returns
+  {:ok, %{"state" => "off" | "starting" | "needs-login" | "running" | "error",
+  "config" => %{...}, "auth_url" => ..., "url" => ..., "error" => ...}} or
+  {:error, reason}. Short timeout: this runs on the settings page refresh.
+  """
+  def tailscale_status, do: tailscale_request(:get, nil)
+
+  @doc """
+  Apply a Tailscale config (a map with string keys: enabled, hostname, access,
+  control_url, tags, auth_key). The Go server validates it; a rejected config
+  comes back as {:error, message}. The auth key is sent once and not stored.
+  """
+  def tailscale_apply(attrs), do: tailscale_request(:post, Jason.encode!(attrs))
+
+  @doc """
+  Sign the device out of Tailscale and turn it off. The saved login is removed,
+  so the next start needs a fresh sign-in; the other saved settings are kept. The
+  device stays listed (offline) in the Tailscale admin console until deleted there.
+  """
+  def tailscale_logout, do: tailscale_request(:post, Jason.encode!(%{action: "logout"}))
+
+  defp tailscale_request(method, body) do
+    base = mcp_url() |> String.replace(~r{/mcp$}, "")
+    url = String.to_charlist(base <> "/api/ui/tailscale")
+
+    request =
+      case method do
+        :get -> {url, []}
+        :post -> {url, [{~c"Content-Type", ~c"application/json"}], ~c"application/json", body}
+      end
+
+    case :httpc.request(method, request, [{:timeout, 4000}], []) do
+      {:ok, {{_http, status, _}, _headers, resp}} when status in 200..299 ->
+        case Jason.decode(to_string(resp)) do
+          {:ok, view} -> {:ok, view}
+          {:error, _} -> {:error, :json_decode_failed}
+        end
+
+      {:ok, {{_http, 400, _}, _headers, resp}} ->
+        {:error, resp |> to_string() |> String.trim()}
+
+      {:ok, {{_http, status, _}, _, _}} ->
+        {:error, {:http_error, status}}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  rescue
+    e ->
+      Logger.warning("McpClient error calling tailscale: #{inspect(e)}")
+      {:error, :request_failed}
+  end
+
   # --- Private ---
 
   defp handle_ui_post_response({:ok, {{_http, status, _}, _headers, body}})

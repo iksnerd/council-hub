@@ -367,6 +367,12 @@ func requireLocalhostPost(w http.ResponseWriter, req *http.Request) bool {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return false
 	}
+	return requireLocalhost(w, req)
+}
+
+// requireLocalhost rejects a request that did not come from the loopback
+// interface, whatever its method. Returns false after writing the 403.
+func requireLocalhost(w http.ResponseWriter, req *http.Request) bool {
 	host := req.RemoteAddr
 	if i := strings.LastIndex(host, ":"); i >= 0 {
 		host = host[:i]
