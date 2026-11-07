@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"syscall"
@@ -17,6 +18,7 @@ import (
 
 	"council-hub/internal/council"
 	"council-hub/internal/handlers"
+	"council-hub/internal/tailnet"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -343,6 +345,22 @@ func main() {
 		mux.HandleFunc("/api/ui/post", reg.UIPostHandler())
 		mux.HandleFunc("/api/ui/notebook_entry", reg.UINotebookEntryHandler())
 		mux.HandleFunc("/api/ui/backfill_embeddings", reg.UIBackfillEmbeddingsHandler())
+
+		// Built-in Tailscale (off until the operator turns it on in the UI). The
+		// tailnet gets its own mux with only /mcp and /health: the localhost-only
+		// /api/ui/* and cluster routes above must never be reachable from it.
+		tailnetMux := http.NewServeMux()
+		tailnetMux.Handle("/mcp", mcpHandler)
+		tailnetMux.Handle("/mcp/", mcpHandler)
+		tailnetMux.HandleFunc("/health", healthHandler(cs, phoenixURL, reg.HTTPClient))
+		tsDir := filepath.Join(filepath.Dir(dbPath), "tailscale")
+		tsManager := tailnet.NewManager(
+			tailnet.Store{Path: filepath.Join(tsDir, "config.json")},
+			tailnet.NewTSNetFactory(filepath.Join(tsDir, "state"), logger),
+			tailnetMux, logger)
+		tsManager.Start()
+		defer tsManager.Stop()
+		mux.HandleFunc("/api/ui/tailscale", reg.UITailscaleHandler(tsManager))
 
 		httpServer := &http.Server{
 			Addr:         addr,

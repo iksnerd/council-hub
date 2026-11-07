@@ -106,7 +106,7 @@ On the peer's machine (same cookie, their IP):
 
 **If both are on the same LAN**, that's it — auto-discovery finds the peer. For VPN or remote machines, also pass `-e COUNCIL_SEEDS=192.168.0.5` (bare IP works; MagicDNS hostnames work too).
 
-See [clustering-tailscale.md](./clustering-tailscale.md) for cross-machine setup over Tailscale.
+See [clustering-tailscale.md](./clustering-tailscale.md) for cross-machine setup over Tailscale, or [tailscale.md](./tailscale.md) to reach one hub from your other machines.
 
 ## 7. Key tools reference
 
