@@ -43,6 +43,222 @@
       </div>
     </div>
 
+    <%!-- Tailscale --%>
+    <div class="bg-[var(--ch-surface)] border border-[var(--ch-border)] rounded-lg p-4 mb-5">
+      <% state =
+        case @ts do
+          {:ok, %{"state" => st}} -> st
+          _ -> "unavailable"
+        end %>
+      <% view =
+        case @ts do
+          {:ok, v} -> v
+          _ -> %{}
+        end %>
+      <div class="flex items-center gap-2 mb-3">
+        <h2 class="text-[10px] font-medium text-[var(--ch-text-lo)] uppercase tracking-[0.15em]">
+          Tailscale
+        </h2>
+        <span class={[
+          "text-[10px] font-mono rounded px-2 py-0.5 border ml-auto",
+          case state do
+            "running" -> "bg-emerald-500/10 text-emerald-300 border-emerald-500/20"
+            "off" -> "text-[var(--ch-text-xs)] border-[var(--ch-border)]"
+            s when s in ["error", "unavailable"] -> "bg-red-500/10 text-red-300 border-red-500/20"
+            _ -> "bg-amber-500/10 text-amber-300 border-amber-500/20"
+          end
+        ]}>
+          {state}
+        </span>
+      </div>
+
+      <%= if view["error"] not in [nil, ""] do %>
+        <p class="text-[12px] text-red-300 mb-3">{view["error"]}</p>
+      <% end %>
+
+      <%= case state do %>
+        <% "unavailable" -> %>
+          <p class="text-[12px] text-[var(--ch-text-xs)] italic">
+            The Go server's Tailscale endpoint did not answer. Is it running in HTTP mode?
+          </p>
+        <% "running" -> %>
+          <p class="font-mono text-[12px] text-[var(--ch-text-hi)] mb-1 break-all">
+            {view["url"]}
+          </p>
+          <p class="text-[10px] text-[var(--ch-text-xs)] mb-2">
+            On your tailnet as {view["owner"] || "a tagged device"}. Connect an agent with:
+          </p>
+          <div class="flex items-center gap-2 mb-3">
+            <input
+              type="text"
+              readonly
+              value={"claude mcp add --transport http council-hub #{view["url"]}/mcp"}
+              class="flex-1 bg-[var(--ch-raised)] border border-[var(--ch-border)] rounded px-3 py-2 text-[12px] font-mono text-[var(--ch-text-hi)]"
+            />
+            <button
+              type="button"
+              data-copy={"claude mcp add --transport http council-hub #{view["url"]}/mcp"}
+              class="text-[11px] font-mono text-[var(--ch-text-lo)] hover:text-[var(--ch-text-hi)] border border-[var(--ch-border)] rounded px-3 py-2"
+            >
+              Copy
+            </button>
+          </div>
+          <button
+            type="button"
+            phx-click="ts_signout"
+            data-confirm="Forget this Tailscale login? Council Hub goes off the tailnet until you sign in again. The device stays listed as offline in the Tailscale admin console until you delete it there."
+            class="text-[11px] font-mono text-red-300 hover:text-red-200 border border-red-500/20 rounded px-3 py-1.5 mb-3"
+          >
+            Sign out
+          </button>
+        <% s when s in ["starting", "needs-login"] -> %>
+          <%= if is_binary(view["auth_url"]) and String.starts_with?(view["auth_url"], "https://") do %>
+            <div class="flex items-center gap-2 mb-2">
+              <a
+                href={view["auth_url"]}
+                target="_blank"
+                rel="noopener noreferrer"
+                class="inline-block text-[12px] font-medium rounded px-4 py-2 bg-[var(--ch-active-bg)] text-[var(--ch-text-hi)] border border-[var(--ch-active-border)] hover:bg-[var(--ch-hover-bg)]"
+              >
+                Continue in your browser →
+              </a>
+              <button
+                type="button"
+                data-copy={view["auth_url"]}
+                class="text-[11px] font-mono text-[var(--ch-text-lo)] hover:text-[var(--ch-text-hi)] border border-[var(--ch-border)] rounded px-3 py-2"
+              >
+                Copy link
+              </button>
+            </div>
+            <p class="text-[10px] text-[var(--ch-text-xs)] mb-3">
+              Sign in with the Tailscale account that should own this device. This page updates by itself.
+            </p>
+          <% else %>
+            <p class="text-[12px] text-[var(--ch-text-xs)] italic mb-3">
+              Preparing the Tailscale sign-in… this may take a moment.
+            </p>
+          <% end %>
+          <button
+            type="button"
+            phx-click="ts_cancel"
+            class="text-[11px] font-mono text-[var(--ch-text-lo)] hover:text-[var(--ch-text-hi)] border border-[var(--ch-border)] rounded px-3 py-1.5 mb-3"
+          >
+            Cancel sign-in
+          </button>
+        <% _ -> %>
+          <p class="text-[12px] text-[var(--ch-text-mid)] mb-3">
+            Put Council Hub on your tailnet as its own device. No Tailscale app needed on this machine.
+          </p>
+      <% end %>
+
+      <form phx-submit="ts_apply" class="flex flex-col gap-3">
+        <%= if state in ["off", "error"] do %>
+          <div>
+            <button
+              type="submit"
+              name="intent"
+              value="signin"
+              data-ts-signin
+              class="text-[12px] font-medium rounded px-4 py-2 bg-[var(--ch-active-bg)] text-[var(--ch-text-hi)] border border-[var(--ch-active-border)] hover:bg-[var(--ch-hover-bg)]"
+            >
+              Sign in with Tailscale
+            </button>
+            <span class="text-[10px] text-[var(--ch-text-xs)] ml-2">
+              Opens Tailscale's own sign-in page. Only your account can connect by default.
+            </span>
+          </div>
+        <% end %>
+
+        <%= if state != "unavailable" do %>
+          <details class="group">
+            <summary class="text-[10px] text-[var(--ch-text-lo)] uppercase tracking-[0.15em] cursor-pointer select-none">
+              Advanced
+            </summary>
+            <div class="flex flex-col gap-3 mt-3">
+              <div class="grid grid-cols-2 gap-3">
+                <label class="flex flex-col gap-1 text-[10px] text-[var(--ch-text-lo)] uppercase tracking-[0.15em]">
+                  Device name
+                  <input
+                    type="text"
+                    name="hostname"
+                    value={@ts_form.hostname}
+                    autocomplete="off"
+                    spellcheck="false"
+                    class="bg-[var(--ch-raised)] border border-[var(--ch-border)] rounded px-3 py-2 text-[13px] font-mono normal-case tracking-normal text-[var(--ch-text-hi)] focus:outline-none focus:border-[var(--ch-focus-border)]"
+                  />
+                </label>
+                <label class="flex flex-col gap-1 text-[10px] text-[var(--ch-text-lo)] uppercase tracking-[0.15em]">
+                  Who can connect
+                  <select
+                    name="access"
+                    class="bg-[var(--ch-raised)] border border-[var(--ch-border)] rounded px-3 py-2 text-[13px] normal-case tracking-normal text-[var(--ch-text-hi)]"
+                  >
+                    <option value="owner" selected={@ts_form.access == "owner"}>
+                      Only my Tailscale account
+                    </option>
+                    <option value="members" selected={@ts_form.access == "members"}>
+                      Anyone on the tailnet (per ACLs)
+                    </option>
+                  </select>
+                </label>
+              </div>
+              <div class="grid grid-cols-2 gap-3">
+                <label class="flex flex-col gap-1 text-[10px] text-[var(--ch-text-lo)] uppercase tracking-[0.15em]">
+                  Tags
+                  <input
+                    type="text"
+                    name="tags"
+                    value={@ts_form.tags}
+                    placeholder="tag:council"
+                    autocomplete="off"
+                    spellcheck="false"
+                    class="bg-[var(--ch-raised)] border border-[var(--ch-border)] rounded px-3 py-2 text-[13px] font-mono normal-case tracking-normal text-[var(--ch-text-hi)] placeholder:text-[var(--ch-text-xs)] focus:outline-none focus:border-[var(--ch-focus-border)]"
+                  />
+                </label>
+                <label class="flex flex-col gap-1 text-[10px] text-[var(--ch-text-lo)] uppercase tracking-[0.15em]">
+                  Control server
+                  <input
+                    type="text"
+                    name="control_url"
+                    value={@ts_form.control_url}
+                    placeholder="https://headscale.example.net"
+                    autocomplete="off"
+                    spellcheck="false"
+                    class="bg-[var(--ch-raised)] border border-[var(--ch-border)] rounded px-3 py-2 text-[13px] font-mono normal-case tracking-normal text-[var(--ch-text-hi)] placeholder:text-[var(--ch-text-xs)] focus:outline-none focus:border-[var(--ch-focus-border)]"
+                  />
+                </label>
+              </div>
+              <label class="flex flex-col gap-1 text-[10px] text-[var(--ch-text-lo)] uppercase tracking-[0.15em]">
+                Auth key (signs in without a browser; used once, not saved)
+                <input
+                  type="password"
+                  name="auth_key"
+                  value=""
+                  autocomplete="off"
+                  placeholder="tskey-auth-…"
+                  class="bg-[var(--ch-raised)] border border-[var(--ch-border)] rounded px-3 py-2 text-[13px] font-mono normal-case tracking-normal text-[var(--ch-text-hi)] placeholder:text-[var(--ch-text-xs)] focus:outline-none focus:border-[var(--ch-focus-border)]"
+                />
+              </label>
+              <div class="flex items-center gap-3">
+                <button
+                  type="submit"
+                  name="intent"
+                  value="save"
+                  class="text-[12px] font-medium rounded px-4 py-2 bg-[var(--ch-raised)] text-[var(--ch-text-hi)] border border-[var(--ch-border)] hover:bg-[var(--ch-hover-bg)]"
+                >
+                  Save settings
+                </button>
+                <p class="text-[10px] text-[var(--ch-text-xs)] leading-relaxed">
+                  Needs MagicDNS and HTTPS certificates on your tailnet. Tags need “anyone on the tailnet”,
+                  because a tagged device has no owner.
+                </p>
+              </div>
+            </div>
+          </details>
+        <% end %>
+      </form>
+    </div>
+
     <%!-- Connect a peer --%>
     <div class="bg-[var(--ch-surface)] border border-[var(--ch-border)] rounded-lg p-4 mb-5">
       <h2 class="text-[10px] font-medium text-[var(--ch-text-lo)] uppercase tracking-[0.15em] mb-3">

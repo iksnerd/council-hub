@@ -4,6 +4,11 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **Council Hub can join your tailnet as its own device.** The Settings page has a Tailscale card with one **Sign in with Tailscale** button: it opens Tailscale's sign-in page in your browser (with a **Copy link** fallback), then serves `/mcp` and `/health` at `https://<name>.<tailnet>.ts.net`. Access is owner-only by default, checked per request against the caller's Tailscale identity; members mode, tags, a custom control server and an auth key are under Advanced. See [docs/tailscale.md](docs/tailscale.md). The Go toolchain in `go.mod` is now 1.25.5.
+
 ## [0.65.0] - 2026-11-01
 
 The stability release: every open Council Hub item is either built or closed with a reason, three unused tools are gone, and the server now counts its own tool calls so the next cut can use real usage. Schema: one new table (`tool_usage`); no column changes.

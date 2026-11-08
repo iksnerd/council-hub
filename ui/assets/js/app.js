@@ -35,6 +35,68 @@ function formatRelativeTime(isoString) {
   return then.toLocaleDateString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
 }
 
+// Tailscale sign-in on the settings page.
+//
+// Browsers only allow a new window from a click, but Tailscale's sign-in link
+// arrives from the server a few seconds later. So the Sign in click opens a named
+// blank window at once, and when the server sends "ts_auth_url" that window is
+// pointed at the link. If the window was blocked or closed, the page still shows
+// the link to click. Only https links are followed.
+let tsWindow = null
+
+async function copyToClipboard(text) {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text)
+      return true
+    }
+  } catch (_err) { /* fall through to the older way */ }
+  // Plain-http pages (a hub reached over a LAN address) have no clipboard API.
+  const box = document.createElement("textarea")
+  box.value = text
+  box.setAttribute("readonly", "")
+  box.style.cssText = "position:fixed;opacity:0"
+  document.body.appendChild(box)
+  box.select()
+  let ok = false
+  try { ok = document.execCommand("copy") } catch (_err) { ok = false }
+  box.remove()
+  return ok
+}
+
+function flashCopied(button, ok) {
+  button.dataset.label = button.dataset.label || button.textContent
+  button.textContent = ok ? "Copied ✓" : "Copy failed: select and copy by hand"
+  clearTimeout(button._copyTimer)
+  button._copyTimer = setTimeout(() => { button.textContent = button.dataset.label }, 1800)
+}
+
+window.addEventListener("click", e => {
+  if (!(e.target instanceof Element)) return
+  if (e.target.closest("[data-ts-signin]")) {
+    tsWindow = window.open("", "tailscale-signin")
+    if (tsWindow) {
+      tsWindow.opener = null // the sign-in page must not be able to reach this one
+      tsWindow.document.title = "Signing in to Tailscale…"
+      tsWindow.document.body.textContent = "Preparing the Tailscale sign-in…"
+    }
+    return
+  }
+  const copy = e.target.closest("[data-copy]")
+  if (copy) copyToClipboard(copy.dataset.copy).then(ok => flashCopied(copy, ok))
+})
+
+window.addEventListener("phx:ts_auth_url", e => {
+  const url = e.detail && e.detail.url
+  if (typeof url !== "string" || !url.startsWith("https://")) return
+  if (tsWindow && !tsWindow.closed) {
+    tsWindow.location.href = url
+  } else {
+    window.open(url, "_blank", "noopener")
+  }
+  tsWindow = null
+})
+
 const Hooks = {
   ClusterNodeSound: {
     mounted() {
