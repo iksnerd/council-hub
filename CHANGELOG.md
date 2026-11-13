@@ -21,6 +21,7 @@ Notebook ergonomics, a pin guard that knows who is pinning, a janitor that stops
 - **A `read_notebook` outline over 60,000 characters is cut at an entry boundary** with a notice to retry with `level=1`, `status=open`, or `search`/`project`/`limit`.
 
 ### Fixed
+- **UI: `ecto` 3.14.2 to 3.14.3** for EEF-CVE-2026-118391 (HIGH, unbounded query cache growth from interpolated JSON paths and splice lists). The UI builds no such queries, so it was not reachable that we found. `earmark` 1.4.49 still carries EEF-CVE-2026-48591 (MEDIUM, stored XSS through unescaped HTML attribute values) and is retired with no fixed release; its output already goes through `HtmlSanitizeEx.markdown_html` before it is rendered, and moving off Earmark is not done in this release.
 - **`edit_notebook(action=update, prose_append=...)` rejects an append that would push the label past the content limit**, not only an append that is itself too long. Nothing is written on rejection.
 - **A `read_notebook` outline cut at the size cap no longer splits a multi-byte character.** The cut is on a rune boundary and the omitted count is in characters; an entry boundary is still preferred.
 - **`read_notebook(project=..., search=...)` without a notebook returns an error** instead of silently ignoring `search` on the project timeline.
