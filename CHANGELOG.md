@@ -4,7 +4,9 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.66.1] - 2026-11-13
+
+The dashboard now builds and runs on Elixir 1.20 / OTP 29, plus a `go-sqlite3` patch bump. No schema or tool changes.
 
 ### Changed
 - **Elixir 1.20 on OTP 29.** The Dockerfile builds the dashboard on `elixir:1.20-otp-29` and CI on `1.20.x` / `29.x` (it was 1.19 / OTP 28). Checked before changing the pins: `mix precommit` (warnings as errors, unused-dependency check, format, 594 tests) passes, and the image builds and boots, with the hub answering `/health` and the dashboard and `/status` returning 200.
