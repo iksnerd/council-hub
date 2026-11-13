@@ -205,6 +205,37 @@ func (r *Registry) handlePostToRoom(ctx context.Context, req *mcp.CallToolReques
 // living abstract and replacing a peer's mid-session is a silent overwrite.
 const PinFreshWindow = 12 * time.Hour
 
+// freshForeignPin returns the room's current pin when replacing it with a message
+// by newAuthor would overwrite another author's pin younger than PinFreshWindow,
+// else nil. One rule for post_to_room(pin=true) and pin_message.
+func (r *Registry) freshForeignPin(roomID, newAuthor string) *council.Message {
+	cur, _ := r.Server.GetPinnedMessage(roomID)
+	if cur != nil && cur.Author != newAuthor && time.Since(cur.Timestamp) < PinFreshWindow {
+		return cur
+	}
+	return nil
+}
+
+// pinRefusalText is the non-error reply when a pin is withheld; it names the pin
+// that was kept and how to replace it.
+func pinRefusalText(kept *council.Message, roomID, messageID string) string {
+	return fmt.Sprintf("📌 NOT pinned: the room's current pin #%s was posted by %s %s ago (under %dh), and replacing another author's fresh pin needs force=true. To replace it anyway: pin_message(room_id=%q, message_id=%q, force=\"true\").",
+		kept.ID, kept.Author, time.Since(kept.Timestamp).Round(time.Minute), int(PinFreshWindow.Hours()), roomID, messageID)
+}
+
+// pinGuard applies the fresh-pin rule to a standalone pin of messageID: nil when
+// the pin may proceed (force, an unpin toggle, same author, old or no pin).
+func (r *Registry) pinGuard(roomID, messageID, force string) *council.Message {
+	if force == "true" {
+		return nil
+	}
+	target, err := r.Server.GetMessageByID(messageID)
+	if err != nil || target.Pinned {
+		return nil
+	}
+	return r.freshForeignPin(roomID, target.Author)
+}
+
 // postUserError marks a validation failure the caller should read as "Error: ..."
 // rather than an infrastructure failure to log.
 type postUserError string
@@ -318,9 +349,7 @@ func (r *Registry) applyPost(in internalPostRequest) (postOutcome, error) {
 	// pin is withheld, and the response names what it would have displaced.
 	var refusedPin *council.Message
 	if in.Pin == "true" && in.Force != "true" {
-		if cur, _ := r.Server.GetPinnedMessage(in.RoomID); cur != nil && cur.Author != in.Author && time.Since(cur.Timestamp) < PinFreshWindow {
-			refusedPin = cur
-		}
+		refusedPin = r.freshForeignPin(in.RoomID, in.Author)
 	}
 
 	id, dup, err := r.Server.PostMessageOpts(in.RoomID, in.Author, in.Message, in.MessageType, in.ReplyTo, in.Mentions, in.Supersedes, council.PostOptions{
@@ -369,8 +398,7 @@ func (r *Registry) applyPost(in internalPostRequest) (postOutcome, error) {
 	if in.Pin == "true" {
 		if refusedPin != nil {
 			out.PinRefused = true
-			out.Notes = append(out.Notes, fmt.Sprintf("📌 NOT pinned: the room's current pin #%s was posted by %s %s ago (under %dh), and replacing another author's fresh pin needs force=true. To replace it anyway: pin_message(room_id=%q, message_id=%q).",
-				refusedPin.ID, refusedPin.Author, time.Since(refusedPin.Timestamp).Round(time.Minute), int(PinFreshWindow.Hours()), in.RoomID, id))
+			out.Notes = append(out.Notes, pinRefusalText(refusedPin, in.RoomID, id))
 		} else if _, replaced, perr := r.Server.PinMessageReplacing(in.RoomID, id); perr != nil {
 			r.Server.Logger.Warn("pin-on-post failed", "room_id", in.RoomID, "msg_id", id, "error", perr)
 		} else {

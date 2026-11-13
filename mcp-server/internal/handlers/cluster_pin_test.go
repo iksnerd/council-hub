@@ -52,6 +52,31 @@ func TestPinMessageForwardsToOwner(t *testing.T) {
 	}
 }
 
+func TestPinMessageForwardedKeepsFreshPeerPin(t *testing.T) {
+	caller, owner := peerPair(t, false)
+	mustCreateRoom(t, owner.Server, "far2")
+	first := mustPost(t, owner.Server, "far2", "peer", "peer pin")
+	_, _ = owner.Server.PinMessage("far2", first)
+	mine := mustPost(t, owner.Server, "far2", "me", "mine")
+
+	res, _, _ := caller.handlePinMessage(context.Background(), nil, PinMessageInput{RoomID: "far2", MessageID: mine})
+	text := resultText(res)
+	if !strings.Contains(text, "NOT pinned") || !strings.Contains(text, "force=true") {
+		t.Fatalf("owner should refuse and say how to force, got: %s", text)
+	}
+	if m, _ := owner.Server.GetPinnedMessage("far2"); m == nil || m.ID != first {
+		t.Errorf("peer pin must survive on the owner: %+v", m)
+	}
+
+	res, _, _ = caller.handlePinMessage(context.Background(), nil, PinMessageInput{RoomID: "far2", MessageID: mine, Force: "true"})
+	if text := resultText(res); strings.Contains(text, "NOT pinned") {
+		t.Fatalf("force must be forwarded: %s", text)
+	}
+	if m, _ := owner.Server.GetPinnedMessage("far2"); m == nil || m.ID != mine {
+		t.Errorf("forced pin should land on the owner: %+v", m)
+	}
+}
+
 func TestPinMessageOldPeerSaysNothingChanged(t *testing.T) {
 	caller, owner := peerPair(t, true)
 	mustCreateRoom(t, owner.Server, "far")

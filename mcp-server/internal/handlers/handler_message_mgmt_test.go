@@ -70,8 +70,8 @@ func TestHandlePinMessageReplacesExisting(t *testing.T) {
 	// Pin first
 	reg.handlePinMessage(context.Background(), nil, PinMessageInput{RoomID: "pin-replace", MessageID: id1})
 
-	// Pin second — should replace first
-	reg.handlePinMessage(context.Background(), nil, PinMessageInput{RoomID: "pin-replace", MessageID: id2})
+	// Pin second (a different author's fresh pin is replaced only with force)
+	reg.handlePinMessage(context.Background(), nil, PinMessageInput{RoomID: "pin-replace", MessageID: id2, Force: "true"})
 
 	pinned, _ := reg.Server.GetPinnedMessage("pin-replace")
 	if pinned == nil || pinned.ID != id2 {

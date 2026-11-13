@@ -9,6 +9,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 ### Fixed
 - **The Knowledge Linter no longer calls a room that waits on the owner `stale`.** A room with an open or doing notebook task whose `room` is that room and whose `owner` is `OWNER` (case-insensitive) gets no inactivity notice and no `stale` tag, and the sweep clears a `stale` flag set earlier. Rooms whose owner task is done, or whose open task has another owner, are flagged as before. Other flags are unchanged.
 
+### Changed
+- **`pin_message` no longer silently replaces another author's fresh pin.** It follows the rule `post_to_room(pin=true)` already had: if the room's current pin is by a different author than the message being pinned and is under 12 hours old, nothing is pinned, the reply (not an error) names the pin it kept, and `force=true` replaces it. Same author, a pin older than 12 hours, no existing pin, and unpinning behave as before. On a peer-owned room the owning node enforces the rule and `force` is forwarded; a peer on the previous release ignores both and replaces the pin as it did before.
+
 ## [0.65.0] - 2026-11-01
 
 The stability release: every open Council Hub item is either built or closed with a reason, three unused tools are gone, and the server now counts its own tool calls so the next cut can use real usage. Schema: one new table (`tool_usage`); no column changes.

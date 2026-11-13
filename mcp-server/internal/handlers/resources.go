@@ -146,7 +146,7 @@ Persist your position across sessions so ` + "`get_digest`" + ` only shows what'
 ## Synthesis Pattern
 
 When a room reaches a conclusion:
-1. ` + "`post_to_room(message_type=synthesis, pin=true)`" + ` — distill decisions into a reference article and pin it in one call (` + "`pin=true`" + ` replaces the room's previous pin; no separate ` + "`pin_message`" + ` round-trip). In a shared room, if the current pin is another author's and under 12 hours old, the pin is withheld and the reply names it; read that pin first, and pass ` + "`force=true`" + ` only when replacing it is intended. Posting to a resolved room warns; ` + "`reopen=true`" + ` reactivates it
+1. ` + "`post_to_room(message_type=synthesis, pin=true)`" + ` — distill decisions into a reference article and pin it in one call (` + "`pin=true`" + ` replaces the room's previous pin; no separate ` + "`pin_message`" + ` round-trip). In a shared room, if the current pin is another author's and under 12 hours old, the pin is withheld and the reply names it; read that pin first, and pass ` + "`force=true`" + ` only when replacing it is intended. The standalone ` + "`pin_message`" + ` follows the same rule and takes the same ` + "`force`" + `. Posting to a resolved room warns; ` + "`reopen=true`" + ` reactivates it
 2. ` + "`signal_status(status=resolved)`" + ` when the room is done
 
 To track the work in the cockpit, add a ` + "`room_ref`" + ` for the room to ` + "`current-work`" + `

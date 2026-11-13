@@ -18,6 +18,7 @@ import (
 type internalPinRequest struct {
 	RoomID    string `json:"room_id"`
 	MessageID string `json:"message_id"`
+	Force     string `json:"force,omitempty"`
 }
 
 // internalPinResponse is the owner's reply. Pinned is false when the call
@@ -27,7 +28,10 @@ type internalPinResponse struct {
 	MessageID   string `json:"message_id"`
 	Pinned      bool   `json:"pinned"`
 	ReplacedPin string `json:"replaced_pin,omitempty"`
-	Error       string `json:"error"`
+	// Refusal is set when the owner withheld the pin (another author's fresh pin);
+	// a previous-release owner never sets it and just replaces the pin.
+	Refusal string `json:"refusal,omitempty"`
+	Error   string `json:"error"`
 }
 
 // errPeerLacksEndpoint marks a 404 from a peer running a release that predates
@@ -36,12 +40,12 @@ type internalPinResponse struct {
 var errPeerLacksEndpoint = errors.New("peer runs an older version without this endpoint")
 
 // proxyPinMessage forwards a pin_message toggle to the node that owns the room.
-func (r *Registry) proxyPinMessage(owner, roomID, messageID string) (internalPinResponse, error) {
+func (r *Registry) proxyPinMessage(owner, roomID, messageID, force string) (internalPinResponse, error) {
 	url, err := r.peerMCPURL(owner, internalPinPath)
 	if err != nil {
 		return internalPinResponse{}, err
 	}
-	reqBody, err := json.Marshal(internalPinRequest{RoomID: roomID, MessageID: messageID})
+	reqBody, err := json.Marshal(internalPinRequest{RoomID: roomID, MessageID: messageID, Force: force})
 	if err != nil {
 		return internalPinResponse{}, err
 	}
@@ -115,6 +119,10 @@ func (r *Registry) InternalPinHandler() http.HandlerFunc {
 			}
 		} else {
 			id = resolved
+		}
+		if kept := r.pinGuard(in.RoomID, id, in.Force); kept != nil {
+			writeJSON(internalPinResponse{RoomID: in.RoomID, MessageID: id, Refusal: pinRefusalText(kept, in.RoomID, id)})
+			return
 		}
 		pinned, replaced, err := r.Server.PinMessageReplacing(in.RoomID, id)
 		if err != nil {

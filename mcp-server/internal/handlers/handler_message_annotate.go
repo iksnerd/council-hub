@@ -15,6 +15,8 @@ import (
 type PinMessageInput struct {
 	RoomID    string `json:"room_id"`
 	MessageID string `json:"message_id"`
+	// Force lets a pin replace another author's fresh pin (see PinFreshWindow).
+	Force string `json:"force"`
 }
 
 // ReactInput represents the parameters for adding/removing a reaction.
@@ -37,12 +39,15 @@ func (r *Registry) handlePinMessage(ctx context.Context, req *mcp.CallToolReques
 	// locally and leaving the caller to guess where the write went.
 	if _, gerr := r.Server.GetRoom(args.RoomID); gerr != nil {
 		if owner, lerr := r.locateRoomOwner(args.RoomID); lerr == nil && owner != "" {
-			out, perr := r.proxyPinMessage(owner, args.RoomID, args.MessageID)
+			out, perr := r.proxyPinMessage(owner, args.RoomID, args.MessageID, args.Force)
 			if errors.Is(perr, errPeerLacksEndpoint) {
 				return msg(fmt.Sprintf("Error: room '%s' lives on cluster node '%s', which runs an older version that cannot take a forwarded pin. Nothing was changed. Use post_to_room(pin=true), or run pin_message from a session on that node.", args.RoomID, owner))
 			}
 			if perr != nil {
 				return msg(fmt.Sprintf("Error: room '%s' is owned by cluster node '%s' but the pin could not be forwarded (nothing was changed): %s", args.RoomID, owner, perr.Error()))
+			}
+			if out.Refusal != "" {
+				return msg(fmt.Sprintf("%s (room '%s' is on cluster node %s; nothing was changed)", out.Refusal, args.RoomID, owner))
 			}
 			verb := "pinned"
 			if !out.Pinned {
@@ -60,6 +65,10 @@ func (r *Registry) handlePinMessage(ctx context.Context, req *mcp.CallToolReques
 		}
 	} else {
 		args.MessageID = resolved
+	}
+
+	if kept := r.pinGuard(args.RoomID, args.MessageID, args.Force); kept != nil {
+		return msg(pinRefusalText(kept, args.RoomID, args.MessageID))
 	}
 
 	pinned, err := r.Server.PinMessage(args.RoomID, args.MessageID)

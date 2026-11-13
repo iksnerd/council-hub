@@ -163,6 +163,99 @@ func TestPinMessageScopedToRoomPrefix(t *testing.T) {
 	}
 }
 
+// ---- pin_message honours the same fresh-pin guard as post_to_room ----
+
+func pinTool(t *testing.T, reg *Registry, in PinMessageInput) string {
+	t.Helper()
+	res, _, err := reg.handlePinMessage(context.Background(), nil, in)
+	if err != nil {
+		t.Fatalf("handlePinMessage: %v", err)
+	}
+	return resultText(res)
+}
+
+func TestPinMessageKeepsFreshPeerPin(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "pm1")
+	peerID, _ := reg.Server.PostMessage("pm1", "peer", "peer synthesis", "synthesis", "")
+	_, _ = reg.Server.PinMessage("pm1", peerID)
+	mine, _ := reg.Server.PostMessage("pm1", "me", "mine", "synthesis", "")
+
+	out := pinTool(t, reg, PinMessageInput{RoomID: "pm1", MessageID: mine})
+	if strings.HasPrefix(out, "Error") || !strings.Contains(out, "NOT pinned") || !strings.Contains(out, peerID) || !strings.Contains(out, "peer") || !strings.Contains(out, "force=true") {
+		t.Errorf("expected non-error refusal naming the kept pin and force, got: %s", out)
+	}
+	if got := pinnedID(t, reg, "pm1"); got != peerID {
+		t.Errorf("peer pin must survive, pinned=%s", got)
+	}
+}
+
+func TestPinMessageForceReplacesFreshPeerPin(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "pm2")
+	peerID, _ := reg.Server.PostMessage("pm2", "peer", "peer synthesis", "synthesis", "")
+	_, _ = reg.Server.PinMessage("pm2", peerID)
+	mine, _ := reg.Server.PostMessage("pm2", "me", "mine", "synthesis", "")
+
+	out := pinTool(t, reg, PinMessageInput{RoomID: "pm2", MessageID: mine, Force: "true"})
+	if strings.Contains(out, "NOT pinned") {
+		t.Errorf("force should pin: %s", out)
+	}
+	if got := pinnedID(t, reg, "pm2"); got != mine {
+		t.Errorf("pin should have moved to %s, got %s", mine, got)
+	}
+}
+
+func TestPinMessageSameAuthorReplaces(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "pm3")
+	old, _ := reg.Server.PostMessage("pm3", "me", "old mine", "synthesis", "")
+	_, _ = reg.Server.PinMessage("pm3", old)
+	mine, _ := reg.Server.PostMessage("pm3", "me", "new mine", "synthesis", "")
+
+	out := pinTool(t, reg, PinMessageInput{RoomID: "pm3", MessageID: mine})
+	if strings.Contains(out, "NOT pinned") || pinnedID(t, reg, "pm3") != mine {
+		t.Errorf("same author may replace freely: %s", out)
+	}
+}
+
+func TestPinMessageOldPeerPinReplaced(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "pm4")
+	old, _ := reg.Server.PostMessage("pm4", "peer", "old peer", "synthesis", "")
+	_, _ = reg.Server.PinMessage("pm4", old)
+	if _, err := reg.Server.DB.Exec(`UPDATE messages SET timestamp = datetime('now','-20 hours') WHERE id = ?`, old); err != nil {
+		t.Fatal(err)
+	}
+	mine, _ := reg.Server.PostMessage("pm4", "me", "new", "synthesis", "")
+
+	out := pinTool(t, reg, PinMessageInput{RoomID: "pm4", MessageID: mine})
+	if strings.Contains(out, "NOT pinned") || pinnedID(t, reg, "pm4") != mine {
+		t.Errorf("a pin older than the window may be replaced: %s", out)
+	}
+}
+
+func TestPinMessageNoExistingPin(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "pm5")
+	mine, _ := reg.Server.PostMessage("pm5", "me", "first", "synthesis", "")
+	out := pinTool(t, reg, PinMessageInput{RoomID: "pm5", MessageID: mine})
+	if strings.Contains(out, "NOT pinned") || pinnedID(t, reg, "pm5") != mine {
+		t.Errorf("no existing pin should pin: %s", out)
+	}
+}
+
+func TestPinMessageUnpinUnaffectedByGuard(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "pm6")
+	peerID, _ := reg.Server.PostMessage("pm6", "peer", "peer", "synthesis", "")
+	_, _ = reg.Server.PinMessage("pm6", peerID)
+	out := pinTool(t, reg, PinMessageInput{RoomID: "pm6", MessageID: peerID})
+	if !strings.Contains(out, "unpinned") || pinnedID(t, reg, "pm6") != "" {
+		t.Errorf("toggle-off must still work: %s", out)
+	}
+}
+
 func TestPinMessageAmbiguousListsRoomAndType(t *testing.T) {
 	reg := setupHandlerTest(t)
 	mustCreateRoom(t, reg.Server, "pc")

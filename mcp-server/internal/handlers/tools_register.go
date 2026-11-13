@@ -282,10 +282,11 @@ func (r *Registry) RegisterTools() {
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "pin_message",
 		Title:       "Pin message",
-		Description: "Pin a message as the living TL;DR for a room. Use after posting a synthesis or decision that captures the room's current state — pinned messages appear first in every transcript read, giving newcomers instant context. Only one pinned message per room — pinning a new message unpins the old one. Pinning an already-pinned message unpins it (toggle). For a room owned by another cluster node the pin is forwarded to the owner and the reply names it; a peer on an older release cannot take a forwarded pin, and the reply then says nothing was changed.",
+		Description: "Pin a message as the living TL;DR for a room. Use after posting a synthesis or decision that captures the room's current state — pinned messages appear first in every transcript read, giving newcomers instant context. Only one pinned message per room — pinning a new message unpins the old one, except that another author's pin under 12 hours old is kept: the call then reports NOT pinned, names the kept pin, and needs force=true to replace it (same rule as post_to_room pin=true). Pinning an already-pinned message unpins it (toggle). For a room owned by another cluster node the pin is forwarded to the owner and the reply names it; a peer on an older release cannot take a forwarded pin, and the reply then says nothing was changed.",
 		InputSchema: schema([]string{"room_id", "message_id"}, map[string]map[string]any{
 			"room_id":    prop("string", "Target room ID"),
 			"message_id": prop("string", "ID of the message to pin/unpin — accepts a full ID or an unambiguous ID prefix (e.g. from a transcript)"),
+			"force":      prop("boolean", "Set 'true' to replace another author's pin that is under 12 hours old (default: keep it and report). Not needed to unpin or to replace your own or an older pin. Forwarded to the owning node for a peer-owned room."),
 		}),
 	}, plainTool(r.handlePinMessage))
 
