@@ -287,6 +287,7 @@ func (r *Registry) RegisterTools() {
 			"room_id":    prop("string", "Target room ID"),
 			"message_id": prop("string", "ID of the message to pin/unpin — accepts a full ID or an unambiguous ID prefix (e.g. from a transcript)"),
 			"force":      prop("boolean", "Set 'true' to replace another author's pin that is under 12 hours old (default: keep it and report). Not needed to unpin or to replace your own or an older pin. Forwarded to the owning node for a peer-owned room."),
+			"author":     prop("string", "Who is pinning; defaults to the name your client gave at initialize, like post_to_room. A pin is 'another author's' when its author differs from this. Pass it when your client name is not the name you post under (a client named codex-mcp-client posting as codex would otherwise be refused against its own pins)."),
 		}),
 	}, plainTool(r.handlePinMessage))
 
@@ -552,7 +553,7 @@ func (r *Registry) RegisterTools() {
 			"ref_ids":        arrayProp("Comma-separated targets for a batch add (same kind for all) — the multi-entry counterpart to ref_id, mirroring update_room's room_ids. Entries land in the order given. Per-target outcome is reported: already-referenced targets are skipped as no-ops and one bad ID doesn't abort the rest. Mutually exclusive with ref_id, and not for prose."),
 			"prose":          prop("string", "Markdown content (add with kind=prose, or update) — also the task label (add with kind=task)."),
 			"prose_append":   prop("string", "update only: text added to the end of the entry's existing label after one space, so a long task grows without resending it. Mutually exclusive with prose."),
-			"after_entry_id": prop("string", "Position control for add and move: the entry to land after. Omit on add to append; empty on move means the top."),
+			"after_entry_id": prop("string", "Position control for add and move: the entry to land after (a full ID or a unique prefix). Omit on add to append; empty on move means the top."),
 			"due":            prop("string", "Task only (add kind=task, or update): due date YYYY-MM-DD. Open or doing tasks past it render OVERDUE; read_notebook(overdue=true) lists them. On update an empty string clears it."),
 			"owner":          prop("string", "Task only (add kind=task, or update): who owns it, free text such as an agent name. Filter with read_notebook(owner=...). Empty string clears it on update."),
 			"repo":           prop("string", "Task only (add kind=task, or update): the repo the task concerns, e.g. owner/name. Empty string clears it on update."),

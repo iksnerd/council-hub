@@ -2,6 +2,7 @@ package council
 
 import (
 	"context"
+	"regexp"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -264,6 +265,11 @@ func (s *Server) flagAndNotify(roomID, currentTags, tag, content string) bool {
 // except lintStalePins (its query carries an extra per-row field for its log
 // line) and lintIncoherent (its candidates come from a union of two queries).
 func (s *Server) flagRooms(query string, args []any, tag, content, queryErrContext string) []string {
+	return s.flagRoomsExcept(query, args, tag, content, queryErrContext, nil)
+}
+
+// flagRoomsExcept is flagRooms that leaves out the rooms in skip (lower-case ids).
+func (s *Server) flagRoomsExcept(query string, args []any, tag, content, queryErrContext string, skip map[string]bool) []string {
 	rows, err := s.DB.Query(query, args...)
 	if err != nil {
 		s.Logger.Error("Linter: failed to query "+queryErrContext, "error", err)
@@ -278,7 +284,7 @@ func (s *Server) flagRooms(query string, args []any, tag, content, queryErrConte
 		if err := rows.Scan(&id, &tags); err != nil {
 			continue
 		}
-		if !hasTag(tags, tag) {
+		if !hasTag(tags, tag) && !skip[strings.ToLower(id)] {
 			candidates = append(candidates, candidate{id, tags})
 		}
 	}
@@ -310,22 +316,52 @@ func (s *Server) lintNeedsSynthesis() []string {
 	return s.flagRooms(query, []any{synthesisMinDecisions, synthesisMinMessages}, "needs-synthesis", content, "rooms needing synthesis")
 }
 
-// waitingOnOwnerClause matches a room with an open or doing notebook task whose
-// room field is the room and whose owner is OWNER (case-insensitive). Such a room
-// is idle because it waits on a human, not because it was abandoned.
-const waitingOnOwnerClause = `EXISTS (
-		SELECT 1 FROM notebook_entries e JOIN notebooks n ON n.id = e.notebook_id
-		WHERE e.kind = 'task' AND COALESCE(e.status, 'open') != 'done' AND n.deleted_at IS NULL
-		  AND e.task_room = rooms.id AND LOWER(TRIM(COALESCE(e.task_owner, ''))) = 'owner')`
+// roomIDToken splits task text into candidate room ids: a room id is a slug of
+// letters, digits, hyphens and underscores, so a whole-id match cannot hit a
+// longer id that merely contains it.
+var roomIDToken = regexp.MustCompile(`[A-Za-z0-9][A-Za-z0-9_-]*`)
+
+// roomsWithLiveWork returns the rooms that an open or doing task in a live
+// notebook points at: through the task's room field, or by naming the whole room
+// id in its text. Such a room is idle because work on it is still wanted, not
+// because it was abandoned. Whoever owns the task, a done task or one in a deleted
+// notebook counts for nothing.
+func (s *Server) roomsWithLiveWork() map[string]bool {
+	rows, err := s.DB.Query(`
+		SELECT COALESCE(e.task_room, ''), COALESCE(e.prose, '')
+		FROM notebook_entries e JOIN notebooks n ON n.id = e.notebook_id
+		WHERE e.kind = 'task' AND COALESCE(e.status, 'open') != 'done' AND n.deleted_at IS NULL`)
+	if err != nil {
+		s.Logger.Error("Linter: failed to read open tasks", "error", err)
+		return nil
+	}
+	defer func() { _ = rows.Close() }()
+	live := map[string]bool{}
+	for rows.Next() {
+		var room, prose string
+		if rows.Scan(&room, &prose) != nil {
+			continue
+		}
+		if room != "" {
+			live[strings.ToLower(room)] = true
+		}
+		for _, tok := range roomIDToken.FindAllString(prose, -1) {
+			live[strings.ToLower(tok)] = true
+		}
+	}
+	return live
+}
 
 func (s *Server) lintStaleRooms() []string {
-	// Self-correct: a room that now waits on the owner loses a previously set flag.
-	if rows, err := s.DB.Query(`SELECT id, COALESCE(tags, '') FROM rooms WHERE status = 'active' AND tags LIKE '%stale%' AND ` + waitingOnOwnerClause); err == nil {
+	live := s.roomsWithLiveWork()
+
+	// Self-correct: a room that live work now points at loses a previously set flag.
+	if rows, err := s.DB.Query(`SELECT id, COALESCE(tags, '') FROM rooms WHERE status = 'active' AND tags LIKE '%stale%'`); err == nil {
 		type fix struct{ id, tags string }
 		var fixes []fix
 		for rows.Next() {
 			var f fix
-			if rows.Scan(&f.id, &f.tags) == nil && hasTag(f.tags, "stale") {
+			if rows.Scan(&f.id, &f.tags) == nil && hasTag(f.tags, "stale") && live[strings.ToLower(f.id)] {
 				fixes = append(fixes, f)
 			}
 		}
@@ -339,14 +375,13 @@ func (s *Server) lintStaleRooms() []string {
 	query := `
 		SELECT id, tags FROM rooms
 		WHERE status = 'active'
-		  AND NOT ` + waitingOnOwnerClause + `
 		  AND created_at < datetime('now', '-1 day')
 		  AND COALESCE((SELECT MAX(timestamp) FROM messages WHERE room_id = rooms.id AND author != 'system'),
 		        (SELECT MAX(timestamp) FROM messages WHERE room_id = rooms.id)) < datetime('now', '-7 days')
 	`
 	content := "### Knowledge Linter\nThis room has been inactive for over 7 days. " +
 		"Please review the context and either update the `status` to `paused`/`resolved`, or post an update to resume work."
-	return s.flagRooms(query, nil, "stale", content, "stale rooms")
+	return s.flagRoomsExcept(query, nil, "stale", content, "stale rooms", live)
 }
 
 // lintStalePins flags active rooms whose pinned message has fallen behind the live

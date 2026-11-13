@@ -224,8 +224,10 @@ func pinRefusalText(kept *council.Message, roomID, messageID string) string {
 }
 
 // pinGuard applies the fresh-pin rule to a standalone pin of messageID: nil when
-// the pin may proceed (force, an unpin toggle, same author, old or no pin).
-func (r *Registry) pinGuard(roomID, messageID, force string) *council.Message {
+// the pin may proceed (force, an unpin toggle, the caller's own pin, an old or no
+// pin). caller is who is pinning; when the client gave no identity it falls back
+// to the pinned message's author, so an empty name is never compared as a stranger.
+func (r *Registry) pinGuard(roomID, messageID, force, caller string) *council.Message {
 	if force == "true" {
 		return nil
 	}
@@ -233,7 +235,10 @@ func (r *Registry) pinGuard(roomID, messageID, force string) *council.Message {
 	if err != nil || target.Pinned {
 		return nil
 	}
-	return r.freshForeignPin(roomID, target.Author)
+	if caller == "" {
+		caller = target.Author
+	}
+	return r.freshForeignPin(roomID, caller)
 }
 
 // postUserError marks a validation failure the caller should read as "Error: ..."

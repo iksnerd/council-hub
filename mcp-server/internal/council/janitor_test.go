@@ -373,81 +373,118 @@ func TestJanitorSweepIncludesIncoherent(t *testing.T) {
 	}
 }
 
-// idleRoomWithTask builds a room idle for 8 days plus a task pointing at it
-// through the room field, returning the task entry id.
-func idleRoomWithTask(t *testing.T, cs *Server, roomID, owner string) string {
+// idleRoom builds an active room that has been idle for 8 days.
+func idleRoom(t *testing.T, cs *Server, roomID string) {
 	t.Helper()
 	mustCreateRoom(t, cs, roomID)
 	mustPost(t, cs, roomID, "Claude", "old")
 	backdateRoom(cs, roomID, "-8 days")
 	cs.DB.Exec(`UPDATE rooms SET created_at = datetime('now', '-9 days') WHERE id = ?`, roomID)
-	if err := cs.CreateNotebook("nb-"+roomID, "", "nb"); err != nil {
+}
+
+// addTaskFor adds a task with the given label and optional room field in its own
+// notebook and returns the entry id.
+func addTaskFor(t *testing.T, cs *Server, nb, label, room string) string {
+	t.Helper()
+	if err := cs.CreateNotebook(nb, "", "nb"); err != nil {
 		t.Fatal(err)
 	}
-	id, err := cs.AddOutlineEntry("nb-"+roomID, "task", "", "needs a decision", "")
+	id, err := cs.AddOutlineEntry(nb, "task", "", label, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := cs.SetTaskFields(id, TaskFields{Owner: &owner, Room: &roomID}); err != nil {
-		t.Fatal(err)
+	if room != "" {
+		if err := cs.SetTaskFields(id, TaskFields{Room: &room}); err != nil {
+			t.Fatal(err)
+		}
 	}
 	return id
 }
 
-func TestLintStaleSkipsRoomWaitingOnOwner(t *testing.T) {
-	cs := setupTestServer(t)
-	idleRoomWithTask(t, cs, "wait-owner", "owner")
-	cs.lintStaleRooms()
-	if roomHasTag(t, cs, "wait-owner", "stale") {
-		t.Error("a room with an open OWNER task must not be flagged stale")
-	}
-	msgs, _ := cs.GetRecentMessages("wait-owner", 10)
+func noInactivityNotice(t *testing.T, cs *Server, roomID string) {
+	t.Helper()
+	msgs, _ := cs.GetRecentMessages(roomID, 10)
 	for _, m := range msgs {
 		if m.Author == "system" {
-			t.Error("no inactivity notice may land in a room waiting on the owner")
+			t.Errorf("no inactivity notice may land in %s", roomID)
 		}
 	}
 }
 
-func TestLintStaleSkipsDoingOwnerTaskCaseInsensitive(t *testing.T) {
+func TestLintStaleSkipsRoomWithOpenTaskOnRoomField(t *testing.T) {
 	cs := setupTestServer(t)
-	id := idleRoomWithTask(t, cs, "wait-doing", "OWNER")
+	idleRoom(t, cs, "work-field")
+	addTaskFor(t, cs, "nb1", "needs a decision", "work-field")
+	cs.lintStaleRooms()
+	if roomHasTag(t, cs, "work-field", "stale") {
+		t.Error("a room an open task points at is not abandoned, whoever owns the task")
+	}
+	noInactivityNotice(t, cs, "work-field")
+}
+
+func TestLintStaleSkipsRoomNamedInOpenTaskText(t *testing.T) {
+	cs := setupTestServer(t)
+	idleRoom(t, cs, "work-named")
+	addTaskFor(t, cs, "nb2", "Decide the rollout in work-named before Friday.", "")
+	cs.lintStaleRooms()
+	if roomHasTag(t, cs, "work-named", "stale") {
+		t.Error("a task that names the room id keeps the room live")
+	}
+}
+
+func TestLintStaleSkipsDoingTask(t *testing.T) {
+	cs := setupTestServer(t)
+	idleRoom(t, cs, "work-doing")
+	id := addTaskFor(t, cs, "nb3", "x", "work-doing")
 	if err := cs.SetTaskStatus(id, "doing"); err != nil {
 		t.Fatal(err)
 	}
 	cs.lintStaleRooms()
-	if roomHasTag(t, cs, "wait-doing", "stale") {
-		t.Error("a doing OWNER task still means waiting on the owner")
+	if roomHasTag(t, cs, "work-doing", "stale") {
+		t.Error("a doing task is live work")
 	}
 }
 
-func TestLintStaleFlagsRoomWhenOwnerTaskDone(t *testing.T) {
+func TestLintStaleFlagsRoomWhenTaskDone(t *testing.T) {
 	cs := setupTestServer(t)
-	id := idleRoomWithTask(t, cs, "owner-done", "OWNER")
+	idleRoom(t, cs, "work-done")
+	id := addTaskFor(t, cs, "nb4", "x", "work-done")
 	if err := cs.SetTaskStatus(id, "done"); err != nil {
 		t.Fatal(err)
 	}
 	cs.lintStaleRooms()
-	if !roomHasTag(t, cs, "owner-done", "stale") {
-		t.Error("a done owner task means the room is finished and idle: still stale")
+	if !roomHasTag(t, cs, "work-done", "stale") {
+		t.Error("a finished task leaves the room idle and finished: still stale")
 	}
 }
 
-func TestLintStaleFlagsRoomWithOtherOwnersTask(t *testing.T) {
+// A room id that is only part of a longer id in the task text is a different room.
+func TestLintStaleMatchesWholeRoomIDsOnly(t *testing.T) {
 	cs := setupTestServer(t)
-	idleRoomWithTask(t, cs, "other-owner", "claude-code")
+	idleRoom(t, cs, "ctx")
+	addTaskFor(t, cs, "nb5", "follow up in ctx-spec and ctxgraph", "")
 	cs.lintStaleRooms()
-	if !roomHasTag(t, cs, "other-owner", "stale") {
-		t.Error("an open task owned by someone else is not waiting on the owner")
+	if !roomHasTag(t, cs, "ctx", "stale") {
+		t.Error("ctx-spec and ctxgraph are not the room ctx")
+	}
+}
+
+func TestLintStaleIgnoresTasksInDeletedNotebooks(t *testing.T) {
+	cs := setupTestServer(t)
+	idleRoom(t, cs, "work-gone")
+	addTaskFor(t, cs, "nb6", "x", "work-gone")
+	if _, err := cs.DB.Exec(`UPDATE notebooks SET deleted_at = datetime('now') WHERE id = 'nb6'`); err != nil {
+		t.Fatal(err)
+	}
+	cs.lintStaleRooms()
+	if !roomHasTag(t, cs, "work-gone", "stale") {
+		t.Error("a task in a deleted notebook is not live work")
 	}
 }
 
 func TestLintStaleStillSkipsPausedRoom(t *testing.T) {
 	cs := setupTestServer(t)
-	mustCreateRoom(t, cs, "paused-idle")
-	mustPost(t, cs, "paused-idle", "Claude", "old")
-	backdateRoom(cs, "paused-idle", "-8 days")
-	cs.DB.Exec(`UPDATE rooms SET created_at = datetime('now', '-9 days') WHERE id = 'paused-idle'`)
+	idleRoom(t, cs, "paused-idle")
 	if err := cs.UpdateStatus("paused-idle", "paused"); err != nil {
 		t.Fatal(err)
 	}
@@ -457,19 +494,16 @@ func TestLintStaleStillSkipsPausedRoom(t *testing.T) {
 	}
 }
 
-func TestLintStaleClearsFlagOnceRoomWaitsOnOwner(t *testing.T) {
+func TestLintStaleClearsFlagOnceATaskPointsAtTheRoom(t *testing.T) {
 	cs := setupTestServer(t)
-	id := idleRoomWithTask(t, cs, "later-owner", "other")
+	idleRoom(t, cs, "later-task")
 	cs.lintStaleRooms()
-	if !roomHasTag(t, cs, "later-owner", "stale") {
+	if !roomHasTag(t, cs, "later-task", "stale") {
 		t.Fatal("precondition: room should be flagged stale")
 	}
-	owner := "OWNER"
-	if err := cs.SetTaskFields(id, TaskFields{Owner: &owner}); err != nil {
-		t.Fatal(err)
-	}
+	addTaskFor(t, cs, "nb7", "revive later-task", "")
 	cs.lintStaleRooms()
-	if roomHasTag(t, cs, "later-owner", "stale") {
-		t.Error("the sweep should clear a stale flag from a room now waiting on the owner")
+	if roomHasTag(t, cs, "later-task", "stale") {
+		t.Error("the sweep should clear a stale flag once a task keeps the room live")
 	}
 }

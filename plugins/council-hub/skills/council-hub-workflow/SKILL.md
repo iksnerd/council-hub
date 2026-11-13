@@ -136,7 +136,7 @@ messages. Transcripts render them as links when the room has `repo` /
   (with `force=true`, since your pin is fresh).
   Since v0.63.0 the server enforces this for the common case: `pin=true` over
   another author's pin under 12 hours old is withheld, the message still posts,
-  and `force=true` overrides. `pin_message` applies the same rule and `force`. Do not reach for `force` to get past it.
+  and `force=true` overrides. `pin_message` applies the same rule and `force`, comparing its `author` (default: your client name) with the pin's author. Do not reach for `force` to get past it.
   Hit twice in one shared room (2026-10-02: a decision replaced a live "main is
   frozen" notice; 2026-10-03: a synthesis replaced a peer's review synthesis).
 - Retrying a post after a timeout? Pass `idempotency_key` so a repeat returns

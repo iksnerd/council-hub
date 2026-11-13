@@ -398,3 +398,48 @@ func TestInternalPostHandlerAppliesNewOptions(t *testing.T) {
 		t.Errorf("owner must re-validate links")
 	}
 }
+
+// The guard compares the CALLER with the pin's author, not the pinned message's
+// author. Pinning a peer's message over your own fresh pin is allowed.
+func TestPinMessageCallerReplacesOwnPinWithPeersMessage(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "pm7")
+	mine, _ := reg.Server.PostMessage("pm7", "me", "my synthesis", "synthesis", "")
+	_, _ = reg.Server.PinMessage("pm7", mine)
+	theirs, _ := reg.Server.PostMessage("pm7", "peer", "their decision", "decision", "")
+
+	out := pinTool(t, reg, PinMessageInput{RoomID: "pm7", MessageID: theirs, Author: "me"})
+	if strings.Contains(out, "NOT pinned") || pinnedID(t, reg, "pm7") != theirs {
+		t.Errorf("the caller owns the current pin, so it may move it: %s", out)
+	}
+}
+
+// A third party pinning the pin author's other message is still replacing
+// someone else's fresh pin.
+func TestPinMessageCallerIsThirdParty(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "pm8")
+	first, _ := reg.Server.PostMessage("pm8", "peer", "peer synthesis", "synthesis", "")
+	_, _ = reg.Server.PinMessage("pm8", first)
+	second, _ := reg.Server.PostMessage("pm8", "peer", "peer follow-up", "decision", "")
+
+	out := pinTool(t, reg, PinMessageInput{RoomID: "pm8", MessageID: second, Author: "me"})
+	if !strings.Contains(out, "NOT pinned") || pinnedID(t, reg, "pm8") != first {
+		t.Errorf("a third party must not replace a fresh pin without force: %s", out)
+	}
+}
+
+// With no caller identity the rule falls back to the pinned message's author, so
+// it never refuses against an empty name.
+func TestPinMessageNoCallerFallsBackToMessageAuthor(t *testing.T) {
+	reg := setupHandlerTest(t)
+	mustCreateRoom(t, reg.Server, "pm9")
+	old, _ := reg.Server.PostMessage("pm9", "me", "old mine", "synthesis", "")
+	_, _ = reg.Server.PinMessage("pm9", old)
+	mine, _ := reg.Server.PostMessage("pm9", "me", "new mine", "synthesis", "")
+
+	out := pinTool(t, reg, PinMessageInput{RoomID: "pm9", MessageID: mine})
+	if strings.Contains(out, "NOT pinned") || pinnedID(t, reg, "pm9") != mine {
+		t.Errorf("an empty caller must not be treated as a stranger: %s", out)
+	}
+}

@@ -14,8 +14,9 @@ message), `stale-plan` (a handoff nobody executed), `unpinned-synthesis` and
 `stale-plan` fires only when the plan is over a day old, nothing later in the room
 supersedes it (an `action`, `synthesis` or `decision`), and no one has posted in
 the last day. The linter never tags or posts in a `paused` room, and it does not mark a room
-`stale` while an open or doing notebook task with `owner=OWNER` points at it
-(`room=<id>`); it clears an existing `stale` flag once such a task exists. Its own
+`stale` while an open or doing notebook task points at it, through the task's `room` field or
+by naming the whole room id in its text; it clears an existing `stale` flag once such a task
+exists. A room nothing points at is still flagged: pause or resolve it. Its own
 posts do not count as activity. These tags belong to the hub: a request to set
 one is dropped, and a hub-managed `resolved` or `synthesis-complete` tag on a
 room that is not resolved is stripped on the next sweep.

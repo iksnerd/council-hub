@@ -19,6 +19,9 @@ type internalPinRequest struct {
 	RoomID    string `json:"room_id"`
 	MessageID string `json:"message_id"`
 	Force     string `json:"force,omitempty"`
+	// Author is the caller; a peer on a release that predates it ignores the field
+	// and judges by the pinned message's author instead.
+	Author string `json:"author,omitempty"`
 }
 
 // internalPinResponse is the owner's reply. Pinned is false when the call
@@ -40,12 +43,12 @@ type internalPinResponse struct {
 var errPeerLacksEndpoint = errors.New("peer runs an older version without this endpoint")
 
 // proxyPinMessage forwards a pin_message toggle to the node that owns the room.
-func (r *Registry) proxyPinMessage(owner, roomID, messageID, force string) (internalPinResponse, error) {
+func (r *Registry) proxyPinMessage(owner, roomID, messageID, force, author string) (internalPinResponse, error) {
 	url, err := r.peerMCPURL(owner, internalPinPath)
 	if err != nil {
 		return internalPinResponse{}, err
 	}
-	reqBody, err := json.Marshal(internalPinRequest{RoomID: roomID, MessageID: messageID, Force: force})
+	reqBody, err := json.Marshal(internalPinRequest{RoomID: roomID, MessageID: messageID, Force: force, Author: author})
 	if err != nil {
 		return internalPinResponse{}, err
 	}
@@ -120,7 +123,7 @@ func (r *Registry) InternalPinHandler() http.HandlerFunc {
 		} else {
 			id = resolved
 		}
-		if kept := r.pinGuard(in.RoomID, id, in.Force); kept != nil {
+		if kept := r.pinGuard(in.RoomID, id, in.Force, in.Author); kept != nil {
 			writeJSON(internalPinResponse{RoomID: in.RoomID, MessageID: id, Refusal: pinRefusalText(kept, in.RoomID, id)})
 			return
 		}

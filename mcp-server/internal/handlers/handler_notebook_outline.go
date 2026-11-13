@@ -168,6 +168,9 @@ func (r *Registry) handleEditNotebook(ctx context.Context, req *mcp.CallToolRequ
 	if e := foreignArgs(args); e != "" {
 		return msg(e)
 	}
+	if err := r.resolveEntryArgs(&args); err != nil {
+		return msg(fmt.Sprintf("Error: %s", err.Error()))
+	}
 
 	switch args.Action {
 	case "create":
@@ -370,9 +373,6 @@ func (r *Registry) handleEditNotebook(ctx context.Context, req *mcp.CallToolRequ
 		if args.Prose != "" && args.ProseAppend != "" {
 			return msg("Error: pass prose (replace) or prose_append (add to the end), not both.")
 		}
-		if err := r.resolveEntryInto(&args.EntryID); err != nil {
-			return msg(fmt.Sprintf("Error: %s", err.Error()))
-		}
 		if err := validateSize("prose", args.Prose, maxContentLen); err != nil {
 			return msg(fmt.Sprintf("Error: %s", err.Error()))
 		}
@@ -404,9 +404,6 @@ func (r *Registry) handleEditNotebook(ctx context.Context, req *mcp.CallToolRequ
 		if args.EntryID == "" {
 			return msg("Error: entry_id is required.")
 		}
-		if err := r.resolveEntryInto(&args.EntryID); err != nil {
-			return msg(fmt.Sprintf("Error: %s", err.Error()))
-		}
 		status := map[string]string{"start": "doing", "check": "done", "uncheck": "open"}[args.Action]
 		n := r.entryCount(r.notebookOf(args.NotebookID, args.EntryID))
 		if err := r.Server.SetTaskStatus(args.EntryID, status); err != nil {
@@ -419,9 +416,6 @@ func (r *Registry) handleEditNotebook(ctx context.Context, req *mcp.CallToolRequ
 		if args.EntryID == "" {
 			return msg("Error: entry_id is required.")
 		}
-		if err := r.resolveEntryInto(&args.EntryID); err != nil {
-			return msg(fmt.Sprintf("Error: %s", err.Error()))
-		}
 		nb := r.notebookOf(args.NotebookID, args.EntryID)
 		before := r.entryCount(nb)
 		if err := r.Server.RemoveOutlineEntry(args.EntryID); err != nil {
@@ -432,9 +426,6 @@ func (r *Registry) handleEditNotebook(ctx context.Context, req *mcp.CallToolRequ
 	case "move":
 		if args.EntryID == "" {
 			return msg("Error: entry_id is required.")
-		}
-		if err := r.resolveEntryInto(&args.EntryID); err != nil {
-			return msg(fmt.Sprintf("Error: %s", err.Error()))
 		}
 		n := r.entryCount(r.notebookOf(args.NotebookID, args.EntryID))
 		if err := r.Server.MoveOutlineEntry(args.EntryID, args.AfterEntryID); err != nil {
@@ -450,13 +441,37 @@ func (r *Registry) handleEditNotebook(ctx context.Context, req *mcp.CallToolRequ
 	}
 }
 
-// resolveEntryInto expands a unique entry ID prefix to the full ID in place.
-func (r *Registry) resolveEntryInto(id *string) error {
-	full, err := r.Server.ResolveEntryID(*id)
-	if err != nil {
-		return err
+// entryAnchors lists, per action, which inputs address a notebook entry and so
+// accept a unique ID prefix. An empty value is never resolved: add with no anchor
+// appends, move with none goes to the top.
+var entryAnchors = map[string][]string{
+	"update":  {"entry_id"},
+	"start":   {"entry_id"},
+	"check":   {"entry_id"},
+	"uncheck": {"entry_id"},
+	"remove":  {"entry_id"},
+	"move":    {"entry_id", "after_entry_id"},
+	"add":     {"after_entry_id"},
+}
+
+// resolveEntryArgs expands every entry-address input of the action to the full
+// ID, in one place, so a new action or field cannot miss it. A failure names the
+// field it came from.
+func (r *Registry) resolveEntryArgs(args *EditNotebookInput) error {
+	for _, field := range entryAnchors[args.Action] {
+		id := &args.EntryID
+		if field == "after_entry_id" {
+			id = &args.AfterEntryID
+		}
+		if *id == "" {
+			continue
+		}
+		full, err := r.Server.ResolveEntryID(*id)
+		if err != nil {
+			return fmt.Errorf("%s: %w", field, err)
+		}
+		*id = full
 	}
-	*id = full
 	return nil
 }
 

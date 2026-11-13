@@ -17,6 +17,9 @@ type PinMessageInput struct {
 	MessageID string `json:"message_id"`
 	// Force lets a pin replace another author's fresh pin (see PinFreshWindow).
 	Force string `json:"force"`
+	// Author is who is pinning; it defaults to the client name given at initialize,
+	// like post_to_room. The fresh-pin rule compares it with the current pin's author.
+	Author string `json:"author"`
 }
 
 // ReactInput represents the parameters for adding/removing a reaction.
@@ -35,11 +38,14 @@ func (r *Registry) handlePinMessage(ctx context.Context, req *mcp.CallToolReques
 	if args.MessageID == "" {
 		return msg("Error: message_id is required.")
 	}
+	if args.Author == "" {
+		args.Author = clientIdentity(req)
+	}
 	// A room on a peer: forward to the owner and say so, rather than failing
 	// locally and leaving the caller to guess where the write went.
 	if _, gerr := r.Server.GetRoom(args.RoomID); gerr != nil {
 		if owner, lerr := r.locateRoomOwner(args.RoomID); lerr == nil && owner != "" {
-			out, perr := r.proxyPinMessage(owner, args.RoomID, args.MessageID, args.Force)
+			out, perr := r.proxyPinMessage(owner, args.RoomID, args.MessageID, args.Force, args.Author)
 			if errors.Is(perr, errPeerLacksEndpoint) {
 				return msg(fmt.Sprintf("Error: room '%s' lives on cluster node '%s', which runs an older version that cannot take a forwarded pin. Nothing was changed. Use post_to_room(pin=true), or run pin_message from a session on that node.", args.RoomID, owner))
 			}
@@ -67,7 +73,7 @@ func (r *Registry) handlePinMessage(ctx context.Context, req *mcp.CallToolReques
 		args.MessageID = resolved
 	}
 
-	if kept := r.pinGuard(args.RoomID, args.MessageID, args.Force); kept != nil {
+	if kept := r.pinGuard(args.RoomID, args.MessageID, args.Force, args.Author); kept != nil {
 		return msg(pinRefusalText(kept, args.RoomID, args.MessageID))
 	}
 

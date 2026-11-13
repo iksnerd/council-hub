@@ -762,3 +762,52 @@ func TestReadNotebookOutlineCap(t *testing.T) {
 		t.Fatal("truncated under the cap")
 	}
 }
+
+// after_entry_id is an entry address like entry_id, so it takes a prefix on every
+// action that uses it: move, a single add and a ref_ids batch.
+func TestAfterEntryIDPrefix(t *testing.T) {
+	reg, _ := setupOutlineHandler(t)
+	a := mustAddEntry(t, reg, EditNotebookInput{NotebookID: "rel-notes", Kind: "task", Prose: "alpha"})
+	b := mustAddEntry(t, reg, EditNotebookInput{NotebookID: "rel-notes", Kind: "task", Prose: "bravo"})
+	c := mustAddEntry(t, reg, EditNotebookInput{NotebookID: "rel-notes", Kind: "task", Prose: "charlie"})
+
+	// move c after a, naming the anchor by a prefix that no other entry shares.
+	anchor := uniquePrefix(a, b, c)
+	if out := editNotebook(t, reg, EditNotebookInput{Action: "move", EntryID: c, AfterEntryID: anchor}); !strings.Contains(out, "moved after") {
+		t.Fatalf("move with a prefix anchor failed: %s", out)
+	}
+	// add after a prefix anchor, single entry.
+	if out := editNotebook(t, reg, EditNotebookInput{Action: "add", NotebookID: "rel-notes", Kind: "task", Prose: "delta", AfterEntryID: anchor}); strings.Contains(out, "Error") {
+		t.Fatalf("add with a prefix anchor failed: %s", out)
+	}
+	// a bad anchor names the field.
+	if out := editNotebook(t, reg, EditNotebookInput{Action: "move", EntryID: c, AfterEntryID: "zzzz-nomatch"}); !strings.Contains(out, "after_entry_id") || !strings.Contains(out, "not found") {
+		t.Fatalf("a bad anchor should name after_entry_id: %s", out)
+	}
+	// an ambiguous anchor lists the candidates and names the field.
+	if out := editNotebook(t, reg, EditNotebookInput{Action: "move", EntryID: c, AfterEntryID: commonPrefix(a, b)}); !strings.Contains(out, "after_entry_id") || !strings.Contains(out, "ambiguous") {
+		t.Fatalf("an ambiguous anchor should name after_entry_id: %s", out)
+	}
+	// empty keeps its meaning: move to the top.
+	if out := editNotebook(t, reg, EditNotebookInput{Action: "move", EntryID: c}); !strings.Contains(out, "moved to the top") {
+		t.Fatalf("an empty anchor should still mean the top: %s", out)
+	}
+}
+
+// uniquePrefix returns the shortest prefix of first that none of the others shares.
+func uniquePrefix(first string, others ...string) string {
+	for n := 1; n <= len(first); n++ {
+		p := first[:n]
+		clash := false
+		for _, o := range others {
+			if strings.HasPrefix(o, p) {
+				clash = true
+				break
+			}
+		}
+		if !clash {
+			return p
+		}
+	}
+	return first
+}
