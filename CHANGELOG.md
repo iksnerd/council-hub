@@ -4,6 +4,11 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+- **The Knowledge Linter no longer calls a room that waits on the owner `stale`.** A room with an open or doing notebook task whose `room` is that room and whose `owner` is `OWNER` (case-insensitive) gets no inactivity notice and no `stale` tag, and the sweep clears a `stale` flag set earlier. Rooms whose owner task is done, or whose open task has another owner, are flagged as before. Other flags are unchanged.
+
 ## [0.65.0] - 2026-11-01
 
 The stability release: every open Council Hub item is either built or closed with a reason, three unused tools are gone, and the server now counts its own tool calls so the next cut can use real usage. Schema: one new table (`tool_usage`); no column changes.

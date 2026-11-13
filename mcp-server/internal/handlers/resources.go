@@ -473,7 +473,7 @@ A periodic hygiene pass over one project's rooms. The built-in Knowledge Linter
 already tags rooms ` + "`stale`" + `, ` + "`needs-synthesis`" + `, ` + "`stale-pin`" + `
 (an active room whose pinned summary predates 5+ recent decision/action updates),
 ` + "`stale-plan`" + ` (an active room whose ` + "`plan`" + ` is over a day old with no later ` + "`action`" + `,
-` + "`synthesis`" + ` or ` + "`decision`" + ` and no post in the last day — an unexecuted handoff; never raised in a paused room), ` + "`unpinned-synthesis`" + ` (a room has a synthesis but no pinned living TL;DR),
+` + "`synthesis`" + ` or ` + "`decision`" + ` and no post in the last day — an unexecuted handoff; never raised in a paused room; ` + "`stale`" + ` is also never raised for a room with an open or doing task owned by OWNER whose room field names it, since that room waits on a person), ` + "`unpinned-synthesis`" + ` (a room has a synthesis but no pinned living TL;DR),
 and ` + "`incoherent`" + ` (the coherence linter: a live ` + "`contradicts`" + `
 edge with no reconciling synthesis, or a ` + "`duplicates`" + ` edge between two un-superseded
 syntheses) every 6h; this playbook acts on those flags. The linter auto-clears a

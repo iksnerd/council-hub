@@ -310,10 +310,36 @@ func (s *Server) lintNeedsSynthesis() []string {
 	return s.flagRooms(query, []any{synthesisMinDecisions, synthesisMinMessages}, "needs-synthesis", content, "rooms needing synthesis")
 }
 
+// waitingOnOwnerClause matches a room with an open or doing notebook task whose
+// room field is the room and whose owner is OWNER (case-insensitive). Such a room
+// is idle because it waits on a human, not because it was abandoned.
+const waitingOnOwnerClause = `EXISTS (
+		SELECT 1 FROM notebook_entries e JOIN notebooks n ON n.id = e.notebook_id
+		WHERE e.kind = 'task' AND COALESCE(e.status, 'open') != 'done' AND n.deleted_at IS NULL
+		  AND e.task_room = rooms.id AND LOWER(TRIM(COALESCE(e.task_owner, ''))) = 'owner')`
+
 func (s *Server) lintStaleRooms() []string {
+	// Self-correct: a room that now waits on the owner loses a previously set flag.
+	if rows, err := s.DB.Query(`SELECT id, COALESCE(tags, '') FROM rooms WHERE status = 'active' AND tags LIKE '%stale%' AND ` + waitingOnOwnerClause); err == nil {
+		type fix struct{ id, tags string }
+		var fixes []fix
+		for rows.Next() {
+			var f fix
+			if rows.Scan(&f.id, &f.tags) == nil && hasTag(f.tags, "stale") {
+				fixes = append(fixes, f)
+			}
+		}
+		_ = rows.Close()
+		for _, f := range fixes {
+			s.Mu.Lock()
+			_, _ = s.DB.Exec(`UPDATE rooms SET tags = ? WHERE id = ?`, removeTag(f.tags, "stale"), f.id)
+			s.Mu.Unlock()
+		}
+	}
 	query := `
 		SELECT id, tags FROM rooms
 		WHERE status = 'active'
+		  AND NOT ` + waitingOnOwnerClause + `
 		  AND created_at < datetime('now', '-1 day')
 		  AND COALESCE((SELECT MAX(timestamp) FROM messages WHERE room_id = rooms.id AND author != 'system'),
 		        (SELECT MAX(timestamp) FROM messages WHERE room_id = rooms.id)) < datetime('now', '-7 days')
