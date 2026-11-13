@@ -26,7 +26,7 @@ COPY mcp-server/internal/ ./internal/
 RUN CGO_ENABLED=1 go build -tags sqlite_fts5 -o council-hub .
 
 # --- Stage 2: Build Elixir/Phoenix UI ---
-FROM elixir:1.19-otp-28 AS elixir-builder
+FROM elixir:1.20-otp-29 AS elixir-builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential git \

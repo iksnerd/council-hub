@@ -56,8 +56,8 @@ jobs:
       - name: Set up Elixir
         uses: erlef/setup-beam@v1
         with:
-          elixir-version: '1.19.x'
-          otp-version: '28.x'
+          elixir-version: '1.20.x'
+          otp-version: '29.x'
 
       - name: Cache dependencies and build
         uses: actions/cache@v6
