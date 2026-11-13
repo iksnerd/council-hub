@@ -504,10 +504,10 @@ func (r *Registry) RegisterTools() {
 			"project=… → the TIMELINE: a live query over the ledger, nothing stored. Typed messages (decision, plan, action, synthesis, note) from every room in the project, woven chronologically and grouped by day, with {sha:…} refs resolved. Use it to see how a project unfolded — standups, retros, onboarding. " +
 			"notebook_id=… → a curated NOTEBOOK: a stored outline you assemble with edit_notebook, interleaving prose with transcluded messages and rooms (refs resolve live; nothing is copied). Work items self-sort — room_refs by their room's status, tasks by their own — so a standing list like current-work stays true without hand-editing. Use it for a hand-curated document or a work list. " +
 			"On a large notebook, an oversized-result error means retry with level=1,status=open, not re-reading a saved file — that combination has cut a 237-entry notebook by over 90%. " +
-			"Timeline-only params: types, since, until, after_id (delta reads — the JSON footer carries latest_message_id), cluster_wide. Notebook-only: level, status, entry_id; project and limit also narrow a notebook. The timeline footer lists the project's notebooks. Notebooks are node-local.",
+			"Timeline-only params: types, since, until, after_id (delta reads — the JSON footer carries latest_message_id), cluster_wide. Notebook-only: level, status, entry_id, search, owner, overdue; project and limit also narrow a notebook. An outline over 60,000 characters is cut at an entry boundary with a notice. The timeline footer lists the project's notebooks. Notebooks are node-local.",
 		InputSchema: schema(nil, map[string]map[string]any{
 			"project":      prop("string", "Timeline: project whose rooms are compiled. With notebook_id: keep only that project's work items (room_refs in the project or with id '<project>-…', tasks labelled '<project>:', '<project>/' or '[<project>]')."),
-			"entry_id":     prop("string", "Notebook only: read ONE entry in full (no notebook_id needed) — e.g. a task whose long label the level clip cut short."),
+			"entry_id":     prop("string", "Notebook only: read ONE entry in full (no notebook_id needed) — e.g. a task whose long label the level clip cut short. Accepts the full ID or a unique prefix (the 12-char short form)."),
 			"notebook_id":  prop("string", "Curated notebook outline to read (use this OR project). Created via edit_notebook(action=create)."),
 			"types":        arrayProp("Timeline only: comma-separated message types to include (default: decision,action,synthesis,note). E.g. 'decision' for a decision log, 'decision,action,synthesis,critique' for a wider view."),
 			"since":        prop("string", "Timeline only: ISO timestamp (e.g. 2026-04-01T00:00:00). Only entries at or after this time."),
@@ -517,6 +517,7 @@ func (r *Registry) RegisterTools() {
 			"level":        intMin("Notebook (notebook_id) only: NLS-style structural level-clip. An integer N collapses each prose entry to its markdown headings down to depth N (a table of contents) and clips transcluded message bodies to their first line; tasks and room_refs always render. Omit or 0 for the full outline. The structural counterpart to read_transcript's truncate=line-one.", 0),
 			"status":       prop("string", "Notebook (notebook_id) only: keep only work items in this state — 'open', 'doing' or 'done'. Tasks and room_refs both honour it (a room_ref is open until its room resolves). Omit for everything. Pair with level to answer 'what is open' without rendering finished work — on a large standing notebook the done sections are most of the payload."),
 			"owner":        prop("string", "Notebook (notebook_id) only: keep only tasks whose owner field equals this (case-insensitive). Narrows the result to tasks."),
+			"search":       prop("string", "Notebook (notebook_id) only: case-insensitive substring kept over a task's label, repo and room, a prose entry's text and a room_ref's id and topic. Combines with status, project, owner and overdue."),
 			"overdue":      prop("boolean", "Notebook (notebook_id) only: 'true' keeps only open or doing tasks whose due date (YYYY-MM-DD) is before today (UTC). Narrows the result to tasks."),
 			"cluster_wide": prop("boolean", "Timeline only: set to 'true' to compile the timeline from all cluster nodes. Default: local only."),
 		}),
@@ -527,12 +528,12 @@ func (r *Registry) RegisterTools() {
 		Title: "Edit notebook",
 		Description: "Curate a notebook outline — the hand-assembled counterpart to read_notebook's timeline. An outline is an ordered list of entries: prose (markdown you write), ref (a ledger message, transcluded live so the outline can't drift from it), room_ref (a room's live status), query_ref (the latest <type> in a room, resolved live), and task (a checklist item with its own state). " +
 			"Two ways to track work, both self-sorting: a room_ref tracks a whole thread (signal_status(resolved) checks it off — never hand-edited); a task is a checklist item for work not worth its own room. The 'current-work' global notebook is the canonical place to drive dev tasks from. " +
-			"Entry IDs appear in read_notebook(notebook_id=…) as *(entry #…)* — pass the full ID, since UUIDv7 prefixes collide within a millisecond. Create without a project for a GLOBAL notebook. Notebooks are node-local. See the action param for what each action needs.",
+			"Entry IDs appear in read_notebook(notebook_id=…) as *(entry #…)* — pass the full ID or a unique prefix (an ambiguous one errors with the candidates). Create without a project for a GLOBAL notebook. Notebooks are node-local. See the action param for what each action needs.",
 		InputSchema: schema([]string{"action"}, map[string]map[string]any{
 			"action": enumProp("string", "What to do, and what each needs:\n"+
 				"  create   (notebook_id, project?, title?) — new empty notebook; omit project for a global one\n"+
 				"  add      (notebook_id, ref_id|ref_ids|prose, kind?, after_entry_id?) — omit after_entry_id to append\n"+
-				"  update   (entry_id, prose?, due?, owner?, repo?, room?) — rewrite a prose section or a task's label, and/or set a task's structured fields\n"+
+				"  update   (entry_id, prose?|prose_append?, due?, owner?, repo?, room?) — rewrite or extend a prose section or a task's label, and/or set a task's structured fields\n"+
 				"  start / check / uncheck (entry_id) — move a task to in-progress / done / open\n"+
 				"  move     (entry_id, after_entry_id) — reorder; empty after_entry_id means the top\n"+
 				"  remove   (entry_id) — drop one entry\n"+
@@ -541,15 +542,16 @@ func (r *Registry) RegisterTools() {
 				"  purge    (notebook_id, confirm) — permanently remove a soft-deleted notebook; cannot be undone",
 				[]string{"create", "add", "update", "start", "check", "uncheck", "move", "remove", "delete", "restore", "purge"}),
 			"confirm":        prop("string", "delete/purge only: must equal the notebook_id or its current entry count. Guards against deleting a whole notebook when you meant one entry."),
-			"notebook_id":    prop("string", "Notebook identifier (required for create, delete, add). E.g. 'release-notes-v1'."),
+			"notebook_id":    prop("string", "Notebook identifier (required for create, delete, add). E.g. 'release-notes-v1'. add with kind=task defaults to 'current-work' when omitted."),
 			"project":        prop("string", "Project the notebook belongs to (create only). Omit for a GLOBAL notebook — e.g. cross-project TODOs or standing checklists: it can ref messages from any room and is listed in every project's timeline footer and /notebook view."),
 			"title":          prop("string", "Human-readable title (create only)."),
-			"entry_id":       prop("string", "Target entry (update, start, check, uncheck, move, remove). From the *(entry #...)* markers in read_notebook output."),
+			"entry_id":       prop("string", "Target entry (update, start, check, uncheck, move, remove). From the *(entry #...)* markers in read_notebook output. A full ID or a unique prefix; an ambiguous prefix errors with the candidates."),
 			"kind":           enumProp("string", "Entry kind for add. ref_id implies 'ref' and prose implies 'prose'; pass kind=room_ref explicitly with ref_id=<room_id> to track a room's live state, kind=query_ref with ref_id=<room_id>:<message_type> to transclude 'the latest <type> in <room>' (resolved live — a structural address, not a frozen ID), or kind=task with prose=<label> for a first-class checklist item you check/uncheck.", []string{"ref", "room_ref", "query_ref", "prose", "task"}),
 			"ref_id":         prop("string", "What to transclude: a message ID (kind=ref, accepts a full ID or an unambiguous ID prefix), a room ID (kind=room_ref), or 'room_id:message_type' (kind=query_ref, e.g. 'auth-room:synthesis'). Must exist on this node. Ref-like adds are idempotent — re-adding a target already referenced in the notebook is a no-op that returns the existing entry, so it's safe to repeat across sessions without creating duplicate refs."),
 			"room_id":        prop("string", "Alias for ref_id — accepted because kind=room_ref's target is a room id"),
 			"ref_ids":        arrayProp("Comma-separated targets for a batch add (same kind for all) — the multi-entry counterpart to ref_id, mirroring update_room's room_ids. Entries land in the order given. Per-target outcome is reported: already-referenced targets are skipped as no-ops and one bad ID doesn't abort the rest. Mutually exclusive with ref_id, and not for prose."),
 			"prose":          prop("string", "Markdown content (add with kind=prose, or update) — also the task label (add with kind=task)."),
+			"prose_append":   prop("string", "update only: text added to the end of the entry's existing label after one space, so a long task grows without resending it. Mutually exclusive with prose."),
 			"after_entry_id": prop("string", "Position control for add and move: the entry to land after. Omit on add to append; empty on move means the top."),
 			"due":            prop("string", "Task only (add kind=task, or update): due date YYYY-MM-DD. Open or doing tasks past it render OVERDUE; read_notebook(overdue=true) lists them. On update an empty string clears it."),
 			"owner":          prop("string", "Task only (add kind=task, or update): who owns it, free text such as an agent name. Filter with read_notebook(owner=...). Empty string clears it on update."),

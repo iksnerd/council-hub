@@ -91,6 +91,10 @@ type OutlineFilter struct {
 	Overdue bool
 	// Today is the YYYY-MM-DD used for Overdue; empty means today (UTC).
 	Today string
+	// Search keeps only entries whose text contains it (case-insensitive
+	// substring): a task's label, repo and room; a prose entry's markdown; a
+	// room_ref's id and topic. Combines with every other filter.
+	Search string
 }
 
 // dateRe gates the task due field.
@@ -376,6 +380,60 @@ func (s *Server) NotebookSnapshotDir() string {
 		return ""
 	}
 	return filepath.Join(s.archiveDir(), "notebooks")
+}
+
+// ResolveEntryID turns an exact entry ID or a unique ID prefix (the short form
+// read_notebook prints) into the full ID. An exact match wins; an ambiguous
+// prefix errors listing the candidates; no match returns "entry '<id>' not found".
+func (s *Server) ResolveEntryID(idOrPrefix string) (string, error) {
+	idOrPrefix = strings.TrimSpace(idOrPrefix)
+	var exact string
+	err := s.DB.QueryRow(`SELECT id FROM notebook_entries WHERE id = ?`, idOrPrefix).Scan(&exact)
+	if err == nil {
+		return exact, nil
+	}
+	if err != sql.ErrNoRows {
+		return "", err
+	}
+	if idOrPrefix == "" {
+		return "", fmt.Errorf("entry '%s' not found", idOrPrefix)
+	}
+	esc := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(idOrPrefix)
+	rows, err := s.DB.Query(`SELECT id FROM notebook_entries WHERE id LIKE ? ESCAPE '\' ORDER BY id LIMIT 6`, esc+`%`)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = rows.Close() }()
+	ids, err := scanIDs(rows)
+	if err != nil {
+		return "", err
+	}
+	switch len(ids) {
+	case 0:
+		return "", fmt.Errorf("entry '%s' not found", idOrPrefix)
+	case 1:
+		return ids[0], nil
+	}
+	return "", fmt.Errorf("entry prefix '%s' is ambiguous: matches %s", idOrPrefix, strings.Join(ids, ", "))
+}
+
+// AppendToOutlineEntry appends text to a prose or task entry, joined to the
+// existing text by a single space.
+func (s *Server) AppendToOutlineEntry(entryID, text string) error {
+	if strings.TrimSpace(text) == "" {
+		return fmt.Errorf("prose_append is required")
+	}
+	s.Mu.Lock()
+	var prose string
+	err := s.DB.QueryRow(`SELECT prose FROM notebook_entries WHERE id = ?`, entryID).Scan(&prose)
+	s.Mu.Unlock()
+	if err == sql.ErrNoRows {
+		return fmt.Errorf("entry '%s' not found", entryID)
+	}
+	if err != nil {
+		return err
+	}
+	return s.UpdateOutlineEntry(entryID, strings.TrimRight(prose, " \n")+" "+strings.TrimSpace(text))
 }
 
 // EntryNotebookID returns the notebook an entry belongs to.
@@ -706,6 +764,12 @@ func outlineFilterSQL(f OutlineFilter) (string, []any) {
 			` OR (e.kind = 'room_ref' AND (rr.project = ? OR e.ref_id LIKE ? ESCAPE '\'))` +
 			` OR (e.kind = 'task' AND (LOWER(e.prose) LIKE ? ESCAPE '\' OR LOWER(e.prose) LIKE ? ESCAPE '\' OR LOWER(e.prose) LIKE ? ESCAPE '\')))`)
 		args = append(args, p, esc+`-%`, esc+`:%`, esc+`/%`, `[`+esc+`]%`)
+	}
+	if q := strings.TrimSpace(f.Search); q != "" {
+		like := `%` + strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(strings.ToLower(q)) + `%`
+		clause.WriteString(` AND (LOWER(e.prose) LIKE ? ESCAPE '\' OR LOWER(COALESCE(e.task_repo, '')) LIKE ? ESCAPE '\'` +
+			` OR LOWER(COALESCE(e.task_room, '')) LIKE ? ESCAPE '\' OR (e.kind = 'room_ref' AND (LOWER(e.ref_id) LIKE ? ESCAPE '\' OR LOWER(COALESCE(rr.description, '')) LIKE ? ESCAPE '\')))`)
+		args = append(args, like, like, like, like, like)
 	}
 	if f.Owner != "" || f.Overdue {
 		clause.WriteString(` AND e.kind = 'task'`)

@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
@@ -628,5 +629,136 @@ func TestClipLabelKeepsValidUTF8(t *testing.T) {
 		if !strings.HasSuffix(got, " …") {
 			t.Errorf("expected clipped label, got %q", got)
 		}
+	}
+}
+
+func TestReadNotebookSearch(t *testing.T) {
+	reg, _ := setupOutlineHandler(t)
+	mustAddEntry(t, reg, EditNotebookInput{NotebookID: "rel-notes", Kind: "task", Prose: "alpha cleanup", Repo: sp("acme/Widgets")})
+	mustAddEntry(t, reg, EditNotebookInput{NotebookID: "rel-notes", Kind: "task", Prose: "beta sweep", Room: sp("ol-room"), Owner: sp("bot")})
+	done := mustAddEntry(t, reg, EditNotebookInput{NotebookID: "rel-notes", Kind: "task", Prose: "gamma ALPHA done"})
+	mustAddEntry(t, reg, EditNotebookInput{NotebookID: "rel-notes", Prose: "an alpha prose note"})
+	editNotebook(t, reg, EditNotebookInput{Action: "check", EntryID: done})
+
+	out := readOutline(t, reg, ReadNotebookInput{NotebookID: "rel-notes", Search: "ALPHA"})
+	if !strings.Contains(out, "alpha cleanup") || !strings.Contains(out, "gamma ALPHA done") || !strings.Contains(out, "alpha prose note") || strings.Contains(out, "beta sweep") {
+		t.Fatalf("label search wrong:\n%s", out)
+	}
+	out = readOutline(t, reg, ReadNotebookInput{NotebookID: "rel-notes", Search: "widgets"})
+	if !strings.Contains(out, "alpha cleanup") || strings.Contains(out, "beta sweep") {
+		t.Fatalf("repo search wrong:\n%s", out)
+	}
+	out = readOutline(t, reg, ReadNotebookInput{NotebookID: "rel-notes", Search: "ol-room"})
+	if !strings.Contains(out, "beta sweep") || strings.Contains(out, "alpha cleanup") {
+		t.Fatalf("room search wrong:\n%s", out)
+	}
+	// Combines with status and owner.
+	out = readOutline(t, reg, ReadNotebookInput{NotebookID: "rel-notes", Search: "alpha", Status: "open"})
+	if !strings.Contains(out, "alpha cleanup") || strings.Contains(out, "gamma ALPHA done") {
+		t.Fatalf("search+status wrong:\n%s", out)
+	}
+	out = readOutline(t, reg, ReadNotebookInput{NotebookID: "rel-notes", Search: "sweep", Owner: "nobody"})
+	if strings.Contains(out, "beta sweep") {
+		t.Fatalf("search+owner wrong:\n%s", out)
+	}
+}
+
+func TestEntryIDPrefix(t *testing.T) {
+	reg, _ := setupOutlineHandler(t)
+	id := mustAddEntry(t, reg, EditNotebookInput{NotebookID: "rel-notes", Kind: "task", Prose: "prefix target"})
+	short := id[:13]
+
+	if out := readOutline(t, reg, ReadNotebookInput{EntryID: short}); !strings.Contains(out, "prefix target") {
+		t.Fatalf("read by prefix failed:\n%s", out)
+	}
+	if out := editNotebook(t, reg, EditNotebookInput{Action: "start", EntryID: short}); !strings.Contains(out, "in progress") {
+		t.Fatalf("start by prefix failed: %s", out)
+	}
+	if out := editNotebook(t, reg, EditNotebookInput{Action: "update", EntryID: short, Prose: "renamed"}); !strings.Contains(out, "updated") {
+		t.Fatalf("update by prefix failed: %s", out)
+	}
+	if out := editNotebook(t, reg, EditNotebookInput{Action: "check", EntryID: short}); !strings.Contains(out, "done") {
+		t.Fatalf("check by prefix failed: %s", out)
+	}
+	if out := editNotebook(t, reg, EditNotebookInput{Action: "uncheck", EntryID: short}); !strings.Contains(out, "open") {
+		t.Fatalf("uncheck by prefix failed: %s", out)
+	}
+	if out := editNotebook(t, reg, EditNotebookInput{Action: "move", EntryID: short}); !strings.Contains(out, "moved") {
+		t.Fatalf("move by prefix failed: %s", out)
+	}
+
+	other := mustAddEntry(t, reg, EditNotebookInput{NotebookID: "rel-notes", Kind: "task", Prose: "second"})
+	common := commonPrefix(id, other)
+	if out := editNotebook(t, reg, EditNotebookInput{Action: "check", EntryID: common}); !strings.Contains(out, "ambiguous") || !strings.Contains(out, id) || !strings.Contains(out, other) {
+		t.Fatalf("ambiguous prefix should list candidates: %s", out)
+	}
+	if out := editNotebook(t, reg, EditNotebookInput{Action: "check", EntryID: "zzzz-nomatch"}); !strings.Contains(out, "not found") {
+		t.Fatalf("no match should say not found: %s", out)
+	}
+	if out := editNotebook(t, reg, EditNotebookInput{Action: "remove", EntryID: id[:len(common)+1]}); !strings.Contains(out, "removed") {
+		t.Fatalf("remove by prefix failed: %s", out)
+	}
+}
+
+func commonPrefix(a, b string) string {
+	i := 0
+	for i < len(a) && i < len(b) && a[i] == b[i] {
+		i++
+	}
+	return a[:i]
+}
+
+func TestUpdateProseAppend(t *testing.T) {
+	reg, _ := setupOutlineHandler(t)
+	id := mustAddEntry(t, reg, EditNotebookInput{NotebookID: "rel-notes", Kind: "task", Prose: "first sentence."})
+	if out := editNotebook(t, reg, EditNotebookInput{Action: "update", EntryID: id, ProseAppend: "Second sentence."}); !strings.Contains(out, "updated") {
+		t.Fatalf("append failed: %s", out)
+	}
+	if out := readOutline(t, reg, ReadNotebookInput{EntryID: id}); !strings.Contains(out, "first sentence. Second sentence.") {
+		t.Fatalf("append not joined by one space:\n%s", out)
+	}
+	if out := editNotebook(t, reg, EditNotebookInput{Action: "update", EntryID: id, Prose: "x", ProseAppend: "y"}); !strings.Contains(out, "Error") {
+		t.Fatalf("prose+prose_append should error: %s", out)
+	}
+	if out := editNotebook(t, reg, EditNotebookInput{Action: "add", NotebookID: "rel-notes", Kind: "task", Prose: "p", ProseAppend: "y"}); !strings.Contains(out, "Error") {
+		t.Fatalf("prose_append on add should error: %s", out)
+	}
+}
+
+func TestAddTaskDefaultsToCurrentWork(t *testing.T) {
+	reg, _ := setupOutlineHandler(t)
+	editNotebook(t, reg, EditNotebookInput{Action: "create", NotebookID: "current-work", Title: "Current work"})
+	out := editNotebook(t, reg, EditNotebookInput{Action: "add", Kind: "task", Prose: "defaulted"})
+	if !strings.Contains(out, "added to notebook 'current-work'") {
+		t.Fatalf("task did not default to current-work: %s", out)
+	}
+	if out := editNotebook(t, reg, EditNotebookInput{Action: "add", Kind: "prose", Prose: "nope"}); !strings.Contains(out, "notebook_id is required") {
+		t.Fatalf("non-task must still require notebook_id: %s", out)
+	}
+}
+
+func TestReadNotebookOutlineCap(t *testing.T) {
+	reg, _ := setupOutlineHandler(t)
+	for i := 0; i < 30; i++ {
+		mustAddEntry(t, reg, EditNotebookInput{NotebookID: "rel-notes", Kind: "task", Prose: fmt.Sprintf("task number %d %s", i, strings.Repeat("x", 100))})
+	}
+	old := notebookOutlineMaxChars
+	notebookOutlineMaxChars = 1500
+	defer func() { notebookOutlineMaxChars = old }()
+
+	out := readOutline(t, reg, ReadNotebookInput{NotebookID: "rel-notes"})
+	if !strings.Contains(out, "level=1") || !strings.Contains(out, "status=open") || !strings.Contains(out, "truncated") {
+		t.Fatalf("missing truncation notice:\n%s", out)
+	}
+	if len(out) > 1500+400 {
+		t.Fatalf("output not capped: %d", len(out))
+	}
+	body := out[:strings.Index(out, "\n[truncated")]
+	if !strings.HasSuffix(strings.TrimRight(body, "\n"), ")*") {
+		t.Fatalf("cut not at an entry boundary: %q", body[len(body)-40:])
+	}
+	notebookOutlineMaxChars = 1_000_000
+	if out := readOutline(t, reg, ReadNotebookInput{NotebookID: "rel-notes"}); strings.Contains(out, "truncated") {
+		t.Fatal("truncated under the cap")
 	}
 }

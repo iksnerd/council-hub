@@ -31,6 +31,8 @@ type EditNotebookInput struct {
 	RoomID string `json:"room_id"`
 	RefIDs string `json:"ref_ids"`
 	Prose  string `json:"prose"`
+	// ProseAppend (update only) is added to the existing label after one space.
+	ProseAppend string `json:"prose_append"`
 	// Task-only structured fields (add/update). Pointers so update can tell
 	// "not given" from "clear it" (empty string).
 	Due          *string `json:"due"`
@@ -72,6 +74,9 @@ func foreignArgs(args EditNotebookInput) string {
 				return fmt.Sprintf("Error: action=create takes notebook_id, project and title, not %s.", f.name)
 			}
 		}
+	}
+	if args.ProseAppend != "" && args.Action != "update" {
+		return fmt.Sprintf("Error: prose_append applies to action=update, not %s.", args.Action)
 	}
 	if !args.taskFields().Empty() && args.Action != "add" && args.Action != "update" {
 		return fmt.Sprintf("Error: due/owner/repo/room apply to action=add (kind=task) or update, not %s.", args.Action)
@@ -228,6 +233,9 @@ func (r *Registry) handleEditNotebook(ctx context.Context, req *mcp.CallToolRequ
 		return msg(fmt.Sprintf("Notebook '%s' restored with %d entries.", args.NotebookID, count))
 
 	case "add":
+		if args.NotebookID == "" && args.Kind == "task" {
+			args.NotebookID = "current-work"
+		}
 		if args.NotebookID == "" {
 			return msg("Error: notebook_id is required.")
 		}
@@ -359,7 +367,16 @@ func (r *Registry) handleEditNotebook(ctx context.Context, req *mcp.CallToolRequ
 		if args.EntryID == "" {
 			return msg("Error: entry_id is required.")
 		}
+		if args.Prose != "" && args.ProseAppend != "" {
+			return msg("Error: pass prose (replace) or prose_append (add to the end), not both.")
+		}
+		if err := r.resolveEntryInto(&args.EntryID); err != nil {
+			return msg(fmt.Sprintf("Error: %s", err.Error()))
+		}
 		if err := validateSize("prose", args.Prose, maxContentLen); err != nil {
+			return msg(fmt.Sprintf("Error: %s", err.Error()))
+		}
+		if err := validateSize("prose_append", args.ProseAppend, maxContentLen); err != nil {
 			return msg(fmt.Sprintf("Error: %s", err.Error()))
 		}
 		n := r.entryCount(r.notebookOf(args.NotebookID, args.EntryID))
@@ -367,7 +384,11 @@ func (r *Registry) handleEditNotebook(ctx context.Context, req *mcp.CallToolRequ
 		if e := checkTaskFields(tf); e != "" {
 			return msg(e)
 		}
-		if args.Prose == "" && !tf.Empty() {
+		if args.ProseAppend != "" {
+			if err := r.Server.AppendToOutlineEntry(args.EntryID, args.ProseAppend); err != nil {
+				return msg(fmt.Sprintf("Error: %s", err.Error()))
+			}
+		} else if args.Prose == "" && !tf.Empty() {
 			// Fields-only update: leave the label alone.
 		} else if err := r.Server.UpdateOutlineEntry(args.EntryID, args.Prose); err != nil {
 			return msg(fmt.Sprintf("Error: %s", err.Error()))
@@ -383,6 +404,9 @@ func (r *Registry) handleEditNotebook(ctx context.Context, req *mcp.CallToolRequ
 		if args.EntryID == "" {
 			return msg("Error: entry_id is required.")
 		}
+		if err := r.resolveEntryInto(&args.EntryID); err != nil {
+			return msg(fmt.Sprintf("Error: %s", err.Error()))
+		}
 		status := map[string]string{"start": "doing", "check": "done", "uncheck": "open"}[args.Action]
 		n := r.entryCount(r.notebookOf(args.NotebookID, args.EntryID))
 		if err := r.Server.SetTaskStatus(args.EntryID, status); err != nil {
@@ -395,6 +419,9 @@ func (r *Registry) handleEditNotebook(ctx context.Context, req *mcp.CallToolRequ
 		if args.EntryID == "" {
 			return msg("Error: entry_id is required.")
 		}
+		if err := r.resolveEntryInto(&args.EntryID); err != nil {
+			return msg(fmt.Sprintf("Error: %s", err.Error()))
+		}
 		nb := r.notebookOf(args.NotebookID, args.EntryID)
 		before := r.entryCount(nb)
 		if err := r.Server.RemoveOutlineEntry(args.EntryID); err != nil {
@@ -405,6 +432,9 @@ func (r *Registry) handleEditNotebook(ctx context.Context, req *mcp.CallToolRequ
 	case "move":
 		if args.EntryID == "" {
 			return msg("Error: entry_id is required.")
+		}
+		if err := r.resolveEntryInto(&args.EntryID); err != nil {
+			return msg(fmt.Sprintf("Error: %s", err.Error()))
 		}
 		n := r.entryCount(r.notebookOf(args.NotebookID, args.EntryID))
 		if err := r.Server.MoveOutlineEntry(args.EntryID, args.AfterEntryID); err != nil {
@@ -418,6 +448,37 @@ func (r *Registry) handleEditNotebook(ctx context.Context, req *mcp.CallToolRequ
 	default:
 		return msg(fmt.Sprintf("Error: unknown action '%s'. Valid actions: create, add, update, start, check, uncheck, remove, move, delete, restore, purge.", args.Action))
 	}
+}
+
+// resolveEntryInto expands a unique entry ID prefix to the full ID in place.
+func (r *Registry) resolveEntryInto(id *string) error {
+	full, err := r.Server.ResolveEntryID(*id)
+	if err != nil {
+		return err
+	}
+	*id = full
+	return nil
+}
+
+// notebookOutlineMaxChars caps a read_notebook outline result. Past it the
+// output is cut at an entry boundary and a notice says how to narrow the read.
+var notebookOutlineMaxChars = 60000
+
+// capOutline cuts text at the last complete entry (every entry ends with a
+// "*(entry ID)*" line) when it exceeds the cap; under the cap it is unchanged.
+func capOutline(text string) string {
+	if utf8.RuneCountInString(text) <= notebookOutlineMaxChars {
+		return text
+	}
+	cut := text
+	if len(cut) > notebookOutlineMaxChars {
+		cut = cut[:notebookOutlineMaxChars]
+	}
+	if i := strings.LastIndex(cut, ")*\n"); i >= 0 {
+		cut = cut[:i+3]
+	}
+	return fmt.Sprintf("%s\n[truncated: output passed %d characters; %d characters omitted. Retry with level=1 and status=open, or narrow with search, project or limit.]\n",
+		cut, notebookOutlineMaxChars, utf8.RuneCountInString(text)-utf8.RuneCountInString(cut))
 }
 
 // renderOutline serves read_notebook(notebook_id=...): the curated outline
@@ -441,7 +502,7 @@ func (r *Registry) renderOutline(notebookID string, level int, f council.Outline
 	if err != nil {
 		return textResult(fmt.Sprintf("Error: %s", err.Error()))
 	}
-	return textResult(text)
+	return textResult(capOutline(text))
 }
 
 // outlineText renders a notebook outline as markdown (also used for the
@@ -452,7 +513,7 @@ func (r *Registry) outlineText(notebookID string, level int, f council.OutlineFi
 	if err != nil {
 		return "", err
 	}
-	filtered := f.Status != "" || f.Project != "" || f.EntryID != "" || f.Limit > 0 || f.Owner != "" || f.Overdue
+	filtered := f.Status != "" || f.Project != "" || f.EntryID != "" || f.Limit > 0 || f.Owner != "" || f.Overdue || f.Search != ""
 
 	today := f.Today
 	if today == "" {

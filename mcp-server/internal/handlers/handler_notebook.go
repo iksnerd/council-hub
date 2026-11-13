@@ -24,6 +24,7 @@ type ReadNotebookInput struct {
 	EntryID     string     `json:"entry_id"`
 	Owner       string     `json:"owner"`
 	Overdue     StringBool `json:"overdue"`
+	Search      string     `json:"search"`
 	ClusterWide StringBool `json:"cluster_wide"`
 }
 
@@ -52,6 +53,13 @@ func (r *Registry) handleReadNotebook(ctx context.Context, req *mcp.CallToolRequ
 
 	// Curated outline mode — notebook_id takes precedence over project.
 	if args.NotebookID != "" || args.EntryID != "" {
+		if args.EntryID != "" {
+			full, err := r.Server.ResolveEntryID(args.EntryID)
+			if err != nil {
+				return msg(fmt.Sprintf("Error: %s", err.Error()))
+			}
+			args.EntryID = full
+		}
 		if args.EntryID != "" && args.NotebookID == "" {
 			nb, err := r.Server.EntryNotebookID(args.EntryID)
 			if err != nil {
@@ -80,6 +88,7 @@ func (r *Registry) handleReadNotebook(ctx context.Context, req *mcp.CallToolRequ
 			Limit:   limit,
 			Owner:   strings.TrimSpace(args.Owner),
 			Overdue: strings.EqualFold(string(args.Overdue), "true"),
+			Search:  strings.TrimSpace(args.Search),
 		})
 	}
 

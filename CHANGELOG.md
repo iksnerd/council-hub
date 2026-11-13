@@ -6,11 +6,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ## [Unreleased]
 
-### Fixed
-- **The Knowledge Linter no longer calls a room that waits on the owner `stale`.** A room with an open or doing notebook task whose `room` is that room and whose `owner` is `OWNER` (case-insensitive) gets no inactivity notice and no `stale` tag, and the sweep clears a `stale` flag set earlier. Rooms whose owner task is done, or whose open task has another owner, are flagged as before. Other flags are unchanged.
+### Added
+- **`read_notebook(search=...)`** keeps entries whose text contains the string (case-insensitive): a task's label, repo and room, a prose entry's text, a room_ref's id and topic. It combines with `status`, `project`, `owner` and `overdue`.
+- **`edit_notebook(action=update, prose_append=...)`** adds text to the end of a label after one space, so one sentence of a long task no longer needs the whole label resent. Mutually exclusive with `prose`.
 
 ### Changed
 - **`pin_message` no longer silently replaces another author's fresh pin.** It follows the rule `post_to_room(pin=true)` already had: if the room's current pin is by a different author than the message being pinned and is under 12 hours old, nothing is pinned, the reply (not an error) names the pin it kept, and `force=true` replaces it. Same author, a pin older than 12 hours, no existing pin, and unpinning behave as before. On a peer-owned room the owning node enforces the rule and `force` is forwarded; a peer on the previous release ignores both and replaces the pin as it did before.
+- **Entry IDs accept a unique prefix** in `read_notebook(entry_id)` and in `edit_notebook` update, start, check, uncheck, move and remove. An exact ID wins; an ambiguous prefix errors and lists the candidates.
+- **`edit_notebook(action=add, kind=task)` with no `notebook_id` defaults to `current-work`.** Other kinds still require it.
+- **A `read_notebook` outline over 60,000 characters is cut at an entry boundary** with a notice to retry with `level=1`, `status=open`, or `search`/`project`/`limit`.
+
+### Fixed
+- **The Knowledge Linter no longer calls a room that waits on the owner `stale`.** A room with an open or doing notebook task whose `room` is that room and whose `owner` is `OWNER` (case-insensitive) gets no inactivity notice and no `stale` tag, and the sweep clears a `stale` flag set earlier. Rooms whose owner task is done, or whose open task has another owner, are flagged as before. Other flags are unchanged.
 
 ## [0.65.0] - 2026-11-01
 

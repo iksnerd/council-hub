@@ -250,7 +250,7 @@ a missed one costs a clobbered commit.
 Build and maintain it:
 
 1. ` + "`edit_notebook(action=create, notebook_id=current-work, title=Current Work)`" + ` — no project = global
-2. ` + "`edit_notebook(action=add, notebook_id=current-work, kind=room_ref, ref_id=<room_id>)`" + ` — one entry per thread of work; or ` + "`kind=task, prose=<label>`" + ` for a lightweight checklist item (optionally with ` + "`due`" + `, ` + "`owner`" + `, ` + "`repo`" + ` and ` + "`room`" + `; ` + "`read_notebook(overdue=true)`" + ` lists the late ones)
+2. ` + "`edit_notebook(action=add, notebook_id=current-work, kind=room_ref, ref_id=<room_id>)`" + ` — one entry per thread of work; or ` + "`kind=task, prose=<label>`" + ` for a lightweight checklist item (optionally with ` + "`due`" + `, ` + "`owner`" + `, ` + "`repo`" + ` and ` + "`room`" + `; ` + "`read_notebook(overdue=true)`" + ` lists the late ones; ` + "`search=`" + ` filters by text; a task add with no ` + "`notebook_id`" + ` goes to current-work; entry ids accept a unique prefix; ` + "`update` + `prose_append`" + ` extends a label)
 3. ` + "`read_notebook(notebook_id=current-work)`" + ` — entries self-sort: room_refs grouped **In flight / Done** by room status, tasks grouped **In progress / Open / Done** by their own status
 4. Finishing work = ` + "`signal_status(room_id=…, status=resolved)`" + ` for a thread, or ` + "`edit_notebook(action=check, entry_id=…)`" + ` for a task — the item moves itself to Done; never hand-edit the list to mark things off. Use ` + "`action=start`" + ` to flag what you're actively on.
 
