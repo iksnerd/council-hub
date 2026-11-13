@@ -2,6 +2,8 @@ module council-hub
 
 go 1.25.1
 
+toolchain go1.27.4
+
 require (
 	github.com/asg017/sqlite-vec-go-bindings v0.1.6
 	github.com/google/uuid v1.6.0

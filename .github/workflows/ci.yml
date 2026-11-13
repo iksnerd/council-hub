@@ -24,7 +24,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v7
         with:
-          go-version: '1.25.x'
+          go-version: '1.27.x'
           cache-dependency-path: mcp-server/go.sum
 
       - name: Install dependencies
@@ -34,7 +34,7 @@ jobs:
         uses: golangci/golangci-lint-action@v9
         with:
           # Pinned: a new linter release must not fail a tag build, and tags cannot be moved.
-          version: v2.11.4
+          version: v2.15.0
           working-directory: mcp-server
 
       - name: Run Go tests
