@@ -95,6 +95,9 @@ func (r *Registry) handleReadNotebook(ctx context.Context, req *mcp.CallToolRequ
 	if args.Project == "" {
 		return msg("Error: project or notebook_id is required.")
 	}
+	if strings.TrimSpace(args.Search) != "" {
+		return msg("Error: search applies to a notebook (notebook_id=...), not the project timeline.")
+	}
 
 	types, err := parseNotebookTypes(args.Types)
 	if err != nil {

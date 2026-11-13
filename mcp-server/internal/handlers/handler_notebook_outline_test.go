@@ -725,6 +725,36 @@ func TestUpdateProseAppend(t *testing.T) {
 	}
 }
 
+func TestUpdateProseAppendRejectsCombinedOverflow(t *testing.T) {
+	reg, _ := setupOutlineHandler(t)
+	old := notebookOutlineMaxChars
+	notebookOutlineMaxChars = 1_000_000
+	defer func() { notebookOutlineMaxChars = old }()
+	base := strings.Repeat("a", maxContentLen-10)
+	id := mustAddEntry(t, reg, EditNotebookInput{NotebookID: "rel-notes", Kind: "task", Prose: base})
+	out := editNotebook(t, reg, EditNotebookInput{Action: "update", EntryID: id, ProseAppend: strings.Repeat("b", 50)})
+	if !strings.Contains(out, "Error") || !strings.Contains(out, "exceeds maximum length") {
+		t.Fatalf("combined overflow should be rejected: %.200s", out)
+	}
+	if got := readOutline(t, reg, ReadNotebookInput{EntryID: id}); strings.Contains(got, "bbbb") || !strings.Contains(got, base) {
+		t.Fatal("label changed despite rejection")
+	}
+}
+
+func TestCapOutlineKeepsValidUTF8(t *testing.T) {
+	old := notebookOutlineMaxChars
+	notebookOutlineMaxChars = 101
+	defer func() { notebookOutlineMaxChars = old }()
+	text := strings.Repeat("é", 150) // 300 bytes, 150 runes, no entry boundary
+	out := capOutline(text)
+	if !utf8.ValidString(out) {
+		t.Fatalf("capOutline produced invalid UTF-8: %q", out)
+	}
+	if !strings.Contains(out, "truncated") || !strings.Contains(out, "49 characters omitted") {
+		t.Fatalf("unexpected notice or count: %q", out)
+	}
+}
+
 func TestAddTaskDefaultsToCurrentWork(t *testing.T) {
 	reg, _ := setupOutlineHandler(t)
 	editNotebook(t, reg, EditNotebookInput{Action: "create", NotebookID: "current-work", Title: "Current work"})

@@ -485,9 +485,15 @@ func capOutline(text string) string {
 	if utf8.RuneCountInString(text) <= notebookOutlineMaxChars {
 		return text
 	}
+	// Cut on a rune boundary: the cap counts characters, not bytes.
 	cut := text
-	if len(cut) > notebookOutlineMaxChars {
-		cut = cut[:notebookOutlineMaxChars]
+	n := 0
+	for i := range text {
+		if n == notebookOutlineMaxChars {
+			cut = text[:i]
+			break
+		}
+		n++
 	}
 	if i := strings.LastIndex(cut, ")*\n"); i >= 0 {
 		cut = cut[:i+3]

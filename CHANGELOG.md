@@ -17,6 +17,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 - **A `read_notebook` outline over 60,000 characters is cut at an entry boundary** with a notice to retry with `level=1`, `status=open`, or `search`/`project`/`limit`.
 
 ### Fixed
+- **`edit_notebook(action=update, prose_append=...)` rejects an append that would push the label past the content limit**, not only an append that is itself too long. Nothing is written on rejection.
+- **A `read_notebook` outline cut at the size cap no longer splits a multi-byte character.** The cut is on a rune boundary and the omitted count is in characters; an entry boundary is still preferred.
+- **`read_notebook(project=..., search=...)` without a notebook returns an error** instead of silently ignoring `search` on the project timeline.
 - **The Knowledge Linter no longer calls a room with live work `stale`.** A room that an open or doing notebook task points at, through the task's `room` field or by naming the whole room id in its text, gets no inactivity notice and no `stale` tag, whoever owns the task; the sweep clears a `stale` flag set earlier. A done task, or one in a deleted notebook, counts for nothing, and `ctx-spec` does not keep the room `ctx` alive. Idle rooms nothing points at are still flagged: pause or resolve them. Other flags are unchanged.
 
 ## [0.65.0] - 2026-11-01

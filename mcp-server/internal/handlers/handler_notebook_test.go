@@ -63,6 +63,15 @@ func TestHandleReadNotebookMissingProject(t *testing.T) {
 	}
 }
 
+func TestHandleReadNotebookTimelineRejectsSearch(t *testing.T) {
+	reg := setupHandlerTest(t)
+
+	res, _, _ := reg.handleReadNotebook(context.Background(), nil, ReadNotebookInput{Project: "p", Search: "x"})
+	if !strings.Contains(resultText(res), "search applies to a notebook") {
+		t.Errorf("expected search-on-timeline error, got %q", resultText(res))
+	}
+}
+
 func TestHandleReadNotebookUnknownProject(t *testing.T) {
 	reg := setupHandlerTest(t)
 

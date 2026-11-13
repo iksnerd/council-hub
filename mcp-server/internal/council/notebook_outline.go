@@ -417,6 +417,9 @@ func (s *Server) ResolveEntryID(idOrPrefix string) (string, error) {
 	return "", fmt.Errorf("entry prefix '%s' is ambiguous: matches %s", idOrPrefix, strings.Join(ids, ", "))
 }
 
+// MaxOutlineLabelLen caps an entry label (bytes); the handlers' content limit.
+const MaxOutlineLabelLen = 100_000
+
 // AppendToOutlineEntry appends text to a prose or task entry, joined to the
 // existing text by a single space.
 func (s *Server) AppendToOutlineEntry(entryID, text string) error {
@@ -433,7 +436,11 @@ func (s *Server) AppendToOutlineEntry(entryID, text string) error {
 	if err != nil {
 		return err
 	}
-	return s.UpdateOutlineEntry(entryID, strings.TrimRight(prose, " \n")+" "+strings.TrimSpace(text))
+	combined := strings.TrimRight(prose, " \n") + " " + strings.TrimSpace(text)
+	if len(combined) > MaxOutlineLabelLen {
+		return fmt.Errorf("prose_append exceeds maximum length (combined label would be %d chars, limit %d)", len(combined), MaxOutlineLabelLen)
+	}
+	return s.UpdateOutlineEntry(entryID, combined)
 }
 
 // EntryNotebookID returns the notebook an entry belongs to.
