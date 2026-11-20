@@ -33,5 +33,8 @@ defmodule CouncilHubUi.Council.Message do
     # Derived: explicit typed links touching this message (from message_links).
     # Each entry is %{relation: ..., other_id: ..., direction: :out | :in}.
     field :links, {:array, :map}, virtual: true, default: []
+    # Derived: mention receipts [{agent, acked_at}] from mention_acks; nil = not
+    # loaded or table missing (older Go server), so no seen/pending claim is made.
+    field :mention_receipts, {:array, :any}, virtual: true, default: nil
   end
 end

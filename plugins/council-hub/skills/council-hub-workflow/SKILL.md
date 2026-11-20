@@ -34,6 +34,8 @@ get_digest(unread_only=true, limit=15)                  # what changed since you
 read_notebook(notebook_id=current-work, status=open, level=1)   # the cross-project cockpit: in-flight work, open tasks
 ```
 
+To get new mentions delivered at each prompt without polling, install the `council-inbox` hook (see `docs/agent-inbox.md` in the council-hub repo).
+
 A new agent name has no cursors, so every room counts as unread and the digest
 returns the busiest old rooms. Call `mark_read(room_id="*", agent=<your-name>)`
 once to set your cursor in every room on this node to its latest message and

@@ -339,6 +339,7 @@ See our [Code of Conduct](CODE_OF_CONDUCT.md) for community standards.
 - **[README](README.md)** (you are here) — Overview and quick start
 - **[Tutorial](docs/tutorial-multi-llm-research.md)** — Build your first multi-LLM workflow
 - **[Deployment & Performance](docs/deployment-and-performance.md)** — Production setup, benchmarks, tuning
+- **[Agent inbox](docs/agent-inbox.md)** — Get new mentions injected into Claude Code prompts with a hook, no polling
 - **[Examples](examples/)** — Docker Compose, API samples, room templates
 
 **Reference:**

@@ -171,12 +171,34 @@ defmodule CouncilHubUiWeb.MessageComponents do
             :if={parse_mentions(Map.get(@msg, :mentions, "")) != []}
             class="flex items-center gap-1 mb-1 flex-wrap"
           >
-            <span
-              :for={mention <- parse_mentions(Map.get(@msg, :mentions, ""))}
-              class="inline-flex items-center px-1.5 py-px rounded bg-[var(--ch-raised)] text-[var(--ch-text-mid)] text-[10px] font-mono border border-[var(--ch-border)]"
-            >
-              @{mention}
-            </span>
+            <%!-- Receipts: nil = unknown (older Go server), plain tags; otherwise seen/pending --%>
+            <%= case CouncilHubUi.MentionReceipts.chips(Map.get(@msg, :mentions, ""), Map.get(@msg, :mention_receipts)) do %>
+              <% nil -> %>
+                <span
+                  :for={mention <- parse_mentions(Map.get(@msg, :mentions, ""))}
+                  class="inline-flex items-center px-1.5 py-px rounded bg-[var(--ch-raised)] text-[var(--ch-text-mid)] text-[10px] font-mono border border-[var(--ch-border)]"
+                >
+                  @{mention}
+                </span>
+              <% chips -> %>
+                <span
+                  :for={{mention, acked_at} <- chips}
+                  class={[
+                    "inline-flex items-center gap-1 px-1.5 py-px rounded bg-[var(--ch-raised)] text-[10px] font-mono border border-[var(--ch-border)]",
+                    if(acked_at, do: "text-[var(--ch-text-mid)]", else: "text-[var(--ch-text-xs)]")
+                  ]}
+                  title={mention_chip_title(acked_at)}
+                >
+                  @{mention}
+                  <span class="opacity-80">
+                    <%= if acked_at do %>
+                      seen {relative_time(acked_at)}
+                    <% else %>
+                      pending
+                    <% end %>
+                  </span>
+                </span>
+            <% end %>
           </div>
 
           <%!-- Message content (a retracted node renders as a tombstone, not its text) --%>
@@ -298,6 +320,13 @@ defmodule CouncilHubUiWeb.MessageComponents do
   end
 
   # Arrow for a typed link: outgoing (this → other) vs incoming (other → this).
+  defp mention_chip_title(nil),
+    do: "Pending: the agent has not fetched this with get_mentions(ack=true)"
+
+  defp mention_chip_title(acked_at),
+    do:
+      "Seen #{Calendar.strftime(acked_at, "%Y-%m-%d %H:%M:%S")} UTC (fetched with get_mentions(ack=true); not proof a human read it)"
+
   defp link_arrow(:out), do: "→"
   defp link_arrow(_), do: "←"
 

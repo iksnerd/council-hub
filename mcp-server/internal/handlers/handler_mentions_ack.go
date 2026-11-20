@@ -105,7 +105,11 @@ func (r *Registry) handleGetMentionsAck(args GetMentionsInput, limit int) (*mcp.
 			fmt.Fprintf(&b, "- **#%s** %s[%s] %s in **%s**: %s\n", m.ID, node, m.Timestamp, m.Author, m.RoomID, excerpt)
 		}
 		newest := items[len(items)-1].ID
-		if err := r.Server.AdvanceMentionCursor(args.Author, newest); err != nil {
+		ids := make([]string, len(items))
+		for i, m := range items {
+			ids[i] = m.ID
+		}
+		if err := r.Server.AckMentions(args.Author, ids); err != nil {
 			return nil, ToolOutput{}, err
 		}
 		fmt.Fprintf(&b, "\nMention cursor for @%s advanced to #%s.", args.Author, newest)

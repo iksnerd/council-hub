@@ -3,6 +3,7 @@ package council
 import (
 	"database/sql"
 	"strings"
+	"time"
 )
 
 // mentionAgentKey normalizes an agent name for the mention cursor.
@@ -47,6 +48,62 @@ func (s *Server) AdvanceMentionCursor(agent, messageID string) error {
 			updated_at = CURRENT_TIMESTAMP
 		WHERE excluded.cursor_message_id > mention_cursors.cursor_message_id
 	`, mentionAgentKey(agent), messageID)
+	return err
+}
+
+// AckMentions records a delivery receipt for each id and advances the agent's
+// mention cursor to the newest of them, in one transaction. Receipts use
+// INSERT OR IGNORE, so a re-ack keeps the first acked_at. Ids from cluster
+// peers are stored too (ids are globally unique); the rows are node-local.
+func (s *Server) AckMentions(agent string, ids []string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	key := mentionAgentKey(agent)
+	newest := ids[0]
+	for _, id := range ids {
+		if id > newest {
+			newest = id
+		}
+	}
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+	tx, err := s.DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, id := range ids {
+		if _, err := tx.Exec(`INSERT OR IGNORE INTO mention_acks (agent, message_id, acked_at) VALUES (?, ?, CURRENT_TIMESTAMP)`, key, id); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.Exec(`
+		INSERT INTO mention_cursors (agent, cursor_message_id, updated_at)
+		VALUES (?, ?, CURRENT_TIMESTAMP)
+		ON CONFLICT(agent) DO UPDATE SET
+			cursor_message_id = excluded.cursor_message_id,
+			updated_at = CURRENT_TIMESTAMP
+		WHERE excluded.cursor_message_id > mention_cursors.cursor_message_id
+	`, key, newest); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// RecordAgentSeen upserts the agent's last-seen row (name normalised like the
+// mention cursor key). Empty names are ignored.
+func (s *Server) RecordAgentSeen(agent, tool string, at time.Time) error {
+	key := mentionAgentKey(agent)
+	if key == "" {
+		return nil
+	}
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+	_, err := s.DB.Exec(`
+		INSERT INTO agent_seen (agent, last_seen_at, last_tool) VALUES (?, ?, ?)
+		ON CONFLICT(agent) DO UPDATE SET last_seen_at = excluded.last_seen_at, last_tool = excluded.last_tool
+	`, key, at.UTC().Format("2006-01-02 15:04:05"), tool)
 	return err
 }
 

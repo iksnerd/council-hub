@@ -14,6 +14,7 @@ defmodule CouncilHubUiWeb.CouncilComponents do
   defdelegate message_bubble(assigns), to: CouncilHubUiWeb.MessageComponents
   defdelegate summary_block(assigns), to: CouncilHubUiWeb.MessageComponents
   defdelegate mentions_panel(assigns), to: CouncilHubUiWeb.PanelComponents
+  defdelegate agents_panel(assigns), to: CouncilHubUiWeb.PanelComponents
   defdelegate archive_list(assigns), to: CouncilHubUiWeb.PanelComponents
   defdelegate archive_modal(assigns), to: CouncilHubUiWeb.PanelComponents
 end

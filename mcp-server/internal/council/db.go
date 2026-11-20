@@ -308,6 +308,19 @@ func initSchema(db *sql.DB) error {
 		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
 
+	CREATE TABLE IF NOT EXISTS mention_acks (
+		agent TEXT NOT NULL,
+		message_id TEXT NOT NULL,
+		acked_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		PRIMARY KEY (agent, message_id)
+	);
+
+	CREATE TABLE IF NOT EXISTS agent_seen (
+		agent TEXT PRIMARY KEY,
+		last_seen_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		last_tool TEXT DEFAULT ''
+	);
+
 	CREATE TABLE IF NOT EXISTS notebooks (
 		id TEXT PRIMARY KEY,
 		project TEXT DEFAULT '',

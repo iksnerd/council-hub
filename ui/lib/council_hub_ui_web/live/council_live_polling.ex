@@ -80,6 +80,37 @@ defmodule CouncilHubUiWeb.CouncilLivePolling do
     ids
     |> Council.get_messages_mutable_state()
     |> Enum.reduce(socket, &apply_mutation(&2, &1))
+    |> refresh_receipts()
+  end
+
+  # Receipts live in a separate table, so a new "seen" never shows up as a change
+  # to the message row. One batched query over the displayed messages that carry
+  # mentions; only rows whose receipts changed are re-inserted. A missing table
+  # (older Go server) is :unavailable and leaves everything as is.
+  defp refresh_receipts(%{assigns: %{msg_state: msg_state}} = socket) do
+    ids =
+      for {id, m} <- msg_state, m.mentions not in [nil, ""], do: id
+
+    case CouncilHubUi.MentionReceipts.lookup(ids) do
+      {:ok, by_id} ->
+        Enum.reduce(ids, socket, fn id, sock ->
+          old = Map.fetch!(sock.assigns.msg_state, id)
+          fresh = by_id |> Map.get(id, []) |> Enum.sort()
+
+          if old.mention_receipts != nil and Enum.sort(old.mention_receipts) == fresh do
+            sock
+          else
+            merged = %{old | mention_receipts: fresh}
+
+            sock
+            |> stream_insert(:messages, merged)
+            |> assign(msg_state: Map.put(sock.assigns.msg_state, id, merged))
+          end
+        end)
+
+      :unavailable ->
+        socket
+    end
   end
 
   defp apply_mutation(socket, fresh) do

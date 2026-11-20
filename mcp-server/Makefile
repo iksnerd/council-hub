@@ -11,6 +11,11 @@ build: ## Build the binary
 	CGO_ENABLED=1 go build -tags sqlite_fts5 -o $(BUILD_DIR)/$(BINARY) .
 	@echo "Built: $(BUILD_DIR)/$(BINARY)"
 
+build-inbox: ## Build the council-inbox CLI (no CGO needed)
+	@mkdir -p $(BUILD_DIR)
+	CGO_ENABLED=0 go build -o $(BUILD_DIR)/council-inbox ./cmd/council-inbox
+	@echo "Built: $(BUILD_DIR)/council-inbox"
+
 test: ## Run tests
 	CGO_ENABLED=1 go test -tags sqlite_fts5 -v -count=1 ./...
 fmt: ## Format code

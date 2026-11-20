@@ -19,6 +19,7 @@ defmodule CouncilHubUi.CouncilMessages do
     Repo.all(from m in base, order_by: [desc: m.pinned, asc: m.id])
     |> MessageAnnotations.annotate_superseded_by()
     |> MessageAnnotations.annotate_links()
+    |> CouncilHubUi.MentionReceipts.annotate()
   end
 
   def get_messages_since(room_id, last_id, type_filter \\ "all") do
@@ -33,6 +34,7 @@ defmodule CouncilHubUi.CouncilMessages do
     Repo.all(from m in base, order_by: [asc: m.id])
     |> MessageAnnotations.annotate_superseded_by()
     |> MessageAnnotations.annotate_links()
+    |> CouncilHubUi.MentionReceipts.annotate()
   end
 
   def search_messages_in_room(room_id, query, type_filter \\ "all")

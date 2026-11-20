@@ -221,6 +221,7 @@ type Registry struct {
 	ClusterSecret string       // shared secret (RELEASE_COOKIE) authenticating cross-node write proxies
 
 	usage *usageCounter // tool-call counter (usage.go)
+	seen  *agentSeen    // per-agent last-seen recorder (agent_seen.go)
 
 	nodeMu     sync.Mutex // guards the cached cluster node count (see clusterNodeCount)
 	nodeAt     time.Time

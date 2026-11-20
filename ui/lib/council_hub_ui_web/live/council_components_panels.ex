@@ -3,6 +3,37 @@ defmodule CouncilHubUiWeb.PanelComponents do
 
   use Phoenix.Component
 
+  attr :agents, :list, required: true
+
+  @doc "Agents seen in the last 24h (agent_seen), newest first. Renders nothing when empty."
+  def agents_panel(assigns) do
+    ~H"""
+    <div :if={@agents != []} id="agents-panel" class="px-3 py-2 border-t border-[var(--ch-border)]">
+      <div class="flex items-center gap-1.5 mb-1.5">
+        <span
+          class="text-[10px] font-medium text-[var(--ch-text-lo)] uppercase tracking-[0.12em]"
+          title="Agents that made a tool call on this node in the last 24h. Not a liveness check."
+        >
+          Agents
+        </span>
+      </div>
+      <div class="space-y-px max-h-40 overflow-y-auto">
+        <div
+          :for={a <- @agents}
+          class="flex items-center gap-1.5 px-2 py-0.5 text-[11px]"
+          title={"Last tool call #{Calendar.strftime(a.last_seen_at, "%Y-%m-%d %H:%M:%S")} UTC"}
+        >
+          <span class="text-[var(--ch-text-hi)] font-medium truncate">{a.agent}</span>
+          <span class="text-[var(--ch-text-xs)] font-mono truncate">{a.last_tool}</span>
+          <span class="ml-auto text-[10px] text-[var(--ch-text-xs)] font-mono shrink-0">
+            {CouncilHubUiWeb.CouncilHelpers.relative_time(a.last_seen_at)}
+          </span>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
   attr :mentions, :list, required: true
 
   def mentions_panel(assigns) do

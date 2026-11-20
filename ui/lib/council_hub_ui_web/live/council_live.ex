@@ -66,6 +66,7 @@ defmodule CouncilHubUiWeb.CouncilLive do
        editing_tags: false,
        tag_input: "",
        mentions: [],
+       agents: if(connected?(socket), do: CouncilHubUi.AgentPresence.recent(), else: []),
        mention_author: System.get_env("COUNCIL_AUTHOR", "claude-code"),
        archives: [],
        active_archive: nil,
@@ -161,7 +162,7 @@ defmodule CouncilHubUiWeb.CouncilLive do
         _ -> socket.assigns.mentions
       end
 
-    {:noreply, assign(socket, mentions: mentions)}
+    {:noreply, assign(socket, mentions: mentions, agents: CouncilHubUi.AgentPresence.recent())}
   end
 
   def handle_info(:poll_archives, socket) do
