@@ -41,7 +41,7 @@ It shows on `/health` as `tool_usage` (top 10 by calls, `never_called`, `countin
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `RELEASE_COOKIE` | `council` | Shared secret — must match on all nodes; also authenticates cross-node write proxies |
+| `RELEASE_COOKIE` | `council` | Shared secret — must match on all nodes; also authenticates cross-node write proxies. The default is public. `/health` reports `cookie_is_default` (a boolean, never the cookie), and `/status` warns when the default is in use while clustering is. The same default applies under `docker run`, `docker compose` and `make docker-run`, so moving a node between them does not change its cookie |
 | `RELEASE_NODE` | `council_hub@127.0.0.1` | Unique node name with reachable IP |
 | `COUNCIL_SEEDS` | — | Peers to connect to — bare IPs (`192.168.0.5`), hostnames (`bob`, MagicDNS), or full `node@ip`. Resolved via `:3001/health`. Omit for LAN auto-discovery. |
 | `COUNCIL_NO_DISCOVER` | `0` | Set to `1` to skip the LAN subnet scan on startup (useful on VPN where scanning is unnecessary) |
@@ -51,4 +51,4 @@ It shows on `/health` as `tool_usage` (top 10 by calls, `never_called`, `countin
 | `COUNCIL_NODE_DRIFT_CHECK` | — | `1` watches for `RELEASE_NODE` going stale after a DHCP change. Only meaningful with `--network host`; under bridge networking the container cannot see the host's address. Enabled automatically when the entrypoint auto-detects the node name |
 | `COUNCIL_NODE_AUTODETECTED` | — | **Set by `entrypoint.sh`, not by hand.** Exported when the entrypoint derived `RELEASE_NODE` from the container's own default route. It is what makes the node-identity drift check meaningful: the name and the later measurement then come from the same network namespace. Listed here because it shows up in `docker inspect` and in drift-check debugging, not because you should set it. |
 
-**`make docker-run` and the cluster ports.** The repo Makefile publishes `4369`/`9000` to `CLUSTER_BIND`: your LAN IP while `COOKIE` is the public default `council`, all interfaces once you set your own cookie. Binding to one IP breaks after a DHCP change (the container fails to start), and binding to all interfaces with a public cookie exposes code execution. Override with `CLUSTER_BIND=<ip>`.
+**`make docker-run` and the cluster ports.** The repo Makefile publishes `4369`/`9000` to `CLUSTER_BIND`: your LAN IP while `COOKIE` is the public default `council`, all interfaces once you set your own cookie. Binding to one IP breaks after a DHCP change (the container fails to start), and binding to all interfaces with a public cookie exposes code execution. Override with `CLUSTER_BIND=<ip>`. A non-default cookie is also the way out of the stale pinned-IP failure: the ports then bind to all interfaces, so a DHCP change (say `10.0.0.5` to `10.0.0.9`) no longer leaves the container listening on an address nothing holds.

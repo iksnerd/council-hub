@@ -11,7 +11,7 @@ services:
     environment:
       - COUNCIL_TRANSPORT=http
       # Shared cluster secret — all nodes must use the same value
-      - RELEASE_COOKIE=${COUNCIL_COOKIE:-council_secret_cookie}
+      - RELEASE_COOKIE=${COUNCIL_COOKIE:-council}
       # Must include a reachable LAN IP, e.g. council_hub@192.168.1.10
       # The entrypoint will auto-detect if left as the loopback default,
       # but setting it explicitly is recommended for stable clustering.

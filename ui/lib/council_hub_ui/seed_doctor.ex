@@ -14,13 +14,14 @@ defmodule CouncilHubUi.SeedDoctor do
   @doc """
   Classify each configured seed. Returns [] when there is nothing to diagnose.
   """
-  def check(seeds, peers, probe) when is_function(probe, 1) do
+  def check(seeds, peers, probe, rejected_hosts \\ []) when is_function(probe, 1) do
     # A cluster with any peer connected is not the failure this looks for, and
     # a healthy node must not issue a probe every tick for the rest of its life.
     if peers == [] do
       seeds
       |> seed_hosts()
       |> Enum.map(&classify(&1, probe))
+      |> Enum.map(&apply_rejection(&1, rejected_hosts))
     else
       []
     end
@@ -62,6 +63,19 @@ defmodule CouncilHubUi.SeedDoctor do
     end
   end
 
+  # A bad-cookie rejection logged by this node's own BEAM is direct evidence,
+  # which beats the HTTP probe's guess. A stale name is left alone: that peer is
+  # undialable under any name, so its cookie is not the first thing to fix.
+  defp apply_rejection(%{status: :stale_name} = finding, _rejected), do: finding
+
+  defp apply_rejection(finding, rejected) do
+    if finding.host in rejected do
+      finding(finding.seed, finding.host, finding.reported_node, :cookie_mismatch)
+    else
+      finding
+    end
+  end
+
   defp finding(seed, host, reported, status) do
     %{
       seed: seed,
@@ -76,6 +90,11 @@ defmodule CouncilHubUi.SeedDoctor do
     "seed #{host} is up but reports node #{reported}, an address it does not hold. " <>
       "That node is undialable under any name until it is restarted with a RELEASE_NODE " <>
       "matching #{host}"
+  end
+
+  defp message(host, _reported, :cookie_mismatch) do
+    "seed #{host} tried to connect and was rejected for a different cookie. Set " <>
+      "RELEASE_COOKIE to the same value on both nodes"
   end
 
   defp message(host, reported, :undialable) do
@@ -135,10 +154,11 @@ defmodule CouncilHubUi.SeedDoctor do
     "no cluster peers connected. #{detail}"
   end
 
-  defp order(:stale_name), do: 0
-  defp order(:undialable), do: 1
-  defp order(:no_node_name), do: 2
-  defp order(_), do: 3
+  defp order(:cookie_mismatch), do: 0
+  defp order(:stale_name), do: 1
+  defp order(:undialable), do: 2
+  defp order(:no_node_name), do: 3
+  defp order(_), do: 4
 
   defp parse_node(body) do
     case Jason.decode(to_string(body)) do

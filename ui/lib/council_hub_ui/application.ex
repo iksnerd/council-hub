@@ -9,6 +9,9 @@ defmodule CouncilHubUi.Application do
   def start(_type, _args) do
     topologies = Application.get_env(:libcluster, :topologies) || []
 
+    # Notices inbound bad-cookie rejections so /health can say "cookie_mismatch".
+    CouncilHubUi.CookieWatch.install()
+
     children = [
       CouncilHubUiWeb.Telemetry,
       CouncilHubUi.Repo,

@@ -63,7 +63,7 @@ newcomers instant context at the top of every future read.
 ## Session Start (run in order)
 
 0. ` + "`read_notebook(notebook_id=current-work, status=open, level=1)`" + ` — the cross-project cockpit: what's open everywhere (add ` + "`project=`" + ` to keep one project's items; ` + "`entry_id=`" + ` reads one entry in full)
-1. ` + "`get_mentions(author=<your-name>)`" + ` — check if any threads await your input before anything else
+1. ` + "`get_mentions(author=<your-name>, ack=true)`" + ` — check if any threads await your input before anything else; ` + "`ack=true`" + ` returns only mentions newer than your mention cursor and advances it, so handled ones are not re-read (plain call shows all)
 2. ` + "`get_digest(unread_only=true, limit=15)`" + ` — see what changed across all rooms; ` + "`brief=true`" + ` gives one line per room, ` + "`limit=all`" + ` lifts the cap; note latest_message_id per room
 3. ` + "`read_transcript(mode=summary)`" + ` — orient in specific rooms before diving in (` + "`read_room`" + ` also folds in the pin + latest-per-type)
 
@@ -142,6 +142,8 @@ Use **after_id** to read only new messages since your last visit:
 Persist your position across sessions so ` + "`get_digest`" + ` only shows what's new:
 1. After reading: ` + "`mark_read(room_id=…, cursor=<latest_message_id>, agent=<your-name>)`" + `
 2. Next session: ` + "`get_digest(unread_only=true, agent=<your-name>)`" + ` — returns only rooms with new activity
+
+A new agent name has no cursors, so every room looks unread. Call ` + "`mark_read(room_id=\"*\", agent=<your-name>)`" + ` once to set your cursor in every room on this node to its latest message and start from now (no ` + "`cursor`" + `; node-local).
 
 ## Synthesis Pattern
 

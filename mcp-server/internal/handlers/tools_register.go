@@ -340,12 +340,13 @@ func (r *Registry) RegisterTools() {
 	mcp.AddTool(r.Server.MCP, &mcp.Tool{
 		Name:        "get_mentions",
 		Title:       "Get mentions",
-		Description: "Find messages mentioning an agent. The match is a case-insensitive SUBSTRING of the mentions list, not an exact agent match, so a name that is a prefix of another ('claude' vs 'claude-code') returns both, and a name spelled differently from how it was mentioned ('gemini-cli' vs 'Gemini CLI') returns neither. Use one stable, distinctive author name per agent. Call this at session start to check if any threads await your input before running get_digest. Returns recent messages where the agent was mentioned via the mentions param in post_to_room, ordered newest-first. Pass project to scope mentions to one project's rooms — mirrors get_digest(project) so the session-start pair stays consistent.",
+		Description: "Find messages mentioning an agent. The match is a case-insensitive SUBSTRING of the mentions list, not an exact agent match, so a name that is a prefix of another ('claude' vs 'claude-code') returns both, and a name spelled differently from how it was mentioned ('gemini-cli' vs 'Gemini CLI') returns neither. Use one stable, distinctive author name per agent. Call this at session start to check if any threads await your input before running get_digest. Returns recent messages where the agent was mentioned via the mentions param in post_to_room, ordered newest-first. Pass project to scope mentions to one project's rooms — mirrors get_digest(project) so the session-start pair stays consistent. Without ack the same old mentions come back on every call; at session start pass ack=true so only mentions newer than your stored mention cursor are returned and the cursor then advances.",
 		InputSchema: schema([]string{"author"}, map[string]map[string]any{
 			"author":       prop("string", "Agent name to search mentions for (e.g. 'claude', 'gemini-cli'). Matched as a case-insensitive substring, so keep it stable and distinctive — read cursors (mark_read) key off the same string, and changing it replays your whole backlog"),
 			"project":      prop("string", "Optionally scope mentions to rooms in this project (slug-normalized, same as get_digest)"),
 			"cluster_wide": prop("boolean", "'true' also searches mentions on all cluster nodes. Default: cluster-wide when peers are connected (COUNCIL_CLUSTER_READS=local turns that off); 'false' forces this node only and the reply then ends with a 'local node only; N nodes in the cluster' line."),
 			"limit":        intMax("Max results to return (default 20, max 100)", 100),
+			"ack":          prop("boolean", "'true' returns only mentions newer than this agent's mention cursor (per author name, case-insensitive, global across rooms), then advances the cursor to the newest id returned; the reply says how many older mentions the cursor hid. With a limit, the OLDEST unseen mentions come first so none is skipped; call again for the rest. Cluster-wide calls apply the cursor to the merged result. Default false: every matching mention, cursor untouched."),
 		}),
 	}, plainTool(r.handleGetMentions))
 
@@ -353,10 +354,11 @@ func (r *Registry) RegisterTools() {
 		Name:  "mark_read",
 		Title: "Mark read",
 		Description: "Persist a read cursor for this agent in a room. After reading a room's messages, call mark_read with the latest message ID — then use get_digest(unread_only=true) on your next session to see only what changed since you last looked. " +
-			"Cursors are stored per agent per room, so multiple agents can track their own positions independently.",
-		InputSchema: schema([]string{"room_id", "cursor"}, map[string]map[string]any{
-			"room_id": prop("string", "Room to mark as read"),
-			"cursor":  prop("string", "ID of the last message you have read (from latest_message_id in any tool response)"),
+			"Cursors are stored per agent per room, so multiple agents can track their own positions independently. " +
+			"A new agent name has no cursors, so every room counts as unread: call mark_read(room_id=\"*\", agent=<name>) once to set your cursor in every room on this node to its latest message and start from now (node-local; no cursor param).",
+		InputSchema: schema([]string{"room_id"}, map[string]map[string]any{
+			"room_id": prop("string", "Room to mark as read, or \"*\" for every room on this node (each set to its latest message at call time)"),
+			"cursor":  prop("string", "ID of the last message you have read (from latest_message_id in any tool response). Required for a single room; not allowed with room_id=\"*\"."),
 			"agent":   prop("string", "Your agent name — used to namespace cursors across agents. Defaults to 'default' if omitted."),
 		}),
 	}, plainTool(r.handleMarkRead))

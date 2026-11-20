@@ -178,6 +178,7 @@ defmodule CouncilHubUi.ClusterManager do
       seed_probe: Keyword.get(opts, :seed_probe, &SeedDoctor.probe/1),
       seed_probe_interval: Keyword.get(opts, :seed_probe_interval, @seed_probe_interval),
       seed_findings: [],
+      cookie_rejections: %{},
       seed_checked_at: nil,
       seed_warned: MapSet.new(),
       last_seed_probe: nil,
@@ -309,6 +310,14 @@ defmodule CouncilHubUi.ClusterManager do
   end
 
   @impl true
+  def handle_info({:cookie_rejected, node}, state) do
+    # Logged by CookieWatch when a peer dials us with a different cookie. Keep
+    # only the host and when, so SeedDoctor can name the seed on its next round.
+    host = CouncilHubUiWeb.CouncilHelpers.node_host(node)
+    {:noreply, put_in(state.cookie_rejections[host], monotonic_ms())}
+  end
+
+  @impl true
   def handle_info({:seed_status, findings}, state) do
     # An outage lasts as long as it lasts; the log line about it should not
     # repeat every probe round. Say each distinct finding once, and let
@@ -366,6 +375,7 @@ defmodule CouncilHubUi.ClusterManager do
           | seed_findings: [],
             seed_checked_at: nil,
             seed_warned: MapSet.new(),
+            cookie_rejections: %{},
             last_seed_probe: nil
         }
 
@@ -378,9 +388,10 @@ defmodule CouncilHubUi.ClusterManager do
       true ->
         manager = self()
         %{seeds: seeds, seed_probe: probe} = state
+        rejected = recent_cookie_rejections(state)
 
         Task.start(fn ->
-          send(manager, {:seed_status, SeedDoctor.check(seeds, Node.list(), probe)})
+          send(manager, {:seed_status, SeedDoctor.check(seeds, Node.list(), probe, rejected)})
         end)
 
         %{state | last_seed_probe: monotonic_ms()}
@@ -408,6 +419,16 @@ defmodule CouncilHubUi.ClusterManager do
 
   defp advertised_cooling_down?(state),
     do: monotonic_ms() - state.last_advertised_probe < state.seed_probe_interval
+
+  # A rejection stays relevant for a few minutes: the peer retries about every
+  # reconnect tick, so a fixed cookie stops refreshing it and it ages out.
+  @cookie_rejection_ttl :timer.minutes(5)
+
+  defp recent_cookie_rejections(state) do
+    now = monotonic_ms()
+
+    for {host, at} <- state.cookie_rejections, now - at < @cookie_rejection_ttl, do: host
+  end
 
   defp seed_probe_cooling_down?(%{last_seed_probe: nil}), do: false
 

@@ -266,7 +266,7 @@ networks:
 
 The fix is to stop the address moving: add a DHCP reservation for each machine on the router, or configure a static IP, before you set `RELEASE_NODE`. Gossip discovery (`COUNCIL_GOSSIP`, on by default) can re-form a link after a move on a network where multicast reaches, but a bridged container or most VPNs block it, so treat it as a safety net. On a tailnet, use the MagicDNS name instead of an IP (see [clustering over Tailscale](clustering-tailscale.md)).
 
-If you suspect drift, `curl -s localhost:3001/health` on each node reports `node_identity_warning`, `advertised_warning` and `seed_warning` with the remedy for each case; the [troubleshooting section of the Tailscale guide](clustering-tailscale.md#troubleshooting) explains how to read them. After changing an address, restart the container so it picks up the new `RELEASE_NODE`.
+If you suspect drift, `curl -s localhost:3001/health` on each node reports `node_identity_warning`, `advertised_warning` and `seed_warning` with the remedy for each case; the [troubleshooting section of the Tailscale guide](clustering-tailscale.md#troubleshooting) explains how to read them. After changing an address, restart the container so it picks up the new `RELEASE_NODE`. A non-default `RELEASE_COOKIE` lets the cluster ports bind to all interfaces (the Makefile's `CLUSTER_BIND` rule), which removes the stale pinned-IP failure altogether; `/health` shows `cookie_is_default` so you can tell which case a node is in.
 
 #### Cluster-Wide Queries
 

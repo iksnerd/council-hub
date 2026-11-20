@@ -59,7 +59,8 @@ or open the `/status` page. A multi-node project whose reply lacks the
 |---|---|---|
 | One `cluster_nodes` entry, peer is up | `RELEASE_NODE` is stale: DHCP moved the host and the node advertises an old address | Restart with a corrected name; `/health` shows `node_identity_warning` or `advertised_warning` |
 | Peer never connects, `seed_warning` says `stale_name` | The peer must restart; it is undialable under any name | Restart the peer |
-| `undialable` | Cookie or ports (`4369`, `9000`) differ | Match `RELEASE_COOKIE`, publish both ports |
+| `cookie_mismatch` | A peer dialed this node with a different cookie (logged by the BEAM) | Set the same `RELEASE_COOKIE` on every node |
+| `undialable` | Cookie (only the dialing side sees it) or ports (`4369`, `9000`) differ | Match `RELEASE_COOKIE`, publish both ports |
 | Healthy container, no client can connect | Pinned bind address vanished under a running container | `docker port council-hub`; see council-hub-setup |
 | Cluster reads work, writes to peer rooms 404 | Old server on one node | Upgrade both nodes (`signal_status` now proxies) |
 

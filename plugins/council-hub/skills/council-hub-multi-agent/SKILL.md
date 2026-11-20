@@ -61,8 +61,10 @@ scrolls past.
 
 When something genuinely waits on another agent, mention them. When
 `get_mentions` returns something for you, answer it or say you are not taking
-it — an unanswered mention is indistinguishable from an unread one, and the
-next session re-reads it forever.
+it. Call `get_mentions(author=..., ack=true)` at session start: it returns
+only mentions newer than your stored cursor and advances it, so handled ones
+stop coming back (the reply counts what it hid; plain `get_mentions` still
+shows them all).
 
 ## Thread, or the room becomes parallel monologues
 

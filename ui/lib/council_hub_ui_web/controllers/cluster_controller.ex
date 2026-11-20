@@ -1,7 +1,7 @@
 defmodule CouncilHubUiWeb.ClusterController do
   use CouncilHubUiWeb, :controller
 
-  alias CouncilHubUi.{Cluster, ClusterManager, Params, SeedDoctor}
+  alias CouncilHubUi.{Cluster, ClusterCookie, ClusterManager, Params, SeedDoctor}
   require Logger
 
   def nodes(conn, _params) do
@@ -42,7 +42,9 @@ defmodule CouncilHubUiWeb.ClusterController do
       version_mismatch: mismatch,
       node_identity: ClusterManager.ip_status(),
       advertised: ClusterManager.advertised_status(),
-      seed_status: seed_status()
+      seed_status: seed_status(),
+      # Boolean only; the cookie value never leaves the VM.
+      cookie_is_default: ClusterCookie.default?()
     })
   end
 

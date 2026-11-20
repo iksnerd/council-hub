@@ -9,7 +9,7 @@ defmodule CouncilHubUiWeb.StatusLive do
   use CouncilHubUiWeb, :live_view
   require Logger
 
-  alias CouncilHubUi.{ClusterManager, HealthStats, McpClient}
+  alias CouncilHubUi.{ClusterCookie, ClusterManager, HealthStats, McpClient}
   import CouncilHubUiWeb.CouncilHelpers, only: [short_node: 1]
 
   @refresh_interval 5_000
@@ -110,7 +110,16 @@ defmodule CouncilHubUiWeb.StatusLive do
         seed_findings,
         advertised
       )
+      |> maybe_cookie_warning(seeds, peers)
     )
+  end
+
+  # Appended last: the standing exposure, not a transient fault.
+  defp maybe_cookie_warning(warnings, seeds, peers) do
+    case ClusterCookie.warning(ClusterCookie.default?(), seeds, peers) do
+      nil -> warnings
+      message -> warnings ++ [message]
+    end
   end
 
   defp version do

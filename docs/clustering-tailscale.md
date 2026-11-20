@@ -12,6 +12,15 @@ a **Tailscale sidecar** so each container joins your tailnet directly.
 > interface, so a peer's epmd answers on `localhost` but returns nothing over the
 > tailnet. The sidecar pattern below sidesteps that entirely and is the recommended
 > setup for any cross-machine cluster.
+>
+> **Observed once:** two Docker Desktop for macOS nodes did link over a tailnet with
+> `4369`/`9000` published on each host's own tailnet address only
+> (`RELEASE_NODE=council_hub@<tailnet-ip>`, `COUNCIL_SEEDS` naming the peer's node, the same
+> `RELEASE_COOKIE` on both). Each `/health` then listed both nodes. That was a single check,
+> not repeated after a reboot or a Tailscale restart, so the sidecar stays the supported
+> setup. If you try the published-port form: a tailnet address exists only while Tailscale
+> is up, and Docker refuses to start a container whose published port is bound to an address
+> the host does not hold (seen with a stale LAN address), so start Tailscale first.
 
 ## Why a sidecar
 
@@ -226,10 +235,21 @@ curl -s localhost:3001/health | jq '{seed_warning, seed_status, advertised_warni
   connected. It probes each seed's `:3001/health` and compares the node name it reports
   against the address that answered, classifying `stale_name` (the peer is advertising an
   address it does not hold — it is undialable under any name until *it* restarts),
-  `undialable` (cookie or ports), `no_node_name` (`COUNCIL_UI=off` on the peer, so its
+  `cookie_mismatch` (this node's BEAM logged a peer's connection as rejected for a
+  different cookie; set the same `RELEASE_COOKIE` on both),
+  `undialable` (cookie or ports, no rejection seen), `no_node_name` (`COUNCIL_UI=off` on the peer, so its
   identity is unknowable from here) and `unreachable`. `stale_name` is the one worth
   knowing about: it names the *peer's* misconfiguration, which you cannot see from your
-  own node.
+  own node. `cookie_mismatch` only appears when the peer dials *this* node: the BEAM
+  logs the rejection on the accepting side, and the dialing side sees nothing but
+  `:pang`. If only this node has the peer in `COUNCIL_SEEDS`, a wrong cookie still reads
+  `undialable`.
+- **`cookie_is_default`** — `true` when this node's effective cookie (read from the BEAM,
+  not from the environment) is the public default `council`. `/status` warns about it
+  only when seeds are configured or a peer is connected. Set `RELEASE_COOKIE` to the
+  same non-default value on every node. A non-default cookie also lets the cluster ports
+  bind to all interfaces (see `CLUSTER_BIND` in the Makefile), which removes the stale
+  pinned-IP failure after a DHCP change.
 - **`advertised_warning`** — the node opens a connection to its own advertised host on the
   EPMD port. From a bridged container that leaves, hits the host's published port and
   comes back, so it tests the path a peer actually takes.

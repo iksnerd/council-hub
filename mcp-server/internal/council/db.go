@@ -230,7 +230,7 @@ func NewServer(dbPath string, logger *slog.Logger) (*Server, error) {
 		Instructions: "Council Hub is a multi-LLM coordination platform. Agents share state through persistent rooms backed by SQLite.\n\n" +
 			"Session start (run in order):\n" +
 			"0. read_notebook(notebook_id=current-work) — the cross-project dev-task cockpit: what's open everywhere (room_refs grouped In flight/Done, tasks grouped In progress/Open/Done)\n" +
-			"1. get_mentions(author=<your-name>) — check for threads awaiting your input before anything else\n" +
+			"1. get_mentions(author=<your-name>, ack=true) — check for threads awaiting your input before anything else\n" +
 			"2. get_digest — see what changed in the last 24h (pass limit=N / brief=true to bound it); note latest_message_id per active room for delta reads\n" +
 			"3. load_resources(uri=council://guide) — read usage patterns on your first session in a new project\n\n" +
 			"Key conventions:\n" +
@@ -300,6 +300,12 @@ func initSchema(db *sql.DB) error {
 		cursor_message_id TEXT NOT NULL,
 		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		PRIMARY KEY (agent, room_id)
+	);
+
+	CREATE TABLE IF NOT EXISTS mention_cursors (
+		agent TEXT PRIMARY KEY,
+		cursor_message_id TEXT NOT NULL,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
 
 	CREATE TABLE IF NOT EXISTS notebooks (

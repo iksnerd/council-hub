@@ -45,6 +45,7 @@ type nodeIdentityInfo struct {
 // seedFinding is one seed host's diagnosis, as classified by
 // CouncilHubUi.SeedDoctor. Status is one of stale_name (the seed answers under
 // a node name whose address it no longer holds — the peer must restart),
+// cookie_mismatch (a peer dialed this node and the BEAM rejected its cookie),
 // undialable (name and address agree but no link formed — cookie or ports),
 // no_node_name (answered without reporting one, e.g. COUNCIL_UI=off) or
 // unreachable (no answer at all).
@@ -86,6 +87,8 @@ type clusterNodesResult struct {
 	NodeIdentity    *nodeIdentityInfo
 	SeedStatus      *seedStatusInfo
 	Advertised      *advertisedInfo
+	// CookieIsDefault is nil when Phoenix predates the field.
+	CookieIsDefault *bool
 }
 
 // clusterNodes queries Phoenix for the list of connected Erlang nodes with
@@ -114,6 +117,7 @@ func clusterNodes(phoenixURL string, client *http.Client) *clusterNodesResult {
 		NodeIdentity    *nodeIdentityInfo `json:"node_identity"`
 		SeedStatus      *seedStatusInfo   `json:"seed_status"`
 		Advertised      *advertisedInfo   `json:"advertised"`
+		CookieIsDefault *bool             `json:"cookie_is_default"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
 		return nil
@@ -124,6 +128,7 @@ func clusterNodes(phoenixURL string, client *http.Client) *clusterNodesResult {
 		NodeIdentity:    payload.NodeIdentity,
 		SeedStatus:      payload.SeedStatus,
 		Advertised:      payload.Advertised,
+		CookieIsDefault: payload.CookieIsDefault,
 	}
 }
 
@@ -155,6 +160,11 @@ func healthHandler(cs *council.Server, phoenixURL string, httpClient *http.Clien
 		}
 		if result := clusterNodes(phoenixURL, httpClient); result != nil {
 			body["cluster_nodes"] = result.Nodes
+			// Whether the BEAM's effective cookie is the published default. The
+			// boolean only: the cookie itself never leaves Phoenix.
+			if result.CookieIsDefault != nil {
+				body["cookie_is_default"] = *result.CookieIsDefault
+			}
 			if result.VersionMismatch {
 				body["cluster_warning"] = "version mismatch detected across cluster nodes — upgrade all nodes to the same version"
 			}

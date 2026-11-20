@@ -33,7 +33,7 @@ For a project with a room, the project-specific part is:
 
 ```
 read_notebook(notebook_id=current-work, project="<project>", status=open, level=1)
-get_mentions(author="<your stable name>")
+get_mentions(author="<your stable name>", ack=true)
 get_digest(unread_only=true, limit=15)
 read_room(room_id="<project>-dev", include_last_n=10)   # note: room_id here, id on get_or_create_room
 ```

@@ -825,6 +825,21 @@ defmodule CouncilHubUiWeb.ClusterControllerTest do
       assert advertised["warning"] =~ "nothing answers"
     end
 
+    test "reports cookie_is_default from the VM's effective cookie, never the cookie", %{
+      conn: conn
+    } do
+      on_exit(fn -> Application.delete_env(:council_hub_ui, :cookie_reader) end)
+
+      Application.put_env(:council_hub_ui, :cookie_reader, fn -> :council end)
+      body = json_response(get(conn, "/api/internal/cluster/nodes"), 200)
+      assert body["cookie_is_default"] == true
+
+      Application.put_env(:council_hub_ui, :cookie_reader, fn -> :not_the_default end)
+      resp = get(conn, "/api/internal/cluster/nodes")
+      assert json_response(resp, 200)["cookie_is_default"] == false
+      refute resp.resp_body =~ "not_the_default"
+    end
+
     test "reports no findings when the cluster is healthy", %{conn: conn} do
       send(CouncilHubUi.ClusterManager, {:seed_status, []})
       _ = CouncilHubUi.ClusterManager.seed_status()

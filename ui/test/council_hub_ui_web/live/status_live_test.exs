@@ -69,6 +69,31 @@ defmodule CouncilHubUiWeb.StatusLiveTest do
       assert html =~ "check that RELEASE_COOKIE matches"
     end
 
+    test "warns about the public default cookie only when clustering is in use", %{conn: conn} do
+      Application.put_env(:council_hub_ui, :cookie_reader, fn -> :council end)
+
+      on_exit(fn ->
+        Application.delete_env(:council_hub_ui, :cookie_reader)
+        System.delete_env("COUNCIL_SEEDS")
+      end)
+
+      # Single node on the default cookie: no warning.
+      System.delete_env("COUNCIL_SEEDS")
+      {:ok, _view, html} = live(conn, "/status")
+      refute html =~ "default cookie, which is public"
+
+      # Seeds configured: warn, and say what to do.
+      System.put_env("COUNCIL_SEEDS", "10.0.0.4")
+      {:ok, _view, html} = live(conn, "/status")
+      assert html =~ "default cookie, which is public"
+      assert html =~ "same non-default value on every node"
+
+      # Clustering but a custom cookie: no warning.
+      Application.put_env(:council_hub_ui, :cookie_reader, fn -> :custom_cookie end)
+      {:ok, _view, html} = live(conn, "/status")
+      refute html =~ "default cookie, which is public"
+    end
+
     test "warns when nothing answers on the address this node advertises", %{conn: conn} do
       send(
         CouncilHubUi.ClusterManager,

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -306,5 +307,42 @@ func TestHealthHandlerOmitsAdvertisedWhenReachable(t *testing.T) {
 
 	if _, ok := body["advertised_warning"]; ok {
 		t.Fatalf("did not expect advertised_warning in body: %+v", body)
+	}
+}
+
+func TestHealthHandlerRelaysCookieIsDefault(t *testing.T) {
+	for _, want := range []bool{true, false} {
+		phoenix := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = fmt.Fprintf(w, `{"nodes": [{"node": "council_hub@10.0.0.6", "version": "0.66.1"}], "count": 1, "version_mismatch": false, "cookie_is_default": %t}`, want)
+		}))
+
+		cs := testServer(t)
+		handler := healthHandler(cs, phoenix.URL, phoenix.Client())
+		rec := httptest.NewRecorder()
+		handler(rec, httptest.NewRequest(http.MethodGet, "/health", nil))
+		phoenix.Close()
+
+		var body map[string]any
+		if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+			t.Fatalf("failed to decode response: %v", err)
+		}
+		got, ok := body["cookie_is_default"].(bool)
+		if !ok || got != want {
+			t.Fatalf("expected cookie_is_default=%v, got body: %+v", want, body)
+		}
+	}
+}
+
+func TestHealthHandlerOmitsCookieIsDefaultWithoutPhoenix(t *testing.T) {
+	cs := testServer(t)
+	rec := httptest.NewRecorder()
+	healthHandler(cs, "", nil)(rec, httptest.NewRequest(http.MethodGet, "/health", nil))
+
+	var body map[string]any
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if _, ok := body["cookie_is_default"]; ok {
+		t.Fatalf("cookie_is_default is unknown without Phoenix, got body: %+v", body)
 	}
 }

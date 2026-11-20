@@ -29,10 +29,15 @@ question), run the session-start ritual — this is what the MCP server's own
 instructions already say, made explicit here so it isn't skipped:
 
 ```
-get_mentions(author=<your-name>)                        # threads waiting on you — check FIRST
+get_mentions(author=<your-name>, ack=true)              # threads waiting on you, only the ones not seen before — check FIRST
 get_digest(unread_only=true, limit=15)                  # what changed since your last session (unread cursors are node-local)
 read_notebook(notebook_id=current-work, status=open, level=1)   # the cross-project cockpit: in-flight work, open tasks
 ```
+
+A new agent name has no cursors, so every room counts as unread and the digest
+returns the busiest old rooms. Call `mark_read(room_id="*", agent=<your-name>)`
+once to set your cursor in every room on this node to its latest message and
+start from now.
 
 On a long-lived hub the unfiltered versions overflow the client's result
 limit. `get_digest` takes `limit` (`limit=all` lifts it; `unread_only`

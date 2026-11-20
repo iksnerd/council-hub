@@ -48,6 +48,7 @@ type GetMentionsInput struct {
 	Project     string     `json:"project"`
 	Limit       string     `json:"limit"`
 	ClusterWide StringBool `json:"cluster_wide"`
+	Ack         string     `json:"ack"`
 }
 
 func (r *Registry) handleSearchMessages(ctx context.Context, req *mcp.CallToolRequest, args SearchMessagesInput) (*mcp.CallToolResult, ToolOutput, error) {
@@ -381,6 +382,9 @@ func (r *Registry) handleGetMentions(ctx context.Context, req *mcp.CallToolReque
 
 	if limit <= 0 || limit > 100 {
 		limit = 20
+	}
+	if args.Ack == "true" {
+		return r.handleGetMentionsAck(args, limit)
 	}
 	if ok, res, out, err := r.routeClusterRead(args.ClusterWide, true,
 		func() (*mcp.CallToolResult, ToolOutput, error) { return r.handleGetMentionsCluster(args, limit) },
