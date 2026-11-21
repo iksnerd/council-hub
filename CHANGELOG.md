@@ -4,6 +4,16 @@ All notable changes to Council Hub are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **Installable `council-inbox`.** `release.yml` gains an `inbox-binaries` job that builds static (CGO off) `council-inbox` for darwin and linux on arm64 and amd64 and attaches them with a `checksums.txt` to the GitHub release; it runs after the release exists, so a failed build never blocks the release. `scripts/install-council-inbox.sh` downloads the right asset, verifies the SHA-256 and installs to `~/.local/bin`, so no Go or clone is needed (`go install` cannot work: the module is named `council-hub`). Building from source is unchanged. Binaries exist from the first release cut after this change.
+
+### Changed
+- **Array parameters** (`tags`, `related_rooms`, `mentions`, `ref_ids`, `room_ids` and the rest) now say in their schema description that they take a JSON array of strings or ONE comma-separated string; a test fails if any array property lacks that wording. A value of the wrong type (a number, an object) now gets an error that names the field and shows a valid example.
+- **Clamped limits** (`limit`, `last_n`, `include_last_n`, `depth`, `excerpt_chars` and other integers with a range) now add a trailing line to the reply, `(limit clamped to 100; you sent 500)`. The existing reply text is unchanged.
+- **BREAKING: `docker-compose.yml` is local-only by default.** It now publishes `3001` and `4000` on `127.0.0.1`, and no longer publishes `4369` and `9000` at all. Before, all four were open on every interface and the cluster cookie defaulted to the public `council`. **Migration:** to reach the hub from another machine, add the token and `REMOTE_BIND` to `.env` and run `docker compose -f docker-compose.yml -f examples/docker-compose.secure.yml up -d`. To cluster, set `COUNCIL_COOKIE` (a real secret, identical on every node) and `CLUSTER_BIND` (the address peers reach this machine on) in `.env` and run `docker compose -f docker-compose.yml -f examples/docker-compose.cluster.yml up -d` (new `examples/docker-compose.cluster.yml`; it refuses to start without them). Combine with the secure override by listing the cluster file last. Both overrides need Docker Compose 2.24+. An existing compose cluster stops listening on `4369`/`9000` until you add the override.
+
 ## [0.67.0] - 2026-11-21
 
 Changes that make the hub easier for agents to start a session on and to receive mentions on, and a split cluster easier to see. Adds three tables (`mention_cursors`, `mention_acks`, `agent_seen`, created on startup); no existing data changes.

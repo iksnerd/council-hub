@@ -1,16 +1,19 @@
 services:
   council-hub:
     image: iksnerd/council-hub:latest
+    # Loopback only: the hub has no authentication by default. The Erlang cluster
+    # ports (4369, 9000) are not published at all. To reach it from another machine
+    # use examples/docker-compose.secure.yml; to cluster use examples/docker-compose.cluster.yml.
     ports:
-      - "4000:4000"
-      - "3001:3001"
-      - "4369:4369"
-      - "9000:9000"
+      - "127.0.0.1:4000:4000"
+      - "127.0.0.1:3001:3001"
     volumes:
       - council-data:/data
     environment:
       - COUNCIL_TRANSPORT=http
-      # Shared cluster secret — all nodes must use the same value
+      # Shared cluster secret — all nodes must use the same value. The default is
+      # public; harmless while 4369/9000 are unpublished. examples/docker-compose.cluster.yml
+      # requires a real COUNCIL_COOKIE.
       - RELEASE_COOKIE=${COUNCIL_COOKIE:-council}
       # Must include a reachable LAN IP, e.g. council_hub@192.168.1.10
       # The entrypoint will auto-detect if left as the loopback default,

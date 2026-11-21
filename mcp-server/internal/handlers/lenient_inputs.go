@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -209,6 +211,35 @@ func trimmedNonEmpty(in []string) []string {
 
 func mustMarshal(v any) json.RawMessage { b, _ := json.Marshal(v); return b }
 
+// clampNotes reports each integer argument that clampInt will pull into range,
+// so the reply can say so instead of silently using a different number.
+func clampNotes(args json.RawMessage, propTypes map[string]propSpec) []string {
+	var m map[string]json.RawMessage
+	if json.Unmarshal(args, &m) != nil {
+		return nil
+	}
+	var notes []string
+	for k, v := range m {
+		spec, ok := propTypes[k]
+		if !ok || spec.Type != "integer" {
+			continue
+		}
+		lit := strings.Trim(strings.TrimSpace(string(v)), `"`)
+		if !intLiteral.MatchString(lit) {
+			continue
+		}
+		n, err := strconv.ParseInt(lit, 10, 64)
+		if err != nil {
+			continue
+		}
+		if c := spec.clampInt(n); c != n {
+			notes = append(notes, fmt.Sprintf("(%s clamped to %d; you sent %d)", k, c, n))
+		}
+	}
+	sort.Strings(notes)
+	return notes
+}
+
 // coerceArguments rewrites args in place against one tool's property types.
 func coerceArguments(args json.RawMessage, propTypes map[string]propSpec) json.RawMessage {
 	var m map[string]json.RawMessage
@@ -260,10 +291,18 @@ func (r *Registry) installLegacyCoercion() {
 					}
 				}
 			})
+			var notes []string
 			if pt := types[cp.Name]; pt != nil {
+				notes = clampNotes(cp.Arguments, pt)
 				cp.Arguments = coerceArguments(cp.Arguments, pt)
 			}
-			return next(ctx, method, req)
+			res, err := next(ctx, method, req)
+			if call, ok := res.(*mcp.CallToolResult); ok && err == nil && call != nil && !call.IsError && len(notes) > 0 {
+				// Append-only: a separate trailing text item, so the original
+				// reply text is byte-for-byte what it was.
+				call.Content = append(call.Content, &mcp.TextContent{Text: strings.Join(notes, "\n")})
+			}
+			return res, err
 		}
 	})
 }

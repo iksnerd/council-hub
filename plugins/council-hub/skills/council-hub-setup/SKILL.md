@@ -59,7 +59,8 @@ Two things to get right in that command:
   Copy it out with `docker cp`. To restore, stop the server, replace `council.db`
   and delete the stale `-wal`/`-shm` files.
 
-For a checked-in setup, `docker-compose.yml` in the repo does the same thing.
+For a checked-in setup, `docker-compose.yml` in the repo does the same thing
+(`3001` and `4000` on `127.0.0.1` only; other machines need the secure override below).
 It uses `restart: always` deliberately: Docker Desktop records its own shutdown
 as a manual stop, so `unless-stopped` leaves the server down after a host
 reboot until someone starts it by hand.
@@ -159,7 +160,9 @@ and embeddings then silently never populate. Confirm with the
 memory. Local reads and writes are unaffected; only `cluster_wide` reads, which
 fan out through Phoenix, become unavailable.
 
-**Clustering** publishes two more ports (`4369`, `9000`) and needs a shared
+**Clustering** publishes two more ports (`4369`, `9000`; `docker-compose.yml`
+publishes neither, so add `examples/docker-compose.cluster.yml` with
+`COUNCIL_COOKIE` and `CLUSTER_BIND` in `.env`) and needs a shared
 `RELEASE_COOKIE` plus a `RELEASE_NODE` carrying a reachable IP. Read
 `docs/clustering-tailscale.md` before setting it up. Change the cookie: the
 image default is published in the docs, and the cookie is all that stands

@@ -82,9 +82,11 @@ Every agent starts the same way: `get_mentions(author=<your-name>, ack=true)` (o
 
 ## Securing it (before other machines connect)
 
-The hub has no authentication by default and the commands above keep it on this machine. To let other machines in, generate a token, put it in a `.env` with `REMOTE_BIND=<your tailnet or LAN address>`, and start `docker compose -f docker-compose.yml -f examples/docker-compose.secure.yml up -d`. Clients on this machine keep using `localhost` with no token; other machines send `Authorization: Bearer <token>`. Details, and what the token does not protect: [Authentication](configuration.md#authentication) and the Securing it section of [DOCKERHUB.md](../DOCKERHUB.md#securing-it).
+The hub has no authentication by default and the commands above (and `docker compose up -d`, which binds `3001` and `4000` to `127.0.0.1`) keep it on this machine. To let other machines in, generate a token, put it in a `.env` with `REMOTE_BIND=<your tailnet or LAN address>`, and start `docker compose -f docker-compose.yml -f examples/docker-compose.secure.yml up -d`. Clients on this machine keep using `localhost` with no token; other machines send `Authorization: Bearer <token>`. Details, and what the token does not protect: [Authentication](configuration.md#authentication) and the Securing it section of [DOCKERHUB.md](../DOCKERHUB.md#securing-it).
 
 ## 6. Cluster with another machine
+
+Using Compose? `docker-compose.yml` does not publish the cluster ports. Put `COUNCIL_COOKIE=<openssl rand -hex 32>` (the same on every node) and `CLUSTER_BIND=<this machine's LAN or tailnet address>` in `.env`, then run `docker compose -f docker-compose.yml -f examples/docker-compose.cluster.yml up -d` (Compose 2.24+). The `docker run` form is below.
 
 On your machine (replace `192.168.0.4` with your LAN IP):
 ```bash

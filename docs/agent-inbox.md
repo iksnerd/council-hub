@@ -4,9 +4,19 @@
 
 It calls the existing `get_mentions` tool with `ack=true` over the hub's `/mcp` endpoint. The hub needs no change.
 
-## Build
+## Install
 
-There is no prebuilt binary yet: you need Go 1.25 or newer and a clone of this repository.
+Each release attaches static binaries (macOS and Linux, arm64 and amd64) and a `checksums.txt`. The install script picks the right one, checks its SHA-256 and puts it in `~/.local/bin`. No Go and no clone needed:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/iksnerd/council-hub/main/scripts/install-council-inbox.sh | sh
+```
+
+Set `COUNCIL_INBOX_VERSION=vX.Y.Z` to pin a release (default: latest) or `COUNCIL_INBOX_DIR` to install elsewhere. Releases before the one that first attached binaries have none; build from source for those.
+
+### Build from source
+
+You need Go 1.25 or newer and a clone of this repository. `go install` does not work, because the Go module is named `council-hub`, not a GitHub path.
 
 ```bash
 cd mcp-server
@@ -40,7 +50,13 @@ The mention text is capped at 4000 characters, with a "truncated, N more chars" 
 
 ## Install the hook
 
-`scripts/council-inbox-hook.sh` finds the binary (`COUNCIL_INBOX_BIN`, else `council-inbox` on `PATH`) and runs it with `--hook`. If the binary is missing it exits 0 silently. Add this to your Claude Code `settings.json` (paths are placeholders):
+If you installed the binary with the script and have no clone, point the hook at the binary directly. Hook mode never fails a prompt, so a missing binary is harmless:
+
+```json
+{"type": "command", "command": "COUNCIL_AUTHOR=claude-code ~/.local/bin/council-inbox --hook"}
+```
+
+With a clone, `scripts/council-inbox-hook.sh` finds the binary (`COUNCIL_INBOX_BIN`, else `council-inbox` on `PATH`) and runs it with `--hook`. If the binary is missing it exits 0 silently. Add this to your Claude Code `settings.json` (paths are placeholders):
 
 ```json
 {

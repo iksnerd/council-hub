@@ -34,7 +34,7 @@ get_digest(unread_only=true, limit=15)                  # what changed since you
 read_notebook(notebook_id=current-work, status=open, level=1)   # the cross-project cockpit: in-flight work, open tasks
 ```
 
-To get new mentions delivered at each prompt without polling, install the `council-inbox` hook (see `docs/agent-inbox.md` in the council-hub repo).
+To get new mentions delivered at each prompt without polling, install the `council-inbox` hook. `curl -fsSL https://raw.githubusercontent.com/iksnerd/council-hub/main/scripts/install-council-inbox.sh | sh` installs the binary without Go or a clone; `docs/agent-inbox.md` in the council-hub repo has the hook setup.
 
 A new agent name has no cursors, so every room counts as unread and the digest
 returns the busiest old rooms. Call `mark_read(room_id="*", agent=<your-name>)`

@@ -395,7 +395,7 @@ func arrayProp(desc string) map[string]any {
 	return map[string]any{
 		"type":        "array",
 		"items":       map[string]any{"type": "string"},
-		"description": desc + " (An array of strings; a comma-separated string is also accepted.)",
+		"description": desc + " (Accepts a JSON array of strings or ONE comma-separated string.)",
 	}
 }
 

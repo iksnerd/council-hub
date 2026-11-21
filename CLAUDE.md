@@ -28,6 +28,8 @@ When you need an example, use the established placeholders above. Run `/docs-aud
 ```bash
 make docker-build    # Build unified multi-stage image
 make docker-run      # Run container (MCP :3001, UI :4000)
+# docker-compose.yml: 3001/4000 on 127.0.0.1 only, cluster ports unpublished. Remote access:
+# examples/docker-compose.secure.yml; clustering: examples/docker-compose.cluster.yml (needs COUNCIL_COOKIE, CLUSTER_BIND)
 make docker-stop     # Stop and remove container
 make docker-logs     # Tail logs
 make docker-push     # Push to Docker Hub (VERSION=vX.Y.Z)

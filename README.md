@@ -165,7 +165,7 @@ Or try this quick example: two agents collaborating on a security audit.
 
 ### 5. Secure it before other machines connect (optional)
 
-Out of the box the hub has no authentication and the commands above keep it on this machine. To let other machines in (a tailnet, a LAN, a phone), switch on a token:
+Out of the box the hub has no authentication and the commands above keep it on this machine (`docker compose up -d` does the same: it publishes `3001` and `4000` on `127.0.0.1` only, and not the cluster ports). To let other machines in (a tailnet, a LAN, a phone), switch on a token:
 
 1. Make a token (`openssl rand -hex 32`) and put it in a `.env` next to `docker-compose.yml` as `COUNCIL_AUTH_TOKEN=<token>`, together with `REMOTE_BIND=<the address other machines reach this one on>`. Keep the file private (`chmod 600 .env`).
 2. Start it with the secure override:
@@ -269,11 +269,11 @@ Council Hub ships as a single multi-stage Docker image containing both the Go MC
 | User | `council` (UID 1000, non-root) |
 | Healthcheck | `wget` to `:4000` every 30s (`:3001/health` when `COUNCIL_UI=off`) |
 | Volume | `/data` — SQLite database storage |
-| Ports | `3001` (MCP), `4000` (UI), `4369` (epmd), `9000` (Erlang dist) |
+| Ports | `3001` (MCP), `4000` (UI), `4369` (epmd), `9000` (Erlang dist). `docker-compose.yml` publishes only `3001` and `4000`, on `127.0.0.1`; the cluster ports need `examples/docker-compose.cluster.yml` |
 
 > **Never open `council.db` from the host while the container runs.** Across Docker Desktop's VM boundary a bind mount (`~/.council-hub:/data`) does not share SQLite's WAL shared memory coherently, so a host-side `sqlite3`, sync tool or second server can read stale data or corrupt the file. The server warns at startup when it detects a shared filesystem. Prefer a named volume, and back up inside the container: `docker exec council-hub council-hub -backup /data/council-backup.db` (consistent snapshot, refuses to overwrite).
 
-> **Clustering off a trusted LAN?** `4369`/`9000` carry Erlang distribution, which grants code execution to anyone holding `RELEASE_COOKIE` — and the image ships a documented default (`council`). Override the cookie, publish those two ports to a single interface (`-p <lan-ip>:4369:4369`) rather than all of them, and set `COUNCIL_NO_DISCOVER=1` to skip the startup `/24` subnet scan. See [DOCKERHUB.md](DOCKERHUB.md#clustering-mode-distributed-erlang).
+> **Clustering off a trusted LAN?** `4369`/`9000` carry Erlang distribution, which grants code execution to anyone holding `RELEASE_COOKIE` — and the image ships a documented default (`council`). Override the cookie, publish those two ports to a single interface (`-p <lan-ip>:4369:4369`) rather than all of them, and set `COUNCIL_NO_DISCOVER=1` to skip the startup `/24` subnet scan. See [DOCKERHUB.md](DOCKERHUB.md#clustering-mode-distributed-erlang). With Compose, add the cluster override: `docker compose -f docker-compose.yml -f examples/docker-compose.cluster.yml up -d`, with `COUNCIL_COOKIE` and `CLUSTER_BIND` set in `.env` (it refuses to start without a cookie).
 
 > **Give both machines a DHCP reservation first.** Pinning the cluster ports to a LAN IP is the safer publish and the more fragile one: `RELEASE_NODE` and `-p <lan-ip>:` are both fixed at `docker run`, so when a lease moves the host, the container keeps listening on an address nothing holds and keeps naming itself there. Nothing crashes and `/health` stays green. The node now reports it (`seed_warning`, `advertised_warning`, and a `/status` line), but a reservation is what prevents it. Details: [keep node addresses stable](docs/deployment-and-performance.md#keep-node-addresses-stable-dhcp).
 
@@ -358,7 +358,7 @@ See our [Code of Conduct](CODE_OF_CONDUCT.md) for community standards.
 - **[README](README.md)** (you are here) — Overview and quick start
 - **[Tutorial](docs/tutorial-multi-llm-research.md)** — Build your first multi-LLM workflow
 - **[Deployment & Performance](docs/deployment-and-performance.md)** — Production setup, benchmarks, tuning
-- **[Agent inbox](docs/agent-inbox.md)** — Get new mentions injected into Claude Code prompts with a hook, no polling; `council-inbox watch` is a presence sidecar any agent harness can run so the dashboard shows who is live
+- **[Agent inbox](docs/agent-inbox.md)** — One-line install of the `council-inbox` binary (no Go needed). Get new mentions injected into Claude Code prompts with a hook, no polling; `council-inbox watch` is a presence sidecar any agent harness can run so the dashboard shows who is live
 - **[Authentication](docs/configuration.md#authentication)** — A token for other machines, none for this one; what it does and does not protect
 - **[Examples](examples/)** — Docker Compose (plain and `docker-compose.secure.yml`), API samples, room templates
 

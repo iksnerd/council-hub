@@ -1,0 +1,37 @@
+# Cluster setup: publish the Erlang cluster ports (4369 epmd, 9000 distribution) so peers can join.
+#
+# The base docker-compose.yml does NOT publish them. Whoever holds RELEASE_COOKIE and can reach these
+# ports gets code execution on the node, so this file refuses to start without a cookie of your own.
+#
+#   1. Put these in a .env file next to docker-compose.yml (chmod 600 .env, never commit it), the SAME
+#      cookie on every node:
+#
+#        COUNCIL_COOKIE=<the output of: openssl rand -hex 32>
+#        CLUSTER_BIND=<the address peers reach this machine on: your Tailscale or LAN IP>
+#        COUNCIL_NODE_NAME=council_hub@<that same address>
+#        COUNCIL_SEEDS=<peer address or MagicDNS name>        # optional; set COUNCIL_NO_DISCOVER=1 on a VPN
+#
+#   2. Start it:
+#
+#        docker compose -f docker-compose.yml -f examples/docker-compose.cluster.yml up -d
+#
+#   3. Peers must also be able to reach MCP (3001) for cross-node writes. Combine with the token setup
+#      when they do, so 3001 is not open without a token:
+#
+#        docker compose -f docker-compose.yml -f examples/docker-compose.secure.yml \
+#                       -f examples/docker-compose.cluster.yml up -d
+#
+# Needs Docker Compose 2.24 or newer (this file is meant to be combined with docker-compose.secure.yml,
+# which uses `ports: !override`). The ports below are appended to whatever the earlier files publish,
+# so list this file LAST and it composes with both.
+#
+# Compose cannot compare values, so it rejects an unset or empty COUNCIL_COOKIE but not the literal
+# `council` (the public image default). Do not use it: the container entrypoint warns when it sees it.
+# Bind CLUSTER_BIND to one address, not 0.0.0.0; a VPN or guest interface should not see these ports.
+services:
+  council-hub:
+    environment:
+      - RELEASE_COOKIE=${COUNCIL_COOKIE:?set COUNCIL_COOKIE in .env to a real secret (openssl rand -hex 32), the same on every node; never the default 'council'}
+    ports:
+      - "${CLUSTER_BIND:?set CLUSTER_BIND in .env (the address peers use to reach this machine)}:4369:4369"
+      - "${CLUSTER_BIND}:9000:9000"

@@ -27,7 +27,11 @@ func (r *Registry) installValidationHints() {
 				return res, err
 			}
 			tc, ok := call.Content[0].(*mcp.TextContent)
-			if !ok || !strings.Contains(tc.Text, "unexpected additional properties") {
+			if !ok {
+				return res, err
+			}
+			isArrayErr := arrayFieldRe.MatchString(tc.Text)
+			if !isArrayErr && !strings.Contains(tc.Text, "unexpected additional properties") {
 				return res, err
 			}
 			cp, ok := req.GetParams().(*mcp.CallToolParamsRaw)
@@ -43,13 +47,40 @@ func (r *Registry) installValidationHints() {
 				return res, err
 			}
 			for _, tool := range tools.Tools {
-				if tool.Name == cp.Name {
+				if tool.Name != cp.Name {
+					continue
+				}
+				if isArrayErr {
+					tc.Text += arrayFieldHint(tool.InputSchema, tc.Text)
+				} else {
 					tc.Text += acceptedParamsHint(tool.InputSchema, tc.Text, tool.Name)
 				}
 			}
 			return res, err
 		}
 	})
+}
+
+// arrayFieldRe matches the validator's rejection of an array-typed property.
+var arrayFieldRe = regexp.MustCompile(`validating /properties/([A-Za-z0-9_]+)(?:/items)?: type: .* want "(?:array|string)"`)
+
+// arrayFieldHint names the field and shows a valid example when an array
+// property got a value that is neither an array of strings nor a string.
+func arrayFieldHint(inputSchema any, errText string) string {
+	m := arrayFieldRe.FindStringSubmatch(errText)
+	if m == nil {
+		return ""
+	}
+	raw, _ := json.Marshal(inputSchema)
+	var s struct {
+		Properties map[string]struct {
+			Type string `json:"type"`
+		} `json:"properties"`
+	}
+	if json.Unmarshal(raw, &s) != nil || s.Properties[m[1]].Type != "array" {
+		return ""
+	}
+	return fmt.Sprintf(" — %q takes a JSON array of strings or ONE comma-separated string, e.g. %s=[\"a\",\"b\"] or %s=\"a,b\"", m[1], m[1], m[1])
 }
 
 var quotedRe = regexp.MustCompile(`"([A-Za-z0-9_]+)"`)

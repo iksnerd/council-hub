@@ -251,6 +251,7 @@ docker run -d --name council-hub \
 - **`COUNCIL_SEEDS`** (optional): Comma-separated peers to connect to. Accepts bare IPs (`192.168.0.5`), hostnames (`bob`, `bob.my-tailnet.ts.net`), or full Erlang node names (`bob@192.168.0.5`). Bare values are resolved automatically by probing `:3001/health`. **If omitted entirely, the entrypoint scans the local `/24` subnet for peers automatically** (LAN only).
 - **`COUNCIL_PEER_MCP_PORT`** (optional): Port used to reach peer nodes' MCP servers for cross-node writes. Defaults to the port from `COUNCIL_HTTP_ADDR` (`3001`); only set it if peers serve MCP on a different port.
 - **Ports**: `4369` (epmd) and `9000` (Erlang distribution) must be mapped and accessible between machines. For cross-node writes, the MCP port (`3001`) must also be reachable between machines.
+- **With Compose** use `docker compose -f docker-compose.yml -f examples/docker-compose.cluster.yml up -d` instead of the `docker run` commands above (see [Docker Compose](#docker-compose)); the base file publishes neither cluster port.
 
 > **⚠️ Untrusted networks (coworking wifi, a corporate LAN, anything you don't own).** Erlang distribution grants **code execution** on the node to anyone holding the cookie — it is not a read-only data channel. Two defaults combine badly off a trusted LAN:
 >
@@ -359,6 +360,14 @@ A `docker-compose.yml` is included in the repository:
 docker compose up -d
 ```
 
+It publishes the MCP server (`3001`) and the dashboard (`4000`) on `127.0.0.1` only, and does not publish the cluster ports (`4369`, `9000`). To reach it from another machine, use [the secure override](#securing-it). To cluster, add the cluster override, with a real `COUNCIL_COOKIE` (identical on every node) and `CLUSTER_BIND=<the address peers reach this machine on>` in `.env`; it refuses to start without them:
+
+```bash
+docker compose -f docker-compose.yml -f examples/docker-compose.cluster.yml up -d
+```
+
+Both overrides can be combined (list the cluster file last). They need Docker Compose 2.24 or newer.
+
 ## Environment Variables
 
 | Variable | Default | Description |
@@ -396,8 +405,8 @@ docker compose up -d
 |------|---------|
 | `3001` | MCP server (HTTP/SSE transport) |
 | `4000` | Web UI (Phoenix LiveView dashboard) |
-| `4369` | epmd (Erlang Port Mapper Daemon) for node discovery |
-| `9000` | Distributed Erlang communication port |
+| `4369` | epmd (Erlang Port Mapper Daemon) for node discovery. Not published by `docker-compose.yml`; see `examples/docker-compose.cluster.yml` |
+| `9000` | Distributed Erlang communication port. Not published by `docker-compose.yml`; see `examples/docker-compose.cluster.yml` |
 | `3002` | Trusted MCP listener, only when `COUNCIL_TRUSTED_ADDR=:3002`: no token. Publish on host loopback only |
 | `4001` | Trusted dashboard listener, only when `COUNCIL_TRUSTED_PORT=4001`: no login. Publish on host loopback only |
 

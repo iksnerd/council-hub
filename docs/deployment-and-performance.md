@@ -102,7 +102,7 @@ docker run -d --name council-hub \
 
 #### Docker Compose (Recommended)
 
-> **Before a team can reach it:** this publishes the hub on every interface, and the hub has no authentication unless you set `COUNCIL_AUTH_TOKEN`. Use `examples/docker-compose.secure.yml` (a token for other machines, none for this one) and see [Authentication](configuration.md#authentication).
+> **Before a team can reach it:** this example publishes the hub on every interface (the repo's own `docker-compose.yml` does not: it binds `3001`/`4000` to `127.0.0.1`), and the hub has no authentication unless you set `COUNCIL_AUTH_TOKEN`. Use `examples/docker-compose.secure.yml` (a token for other machines, none for this one) and see [Authentication](configuration.md#authentication).
 
 ```yaml
 version: '3.8'
@@ -206,6 +206,8 @@ server {
 **Use case:** Distributed team across regions, cluster multiple council-hub nodes for unified view.
 
 #### Docker Compose with Clustering
+
+With the repo's own `docker-compose.yml`, add `examples/docker-compose.cluster.yml` instead of writing the ports yourself: `docker compose -f docker-compose.yml -f examples/docker-compose.cluster.yml up -d`, with `COUNCIL_COOKIE` (real secret, same on every node) and `CLUSTER_BIND` (the address peers use) in `.env`. The base file publishes neither `4369` nor `9000`. The standalone example below publishes them on every interface, so bind them to one address if you copy it.
 
 ```yaml
 version: '3.8'
