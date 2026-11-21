@@ -4,8 +4,11 @@ defmodule CouncilHubUiWeb.Plugs.RequireDashboardAuth do
   `COUNCIL_AUTH_TOKEN` is set (`CouncilHubUi.Auth`). Any username is accepted;
   the password is the token.
 
-  Missing or wrong credentials get a bare 401 with
-  `WWW-Authenticate: Basic realm="Council Hub"` and an empty body. The plug sits
+  Missing or wrong credentials get a 401 with
+  `WWW-Authenticate: Basic realm="Council Hub"` and a one-line plain-text body that
+  says how to sign in (a browser shows the login prompt; the body is what you see
+  if you cancel it, or what a script reads). It never says which part was wrong.
+  The plug sits
   first in the `:browser` pipeline, before the session is fetched, so a refused
   request gets no session cookie and no CSRF token. The LiveView socket `/live`
   needs the session and CSRF token embedded in an authenticated page, so it is
@@ -20,6 +23,8 @@ defmodule CouncilHubUiWeb.Plugs.RequireDashboardAuth do
   host is not loopback and must log in.
   """
   import Plug.Conn
+
+  @denied_body "Authentication required. Sign in with any username and the hub's token as the password.\n"
 
   alias CouncilHubUi.Auth
   alias CouncilHubUiWeb.Plugs.RestrictLocalhost
@@ -50,7 +55,8 @@ defmodule CouncilHubUiWeb.Plugs.RequireDashboardAuth do
   defp deny(conn) do
     conn
     |> put_resp_header("www-authenticate", ~s(Basic realm="Council Hub"))
-    |> send_resp(401, "")
+    |> put_resp_content_type("text/plain")
+    |> send_resp(401, @denied_body)
     |> halt()
   end
 end

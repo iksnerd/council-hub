@@ -259,7 +259,25 @@ func (s *Server) notebookNotFound(id string) error {
 	if err := s.DB.QueryRow(`SELECT deleted_at FROM notebooks WHERE id = ?`, id).Scan(&deleted); err == nil && deleted.Valid {
 		return fmt.Errorf("notebook '%s' is soft-deleted — bring it back with edit_notebook(action=restore, notebook_id=%s)", id, id)
 	}
-	return fmt.Errorf("notebook '%s' not found", id)
+	return fmt.Errorf("notebook '%s' does not exist. Create it once: edit_notebook(action=create, notebook_id=%s, title=<title>), then retry", id, id)
+}
+
+// CurrentWorkNotebookID is the global notebook the hub's session-start steps
+// read and write. It is the only notebook that auto-creates.
+const CurrentWorkNotebookID = "current-work"
+
+// EnsureCurrentWorkNotebook creates the global current-work notebook when no
+// row for it exists in any state. INSERT OR IGNORE keeps it race-safe and
+// leaves a soft-deleted row alone (restore guidance stays). Other IDs are
+// ignored.
+func (s *Server) EnsureCurrentWorkNotebook(id string) error {
+	if strings.TrimSpace(id) != CurrentWorkNotebookID {
+		return nil
+	}
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+	_, err := s.DB.Exec(`INSERT OR IGNORE INTO notebooks (id, project, title) VALUES (?, '', 'Current Work')`, CurrentWorkNotebookID)
+	return err
 }
 
 // ListNotebooks returns notebooks, most recently updated first. With a project

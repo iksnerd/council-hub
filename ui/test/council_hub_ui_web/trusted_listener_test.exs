@@ -143,7 +143,7 @@ defmodule CouncilHubUiWeb.TrustedListenerTest do
             |> get("/status")
 
           assert resp.status == 401
-          assert resp.resp_body == ""
+          assert resp.resp_body =~ "Authentication required"
           assert get_resp_header(resp, "set-cookie") == []
           assert get_req_header(resp, "x-council-trusted") == []
         end
@@ -160,7 +160,7 @@ defmodule CouncilHubUiWeb.TrustedListenerTest do
         for path <- ["/", "/status", "/rooms/x/export"] do
           assert {200, _, _} = http_get(trusted, path) |> pad_export(path)
           {401, head, body} = http_get(main, path)
-          assert body == ""
+          assert body =~ "Authentication required"
           refute head =~ ~r/set-cookie/i
         end
       end)

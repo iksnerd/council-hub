@@ -29,7 +29,7 @@ func (r *Registry) handleMarkRead(ctx context.Context, req *mcp.CallToolRequest,
 		return r.markReadAll(agent, args.Cursor)
 	}
 	if args.Cursor == "" {
-		return msg("Error: cursor (message ID) is required.")
+		return msg("Error: cursor (message ID) is required for a single room. To mark every room read, pass room_id=\"*\" with no cursor.")
 	}
 
 	// Checked before the write so "new name" is still observable.

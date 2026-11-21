@@ -93,8 +93,14 @@ func TestAuthRejections(t *testing.T) {
 			if got := rec.Header().Get("WWW-Authenticate"); got != `Bearer realm="council-hub"` {
 				t.Errorf("%s %s: WWW-Authenticate=%q", name, path, got)
 			}
-			if rec.Body.Len() != 0 {
-				t.Errorf("%s %s: body must be empty, got %q", name, path, rec.Body.String())
+			if got := rec.Header().Get("Content-Type"); got != "application/json" {
+				t.Errorf("%s %s: Content-Type=%q", name, path, got)
+			}
+			if rec.Body.String() != unauthorizedBody {
+				t.Errorf("%s %s: unexpected body %q", name, path, rec.Body.String())
+			}
+			if strings.Contains(rec.Body.String(), testAuthToken) {
+				t.Errorf("%s %s: body echoes the presented value", name, path)
 			}
 			if *reached != 0 {
 				t.Errorf("%s %s: handler reached", name, path)

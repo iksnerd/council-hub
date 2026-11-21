@@ -57,10 +57,13 @@ func (f *failureLog) record() {
 	f.logger.Warn("rejected unauthenticated /mcp request", "failed_attempts", n)
 }
 
+// unauthorizedBody is the fixed 401 body for /mcp.
+const unauthorizedBody = `{"error":"unauthorized","hint":"send the header Authorization: Bearer <token> (ask the operator for COUNCIL_AUTH_TOKEN); there is nothing to sign in to"}`
+
 // requireBearer guards next with an `Authorization: Bearer <token>` check.
 // Both sides are hashed with SHA-256 before a constant-time compare, so the
-// token length does not leak. A failure is a bare 401 that does not say which
-// part was wrong.
+// token length does not leak. A failure is a 401 with a fixed JSON hint that
+// does not say which part was wrong and never echoes the presented value.
 func requireBearer(token string, fl *failureLog, next http.Handler) http.Handler {
 	want := sha256.Sum256([]byte(token))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -74,7 +77,9 @@ func requireBearer(token string, fl *failureLog, next http.Handler) http.Handler
 		if !ok {
 			fl.record()
 			w.Header().Set("WWW-Authenticate", `Bearer realm="council-hub"`)
+			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(unauthorizedBody))
 			return
 		}
 		next.ServeHTTP(w, r)

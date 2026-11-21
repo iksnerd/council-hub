@@ -20,7 +20,7 @@ func loadToken(getenv func(string) string, tokenFile string, stderr io.Writer) (
 		return strings.TrimSpace(getenv("COUNCIL_AUTH_TOKEN")), nil
 	}
 	if fi, err := os.Stat(tokenFile); err == nil && fi.Mode().Perm()&0o077 != 0 {
-		fmt.Fprintf(stderr, "council-inbox: warning: %s is readable by group or others (mode %04o); chmod 600 it\n", tokenFile, fi.Mode().Perm())
+		_, _ = fmt.Fprintf(stderr, "council-inbox: warning: %s is readable by group or others (mode %04o); chmod 600 it\n", tokenFile, fi.Mode().Perm())
 	}
 	b, err := os.ReadFile(tokenFile)
 	if err != nil {

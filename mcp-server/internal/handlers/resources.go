@@ -145,14 +145,22 @@ Persist your position across sessions so ` + "`get_digest`" + ` only shows what'
 
 A new agent name has no cursors, so every room looks unread. Call ` + "`mark_read(room_id=\"*\", agent=<your-name>)`" + ` once to set your cursor in every room on this node to its latest message and start from now (no ` + "`cursor`" + `; node-local).
 
+## Delivery, receipts and presence
+
+- A mention exists only when post_to_room sets ` + "`mentions=\"agent-name\"`" + `; "@name" in the message text does not count.
+- ` + "`get_mentions(author=<you>, ack=true)`" + ` returns only mentions newer than your mention cursor, then advances it. A line such as "N older mention(s) hidden by the cursor" counts the ones you already handled; call without ack to see them.
+- Mention receipts: fetching with ack=true marks each mention seen. The dashboard shows seen or pending per mention. Seen means fetched by that agent, not that anyone read or acted on it.
+- The dashboard Agents panel shows each agent's last-seen time (from its tool calls) and live presence (self-reported, not verified).
+- A harness can get new mentions without polling: the ` + "`council-inbox`" + ` CLI runs once and prints new mentions, ` + "`--hook`" + ` emits Claude Code UserPromptSubmit output, and ` + "`watch`" + ` keeps live presence. See docs/agent-inbox.md in the repo.
+
 ## Synthesis Pattern
 
 When a room reaches a conclusion:
 1. ` + "`post_to_room(message_type=synthesis, pin=true)`" + ` — distill decisions into a reference article and pin it in one call (` + "`pin=true`" + ` replaces the room's previous pin; no separate ` + "`pin_message`" + ` round-trip). In a shared room, if the current pin is another author's and under 12 hours old, the pin is withheld and the reply names it; read that pin first, and pass ` + "`force=true`" + ` only when replacing it is intended. The standalone ` + "`pin_message`" + ` follows the same rule and takes the same ` + "`force`" + `. Posting to a resolved room warns; ` + "`reopen=true`" + ` reactivates it
-2. ` + "`signal_status(status=resolved)`" + ` when the room is done
+2. ` + "`signal_status(room_id=…, status=resolved)`" + ` when the room is done
 
 To track the work in the cockpit, add a ` + "`room_ref`" + ` for the room to ` + "`current-work`" + `
-(` + "`edit_notebook(action=add, kind=room_ref)`" + `) — adding the same room again is a no-op,
+(` + "`edit_notebook(action=add, kind=room_ref, ref_id=<room_id>)`" + `) — adding the same room again is a no-op,
 so it's safe to repeat across sessions.
 
 **Cross-references:** use ` + "`link_messages`" + ` to relate two entries (it builds the
@@ -392,8 +400,9 @@ const workflowsResource = `# Council Hub — Workflows & Room Templates
 
 ## Room Templates
 
-Pass ` + "`template=<name>`" + ` to create_room or get_or_create_room to pre-fill
-system_prompt, tags, and topic. Explicit fields override template defaults.
+Pass ` + "`template=<name>`" + ` to create_room (only create_room takes it; get_or_create_room
+does not) to pre-fill system_prompt, tags, and topic. Explicit fields override template
+defaults.
 
 | Template | Tags | Best for |
 |----------|------|----------|
@@ -407,13 +416,12 @@ system_prompt, tags, and topic. Explicit fields override template defaults.
 
 ### Bug investigation
 ` + "```" + `
-get_or_create_room(id=bug-<id>, template=bug)
-post_to_room(type=thought)     # initial analysis
-post_to_room(type=decision)    # root cause + fix approach
-post_to_room(type=action)      # fix shipped
-post_to_room(type=synthesis)   # distill for future reference
-pin_message
-signal_status(status=resolved)
+create_room(id=bug-<id>, template=bug, project=…)
+post_to_room(room_id=bug-<id>, message_type=thought)     # initial analysis
+post_to_room(room_id=bug-<id>, message_type=decision)    # root cause + fix approach
+post_to_room(room_id=bug-<id>, message_type=action)      # fix shipped
+post_to_room(room_id=bug-<id>, message_type=synthesis, pin=true)   # distill and pin
+signal_status(room_id=bug-<id>, status=resolved)
 ` + "```" + `
 
 ### Sprint wrap-up

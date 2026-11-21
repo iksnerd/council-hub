@@ -31,7 +31,8 @@ defmodule CouncilHubUiWeb.Plugs.RequireDashboardAuthTest do
   defp assert_denied(conn) do
     assert conn.status == 401
     assert get_resp_header(conn, "www-authenticate") == [~s(Basic realm="Council Hub")]
-    assert conn.resp_body == ""
+    assert conn.resp_body =~ "Authentication required"
+    refute conn.resp_body =~ ~r/csrf|phx-session/i
     assert get_resp_header(conn, "set-cookie") == []
   end
 

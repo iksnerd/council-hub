@@ -130,17 +130,17 @@ func parseWatchFlags(args []string, getenv func(string) string, stderr io.Writer
 		return cfg, exitBadConfig, false
 	}
 	if fs.NArg() > 0 {
-		fmt.Fprintf(stderr, "council-inbox watch: unexpected argument %q\n", fs.Arg(0))
+		_, _ = fmt.Fprintf(stderr, "council-inbox watch: unexpected argument %q\n", fs.Arg(0))
 		return cfg, exitBadConfig, false
 	}
 	if cfg.FollowPID < 0 {
-		fmt.Fprintln(stderr, "council-inbox watch: --follow-pid must be a positive PID")
+		_, _ = fmt.Fprintln(stderr, "council-inbox watch: --follow-pid must be a positive PID")
 		return cfg, exitBadConfig, false
 	}
 	cfg.Rooms = rooms
 	tok, err := loadToken(getenv, *tokenFile, stderr)
 	if err != nil {
-		fmt.Fprintf(stderr, "council-inbox watch: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "council-inbox watch: %v\n", err)
 		return cfg, exitBadConfig, false
 	}
 	cfg.Token = tok
@@ -152,11 +152,11 @@ func parseWatchFlags(args []string, getenv func(string) string, stderr io.Writer
 func runWatch(ctx context.Context, cfg watchConfig) int {
 	cfg.applyDefaults()
 	if !agentNameRE.MatchString(cfg.Agent) {
-		fmt.Fprintf(cfg.Stderr, "council-inbox watch: invalid agent name %q (allowed: letters, digits and . _ @ : -, 1 to 64 chars)\n", cfg.Agent)
+		_, _ = fmt.Fprintf(cfg.Stderr, "council-inbox watch: invalid agent name %q (allowed: letters, digits and . _ @ : -, 1 to 64 chars)\n", cfg.Agent)
 		return exitBadConfig
 	}
 	if u, err := url.Parse(cfg.URL); err != nil || (u.Scheme != "ws" && u.Scheme != "wss") {
-		fmt.Fprintf(cfg.Stderr, "council-inbox watch: invalid presence URL: need a ws:// or wss:// URL\n")
+		_, _ = fmt.Fprintf(cfg.Stderr, "council-inbox watch: invalid presence URL: need a ws:// or wss:// URL\n")
 		return exitBadConfig
 	}
 
@@ -177,11 +177,11 @@ func runWatch(ctx context.Context, cfg watchConfig) int {
 	for ctx.Err() == nil {
 		res := runSession(ctx, cfg)
 		if res.authRejected {
-			fmt.Fprintf(cfg.Stderr, "council-inbox watch: %s\n", authFailedMsg)
+			_, _ = fmt.Fprintf(cfg.Stderr, "council-inbox watch: %s\n", authFailedMsg)
 			return exitBadConfig
 		}
 		if res.fatal != "" {
-			fmt.Fprintf(cfg.Stderr, "council-inbox watch: dashboard rejected this config: %s (check --agent and --room)\n", res.fatal)
+			_, _ = fmt.Fprintf(cfg.Stderr, "council-inbox watch: dashboard rejected this config: %s (check --agent and --room)\n", res.fatal)
 			return exitBadConfig
 		}
 		if ctx.Err() != nil {
@@ -282,7 +282,7 @@ func runSession(ctx context.Context, cfg watchConfig) sessionResult {
 		}
 		return sessionResult{err: err}
 	}
-	defer c.CloseNow()
+	defer func() { _ = c.CloseNow() }()
 	c.SetReadLimit(1 << 20)
 
 	sctx, scancel := context.WithCancel(context.Background())
@@ -309,16 +309,39 @@ func runSession(ctx context.Context, cfg watchConfig) sessionResult {
 		}
 		return c.Write(sendCtx, websocket.MessageText, b)
 	}
+	// sendT writes with its own timeout, never the session context: cancelling a
+	// context mid-write makes the library drop the connection, and then the leave
+	// frame below could not be sent (a heartbeat racing with shutdown did exactly that).
+	sendT := func(jref, ref *string, topic, event string, payload any) error {
+		tctx, tcancel := context.WithTimeout(context.Background(), cfg.ReplyTimeout)
+		defer tcancel()
+		return send(tctx, jref, ref, topic, event, payload)
+	}
 	leave := func() {
 		lctx, lcancel := context.WithTimeout(context.Background(), cfg.LeaveTimeout)
 		defer lcancel()
 		jr, r := joinRef, "leave"
-		_ = send(lctx, &jr, &r, presenceTopic, "phx_leave", map[string]any{})
+		if err := send(lctx, &jr, &r, presenceTopic, "phx_leave", map[string]any{}); err != nil {
+			return
+		}
+		// Close the socket properly, bounded by the same timeout. Tearing it down
+		// right after the write can lose the leave frame (the server sees the
+		// connection drop before it reads it); the close frame queues behind the
+		// leave, so the server reads the leave first.
+		closed := make(chan struct{})
+		go func() {
+			_ = c.Close(websocket.StatusNormalClosure, "leaving")
+			close(closed)
+		}()
+		select {
+		case <-closed:
+		case <-lctx.Done():
+		}
 	}
 
 	jr, r0 := joinRef, joinRef
 	payload := map[string]any{"agent": cfg.Agent, "client": cfg.Client, "rooms": cfg.Rooms}
-	if err := send(ctx, &jr, &r0, presenceTopic, "phx_join", payload); err != nil {
+	if err := sendT(&jr, &r0, presenceTopic, "phx_join", payload); err != nil {
 		return sessionResult{err: err}
 	}
 
@@ -361,7 +384,7 @@ func runSession(ctx context.Context, cfg watchConfig) sessionResult {
 			hbSeq++
 			hbRef = strconv.Itoa(hbSeq + 1)
 			ref := hbRef
-			if err := send(ctx, nil, &ref, "phoenix", "heartbeat", map[string]any{}); err != nil {
+			if err := sendT(nil, &ref, "phoenix", "heartbeat", map[string]any{}); err != nil {
 				res.err = err
 				return res
 			}
@@ -449,7 +472,7 @@ func (l *throttledLog) printf(format string, args ...any) {
 		return
 	}
 	l.last = time.Now()
-	fmt.Fprintf(l.w, format+"\n", args...)
+	_, _ = fmt.Fprintf(l.w, format+"\n", args...)
 }
 
 // redactURL drops userinfo and query so a log line never carries credentials.

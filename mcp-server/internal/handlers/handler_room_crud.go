@@ -233,6 +233,16 @@ func (r *Registry) createRoom(ctx context.Context, req *mcp.CallToolRequest, arg
 	return msg(b.String())
 }
 
+// roomNotFoundMessage is the post_to_room miss: the closest room ids on this
+// node, then how to create the room (get_or_create_room) or look for it.
+func roomNotFoundMessage(srv *council.Server, roomID string) string {
+	out := fmt.Sprintf("Error: Room '%s' not found.", roomID)
+	if closest := srv.ClosestRoomIDs(roomID, 3); len(closest) > 0 {
+		out += " Closest: " + strings.Join(closest, ", ") + "."
+	}
+	return out + fmt.Sprintf(" Use get_or_create_room(id=%s, project=..., repo=...) to create it, or list_rooms(search=%s) to look for it.", roomID, roomID)
+}
+
 // writeCreateRoomInfoLines renders the metadata lines common to a committed
 // create and a dry_run preview — everything from the args the caller passed
 // in, so it needs no DB read.
@@ -462,6 +472,9 @@ func (r *Registry) getOrCreateRoom(ctx context.Context, req *mcp.CallToolRequest
 	}
 	fmt.Fprintf(&b, "**%s** [%s]\n", room.ID, room.Status)
 	fmt.Fprintf(&b, "**Topic:** %s\n", room.Description)
+	if room.Project != "" {
+		fmt.Fprintf(&b, "**Project:** %s\n", room.Project)
+	}
 	if room.SystemPrompt != "" {
 		fmt.Fprintf(&b, "**System Prompt:** %s\n", room.SystemPrompt)
 	}

@@ -242,6 +242,9 @@ func (r *Registry) handleEditNotebook(ctx context.Context, req *mcp.CallToolRequ
 		if args.NotebookID == "" {
 			return msg("Error: notebook_id is required.")
 		}
+		if err := r.Server.EnsureCurrentWorkNotebook(args.NotebookID); err != nil {
+			return msg(fmt.Sprintf("Error: %s", err.Error()))
+		}
 		if err := validateSize("prose", args.Prose, maxContentLen); err != nil {
 			return msg(fmt.Sprintf("Error: %s", err.Error()))
 		}
@@ -519,6 +522,9 @@ func statusWanted(filter, state string) bool {
 }
 
 func (r *Registry) renderOutline(notebookID string, level int, f council.OutlineFilter) (*mcp.CallToolResult, ToolOutput, error) {
+	if err := r.Server.EnsureCurrentWorkNotebook(notebookID); err != nil {
+		return textResult(fmt.Sprintf("Error: %s", err.Error()))
+	}
 	text, err := r.outlineText(notebookID, level, f)
 	if err != nil {
 		return textResult(fmt.Sprintf("Error: %s", err.Error()))

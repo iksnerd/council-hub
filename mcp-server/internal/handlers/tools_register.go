@@ -78,7 +78,7 @@ func (r *Registry) RegisterTools() {
 				"read_transcript(mode=changelog)) skip it, so an untyped post goes uncounted in the project notebook and decision log. "+
 				"Per-type when-to-use guidance: load_resources(uri=council://message-types)."),
 			"reply_to":        prop("string", "Message ID this is a reply to — full UUID or a transcript's 8-char #prefix, looked up in the room you post to first (a prefix shared with another room is not ambiguity); write room#prefix to target another room. Unknown or ambiguous refs error. Renders as 're: #…' in transcripts"),
-			"mentions":        arrayProp("Comma-separated agent names to explicitly notify (e.g. 'claude,gemini-cli'). Mentioned agents can call get_mentions on startup to find threads awaiting their input."),
+			"mentions":        arrayProp("Comma-separated agent names to explicitly notify (e.g. 'claude,gemini-cli'). Mentioned agents can call get_mentions on startup to find threads awaiting their input. A mention exists only when this parameter is set; \"@name\" in the message text does not count."),
 			"supersedes":      prop("string", "Message ID this one replaces (e.g. an earlier synthesis) — full UUID or an 8-char #prefix (resolved; unknown or ambiguous refs error). Renders as 'supersedes #x' so tooling can dim the dead version. Pinning a new synthesis over an old one sets this automatically."),
 			"mark_read_self":  prop("boolean", "Set 'true' to advance your own read cursor to this new message — folds the end-of-session mark_read into the post (uses author as the agent identity)."),
 			"pin":             prop("boolean", "Set 'true' to pin this message as the room's current pin (auto-unpins the previous one), folding the post→pin dance into one call. Use for the synthesis/decision you want surfaced as the room's living abstract — no separate pin_message round-trip or message_id plumbing. Works cross-node too: on a room owned by a peer the pin is applied on the owner, and the response says whether it landed."),
@@ -586,7 +586,8 @@ func (r *Registry) RegisterTools() {
 			"Call with no args on your first session to see what's available. " +
 			"Pass uri=council://guide for core concepts and the session-start workflow, " +
 			"uri=council://message-types for when to use thought/decision/synthesis/etc., " +
-			"uri=council://workflows for room templates and common patterns. " +
+			"uri=council://workflows for room templates and common patterns, " +
+			"uri=council://janitor for the room-hygiene pass. " +
 			"Also a fallback for clients that don't support MCP resources/read natively.",
 		InputSchema: schema(nil, map[string]map[string]any{
 			"uri": prop("string", "Resource URI to fetch (e.g. council://guide, council://message-types, council://workflows). Omit to list all available resources."),

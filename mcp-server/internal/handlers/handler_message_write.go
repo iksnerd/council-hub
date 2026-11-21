@@ -167,7 +167,7 @@ func (r *Registry) handlePostToRoom(ctx context.Context, req *mcp.CallToolReques
 			r.Server.Logger.Info("Message proxied to owner", "room_id", args.RoomID, "owner", owner, "msg_id", out.MessageID, "pinned", out.Pinned)
 			return msg(formatPostResult(args, out, owner) + workspaceNote)
 		}
-		return msg(fmt.Sprintf("Error: Room '%s' not found. Create it first with create_room.", args.RoomID))
+		return msg(roomNotFoundMessage(r.Server, args.RoomID))
 	}
 
 	out, err := r.applyPost(in)

@@ -145,7 +145,7 @@ func TestHandleEditNotebookValidation(t *testing.T) {
 		{EditNotebookInput{Action: "add", NotebookID: "rel-notes", RefID: "ghost"}, "not found"},
 		{EditNotebookInput{Action: "update"}, "entry_id is required"},
 		{EditNotebookInput{Action: "remove", EntryID: "ghost"}, "not found"},
-		{EditNotebookInput{Action: "delete", NotebookID: "ghost"}, "not found"},
+		{EditNotebookInput{Action: "delete", NotebookID: "ghost"}, "does not exist"},
 	} {
 		text := editNotebook(t, reg, tc.args)
 		if !strings.Contains(text, tc.want) {
@@ -163,8 +163,54 @@ func TestHandleReadNotebookOutlineEmptyAndMissing(t *testing.T) {
 	}
 
 	res, _, _ = reg.handleReadNotebook(context.Background(), nil, ReadNotebookInput{NotebookID: "ghost"})
-	if !strings.Contains(resultText(res), "not found") {
-		t.Errorf("expected not-found error, got: %s", resultText(res))
+	want := "notebook 'ghost' does not exist. Create it once: edit_notebook(action=create, notebook_id=ghost, title=<title>), then retry"
+	if !strings.Contains(resultText(res), want) {
+		t.Errorf("expected create guidance, got: %s", resultText(res))
+	}
+}
+
+func TestCurrentWorkAutoCreatesOnRead(t *testing.T) {
+	reg, _ := setupOutlineHandler(t)
+	res, _, _ := reg.handleReadNotebook(context.Background(), nil, ReadNotebookInput{NotebookID: "current-work"})
+	if strings.Contains(resultText(res), "Error") {
+		t.Fatalf("current-work should auto-create, got: %s", resultText(res))
+	}
+	nb, err := reg.Server.GetNotebook("current-work")
+	if err != nil || nb.Title != "Current Work" || nb.Project != "" {
+		t.Fatalf("unexpected notebook %+v err=%v", nb, err)
+	}
+}
+
+func TestCurrentWorkAutoCreatesOnTaskAdd(t *testing.T) {
+	reg, _ := setupOutlineHandler(t)
+	text := editNotebook(t, reg, EditNotebookInput{Action: "add", Kind: "task", Prose: "first task"})
+	if strings.Contains(text, "Error") {
+		t.Fatalf("task add should auto-create current-work, got: %s", text)
+	}
+	if _, err := reg.Server.GetNotebook("current-work"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCurrentWorkNotRecreatedWhenSoftDeleted(t *testing.T) {
+	reg, _ := setupOutlineHandler(t)
+	if err := reg.Server.CreateNotebook("current-work", "", "Mine"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reg.Server.DeleteNotebook("current-work"); err != nil {
+		t.Fatal(err)
+	}
+	res, _, _ := reg.handleReadNotebook(context.Background(), nil, ReadNotebookInput{NotebookID: "current-work"})
+	if !strings.Contains(resultText(res), "soft-deleted") || !strings.Contains(resultText(res), "restore") {
+		t.Errorf("expected restore guidance, got: %s", resultText(res))
+	}
+}
+
+func TestOtherNotebookNeverAutoCreates(t *testing.T) {
+	reg, _ := setupOutlineHandler(t)
+	text := editNotebook(t, reg, EditNotebookInput{Action: "add", NotebookID: "other", Prose: "x"})
+	if !strings.Contains(text, "does not exist") {
+		t.Errorf("got: %s", text)
 	}
 }
 

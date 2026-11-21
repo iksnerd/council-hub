@@ -69,28 +69,28 @@ func run(args []string, getenv func(string) string, stdout, stderr io.Writer) in
 	if err != nil {
 		if *hook {
 			if debug {
-				fmt.Fprintf(stderr, "council-inbox: %v\n", err)
+				_, _ = fmt.Fprintf(stderr, "council-inbox: %v\n", err)
 			}
 			return 0
 		}
-		fmt.Fprintf(stderr, "council-inbox: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "council-inbox: %v\n", err)
 		return 1
 	}
 	if text == "" {
 		return 0
 	}
 	if !*hook {
-		fmt.Fprintln(stdout, text)
+		_, _ = fmt.Fprintln(stdout, text)
 		return 0
 	}
 	out, err := hookOutput(*agent, text)
 	if err != nil {
 		if debug {
-			fmt.Fprintf(stderr, "council-inbox: %v\n", err)
+			_, _ = fmt.Fprintf(stderr, "council-inbox: %v\n", err)
 		}
 		return 0
 	}
-	fmt.Fprintln(stdout, out)
+	_, _ = fmt.Fprintln(stdout, out)
 	return 0
 }
 
@@ -132,7 +132,7 @@ func callGetMentions(ctx context.Context, url, agent string, limit int, ack bool
 		}
 		return "", fmt.Errorf("connect: %w", err)
 	}
-	defer cs.Close()
+	defer func() { _ = cs.Close() }()
 
 	args := map[string]any{"author": agent, "limit": limit}
 	if ack {
