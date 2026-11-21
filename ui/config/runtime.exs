@@ -61,6 +61,20 @@ auth_token =
 
 config :council_hub_ui, :auth_token, auth_token
 
+# Optional second listener without the token requirement (see
+# CouncilHubUi.TrustedListener). The operator publishes it on host loopback
+# only. Equal to PORT = refuse to boot.
+trusted_port =
+  case CouncilHubUi.TrustedListener.validate(
+         System.get_env("COUNCIL_TRUSTED_PORT"),
+         String.to_integer(System.get_env("PORT", "4000"))
+       ) do
+    {:ok, port} -> port
+    {:error, message} -> raise message
+  end
+
+config :council_hub_ui, :trusted_port, trusted_port
+
 if config_env() == :prod do
   database_path =
     System.get_env("COUNCIL_DB_PATH") ||

@@ -23,6 +23,16 @@ services:
       # Bearer token for /mcp (16+ characters; shorter makes the server refuse to
       # start). Empty = no auth. Clients send it as `Authorization: Bearer <token>`.
       - COUNCIL_AUTH_TOKEN=${COUNCIL_AUTH_TOKEN:-}
+      # Optional second listener that serves the same hub WITHOUT the token, for
+      # local clients. Set COUNCIL_TRUSTED_ADDR to a container address (e.g. :3002)
+      # and COUNCIL_TRUSTED_PORT to the dashboard's matching port. Publish these
+      # on host loopback ONLY. Example (in an override file), with the token set:
+      #   ports:
+      #     - "127.0.0.1:3001:3002"        # local clients, no token
+      #     - "<tailnet-ip>:3001:3001"     # network clients, token required
+      # Leave both empty for a single listener.
+      - COUNCIL_TRUSTED_ADDR=${COUNCIL_TRUSTED_ADDR:-}
+      - COUNCIL_TRUSTED_PORT=${COUNCIL_TRUSTED_PORT:-}
       # Ollama endpoint for semantic search (optional)
       - COUNCIL_OLLAMA_URL=${COUNCIL_OLLAMA_URL:-}
     # `always`, not `unless-stopped`: Docker Desktop records its own shutdown as a

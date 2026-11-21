@@ -1,6 +1,11 @@
 defmodule CouncilHubUiWeb.Endpoint do
   use Phoenix.Endpoint, otp_app: :council_hub_ui
 
+  # Wraps Phoenix's call/2 to delete a client-supplied x-council-trusted header
+  # (see CouncilHubUiWeb.TrustedScrub). Registered after `use`, so it runs after
+  # Phoenix's own before_compile.
+  @before_compile CouncilHubUiWeb.TrustedScrub
+
   # The session will be stored in the cookie and signed,
   # this means its contents can be read but not tampered with.
   # Set :encryption_salt if you would also like to encrypt it.

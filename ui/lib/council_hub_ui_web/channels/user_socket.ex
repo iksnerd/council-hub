@@ -12,7 +12,9 @@ defmodule CouncilHubUiWeb.UserSocket do
 
   Authentication: when `COUNCIL_AUTH_TOKEN` is set, `connect/3` requires the
   header `X-Council-Token: <token>`, compared in constant time. The token is
-  never read from query parameters, which end up in logs. With no token
+  never read from query parameters, which end up in logs. A connection that came
+  in through the trusted listener (`COUNCIL_TRUSTED_PORT`) needs no token: it
+  carries `x-council-trusted` with the per-boot secret, compared in constant time. With no token
   configured, any non-browser client that can reach the port can claim a
   presence entry.
   """
@@ -37,12 +39,26 @@ defmodule CouncilHubUiWeb.UserSocket do
 
   defp authorized?(connect_info) do
     if CouncilHubUi.Auth.enabled?() do
-      case connect_info |> Map.get(:x_headers, []) |> List.keyfind("x-council-token", 0) do
-        {_, value} -> CouncilHubUi.Auth.valid?(value)
-        nil -> false
-      end
+      headers = Map.get(connect_info, :x_headers, [])
+      token_ok?(headers) or trusted?(headers)
     else
       true
+    end
+  end
+
+  defp token_ok?(headers) do
+    case List.keyfind(headers, "x-council-token", 0) do
+      {_, value} -> CouncilHubUi.Auth.valid?(value)
+      nil -> false
+    end
+  end
+
+  # Only the trusted listener adds this header, with its per-boot secret
+  # (CouncilHubUi.TrustedListener); every other entry deletes a client's copy.
+  defp trusted?(headers) do
+    case List.keyfind(headers, CouncilHubUi.TrustedListener.header(), 0) do
+      {_, value} -> CouncilHubUi.TrustedListener.valid_marker?(value)
+      nil -> false
     end
   end
 

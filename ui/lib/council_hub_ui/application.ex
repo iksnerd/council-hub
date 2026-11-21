@@ -27,12 +27,34 @@ defmodule CouncilHubUi.Application do
         [
           # Start to serve requests, typically the last entry
           CouncilHubUiWeb.Endpoint
-        ]
+        ] ++ trusted_children()
 
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options
     opts = [strategy: :one_for_one, name: CouncilHubUi.Supervisor]
     Supervisor.start_link(children, opts)
+  end
+
+  # The second, token-free listener (COUNCIL_TRUSTED_PORT), serving the same
+  # Endpoint. Only when the Endpoint itself serves.
+  defp trusted_children do
+    if CouncilHubUi.TrustedListener.enabled?() do
+      # Make the per-boot secret before the first request.
+      CouncilHubUi.TrustedListener.secret()
+
+      unless CouncilHubUi.Auth.enabled?() do
+        require Logger
+
+        Logger.warning(
+          "COUNCIL_TRUSTED_PORT is set while COUNCIL_AUTH_TOKEN is empty: " <>
+            "the trusted listener adds nothing while auth is off."
+        )
+      end
+
+      [CouncilHubUi.TrustedListener]
+    else
+      []
+    end
   end
 
   # Presence needs PubSub and is skipped entirely with COUNCIL_PRESENCE=off.

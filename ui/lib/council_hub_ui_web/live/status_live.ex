@@ -99,6 +99,7 @@ defmodule CouncilHubUiWeb.StatusLive do
     |> assign(:tool_usage, HealthStats.tool_usage())
     |> assign(:short_node_fun, &short_node/1)
     |> assign(:auth_line, CouncilHubUi.Auth.status_line(CouncilHubUi.Auth.enabled?()))
+    |> assign(:trusted_line, CouncilHubUi.TrustedListener.status_line())
     |> assign(
       :warnings,
       doctor(

@@ -11,6 +11,9 @@ defmodule CouncilHubUiWeb.Plugs.RequireDashboardAuth do
   needs the session and CSRF token embedded in an authenticated page, so it is
   protected implicitly.
 
+  Requests that came in through the trusted listener (`conn.private[:council_trusted]`,
+  set by `Plugs.TrustedEntry`, see `CouncilHubUi.TrustedListener`) skip the check.
+
   Requests whose `remote_ip` is loopback are exempt. That keeps the container
   healthcheck and the Go server's calls working. Traffic from outside the
   container arrives from the Docker bridge address, so a browser on the same
@@ -26,6 +29,7 @@ defmodule CouncilHubUiWeb.Plugs.RequireDashboardAuth do
   def call(conn, _opts) do
     cond do
       not Auth.enabled?() -> conn
+      conn.private[:council_trusted] == true -> conn
       RestrictLocalhost.loopback?(conn.remote_ip) -> conn
       authorized?(conn) -> conn
       true -> deny(conn)

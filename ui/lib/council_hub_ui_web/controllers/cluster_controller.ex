@@ -46,7 +46,9 @@ defmodule CouncilHubUiWeb.ClusterController do
       # Boolean only; the cookie value never leaves the VM.
       cookie_is_default: ClusterCookie.default?(),
       # Boolean only; the token never leaves the VM.
-      auth_enabled: CouncilHubUi.Auth.enabled?()
+      auth_enabled: CouncilHubUi.Auth.enabled?(),
+      # Boolean only: whether the second, token-free listener is configured.
+      trusted_listener: CouncilHubUi.TrustedListener.enabled?()
     })
   end
 

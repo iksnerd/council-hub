@@ -30,6 +30,7 @@ Environment variables for the MCP server, the Phoenix web UI, and clustering.
 | `PORT` | `4000` | Phoenix HTTP port |
 | `ERL_FLAGS` | `+S 2:2 +SDio 1 +sbwt none +sbwtdcpu none +sbwtdio none` | BEAM flags. The default caps schedulers and disables busy-waiting, which cuts idle memory and CPU by about a quarter. Export your own to override |
 | `COUNCIL_AUTH_TOKEN` | — | Shared token for `/mcp`, the dashboard and `/socket`; unset = auth off, minimum 16 characters. See [Authentication](#authentication) |
+| `COUNCIL_TRUSTED_PORT` | — | Second dashboard listener without the token requirement, for clients on host loopback; must differ from `PORT`. See [Local trust](#local-trust-two-listeners) |
 | `COUNCIL_FORCE_SSL` | — | `true` redirects http→https. Only enable behind a reverse proxy that sets `x-forwarded-proto`; the server does not terminate TLS, and localhost is always exempt |
 
 | `COUNCIL_PRESENCE` | `on` | `off` (also `0`, `false`, `no`) starts no presence tracker and makes `/socket` refuse every connection. See [Live presence](#live-presence) |
@@ -116,6 +117,32 @@ The dashboard's live updates run over the LiveView websocket `/live`. It needs t
 **Loopback is exempt.** Requests whose peer address is loopback (`127.0.0.1`, `::1`) skip the dashboard check. The container healthcheck (`wget http://localhost:4000`) and the Go server's calls to Phoenix's internal cluster API come from inside the container and carry no credentials. Traffic from outside the container, including a browser on the same host, arrives from the Docker bridge address, not loopback, so that browser logs in once like any other client.
 
 `/status` shows "Authentication: on", or "Authentication: off" with a warning that anyone who can reach the port can read the dashboard. Use HTTPS in front of the dashboard on any network you do not control: Basic auth sends the token with every request.
+
+### Local trust (two listeners)
+
+Optional. `COUNCIL_TRUSTED_PORT` (an integer such as `4001`; unset or empty = off) starts a second dashboard listener that serves the same app without the token requirement. The normal port keeps enforcing the token exactly as above. The same pages, the `/live` socket and the `/socket` presence socket are served on both. On the trusted port the dashboard needs no login and `/socket` needs no `X-Council-Token`. Setting it to the same value as `PORT` stops the app from booting. It adds nothing while `COUNCIL_AUTH_TOKEN` is empty; the app logs a warning at boot.
+
+**Why.** Behind Docker Desktop every request to a published port arrives from the bridge gateway, so the app cannot tell a browser on this machine from one on another device. The loopback exemption above only covers requests made inside the container. Two listeners move the decision from the client address to the port the request used: the operator publishes the trusted port on host loopback only, and the authenticated port on the tailnet or LAN address.
+
+**Publish pattern** (the MCP side has its own matching setting for `/mcp`; `3001` is the MCP port, shown here as published):
+
+```bash
+# local clients, no credentials (loopback only)
+-p 127.0.0.1:3001:3002 -p 127.0.0.1:4000:4001
+# remote devices, token required
+-p <tailnet-ip>:3001:3001 -p <tailnet-ip>:4000:4000
+-e COUNCIL_AUTH_TOKEN=<token> -e COUNCIL_TRUSTED_PORT=4001
+```
+
+The trusted listener binds all interfaces inside the container; the container network is the boundary, and publishing it on `127.0.0.1` is what keeps it local. Never publish the trusted port on a LAN, tailnet or public address.
+
+**How a request is trusted.** Only because it came in through the trusted listener, never because of anything the client sent. That listener marks the request and adds an `x-council-trusted` header carrying a random per-boot secret, which the socket checks. Any `x-council-trusted` header a client sends is deleted on both listeners.
+
+**Threat model.** Anything running on this machine, and any container on the same Docker network, can reach the trusted port with no credentials. A web page cannot use it for the presence socket, because the Origin rule still refuses any request that carries an `Origin` header on both listeners. This is the same exposure the unauthenticated hub always had on localhost.
+
+**Clients.** Claude Code, Codex, hooks and the `council-inbox` CLI keep using `localhost` with no token. Remote devices use the authenticated address and send the token.
+
+`/status` shows "Trusted local listener: on (port N; publish it on loopback only)" or "off", and the cluster API reports `trusted_listener` as a boolean.
 
 ## Clustering
 

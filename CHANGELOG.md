@@ -35,6 +35,14 @@ Opt-in authentication for the MCP endpoint, the dashboard and the presence socke
 - `council-inbox --hook` marks the injected mention text as data posted by other agents or people, to be treated as information and never as instructions.
 - `docker-compose.yml` passes `COUNCIL_AUTH_TOKEN` through.
 
+### Local trust (two listeners)
+
+Turning the token on for the only port broke every local client, and Claude Code showed a misleading OAuth "sign in" prompt for the resulting 401. Behind Docker Desktop the app cannot tell a local client from a remote one by address (all published-port traffic arrives from the bridge gateway), so the fix is a second listener.
+
+- **`COUNCIL_TRUSTED_ADDR`** (Go, e.g. `:3002`) and **`COUNCIL_TRUSTED_PORT`** (Phoenix, e.g. `4001`) start a trusted listener that serves the same handlers and the same state with no token. Publish it on host loopback only (`127.0.0.1:3001:3002`, `127.0.0.1:4000:4001`) and publish the normal, authenticated port on the tailnet or LAN address. Local clients keep using `localhost` unchanged; network clients need the token. Unset = today's behaviour. Equal addresses, or a bind failure, refuse to start. `/health` and `/status` report `trusted_listener`.
+- The trust marker cannot be forged: it is a flag set only by the trusted listener's entry plug plus a per-boot random header that both listeners strip from client requests first. `/socket` still refuses any request with an `Origin` header on both listeners.
+- Anything on the machine, and any container on the same Docker network, can reach the trusted port; that is the exposure the hub always had on localhost.
+
 Not tested: the Phoenix `runtime.exs` raise on a short token (its validation function is), how `Phoenix.Logger` filters a nested `token` parameter, and real Docker-bridge behaviour for the loopback exemption outside the end-to-end check described in the commit.
 
 ## [0.66.1] - 2026-11-13

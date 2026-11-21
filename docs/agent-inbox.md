@@ -75,6 +75,8 @@ Set `COUNCIL_AUTHOR` to the name this session posts under, and `COUNCIL_MCP_URL`
 
 A hub started with `COUNCIL_AUTH_TOKEN` (16 characters or more) requires `Authorization: Bearer <token>` on `/mcp`. `/health` stays open. The main description of the setting is in [configuration.md](configuration.md).
 
+Clients on the same machine need no token when the hub also runs a trusted listener (`COUNCIL_TRUSTED_ADDR`, published on loopback only); clients that reach the hub over the network always need it. See "Local trust (two listeners)" in [configuration.md](configuration.md).
+
 Give `council-inbox` the token one of two ways:
 
 ```bash

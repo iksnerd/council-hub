@@ -136,13 +136,19 @@ func clusterNodes(phoenixURL string, client *http.Client) *clusterNodesResult {
 // 200 even when self-heals have occurred — heals are recoverable; the absence
 // of a recent integrity check is what monitoring should alert on.
 func healthHandler(cs *council.Server, phoenixURL string, httpClient *http.Client) http.HandlerFunc {
-	return healthHandlerAuth(cs, phoenixURL, httpClient, false)
+	return healthHandlerOpts(cs, phoenixURL, httpClient, false, false)
 }
 
 // healthHandlerAuth is healthHandler plus the auth state: auth_enabled is
 // always reported (a boolean, never the token), and auth_warning appears when
 // auth is on, the cluster cookie is the public default and peers are connected.
 func healthHandlerAuth(cs *council.Server, phoenixURL string, httpClient *http.Client, authEnabled bool) http.HandlerFunc {
+	return healthHandlerOpts(cs, phoenixURL, httpClient, authEnabled, false)
+}
+
+// healthHandlerOpts adds trusted_listener: whether a second, token-free
+// listener is configured (a boolean only, never its address).
+func healthHandlerOpts(cs *council.Server, phoenixURL string, httpClient *http.Client, authEnabled, trustedListener bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		cs.Mu.RLock()
 		last := cs.LastIntegrityCheck
@@ -154,6 +160,7 @@ func healthHandlerAuth(cs *council.Server, phoenixURL string, httpClient *http.C
 			"heal_count_since_boot": atomic.LoadUint64(&cs.HealCount),
 			"now":                   time.Now().UTC().Format(time.RFC3339),
 			"auth_enabled":          authEnabled,
+			"trusted_listener":      trustedListener,
 		}
 		if cs.Embedder != nil {
 			msgTotal, msgIndexed, roomTotal, roomIndexed := cs.EmbeddingCoverage()
@@ -359,43 +366,38 @@ func main() {
 		var mcpEntry http.Handler = mcpHandler
 		if authToken != "" {
 			mcpEntry = requireBearer(authToken, newFailureLog(logger), mcpHandler)
-			logger.Info("MCP authentication enabled (COUNCIL_AUTH_TOKEN)")
 		}
 
-		mux := http.NewServeMux()
-		mux.Handle("/mcp", mcpEntry)
-		mux.Handle("/mcp/", mcpEntry)
-		mux.HandleFunc("/health", healthHandlerAuth(cs, phoenixURL, reg.HTTPClient, authToken != ""))
-		// Cross-node write receiver (authenticated by the shared cluster secret).
-		mux.HandleFunc("/api/internal/post_to_room", reg.InternalPostHandler())
-		mux.HandleFunc("/api/internal/signal_status", reg.InternalStatusHandler())
-		mux.HandleFunc("/api/internal/pin_message", reg.InternalPinHandler())
-		// UI write endpoints (localhost-only, no auth — for the Phoenix dashboard
-		// compose box and the notebook "pin into outline" button).
-		mux.HandleFunc("/api/ui/post", reg.UIPostHandler())
-		mux.HandleFunc("/api/ui/notebook_entry", reg.UINotebookEntryHandler())
-		mux.HandleFunc("/api/ui/backfill_embeddings", reg.UIBackfillEmbeddingsHandler())
-
-		httpServer := &http.Server{
-			Addr:         addr,
-			Handler:      mux,
-			ReadTimeout:  30 * time.Second,
-			WriteTimeout: 60 * time.Second,
-			IdleTimeout:  120 * time.Second,
+		trustedAddr := strings.TrimSpace(os.Getenv("COUNCIL_TRUSTED_ADDR"))
+		if err := validateListenAddrs(addr, trustedAddr); err != nil {
+			log.Fatalf("%v", err)
+		}
+		hasTrusted := trustedAddr != ""
+		if hasTrusted && authToken == "" {
+			logger.Warn("COUNCIL_TRUSTED_ADDR is set while COUNCIL_AUTH_TOKEN is empty: the trusted listener adds nothing while auth is off")
 		}
 
-		go func() {
-			<-ctx.Done()
-			logger.Info("Shutting down HTTP server")
-			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer shutdownCancel()
-			if err := httpServer.Shutdown(shutdownCtx); err != nil {
-				logger.Error("HTTP server shutdown error", "error", err)
-			}
-		}()
+		health := healthHandlerOpts(cs, phoenixURL, reg.HTTPClient, authToken != "", hasTrusted)
+		// Same registry and same MCP handler on both listeners: one process, one
+		// database. Only the /mcp entry differs.
+		servers := []*http.Server{newHTTPServer(addr, buildMux(mcpEntry, health, reg))}
+		if hasTrusted {
+			servers = append(servers, newHTTPServer(trustedAddr, buildMux(mcpHandler, health, reg)))
+		}
 
+		// Fail closed: bind everything before serving anything.
+		lns, err := bindAll(servers)
+		if err != nil {
+			log.Fatalf("HTTP listener error: %v", err)
+		}
+		if authToken != "" {
+			logger.Info("MCP token enforced on listener", "addr", addr)
+		}
+		if hasTrusted {
+			logger.Info("trusted listener, no token required: publish this port on loopback only", "addr", trustedAddr)
+		}
 		logger.Info("Council Hub starting (HTTP)", "db", dbPath, "addr", addr)
-		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := serveAll(ctx, logger, servers, lns); err != nil {
 			log.Fatalf("HTTP server error: %v", err)
 		}
 
