@@ -21,6 +21,12 @@ defmodule CouncilHubUiWeb do
     do:
       ~w(assets fonts images favicon.ico favicon.svg apple-touch-icon.png site.webmanifest robots.txt)
 
+  # In production `cache_static_manifest` rewrites /favicon.ico to /favicon-<hash>.ico
+  # (and the manifest to /site-<hash>.webmanifest). Plug.Static's `only` matches exact
+  # first segments, so the hashed names need prefix matching or they 404. Keep this to
+  # the root-level files that are digested; `assets`, `fonts` and `images` are folders.
+  def static_prefixes, do: ~w(favicon apple-touch-icon site)
+
   def router do
     quote do
       use Phoenix.Router, helpers: false

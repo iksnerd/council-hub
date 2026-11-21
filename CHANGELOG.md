@@ -24,6 +24,9 @@ Changes that make the hub easier for agents to start a session on and to receive
 - Docs: a non-default cookie lets the cluster ports bind to all interfaces, which removes the stale pinned-address failure after a DHCP change; clustering notes for Docker Desktop on macOS over a tailnet.
 - The council plugin is at 0.5.2 (workflow, multi-agent, project-suggestions and cluster skills).
 
+### Fixed
+- **The dashboard's favicon, touch icon and web manifest no longer 404.** In production Phoenix serves them under hashed names (`/favicon-<hash>.ico`, `/site-<hash>.webmanifest`), but the endpoint's static plug only allowed the exact unhashed names, so the browser console showed 404s on every page load. The root-level files are now also matched by prefix (`favicon`, `apple-touch-icon`, `site`); the prefix match does not open any other name. Present since the dashboard moved to hashed static files, also in v0.66.1.
+
 ### Authentication (opt-in)
 
 Opt-in authentication for the MCP endpoint, the dashboard and the presence socket. Off by default: with `COUNCIL_AUTH_TOKEN` unset nothing changes.

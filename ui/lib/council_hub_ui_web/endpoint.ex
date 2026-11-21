@@ -50,6 +50,7 @@ defmodule CouncilHubUiWeb.Endpoint do
     from: :council_hub_ui,
     gzip: not code_reloading?,
     only: CouncilHubUiWeb.static_paths(),
+    only_matching: CouncilHubUiWeb.static_prefixes(),
     raise_on_missing_only: code_reloading?
 
   # Code reloading can be explicitly enabled under the
