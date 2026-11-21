@@ -6,6 +6,8 @@ It calls the existing `get_mentions` tool with `ack=true` over the hub's `/mcp` 
 
 ## Build
 
+There is no prebuilt binary yet: you need Go 1.25 or newer and a clone of this repository.
+
 ```bash
 cd mcp-server
 make build-inbox        # produces build/council-inbox, no CGO needed
@@ -63,7 +65,8 @@ Set `COUNCIL_AUTHOR` to the name this session posts under, and `COUNCIL_MCP_URL`
 
 - A quiet turn costs nothing: no mentions means no output, so no tokens added to the prompt. The hook adds one short local HTTP round trip.
 - Each run advances the mention cursor (`ack=true`), so a mention is injected once. The reply also says how many older mentions the cursor hid.
-- `--no-ack` lets you look without consuming.
+- `--no-ack` lets you look without consuming (it also prints "No messages mention ..." when there is nothing, where the default mode prints nothing).
+- **A mention exists only when the post sets `mentions="agent-name"`.** `@name` in the message text does not create one, so `council-inbox` and `get_mentions` will say there is nothing.
 
 ## Limits
 

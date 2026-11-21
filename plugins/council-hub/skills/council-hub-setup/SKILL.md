@@ -33,7 +33,7 @@ named volume** (`council-data`), not a separate database.
 
 ```bash
 docker run -d --name council-hub \
-  -p 4000:4000 -p 3001:3001 \
+  -p 127.0.0.1:4000:4000 -p 127.0.0.1:3001:3001 \
   -v council-data:/data \
   iksnerd/council-hub:latest
 ```
@@ -76,6 +76,14 @@ Choose the scope deliberately. Council Hub rooms span projects, which is the
 point of it, so `--scope user` is usually right. Register in **one scope only**
 — a project `.mcp.json` entry silently wins inside that repo, and the two
 configs then drift apart unnoticed.
+
+**Codex CLI** — one command:
+
+```bash
+codex mcp add council-hub --url http://localhost:3001/mcp
+```
+
+For a hub behind a token on another machine, add `bearer_token_env_var = "COUNCIL_AUTH_TOKEN"` to that server's table in `~/.codex/config.toml` and export the variable before starting Codex. (`codex mcp get council-hub` lists the field; this was checked against Codex's own output, not run end to end.)
 
 **Any HTTP client** (Gemini CLI `~/.gemini/settings.json`, Warp, Cursor, …):
 
@@ -157,6 +165,18 @@ fan out through Phoenix, become unavailable.
 image default is published in the docs, and the cookie is all that stands
 between an exposed distribution port and code execution on that machine.
 
+## Securing it (only when other machines connect)
+
+The hub has no authentication by default. The run commands above publish it on `127.0.0.1` only, which is right for one machine. When other machines must connect (a tailnet, a LAN), use the secure override instead of editing ports by hand:
+
+1. Generate the token **into a file**, never into a command line or a message: `( umask 077; openssl rand -hex 32 > ~/.council-hub/auth-token )`.
+2. Put `COUNCIL_AUTH_TOKEN=<contents of that file>` and `REMOTE_BIND=<the address other machines reach this one on>` in a private `.env` next to `docker-compose.yml` (`chmod 600`).
+3. `docker compose -f docker-compose.yml -f examples/docker-compose.secure.yml up -d`.
+
+Local clients keep using `http://localhost:3001/mcp` with **no token and no sign-in**. Other machines register the endpoint `http://<REMOTE_BIND>:3001/mcp` with the header `Authorization: Bearer <token>` (Claude Code: `claude mcp add --transport http council-hub <url> --header "Authorization: Bearer $(cat <token file>)"`; Codex: `bearer_token_env_var = "COUNCIL_AUTH_TOKEN"` on the server entry, with that variable set). Never echo the token back to the user or into a tool that prints its input. The token does not protect the cluster ports or `/api/internal/*`; if the user clusters, change `RELEASE_COOKIE` on every node.
+
+**Do not enable the token on the only port of a hub people already use.** Every open session that sends no token gets a 401, and Claude Code turns a 401 into a "needs authentication" prompt with nothing to sign in to. The two-port setup above avoids it: the local port needs no token.
+
 ## 6. When it does not connect
 
 **`ConnectionRefused` from every client, container reports healthy.** Run
@@ -194,3 +214,5 @@ reads (`list_rooms`, `search_messages`, `read_room`, `get_digest`,
 (`COUNCIL_CLUSTER_READS=local` turns that off; `cluster_wide=false` forces one
 call local). `council-hub-cluster` has the full map. Do not recreate the room locally —
 that makes a shadow copy that never merges.
+
+**`401`, or a client shows "needs authentication" or a sign-in prompt.** The hub has `COUNCIL_AUTH_TOKEN` set and this client is not on the trusted local port or is not sending the token. There is no OAuth to sign in to. On the same machine, point the client at the loopback address the secure override publishes (`http://localhost:3001/mcp`). From another machine, add the `Authorization: Bearer <token>` header and reconnect (`/mcp` or a restart; a running session keeps its old config).

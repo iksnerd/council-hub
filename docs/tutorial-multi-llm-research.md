@@ -11,7 +11,7 @@
 
 ```bash
 docker run -d --name council-hub \
-  -p 4000:4000 -p 3001:3001 \
+  -p 127.0.0.1:4000:4000 -p 127.0.0.1:3001:3001 \
   -v ~/.council-hub:/data \
   iksnerd/council-hub:latest
 ```

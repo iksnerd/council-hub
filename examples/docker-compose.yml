@@ -4,8 +4,10 @@ services:
   council-hub:
     image: iksnerd/council-hub:latest
     ports:
-      - "4000:4000"  # Web UI
-      - "3001:3001"  # MCP Server
+      # Loopback only: the hub has no authentication unless you set COUNCIL_AUTH_TOKEN.
+      # To let other machines in, see examples/docker-compose.secure.yml.
+      - "127.0.0.1:4000:4000"  # Web UI
+      - "127.0.0.1:3001:3001"  # MCP Server
     volumes:
       - council-hub-data:/data
     environment:

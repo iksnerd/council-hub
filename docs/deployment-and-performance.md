@@ -81,7 +81,7 @@ Export your own value to override it; you are trading latency under load for idl
 
 ```bash
 docker run -d --name council-hub \
-  -p 4000:4000 -p 3001:3001 \
+  -p 127.0.0.1:4000:4000 -p 127.0.0.1:3001:3001 \
   -v ~/.council-hub:/data \
   iksnerd/council-hub:latest
 ```
@@ -101,6 +101,8 @@ docker run -d --name council-hub \
 **Use case:** Team of 5-20 people, shared council-hub instance, persistent service on a server.
 
 #### Docker Compose (Recommended)
+
+> **Before a team can reach it:** this publishes the hub on every interface, and the hub has no authentication unless you set `COUNCIL_AUTH_TOKEN`. Use `examples/docker-compose.secure.yml` (a token for other machines, none for this one) and see [Authentication](configuration.md#authentication).
 
 ```yaml
 version: '3.8'

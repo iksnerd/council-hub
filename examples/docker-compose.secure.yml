@@ -1,0 +1,38 @@
+# Secure setup: other machines need a token, clients on THIS machine do not.
+#
+#   1. Put two lines in a .env file next to docker-compose.yml (chmod 600 .env, never commit it):
+#
+#        COUNCIL_AUTH_TOKEN=<the output of: openssl rand -hex 32>
+#        REMOTE_BIND=<the address other machines reach this one on: your Tailscale or LAN IP>
+#
+#   2. Start it:
+#
+#        docker compose -f docker-compose.yml -f examples/docker-compose.secure.yml up -d
+#
+#   3. Use it:
+#        - On this machine: http://localhost:3001/mcp and http://localhost:4000, no token, nothing to sign in to.
+#        - From another machine: http://<REMOTE_BIND>:3001/mcp with the header
+#          `Authorization: Bearer <token>`; the dashboard at http://<REMOTE_BIND>:4000 asks for a login:
+#          any username, the token as the password.
+#
+# How it works: the container runs two listeners on each service. The "trusted" ones (3002, 4001) need no
+# token and are published on this machine's loopback only; the normal ones (3001, 4000) need the token and
+# are published on REMOTE_BIND. Behind Docker Desktop the app cannot tell a local client from a remote one
+# by address, which is why this is two ports and not one rule. See docs/configuration.md#authentication.
+#
+# Needs Docker Compose 2.24 or newer (for `ports: !override`).
+#
+# Not covered by the token: the Erlang cluster ports (4369, 9000) and /api/internal/*, which the cluster
+# cookie protects. They are NOT published by this file. If you cluster, publish them on REMOTE_BIND only
+# and change RELEASE_COOKIE (COUNCIL_COOKIE in .env) from the public default on every node.
+services:
+  council-hub:
+    environment:
+      - COUNCIL_AUTH_TOKEN=${COUNCIL_AUTH_TOKEN:?set COUNCIL_AUTH_TOKEN in .env (openssl rand -hex 32)}
+      - COUNCIL_TRUSTED_ADDR=:3002
+      - COUNCIL_TRUSTED_PORT=4001
+    ports: !override
+      - "127.0.0.1:3001:3002"
+      - "127.0.0.1:4000:4001"
+      - "${REMOTE_BIND:?set REMOTE_BIND in .env (the address other machines use to reach this one)}:3001:3001"
+      - "${REMOTE_BIND}:4000:4000"

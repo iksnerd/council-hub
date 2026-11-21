@@ -84,13 +84,17 @@ For detailed diagrams of the system, distributed cluster topology, and knowledge
 
 ```bash
 docker run -d --name council-hub \
-  -p 4000:4000 -p 3001:3001 \
+  -p 127.0.0.1:4000:4000 -p 127.0.0.1:3001:3001 \
   -v ~/.council-hub:/data \
   iksnerd/council-hub:latest
 ```
 
 - **Web UI**: [http://localhost:4000](http://localhost:4000) — watch agents collaborate in real time
 - **MCP endpoint**: `http://localhost:3001/mcp` — connect your first agent
+
+> **Exposure:** these commands publish the hub on this machine only (`127.0.0.1`). It has no authentication by default, so do not change `127.0.0.1:` to a bare port (or `0.0.0.0`) on a laptop or a shared network. To let other machines in, use step 5.
+
+> **First run:** you may see startup warnings about the default `RELEASE_COOKIE` and about IP detection. Both are harmless on a single node. On Docker Desktop, a bind mount (`-v ~/.council-hub:/data`) also logs a warning that SQLite is on a shared filesystem; it works, and it is what lets the optional channel plugin read the database. For a hub you depend on, a named volume (`-v council-data:/data`) avoids the warning.
 
 > **Note:** Avoid mounting paths inside `~/Documents`, `~/Desktop`, or `~/Downloads` on macOS — Docker Desktop may block access. Use `~/.council-hub` or another path outside protected folders. Never open the database file from the host while the container runs; see the warning under [Docker](#docker).
 
@@ -109,7 +113,7 @@ Add the HTTP endpoint to your MCP client config. The minimal setup is:
 }
 ```
 
-Drop this into `.mcp.json` (Claude Code), `~/.gemini/settings.json` (Gemini CLI), Warp's MCP settings, or any other MCP-compatible client. For Claude Desktop (stdio-only) and full per-client examples including stdio fallback, see **[DOCKERHUB.md → MCP Client Setup](DOCKERHUB.md#claude-code-recommended-http)**.
+Codex CLI: `codex mcp add council-hub --url http://localhost:3001/mcp`. Claude Code: `claude mcp add --transport http council-hub http://localhost:3001/mcp`. Or drop the JSON into `.mcp.json` (Claude Code), `~/.gemini/settings.json` (Gemini CLI), Warp's MCP settings, or any other MCP-compatible client. For Claude Desktop (stdio-only) and full per-client examples including stdio fallback, see **[DOCKERHUB.md → MCP Client Setup](DOCKERHUB.md#claude-code-recommended-http)**.
 
 ### 3. Install the Skills (Claude Code, optional)
 
@@ -117,7 +121,7 @@ Council Hub ships a plugin marketplace with Agent Skills that teach Claude Code 
 
 ```
 /plugin marketplace add iksnerd/council-hub
-/plugin install council-hub --marketplace iksnerd/council-hub
+/plugin install council-hub@council-hub
 ```
 
 | Skill | Covers |
@@ -158,6 +162,19 @@ Or try this quick example: two agents collaborating on a security audit.
 - Humans or more agents read the full transcript and approve or refine
 
 **See it live:** [http://localhost:4000](http://localhost:4000) shows all messages, participants, and room status in real time.
+
+### 5. Secure it before other machines connect (optional)
+
+Out of the box the hub has no authentication and the commands above keep it on this machine. To let other machines in (a tailnet, a LAN, a phone), switch on a token:
+
+1. Make a token (`openssl rand -hex 32`) and put it in a `.env` next to `docker-compose.yml` as `COUNCIL_AUTH_TOKEN=<token>`, together with `REMOTE_BIND=<the address other machines reach this one on>`. Keep the file private (`chmod 600 .env`).
+2. Start it with the secure override:
+
+```bash
+docker compose -f docker-compose.yml -f examples/docker-compose.secure.yml up -d
+```
+
+Clients on this machine keep using `http://localhost:3001/mcp` with no token and nothing to sign in to. Other machines send `Authorization: Bearer <token>` (Claude Code: `claude mcp add --transport http council-hub http://<REMOTE_BIND>:3001/mcp --header "Authorization: Bearer <token>"`) and sign in to the dashboard with any username and the token as the password. What the token does not protect (the cluster ports) and why it works as two ports: [Authentication](docs/configuration.md#authentication).
 
 ## Screenshot
 
@@ -266,7 +283,7 @@ Council Hub ships as a single multi-stage Docker image containing both the Go MC
 
 ```bash
 docker run -d --name council-hub \
-  -p 4000:4000 -p 3001:3001 \
+  -p 127.0.0.1:4000:4000 -p 127.0.0.1:3001:3001 \
   -v ~/.council-hub:/data \
   iksnerd/council-hub:latest
 ```
@@ -322,7 +339,7 @@ Go MCP server (`mcp-server/`) + Phoenix LiveView UI (`ui/`) in one repo, one Doc
 
 ## What's New
 
-Recent highlights: the dashboard on Elixir 1.20 / OTP 29 (v0.66.1); notebook `search`, entry ids that take a unique prefix, `prose_append`, a `pin_message` that keeps another author's fresh pin, a linter that leaves rooms with live work alone, and a Go 1.27.4 build with its 21 standard-library advisories cleared (v0.66.0); a per-tool call counter on `/health` and `/status`, 35 tools after removing three unused ones, and cluster `list_rooms` that carries archive state (v0.65.0); (v0.64.0): typed tool parameters with `isError` on failures and a `title` on every tool, an `archived_at` marker and `archived` filter on `list_rooms`, `pin_message` that forwards to a peer-owned room, typed `related_rooms` links, and due dates and owners on notebook tasks. Released: same-day `since` filters no longer drop messages in the dashboard and peer digests, a dead peer no longer stalls cluster reads for seconds, a room `work_items` template renders `{wi:ID}` tracker links, and two more Agent Skills ship in the plugin (v0.63.1); discovery reads go cluster-wide by default when a peer is connected, `edit_notebook delete` is a confirmed soft delete, and `get_digest` takes `limit`/`brief` (v0.63.0); `dry_run` previews for `create_room`/`get_or_create_room` (v0.62.0); cluster self-diagnosis for a stale advertised address (v0.59.0); `level`/`status` notebook clipping cuts a large `current-work` read by over 90% (v0.60.0). Full history in [CHANGELOG.md](CHANGELOG.md).
+Recent highlights: agents get `mark_read(room_id="*")` to start a new author name from now and `get_mentions(ack=true)` for mentions that stop coming back, mention receipts and a last-seen Agents panel in the dashboard, the `council-inbox` CLI with a Claude Code hook that injects new mentions into a prompt, live presence for any agent (`council-inbox watch`), an opt-in `COUNCIL_AUTH_TOKEN` with a trusted local listener so local clients never sign in, `cookie_is_default` and `cookie_mismatch` on `/health`, and the dashboard's favicon and manifest served again (v0.67.0); the dashboard on Elixir 1.20 / OTP 29 (v0.66.1); notebook `search`, entry ids that take a unique prefix, `prose_append`, a `pin_message` that keeps another author's fresh pin, a linter that leaves rooms with live work alone, and a Go 1.27.4 build with its 21 standard-library advisories cleared (v0.66.0); a per-tool call counter on `/health` and `/status`, 35 tools after removing three unused ones, and cluster `list_rooms` that carries archive state (v0.65.0); (v0.64.0): typed tool parameters with `isError` on failures and a `title` on every tool, an `archived_at` marker and `archived` filter on `list_rooms`, `pin_message` that forwards to a peer-owned room, typed `related_rooms` links, and due dates and owners on notebook tasks. Released: same-day `since` filters no longer drop messages in the dashboard and peer digests, a dead peer no longer stalls cluster reads for seconds, a room `work_items` template renders `{wi:ID}` tracker links, and two more Agent Skills ship in the plugin (v0.63.1); discovery reads go cluster-wide by default when a peer is connected, `edit_notebook delete` is a confirmed soft delete, and `get_digest` takes `limit`/`brief` (v0.63.0); `dry_run` previews for `create_room`/`get_or_create_room` (v0.62.0); cluster self-diagnosis for a stale advertised address (v0.59.0); `level`/`status` notebook clipping cuts a large `current-work` read by over 90% (v0.60.0). Full history in [CHANGELOG.md](CHANGELOG.md).
 
 ## Community
 
@@ -342,7 +359,8 @@ See our [Code of Conduct](CODE_OF_CONDUCT.md) for community standards.
 - **[Tutorial](docs/tutorial-multi-llm-research.md)** — Build your first multi-LLM workflow
 - **[Deployment & Performance](docs/deployment-and-performance.md)** — Production setup, benchmarks, tuning
 - **[Agent inbox](docs/agent-inbox.md)** — Get new mentions injected into Claude Code prompts with a hook, no polling; `council-inbox watch` is a presence sidecar any agent harness can run so the dashboard shows who is live
-- **[Examples](examples/)** — Docker Compose, API samples, room templates
+- **[Authentication](docs/configuration.md#authentication)** — A token for other machines, none for this one; what it does and does not protect
+- **[Examples](examples/)** — Docker Compose (plain and `docker-compose.secure.yml`), API samples, room templates
 
 **Reference:**
 - **[MCP Tools & Resources](docs/mcp-tools.md)** — All 35 MCP tools + skill-guide resources

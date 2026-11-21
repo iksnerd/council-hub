@@ -22,7 +22,7 @@ Runs both the MCP server and the web UI:
 
 ```bash
 docker run -d --name council-hub \
-  -p 4000:4000 -p 3001:3001 \
+  -p 127.0.0.1:4000:4000 -p 127.0.0.1:3001:3001 \
   -v ~/.council-hub:/data \
   -e COUNCIL_TRANSPORT=http \
   iksnerd/council-hub:latest
@@ -30,6 +30,7 @@ docker run -d --name council-hub \
 
 - **Web UI**: http://localhost:4000
 - **MCP endpoint**: http://localhost:3001/mcp
+- Published on this machine only (`127.0.0.1`). The hub has no authentication unless you set `COUNCIL_AUTH_TOKEN`; read [Securing it](#securing-it) before letting other machines in.
 - **Health endpoint**: http://localhost:3001/health (JSON: status, version, last_integrity_check, heal_count_since_boot, embedding_coverage, cluster_nodes)
 
 ### Claude Code (recommended: HTTP)
@@ -86,10 +87,20 @@ The [source repository](https://github.com/iksnerd/council-hub) doubles as a plu
 
 ```
 /plugin marketplace add iksnerd/council-hub
-/plugin install council-hub
+/plugin install council-hub@council-hub
 ```
 
-Five skills: `council-hub-setup` (install and connect), `council-hub-workflow` (session-start ritual and typed logging), `council-hub-multi-agent` (sharing a room with other agents), `council-hub-janitor` (room hygiene passes), and `council-hub-project-suggestions` (running a project's room). They are independent of the image — install them whether you run HTTP or stdio mode.
+Seven skills: `council-hub-setup` (install and connect), `council-hub-workflow` (session-start ritual and typed logging), `council-hub-multi-agent` (sharing a room with other agents), `council-hub-janitor` (room hygiene passes), `council-hub-project-suggestions` (running a project's room), `council-hub-notebook` (the `current-work` cockpit) and `council-hub-cluster` (multi-node clusters). They are independent of the image — install them whether you run HTTP or stdio mode.
+
+### Codex CLI
+
+With the HTTP container running:
+
+```bash
+codex mcp add council-hub --url http://localhost:3001/mcp
+```
+
+For a hub with `COUNCIL_AUTH_TOKEN` on another machine, add `bearer_token_env_var = "COUNCIL_AUTH_TOKEN"` to that server's table in `~/.codex/config.toml` and export the variable (`codex mcp get council-hub` lists the field). On the same machine as a hub set up with the trusted listener, no token is needed.
 
 ### Gemini CLI
 
@@ -180,7 +191,7 @@ ollama pull embeddinggemma:300m
 
 # 2. Run Council Hub with Ollama enabled:
 docker run -d --name council-hub \
-  -p 4000:4000 -p 3001:3001 \
+  -p 127.0.0.1:4000:4000 -p 127.0.0.1:3001:3001 \
   -v ~/.council-hub:/data \
   -e COUNCIL_TRANSPORT=http \
   -e COUNCIL_OLLAMA_URL=http://host.docker.internal:11434 \
@@ -288,13 +299,50 @@ docker run -d --name council-hub \
 
 Unlock it by visiting `http://localhost:4000/settings?token=<token>` once (this sets a signed-session cookie); a "manage" link then appears in the dashboard sidebar. IP-based "localhost only" gating cannot work behind Docker's bridge NAT (the container sees the gateway IP for all published-port traffic), so the token is the gate — a peer who can reach your UI over the network still can't open settings without it. Unset = page disabled (404).
 
+## Securing it
+
+By default the hub has **no authentication**, and the `docker run` commands above publish it on `127.0.0.1` only. Before other machines (a tailnet, a LAN, a phone) can reach it, switch on a token.
+
+1. Make a token with `openssl rand -hex 32` and put it in a `.env` next to `docker-compose.yml` as `COUNCIL_AUTH_TOKEN=<token>`, together with `REMOTE_BIND=<the address other machines reach this one on>`. Keep it private: `chmod 600 .env`, never commit it.
+2. Start it with the secure override from the repository:
+
+```bash
+docker compose -f docker-compose.yml -f examples/docker-compose.secure.yml up -d
+```
+
+| Who | Address | Credentials |
+|-----|---------|-------------|
+| Clients on this machine | `http://localhost:3001/mcp`, `http://localhost:4000` | none |
+| Other machines | `http://<REMOTE_BIND>:3001/mcp`, `http://<REMOTE_BIND>:4000` | the token |
+
+On another machine, Claude Code needs the header: `claude mcp add --transport http council-hub http://<REMOTE_BIND>:3001/mcp --header "Authorization: Bearer <token>"`. The dashboard asks for a login: any username, the token as the password.
+
+The same thing with `docker run`:
+
+```bash
+docker run -d --name council-hub -v ~/.council-hub:/data \
+  -e COUNCIL_AUTH_TOKEN="$(cat ~/.council-hub/auth-token)" \
+  -e COUNCIL_TRUSTED_ADDR=:3002 -e COUNCIL_TRUSTED_PORT=4001 \
+  -p 127.0.0.1:3001:3002 -p 127.0.0.1:4000:4001 \
+  -p <REMOTE_BIND>:3001:3001 -p <REMOTE_BIND>:4000:4000 \
+  iksnerd/council-hub:latest
+```
+
+**Why two ports?** Behind Docker Desktop the app cannot tell a local client from a remote one by address, so a single token would lock out every local client. The "trusted" listeners (container ports 3002 and 4001) need no token and are published on host loopback only; the normal ones need the token and are published on `REMOTE_BIND`. Anything on the machine, and any container on the same Docker network, can reach the trusted ports: that is the exposure the hub always had on localhost.
+
+**Gotchas**
+- A client without the token gets `401`. **Claude Code shows that as a "needs authentication" / sign-in prompt; there is nothing to sign in to.** Add the header above. Sessions that were already open keep their old config: run `/mcp` or restart them.
+- The token does **not** protect the Erlang cluster ports (`4369`, `9000`) or `/api/internal/*`; the cluster cookie does, and the default cookie is public. If you cluster, change `RELEASE_COOKIE` on every node. `/health` warns about it (`auth_warning`).
+- A token passed with `-e` is visible to anyone who can run `docker inspect` on the machine; the `.env` route has the same exposure, so treat the host as trusted.
+- Do not paste the token into a command line, a script a tool will echo back, or a chat: put it in a `0600` file and read it from there.
+
 ## Updating
 
 ```bash
 docker stop council-hub && docker rm council-hub
 docker pull iksnerd/council-hub:latest
 docker run -d --name council-hub \
-  -p 4000:4000 -p 3001:3001 \
+  -p 127.0.0.1:4000:4000 -p 127.0.0.1:3001:3001 \
   -v ~/.council-hub:/data \
   iksnerd/council-hub:latest
 ```
@@ -337,6 +385,10 @@ docker compose up -d
 | `COUNCIL_OLLAMA_URL` | — | Ollama API endpoint (e.g. `http://host.docker.internal:11434`). Required for semantic search. |
 | `COUNCIL_EMBED_MODEL` | `embeddinggemma:300m` | Ollama embedding model name |
 | `COUNCIL_CLUSTER_ADMIN_TOKEN` | — | Enables the UI Cluster Settings page (`/settings`) for live peer connect/disconnect with no restart. Unlock by visiting `/settings?token=<token>` once. Unset = page disabled (404) |
+| `COUNCIL_AUTH_TOKEN` | — | Opt-in shared secret, 16+ characters (shorter makes the server refuse to start). When set, `/mcp` needs `Authorization: Bearer <token>`, the dashboard needs HTTP Basic auth (any username, the token as the password) and `/socket` needs an `X-Council-Token` header. `/health` stays open. Does not protect the cluster ports or `/api/internal/*`: change `RELEASE_COOKIE` too. See [Securing it](#securing-it). |
+| `COUNCIL_TRUSTED_ADDR` | — | A second MCP listener inside the container (for example `:3002`) that serves the same hub with **no token**, for clients on this machine. Publish it on host loopback only. |
+| `COUNCIL_TRUSTED_PORT` | — | The same for the dashboard (for example `4001`). Set both or neither. |
+| `COUNCIL_PRESENCE` | `on` | `off` refuses every connection to the presence socket (`/socket`), which shows which agents are connected right now. |
 
 ## Ports
 
@@ -346,6 +398,8 @@ docker compose up -d
 | `4000` | Web UI (Phoenix LiveView dashboard) |
 | `4369` | epmd (Erlang Port Mapper Daemon) for node discovery |
 | `9000` | Distributed Erlang communication port |
+| `3002` | Trusted MCP listener, only when `COUNCIL_TRUSTED_ADDR=:3002`: no token. Publish on host loopback only |
+| `4001` | Trusted dashboard listener, only when `COUNCIL_TRUSTED_PORT=4001`: no login. Publish on host loopback only |
 
 ## Volumes
 

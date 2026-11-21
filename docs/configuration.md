@@ -31,8 +31,8 @@ Environment variables for the MCP server, the Phoenix web UI, and clustering.
 | `ERL_FLAGS` | `+S 2:2 +SDio 1 +sbwt none +sbwtdcpu none +sbwtdio none` | BEAM flags. The default caps schedulers and disables busy-waiting, which cuts idle memory and CPU by about a quarter. Export your own to override |
 | `COUNCIL_AUTH_TOKEN` | — | Shared token for `/mcp`, the dashboard and `/socket`; unset = auth off, minimum 16 characters. See [Authentication](#authentication) |
 | `COUNCIL_TRUSTED_PORT` | — | Second dashboard listener without the token requirement, for clients on host loopback; must differ from `PORT`. See [Local trust](#local-trust-two-listeners) |
+| `COUNCIL_TRUSTED_ADDR` | — | Second MCP (`/mcp`) listener without the token requirement, for clients on host loopback, e.g. `:3002`; must differ from `COUNCIL_HTTP_ADDR`. Set it together with `COUNCIL_TRUSTED_PORT`. See [Local trust](#local-trust-two-listeners). |
 | `COUNCIL_FORCE_SSL` | — | `true` redirects http→https. Only enable behind a reverse proxy that sets `x-forwarded-proto`; the server does not terminate TLS, and localhost is always exempt |
-
 | `COUNCIL_PRESENCE` | `on` | `off` (also `0`, `false`, `no`) starts no presence tracker and makes `/socket` refuse every connection. See [Live presence](#live-presence) |
 
 ### Tool usage counter
@@ -94,7 +94,7 @@ Off by default. One shared token, `COUNCIL_AUTH_TOKEN`, protects the MCP endpoin
 
 ```bash
 openssl rand -hex 32
-docker run -e COUNCIL_AUTH_TOKEN=<token> ...
+docker run -e COUNCIL_AUTH_TOKEN=<token> ...   # visible to anyone who can run `docker inspect` here
 ```
 
 Unset or empty means auth is off and nothing changes. A set token must be at least 16 characters. A shorter one stops the dashboard process from booting, with an error that names the variable and the minimum (never the value), so a weak token never runs silently.
@@ -105,7 +105,7 @@ Unset or empty means auth is off and nothing changes. A set token must be at lea
 | Dashboard on `:4000`, every page including `/status`, `/notebook`, `/skills`, `/settings` and `/rooms/:id/export` | HTTP Basic auth: any username, the token as the password. A browser shows its own login prompt once per session |
 | Presence socket `/socket` | Header `X-Council-Token: <token>`. A token in a query parameter is never accepted, because query strings end up in logs |
 
-Failed dashboard requests get `401` with `WWW-Authenticate: Basic realm="Council Hub"` and an empty body. A refused socket connection gets `403`. Tokens are compared in constant time. The socket's rule that any request with an `Origin` header is refused stays in force.
+Failed dashboard requests get `401` with `WWW-Authenticate: Basic realm="Council Hub"` and a one-line plain-text body saying to sign in with any username and the token as the password (it never says which part was wrong). A refused socket connection gets `403`. Tokens are compared in constant time. The socket's rule that any request with an `Origin` header is refused stays in force.
 
 The dashboard's live updates run over the LiveView websocket `/live`. It needs the session and CSRF token embedded in a page, and a refused request gets neither, so it is protected by the page login and has no separate credential.
 
@@ -120,18 +120,20 @@ The dashboard's live updates run over the LiveView websocket `/live`. It needs t
 
 ### Local trust (two listeners)
 
+Ready-made setup: `examples/docker-compose.secure.yml` publishes exactly this pattern from a `.env` with `COUNCIL_AUTH_TOKEN` and `REMOTE_BIND`.
+
 Optional. `COUNCIL_TRUSTED_PORT` (an integer such as `4001`; unset or empty = off) starts a second dashboard listener that serves the same app without the token requirement. The normal port keeps enforcing the token exactly as above. The same pages, the `/live` socket and the `/socket` presence socket are served on both. On the trusted port the dashboard needs no login and `/socket` needs no `X-Council-Token`. Setting it to the same value as `PORT` stops the app from booting. It adds nothing while `COUNCIL_AUTH_TOKEN` is empty; the app logs a warning at boot.
 
 **Why.** Behind Docker Desktop every request to a published port arrives from the bridge gateway, so the app cannot tell a browser on this machine from one on another device. The loopback exemption above only covers requests made inside the container. Two listeners move the decision from the client address to the port the request used: the operator publishes the trusted port on host loopback only, and the authenticated port on the tailnet or LAN address.
 
-**Publish pattern** (the MCP side has its own matching setting for `/mcp`; `3001` is the MCP port, shown here as published):
+**Publish pattern** (`COUNCIL_TRUSTED_PORT` is the dashboard side and `COUNCIL_TRUSTED_ADDR` does the same for `/mcp`, so set both; `3001` is the MCP port, shown here as published):
 
 ```bash
 # local clients, no credentials (loopback only)
 -p 127.0.0.1:3001:3002 -p 127.0.0.1:4000:4001
 # remote devices, token required
 -p <tailnet-ip>:3001:3001 -p <tailnet-ip>:4000:4000
--e COUNCIL_AUTH_TOKEN=<token> -e COUNCIL_TRUSTED_PORT=4001
+-e COUNCIL_AUTH_TOKEN=<token> -e COUNCIL_TRUSTED_ADDR=:3002 -e COUNCIL_TRUSTED_PORT=4001
 ```
 
 The trusted listener binds all interfaces inside the container; the container network is the boundary, and publishing it on `127.0.0.1` is what keeps it local. Never publish the trusted port on a LAN, tailnet or public address.
