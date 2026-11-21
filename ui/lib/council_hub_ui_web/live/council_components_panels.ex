@@ -5,14 +5,26 @@ defmodule CouncilHubUiWeb.PanelComponents do
 
   attr :agents, :list, required: true
 
-  @doc "Agents seen in the last 24h (agent_seen), newest first. Renders nothing when empty."
+  @doc """
+  Agent rows from `CouncilHubUi.AgentPresence.merge/2`: live connections first
+  (green dot, "live", connection count, rooms, client, node when several nodes
+  report), then agents with no live connection as "last seen <time> via <tool>".
+  Renders nothing when empty.
+  """
   def agents_panel(assigns) do
+    assigns =
+      assign(
+        assigns,
+        :multi_node,
+        assigns.agents |> Enum.flat_map(& &1.nodes) |> Enum.uniq() |> length() > 1
+      )
+
     ~H"""
     <div :if={@agents != []} id="agents-panel" class="px-3 py-2 border-t border-[var(--ch-border)]">
       <div class="flex items-center gap-1.5 mb-1.5">
         <span
           class="text-[10px] font-medium text-[var(--ch-text-lo)] uppercase tracking-[0.12em]"
-          title="Agents that made a tool call on this node in the last 24h. Not a liveness check."
+          title="Live: connections reported by the client, not verified. Last seen: tool calls this node received in the last 24h."
         >
           Agents
         </span>
@@ -20,14 +32,50 @@ defmodule CouncilHubUiWeb.PanelComponents do
       <div class="space-y-px max-h-40 overflow-y-auto">
         <div
           :for={a <- @agents}
-          class="flex items-center gap-1.5 px-2 py-0.5 text-[11px]"
-          title={"Last tool call #{Calendar.strftime(a.last_seen_at, "%Y-%m-%d %H:%M:%S")} UTC"}
+          class="px-2 py-0.5 text-[11px]"
+          data-agent={a.agent}
+          data-live={to_string(a.live)}
         >
-          <span class="text-[var(--ch-text-hi)] font-medium truncate">{a.agent}</span>
-          <span class="text-[var(--ch-text-xs)] font-mono truncate">{a.last_tool}</span>
-          <span class="ml-auto text-[10px] text-[var(--ch-text-xs)] font-mono shrink-0">
-            {CouncilHubUiWeb.CouncilHelpers.relative_time(a.last_seen_at)}
-          </span>
+          <div
+            class="flex items-center gap-1.5"
+            title={
+              if a.live,
+                do: "Reported by the client, not verified",
+                else: "Last tool call #{Calendar.strftime(a.last_seen_at, "%Y-%m-%d %H:%M:%S")} UTC"
+            }
+          >
+            <span
+              :if={a.live}
+              class="inline-block w-1.5 h-1.5 rounded-full bg-green-500 shrink-0"
+            ></span>
+            <span class="text-[var(--ch-text-hi)] font-medium truncate">{a.agent}</span>
+            <%= if a.live do %>
+              <span class="text-[10px] text-green-500 font-mono shrink-0">
+                live{if a.count > 1, do: " x#{a.count}"}
+              </span>
+              <span :if={a.clients != []} class="text-[var(--ch-text-xs)] font-mono truncate">
+                {Enum.join(a.clients, ", ")}
+              </span>
+              <span
+                :if={@multi_node and a.nodes != []}
+                class="ml-auto text-[10px] text-[var(--ch-text-xs)] font-mono shrink-0"
+              >
+                {Enum.join(a.nodes, ", ")}
+              </span>
+            <% else %>
+              <span class="text-[var(--ch-text-xs)] font-mono truncate">{a.last_tool}</span>
+              <span class="ml-auto text-[10px] text-[var(--ch-text-xs)] font-mono shrink-0">
+                last seen {CouncilHubUiWeb.CouncilHelpers.relative_time(a.last_seen_at)}
+              </span>
+            <% end %>
+          </div>
+          <div
+            :if={a.live and a.rooms != []}
+            class="pl-3 text-[10px] text-[var(--ch-text-xs)] font-mono truncate"
+            title={"Watching: " <> Enum.join(a.rooms, ", ")}
+          >
+            watching {Enum.join(a.rooms, ", ")}
+          </div>
         </div>
       </div>
     </div>

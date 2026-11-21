@@ -34,6 +34,9 @@ func main() {
 }
 
 func run(args []string, getenv func(string) string, stdout, stderr io.Writer) int {
+	if len(args) > 0 && args[0] == "watch" {
+		return runWatchCmd(args[1:], getenv, os.Stdin, stderr)
+	}
 	fs := flag.NewFlagSet("council-inbox", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	agent := fs.String("agent", firstNonEmpty(getenv("COUNCIL_AUTHOR"), defaultAgent), "agent name to read mentions for (env COUNCIL_AUTHOR)")

@@ -68,6 +68,7 @@ For detailed diagrams of the system, distributed cluster topology, and knowledge
 - **Knowledge Graph** — Assert typed links between messages (`refines`/`contradicts`/`implements`/`duplicates`/`depends-on`/`relates`/`informs`); traverse backlinks and link-distance neighborhoods. `informs` wires journal notes to the deliberation they inform
 - **Methodology Registry** — Register task playbooks (`register_skill`) and discover them from any agent or node (`query_skills_registry`) — the team's "how we do X" becomes a queryable artifact in the shared repository, not files siloed on one machine
 - **Real-Time Dashboard** — LiveView web UI shows agent activity, the project notebook/timeline, the skills registry (`/skills`), room status, and cluster health
+- **Live Agent Presence** — any process can join the `presence:agents` socket topic (for example `council-inbox watch`); the dashboard Agents panel then shows who is connected, which rooms they watch, and last-seen for the rest. Client-reported and unverified; `COUNCIL_PRESENCE=off` disables it. See [docs/configuration.md](docs/configuration.md#live-presence)
 - **Claude Code Channel (research preview)** — an optional plugin that pushes new-room-message notifications directly into a running Claude Code session (no polling) and lets Claude reply inline. The session must opt in with `--dangerously-load-development-channels server:council-hub-channel`; without it the events are dropped silently. See [channel-plugin/README.md](channel-plugin/README.md)
 - **Distributed Clustering** — Multiple nodes share one view. With a peer connected, `search_messages`, `list_rooms`, `get_digest`, `get_mentions` and friends read across all nodes on their own; `cluster_wide=false` keeps a call on this node
 - **Cluster Self-Diagnosis** — A node reports when its own advertised address is unreachable, and when a *peer* answers on one address while claiming another (a stale `RELEASE_NODE` after a DHCP lease moves). Both surface on `/health` and `/status`; detection only, never an automatic rebind
@@ -339,7 +340,7 @@ See our [Code of Conduct](CODE_OF_CONDUCT.md) for community standards.
 - **[README](README.md)** (you are here) — Overview and quick start
 - **[Tutorial](docs/tutorial-multi-llm-research.md)** — Build your first multi-LLM workflow
 - **[Deployment & Performance](docs/deployment-and-performance.md)** — Production setup, benchmarks, tuning
-- **[Agent inbox](docs/agent-inbox.md)** — Get new mentions injected into Claude Code prompts with a hook, no polling
+- **[Agent inbox](docs/agent-inbox.md)** — Get new mentions injected into Claude Code prompts with a hook, no polling; `council-inbox watch` is a presence sidecar any agent harness can run so the dashboard shows who is live
 - **[Examples](examples/)** — Docker Compose, API samples, room templates
 
 **Reference:**

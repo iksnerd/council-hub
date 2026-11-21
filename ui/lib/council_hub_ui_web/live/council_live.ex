@@ -24,7 +24,13 @@ defmodule CouncilHubUiWeb.CouncilLive do
       Polling.schedule_poll(:poll_cluster, @cluster_poll_interval)
       Polling.schedule_poll(:poll_mentions, @mentions_poll_interval)
       Polling.schedule_poll(:poll_archives, @archives_poll_interval)
+
+      if CouncilHubUi.Presence.enabled?() do
+        Phoenix.PubSub.subscribe(CouncilHubUi.PubSub, CouncilHubUi.Presence.topic())
+      end
     end
+
+    agent_seen = if connected?(socket), do: CouncilHubUi.AgentPresence.recent(), else: []
 
     {rooms, db_connected} = Polling.load_rooms()
 
@@ -66,7 +72,9 @@ defmodule CouncilHubUiWeb.CouncilLive do
        editing_tags: false,
        tag_input: "",
        mentions: [],
-       agents: if(connected?(socket), do: CouncilHubUi.AgentPresence.recent(), else: []),
+       agent_seen: agent_seen,
+       agents:
+         if(connected?(socket), do: CouncilHubUi.AgentPresence.panel_rows(agent_seen), else: []),
        mention_author: System.get_env("COUNCIL_AUTHOR", "claude-code"),
        archives: [],
        active_archive: nil,
@@ -162,7 +170,20 @@ defmodule CouncilHubUiWeb.CouncilLive do
         _ -> socket.assigns.mentions
       end
 
-    {:noreply, assign(socket, mentions: mentions, agents: CouncilHubUi.AgentPresence.recent())}
+    seen = CouncilHubUi.AgentPresence.recent()
+
+    {:noreply,
+     assign(socket,
+       mentions: mentions,
+       agent_seen: seen,
+       agents: CouncilHubUi.AgentPresence.panel_rows(seen)
+     )}
+  end
+
+  # Live agent presence changed: re-merge with the last polled "last seen" rows.
+  def handle_info(%Phoenix.Socket.Broadcast{event: "presence_diff"}, socket) do
+    {:noreply,
+     assign(socket, agents: CouncilHubUi.AgentPresence.panel_rows(socket.assigns.agent_seen))}
   end
 
   def handle_info(:poll_archives, socket) do

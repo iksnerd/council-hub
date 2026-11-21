@@ -62,6 +62,7 @@ defmodule CouncilHubUiWeb.CouncilComponentsReceiptsTest do
         }
       ]
 
+      agents = CouncilHubUi.AgentPresence.merge([], agents)
       html = render_component(&CouncilComponents.agents_panel/1, %{agents: agents})
       assert html =~ "Agents"
       assert html =~ "post_to_room"

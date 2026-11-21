@@ -18,17 +18,26 @@ defmodule CouncilHubUi.Application do
       {DNSCluster, query: Application.get_env(:council_hub_ui, :dns_cluster_query) || :ignore},
       {Cluster.Supervisor, [topologies, [name: CouncilHubUi.ClusterSupervisor]]},
       CouncilHubUi.ClusterManager,
-      {Phoenix.PubSub, name: CouncilHubUi.PubSub},
-      # Start a worker by calling: CouncilHubUi.Worker.start_link(arg)
-      # {CouncilHubUi.Worker, arg},
-      # Start to serve requests, typically the last entry
-      CouncilHubUiWeb.Endpoint
+      {Phoenix.PubSub, name: CouncilHubUi.PubSub}
     ]
+
+    children =
+      children ++
+        presence_children() ++
+        [
+          # Start to serve requests, typically the last entry
+          CouncilHubUiWeb.Endpoint
+        ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options
     opts = [strategy: :one_for_one, name: CouncilHubUi.Supervisor]
     Supervisor.start_link(children, opts)
+  end
+
+  # Presence needs PubSub and is skipped entirely with COUNCIL_PRESENCE=off.
+  defp presence_children do
+    if CouncilHubUi.Presence.enabled?(), do: [CouncilHubUi.Presence], else: []
   end
 
   # Tell Phoenix to update the endpoint configuration

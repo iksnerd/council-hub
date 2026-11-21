@@ -45,6 +45,11 @@ config :council_hub_ui, CouncilHubUiWeb.Endpoint,
 # request time instead (loopback hosts are never redirected).
 config :council_hub_ui, :force_ssl_enabled, System.get_env("COUNCIL_FORCE_SSL") == "true"
 
+# Live agent presence on /socket (COUNCIL_PRESENCE=off starts no tracker and
+# refuses socket connections). Default on.
+config :council_hub_ui,
+  presence_enabled: CouncilHubUi.Presence.parse_enabled(System.get_env("COUNCIL_PRESENCE"))
+
 if config_env() == :prod do
   database_path =
     System.get_env("COUNCIL_DB_PATH") ||
