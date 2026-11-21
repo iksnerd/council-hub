@@ -41,6 +41,12 @@
         This node
       </h2>
       <p class="font-mono text-[13px] text-[var(--ch-text-hi)] mb-3">{@self_node}</p>
+      <p class={[
+        "text-[11px] mb-3",
+        if(elem(@auth_line, 0) == :on, do: "text-emerald-300", else: "text-amber-300")
+      ]}>
+        {elem(@auth_line, 1)}
+      </p>
       <div class="flex flex-wrap gap-2">
         <span class={[
           "text-[10px] font-mono rounded px-2 py-1 border",

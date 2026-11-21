@@ -164,6 +164,19 @@ let mcpSession: string | null = null;
 // `mcpSession` with whichever happens to resolve last.
 let handshakeInFlight: Promise<string> | null = null;
 
+// Adds `Authorization: Bearer <token>` when the hub is token-protected.
+function withAuth(config: Config, headers: Record<string, string>): Record<string, string> {
+  return config.authToken
+    ? { ...headers, Authorization: `Bearer ${config.authToken}` }
+    : headers;
+}
+
+// Test hook: forget the cached MCP session.
+export function resetSessionForTests(): void {
+  mcpSession = null;
+  handshakeInFlight = null;
+}
+
 async function getSession(config: Config, forceNew: boolean): Promise<string> {
   if (forceNew) mcpSession = null;
   if (mcpSession) return mcpSession;
@@ -200,10 +213,10 @@ async function parseRpcResponse(resp: Response): Promise<RpcResponse> {
 async function mcpHandshake(config: Config): Promise<string> {
   const resp = await fetch(config.mcpUrl, {
     method: "POST",
-    headers: {
+    headers: withAuth(config, {
       "Content-Type": "application/json",
       Accept: "application/json, text/event-stream",
-    },
+    }),
     body: JSON.stringify({
       jsonrpc: "2.0",
       id: 0,
@@ -232,11 +245,11 @@ async function mcpHandshake(config: Config): Promise<string> {
   // Complete the handshake — the server rejects tools/call until this arrives.
   await fetch(config.mcpUrl, {
     method: "POST",
-    headers: {
+    headers: withAuth(config, {
       "Content-Type": "application/json",
       Accept: "application/json, text/event-stream",
       "Mcp-Session-Id": sessionId,
-    },
+    }),
     body: JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }),
   }).catch((err) => {
     // Not fatal here — postToRoom's 404/error-message retry recovers if the
@@ -249,7 +262,7 @@ async function mcpHandshake(config: Config): Promise<string> {
   return sessionId;
 }
 
-async function postToRoom(
+export async function postToRoom(
   config: Config,
   args: { room_id: string; content: string; message_type: string; reply_to: string }
 ): Promise<string> {
@@ -281,11 +294,11 @@ async function postToRoom(
 
     const resp = await fetch(config.mcpUrl, {
       method: "POST",
-      headers: {
+      headers: withAuth(config, {
         "Content-Type": "application/json",
         Accept: "application/json, text/event-stream",
         "Mcp-Session-Id": session,
-      },
+      }),
       body: JSON.stringify(body),
     });
 

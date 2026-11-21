@@ -29,6 +29,11 @@ type fakePhoenix struct {
 	mu          sync.Mutex
 	joinPayload []map[string]any
 	frames      chan []json.RawMessage
+	// requireToken, when set, makes the upgrade answer 401 unless the
+	// X-Council-Token header matches. tokens records every header value seen.
+	requireToken string
+	tokens       []string
+	urls         []string
 }
 
 func newFake() *fakePhoenix { return &fakePhoenix{frames: make(chan []json.RawMessage, 64)} }
@@ -36,6 +41,15 @@ func newFake() *fakePhoenix { return &fakePhoenix{frames: make(chan []json.RawMe
 func (f *fakePhoenix) serve(t *testing.T) string {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got := r.Header.Get("X-Council-Token")
+		f.mu.Lock()
+		f.tokens = append(f.tokens, got)
+		f.urls = append(f.urls, r.URL.String())
+		f.mu.Unlock()
+		if f.requireToken != "" && got != f.requireToken {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
 		c, err := websocket.Accept(w, r, nil)
 		if err != nil {
 			return

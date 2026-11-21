@@ -29,6 +29,7 @@ Environment variables for the MCP server, the Phoenix web UI, and clustering.
 | `PHX_HOST` | `localhost` | Phoenix hostname |
 | `PORT` | `4000` | Phoenix HTTP port |
 | `ERL_FLAGS` | `+S 2:2 +SDio 1 +sbwt none +sbwtdcpu none +sbwtdio none` | BEAM flags. The default caps schedulers and disables busy-waiting, which cuts idle memory and CPU by about a quarter. Export your own to override |
+| `COUNCIL_AUTH_TOKEN` | — | Shared token for `/mcp`, the dashboard and `/socket`; unset = auth off, minimum 16 characters. See [Authentication](#authentication) |
 | `COUNCIL_FORCE_SSL` | — | `true` redirects http→https. Only enable behind a reverse proxy that sets `x-forwarded-proto`; the server does not terminate TLS, and localhost is always exempt |
 
 | `COUNCIL_PRESENCE` | `on` | `off` (also `0`, `false`, `no`) starts no presence tracker and makes `/socket` refuse every connection. See [Live presence](#live-presence) |
@@ -78,9 +79,43 @@ Limits and settings:
 
 Origin check: the socket refuses any request that carries an `Origin` header. Clients that send none (every non-browser agent client) are accepted. A browser always sends one, so a web page cannot open the socket from a visitor's browser. This is set on the socket itself, because the release sets `check_origin: false` for the whole endpoint (the dashboard's LiveView socket needs that) and a socket inherits the endpoint setting unless it overrides it.
 
-Security: presence is informational and not verified. The socket needs no auth, like the rest of the dashboard on `:4000`, so anything that can reach the port can claim a presence entry under any agent name, client or room list. The dashboard says so in a tooltip ("reported by the client, not verified"). The socket carries only presence: it cannot read or write messages, rooms or notebooks. Do not expose `:4000` to untrusted networks; set `COUNCIL_PRESENCE=off` if you do not want the socket at all.
+Security: presence is informational and not verified. Without `COUNCIL_AUTH_TOKEN` the socket needs no auth, like the rest of the dashboard on `:4000` (see [Authentication](#authentication)), so anything that can reach the port can claim a presence entry under any agent name, client or room list. The dashboard says so in a tooltip ("reported by the client, not verified"). The socket carries only presence: it cannot read or write messages, rooms or notebooks. Do not expose `:4000` to untrusted networks; set `COUNCIL_PRESENCE=off` if you do not want the socket at all.
 
 Mixed-version clusters: a node on a release without presence has no tracker, so it neither tracks connections nor shows live agents. Its dashboard keeps the last-seen rows only, and live connections made to a newer node do not appear there. A newer node still shows its own and its newer peers' connections. Presence is not replayed after a partition heals beyond what Phoenix.Presence itself reconciles.
+
+## Authentication
+
+Off by default. One shared token, `COUNCIL_AUTH_TOKEN`, protects the MCP endpoint, the dashboard and the presence socket.
+
+**The threat.** With no token, any device that can reach `:3001` or `:4000` can read and delete rooms and post messages, and a posted message is text that agents read as part of their prompts. On a laptop that is fine. On a LAN, a shared tailnet or a public host it is not.
+
+**Setting it.** Make a token and pass it to the container:
+
+```bash
+openssl rand -hex 32
+docker run -e COUNCIL_AUTH_TOKEN=<token> ...
+```
+
+Unset or empty means auth is off and nothing changes. A set token must be at least 16 characters. A shorter one stops the dashboard process from booting, with an error that names the variable and the minimum (never the value), so a weak token never runs silently.
+
+| Surface | Credential |
+|---------|------------|
+| MCP, `/mcp` on `:3001` | `Authorization: Bearer <token>` |
+| Dashboard on `:4000`, every page including `/status`, `/notebook`, `/skills`, `/settings` and `/rooms/:id/export` | HTTP Basic auth: any username, the token as the password. A browser shows its own login prompt once per session |
+| Presence socket `/socket` | Header `X-Council-Token: <token>`. A token in a query parameter is never accepted, because query strings end up in logs |
+
+Failed dashboard requests get `401` with `WWW-Authenticate: Basic realm="Council Hub"` and an empty body. A refused socket connection gets `403`. Tokens are compared in constant time. The socket's rule that any request with an `Origin` header is refused stays in force.
+
+The dashboard's live updates run over the LiveView websocket `/live`. It needs the session and CSRF token embedded in a page, and a refused request gets neither, so it is protected by the page login and has no separate credential.
+
+**Not protected.**
+
+- `/health` stays open so container healthchecks and peers can probe it. It reports `auth_enabled` (a boolean) and never the token.
+- `/api/internal/*` and the Erlang cluster ports. The token does not guard them. The cluster cookie does, and the default cookie (`council`) is public. If you cluster, set `RELEASE_COOKIE` to the same non-default value on every node. `/status` warns when the token is on, the cookie is the default and clustering is in use.
+
+**Loopback is exempt.** Requests whose peer address is loopback (`127.0.0.1`, `::1`) skip the dashboard check. The container healthcheck (`wget http://localhost:4000`) and the Go server's calls to Phoenix's internal cluster API come from inside the container and carry no credentials. Traffic from outside the container, including a browser on the same host, arrives from the Docker bridge address, not loopback, so that browser logs in once like any other client.
+
+`/status` shows "Authentication: on", or "Authentication: off" with a warning that anyone who can reach the port can read the dashboard. Use HTTPS in front of the dashboard on any network you do not control: Basic auth sends the token with every request.
 
 ## Clustering
 

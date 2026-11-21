@@ -44,7 +44,9 @@ defmodule CouncilHubUiWeb.ClusterController do
       advertised: ClusterManager.advertised_status(),
       seed_status: seed_status(),
       # Boolean only; the cookie value never leaves the VM.
-      cookie_is_default: ClusterCookie.default?()
+      cookie_is_default: ClusterCookie.default?(),
+      # Boolean only; the token never leaves the VM.
+      auth_enabled: CouncilHubUi.Auth.enabled?()
     })
   end
 

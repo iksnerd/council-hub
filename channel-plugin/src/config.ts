@@ -8,6 +8,8 @@ export interface Config {
   mcpUrl: string;
   author: string;
   debug: boolean;
+  // Bearer token for a hub started with COUNCIL_AUTH_TOKEN. Unset = no header.
+  authToken?: string;
 }
 
 function expandHome(p: string): string {
@@ -36,5 +38,7 @@ export function loadConfig(): Config {
   const author = process.env.COUNCIL_AUTHOR ?? "claude-code";
   const debug = process.env.COUNCIL_CHANNEL_DEBUG === "1";
 
-  return { dbPath, pollInterval, rooms, mcpUrl, author, debug };
+  const authToken = process.env.COUNCIL_AUTH_TOKEN?.trim() || undefined;
+
+  return { dbPath, pollInterval, rooms, mcpUrl, author, debug, authToken };
 }

@@ -136,6 +136,13 @@ func clusterNodes(phoenixURL string, client *http.Client) *clusterNodesResult {
 // 200 even when self-heals have occurred — heals are recoverable; the absence
 // of a recent integrity check is what monitoring should alert on.
 func healthHandler(cs *council.Server, phoenixURL string, httpClient *http.Client) http.HandlerFunc {
+	return healthHandlerAuth(cs, phoenixURL, httpClient, false)
+}
+
+// healthHandlerAuth is healthHandler plus the auth state: auth_enabled is
+// always reported (a boolean, never the token), and auth_warning appears when
+// auth is on, the cluster cookie is the public default and peers are connected.
+func healthHandlerAuth(cs *council.Server, phoenixURL string, httpClient *http.Client, authEnabled bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		cs.Mu.RLock()
 		last := cs.LastIntegrityCheck
@@ -146,6 +153,7 @@ func healthHandler(cs *council.Server, phoenixURL string, httpClient *http.Clien
 			"last_integrity_check":  last.UTC().Format(time.RFC3339),
 			"heal_count_since_boot": atomic.LoadUint64(&cs.HealCount),
 			"now":                   time.Now().UTC().Format(time.RFC3339),
+			"auth_enabled":          authEnabled,
 		}
 		if cs.Embedder != nil {
 			msgTotal, msgIndexed, roomTotal, roomIndexed := cs.EmbeddingCoverage()
@@ -164,6 +172,9 @@ func healthHandler(cs *council.Server, phoenixURL string, httpClient *http.Clien
 			// boolean only: the cookie itself never leaves Phoenix.
 			if result.CookieIsDefault != nil {
 				body["cookie_is_default"] = *result.CookieIsDefault
+				if authEnabled && *result.CookieIsDefault && len(result.Nodes) > 1 {
+					body["auth_warning"] = authWarningDefaultCookie
+				}
 			}
 			if result.VersionMismatch {
 				body["cluster_warning"] = "version mismatch detected across cluster nodes — upgrade all nodes to the same version"
@@ -340,10 +351,21 @@ func main() {
 			Logger: logger,
 		})
 
+		// Fail closed: a set but too-short token must never mean "run open".
+		authToken, err := authTokenFromEnv(os.Getenv("COUNCIL_AUTH_TOKEN"))
+		if err != nil {
+			log.Fatalf("%v", err)
+		}
+		var mcpEntry http.Handler = mcpHandler
+		if authToken != "" {
+			mcpEntry = requireBearer(authToken, newFailureLog(logger), mcpHandler)
+			logger.Info("MCP authentication enabled (COUNCIL_AUTH_TOKEN)")
+		}
+
 		mux := http.NewServeMux()
-		mux.Handle("/mcp", mcpHandler)
-		mux.Handle("/mcp/", mcpHandler)
-		mux.HandleFunc("/health", healthHandler(cs, phoenixURL, reg.HTTPClient))
+		mux.Handle("/mcp", mcpEntry)
+		mux.Handle("/mcp/", mcpEntry)
+		mux.HandleFunc("/health", healthHandlerAuth(cs, phoenixURL, reg.HTTPClient, authToken != ""))
 		// Cross-node write receiver (authenticated by the shared cluster secret).
 		mux.HandleFunc("/api/internal/post_to_room", reg.InternalPostHandler())
 		mux.HandleFunc("/api/internal/signal_status", reg.InternalStatusHandler())

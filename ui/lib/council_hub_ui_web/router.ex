@@ -2,6 +2,8 @@ defmodule CouncilHubUiWeb.Router do
   use CouncilHubUiWeb, :router
 
   pipeline :browser do
+    # First, so a refused request never gets a session cookie or CSRF token.
+    plug CouncilHubUiWeb.Plugs.RequireDashboardAuth
     plug :accepts, ["html"]
     plug :fetch_session
     plug :fetch_live_flash

@@ -20,6 +20,9 @@ services:
       # Omit for LAN auto-discovery. Set COUNCIL_NO_DISCOVER=1 to skip scan on VPN.
       - COUNCIL_SEEDS=${COUNCIL_SEEDS:-}
       - COUNCIL_NO_DISCOVER=${COUNCIL_NO_DISCOVER:-0}
+      # Bearer token for /mcp (16+ characters; shorter makes the server refuse to
+      # start). Empty = no auth. Clients send it as `Authorization: Bearer <token>`.
+      - COUNCIL_AUTH_TOKEN=${COUNCIL_AUTH_TOKEN:-}
       # Ollama endpoint for semantic search (optional)
       - COUNCIL_OLLAMA_URL=${COUNCIL_OLLAMA_URL:-}
     # `always`, not `unless-stopped`: Docker Desktop records its own shutdown as a

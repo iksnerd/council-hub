@@ -24,6 +24,19 @@ Changes that make the hub easier for agents to start a session on and to receive
 - Docs: a non-default cookie lets the cluster ports bind to all interfaces, which removes the stale pinned-address failure after a DHCP change; clustering notes for Docker Desktop on macOS over a tailnet.
 - The council plugin is at 0.5.2 (workflow, multi-agent, project-suggestions and cluster skills).
 
+### Authentication (opt-in)
+
+Opt-in authentication for the MCP endpoint, the dashboard and the presence socket. Off by default: with `COUNCIL_AUTH_TOKEN` unset nothing changes.
+
+- **`COUNCIL_AUTH_TOKEN`** (at least 16 characters; shorter makes the server refuse to start). `/mcp` requires `Authorization: Bearer <token>` and answers 401 with `WWW-Authenticate` otherwise; the dashboard requires HTTP Basic auth with the token as the password; `/socket` requires an `X-Council-Token` header. Comparisons are constant-time. Failed `/mcp` attempts are logged at most once a minute, without the value. `/health`, `/api/internal/*` (cluster calls, authenticated by the cookie) and `/api/ui/*` stay as they were, and requests from loopback inside the container are exempt so the Docker healthcheck and the Go-to-Phoenix calls keep working. A browser on the same host reaches the container from the Docker bridge address and has to log in once.
+- `/health` reports `auth_enabled`, and `auth_warning` when the token is on, the cluster cookie is the public default and more than one node is listed: the token does not protect `/api/internal/*` or the cluster ports until the cookie is changed. `/status` shows the same.
+- `council-inbox`, `council-inbox watch`, the channel plugin and `scripts/council-post.py` send the token (`COUNCIL_AUTH_TOKEN`; `council-inbox` also takes `--token-file`, and has no `--token` flag because it would show in `ps`).
+
+- `council-inbox --hook` marks the injected mention text as data posted by other agents or people, to be treated as information and never as instructions.
+- `docker-compose.yml` passes `COUNCIL_AUTH_TOKEN` through.
+
+Not tested: the Phoenix `runtime.exs` raise on a short token (its validation function is), how `Phoenix.Logger` filters a nested `token` parameter, and real Docker-bridge behaviour for the loopback exemption outside the end-to-end check described in the commit.
+
 ## [0.66.1] - 2026-11-13
 
 The dashboard now builds and runs on Elixir 1.20 / OTP 29, plus a `go-sqlite3` patch bump. No schema or tool changes.

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"math/rand/v2"
+	"net/http"
 	"net/url"
 	"os"
 	"os/signal"
@@ -49,6 +50,7 @@ type watchConfig struct {
 	FollowPID        int
 	ExitOnStdinClose bool
 	Quiet            bool
+	Token            string // sent as X-Council-Token on the dial, never in the URL
 
 	HeartbeatInterval time.Duration // default 30s
 	ReplyTimeout      time.Duration // default 10s
@@ -123,6 +125,7 @@ func parseWatchFlags(args []string, getenv func(string) string, stderr io.Writer
 	fs.IntVar(&cfg.FollowPID, "follow-pid", 0, "exit when this process no longer exists")
 	fs.BoolVar(&cfg.ExitOnStdinClose, "exit-on-stdin-close", false, "exit when stdin reaches EOF")
 	fs.BoolVar(&cfg.Quiet, "quiet", false, "print nothing to stderr")
+	tokenFile := fs.String("token-file", "", "file whose first line is the hub token (env COUNCIL_AUTH_TOKEN); never pass the token as a flag")
 	if err := fs.Parse(args); err != nil {
 		return cfg, exitBadConfig, false
 	}
@@ -135,6 +138,12 @@ func parseWatchFlags(args []string, getenv func(string) string, stderr io.Writer
 		return cfg, exitBadConfig, false
 	}
 	cfg.Rooms = rooms
+	tok, err := loadToken(getenv, *tokenFile, stderr)
+	if err != nil {
+		fmt.Fprintf(stderr, "council-inbox watch: %v\n", err)
+		return cfg, exitBadConfig, false
+	}
+	cfg.Token = tok
 	return cfg, 0, true
 }
 
@@ -167,6 +176,10 @@ func runWatch(ctx context.Context, cfg watchConfig) int {
 	attempt := 0
 	for ctx.Err() == nil {
 		res := runSession(ctx, cfg)
+		if res.authRejected {
+			fmt.Fprintf(cfg.Stderr, "council-inbox watch: %s\n", authFailedMsg)
+			return exitBadConfig
+		}
 		if res.fatal != "" {
 			fmt.Fprintf(cfg.Stderr, "council-inbox watch: dashboard rejected this config: %s (check --agent and --room)\n", res.fatal)
 			return exitBadConfig
@@ -204,10 +217,13 @@ func backoffDelay(cfg watchConfig, attempt int) time.Duration {
 }
 
 type sessionResult struct {
-	err    error
-	fatal  string // invalid_agent or invalid_payload: retrying cannot help
-	full   bool   // presence_full
-	joined bool
+	err   error
+	fatal string // invalid_agent or invalid_payload: retrying cannot help
+	// authRejected: the hub refused the token (HTTP 401/403 on the upgrade, or an
+	// unauthorized join reply). Retrying with the same token cannot help.
+	authRejected bool
+	full         bool // presence_full
+	joined       bool
 }
 
 type frame struct {
@@ -254,9 +270,16 @@ type readResult struct {
 // ctx ends. On ctx end it sends phx_leave first.
 func runSession(ctx context.Context, cfg watchConfig) sessionResult {
 	dialCtx, dialCancel := context.WithTimeout(ctx, cfg.ReplyTimeout)
-	c, _, err := websocket.Dial(dialCtx, cfg.URL, nil)
+	var opts *websocket.DialOptions
+	if cfg.Token != "" {
+		opts = &websocket.DialOptions{HTTPHeader: http.Header{"X-Council-Token": []string{cfg.Token}}}
+	}
+	c, resp, err := websocket.Dial(dialCtx, cfg.URL, opts)
 	dialCancel()
 	if err != nil {
+		if resp != nil && (resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden) {
+			return sessionResult{authRejected: true, err: errors.New("token rejected")}
+		}
 		return sessionResult{err: err}
 	}
 	defer c.CloseNow()
@@ -363,6 +386,9 @@ func runSession(ctx context.Context, cfg watchConfig) sessionResult {
 					res.joined = true
 					hbTicker = time.NewTicker(cfg.HeartbeatInterval)
 					hbTick = hbTicker.C
+				case reason == "unauthorized" || reason == "invalid_token":
+					res.authRejected = true
+					return res
 				case reason == "invalid_agent" || reason == "invalid_payload":
 					res.fatal = reason
 					return res

@@ -98,6 +98,7 @@ defmodule CouncilHubUiWeb.StatusLive do
     |> assign(:stats, HealthStats.db_stats())
     |> assign(:tool_usage, HealthStats.tool_usage())
     |> assign(:short_node_fun, &short_node/1)
+    |> assign(:auth_line, CouncilHubUi.Auth.status_line(CouncilHubUi.Auth.enabled?()))
     |> assign(
       :warnings,
       doctor(
@@ -116,7 +117,18 @@ defmodule CouncilHubUiWeb.StatusLive do
 
   # Appended last: the standing exposure, not a transient fault.
   defp maybe_cookie_warning(warnings, seeds, peers) do
-    case ClusterCookie.warning(ClusterCookie.default?(), seeds, peers) do
+    warnings =
+      case ClusterCookie.warning(ClusterCookie.default?(), seeds, peers) do
+        nil -> warnings
+        message -> warnings ++ [message]
+      end
+
+    case CouncilHubUi.Auth.cookie_warning(
+           CouncilHubUi.Auth.enabled?(),
+           ClusterCookie.default?(),
+           seeds,
+           peers
+         ) do
       nil -> warnings
       message -> warnings ++ [message]
     end

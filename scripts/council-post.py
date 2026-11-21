@@ -27,6 +27,10 @@ ACCEPT = "application/json, text/event-stream"
 
 def rpc(url: str, payload: dict, session: str | None = None, want_headers: bool = False):
     headers = {"Content-Type": "application/json", "Accept": ACCEPT}
+    # A hub started with COUNCIL_AUTH_TOKEN answers 401 without this header.
+    token = os.environ.get("COUNCIL_AUTH_TOKEN", "").strip()
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
     if session:
         headers["Mcp-Session-Id"] = session
     req = urllib.request.Request(

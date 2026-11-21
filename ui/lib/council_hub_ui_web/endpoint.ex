@@ -15,13 +15,15 @@ defmodule CouncilHubUiWeb.Endpoint do
     websocket: [connect_info: [session: @session_options]],
     longpoll: [connect_info: [session: @session_options]]
 
-  # Agent presence. Not authenticated, see UserSocket. Idle timeout 60 s (the
+  # Agent presence. Authenticated by X-Council-Token when COUNCIL_AUTH_TOKEN is set, see UserSocket. Idle timeout 60 s (the
   # Phoenix default, set explicitly): clients send a heartbeat every 30 s, and a
   # connection silent for 60 s is dropped, which removes its presence entry.
   # Frames are capped at 16 KB (a full 50-room update is about 7 KB). Only the
   # v2 JSON serializer is accepted; no longpoll fallback.
   socket "/socket", CouncilHubUiWeb.UserSocket,
     websocket: [
+      # x_headers exposes only `x-` headers, which carries X-Council-Token.
+      connect_info: [:x_headers],
       timeout: 60_000,
       max_frame_size: 16_384,
       check_origin: {CouncilHubUiWeb.UserSocket, :allow_origin?, []},

@@ -50,6 +50,17 @@ config :council_hub_ui, :force_ssl_enabled, System.get_env("COUNCIL_FORCE_SSL") 
 config :council_hub_ui,
   presence_enabled: CouncilHubUi.Presence.parse_enabled(System.get_env("COUNCIL_PRESENCE"))
 
+# Shared token for the dashboard and presence socket (see CouncilHubUi.Auth).
+# Unset or empty = auth off. Too short = refuse to boot (fail closed); the
+# message names the variable and the minimum, never the value.
+auth_token =
+  case CouncilHubUi.Auth.validate(System.get_env("COUNCIL_AUTH_TOKEN")) do
+    {:ok, token} -> token
+    {:error, message} -> raise message
+  end
+
+config :council_hub_ui, :auth_token, auth_token
+
 if config_env() == :prod do
   database_path =
     System.get_env("COUNCIL_DB_PATH") ||

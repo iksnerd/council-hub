@@ -18,6 +18,9 @@ config :council_hub_ui,
 # stored format instead; the column stays unwrapped so timestamp indexes apply.
 config :ecto_sqlite3, datetime_type: :text_datetime
 
+# Never log a token passed as a parameter (Phoenix filters "password" by default).
+config :phoenix, :filter_parameters, ["password", "token"]
+
 # Configure the endpoint
 config :council_hub_ui, CouncilHubUiWeb.Endpoint,
   url: [host: "localhost"],
