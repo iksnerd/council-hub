@@ -6,6 +6,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ## [Unreleased]
 
+## [0.68.0] - 2026-11-22
+
 ### Added
 - **Installable `council-inbox`.** `release.yml` gains an `inbox-binaries` job that builds static (CGO off) `council-inbox` for darwin and linux on arm64 and amd64 and attaches them with a `checksums.txt` to the GitHub release; it runs after the release exists, so a failed build never blocks the release. `scripts/install-council-inbox.sh` downloads the right asset, verifies the SHA-256 and installs to `~/.local/bin`, so no Go or clone is needed (`go install` cannot work: the module is named `council-hub`). Building from source is unchanged. Binaries exist from the first release cut after this change.
 
