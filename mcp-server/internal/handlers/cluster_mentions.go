@@ -45,6 +45,10 @@ var nodeProbeTimeout = 1 * time.Second
 type nodeCount struct {
 	n       int
 	unknown bool
+	// missing names peers the cluster manager keeps alive that are not
+	// connected right now. With no peer connected they are the only sign that
+	// a clean local answer may be incomplete.
+	missing []string
 }
 
 // Unknown reports that the lookup failed (timeout, error, bad status).
@@ -64,43 +68,52 @@ func (r *Registry) clusterNodeCount() nodeCount {
 		ttl = nodeCountFailTTL
 	}
 	if !r.nodeAt.IsZero() && time.Since(r.nodeAt) < ttl {
-		return nodeCount{n: r.nodeN, unknown: r.nodeFailed}
+		return nodeCount{n: r.nodeN, unknown: r.nodeFailed, missing: r.nodeMissing}
 	}
-	r.nodeN, r.nodeFailed = r.fetchClusterNodeCount()
+	r.nodeN, r.nodeMissing, r.nodeFailed = r.fetchClusterNodeCount()
 	r.nodeAt = time.Now()
-	return nodeCount{n: r.nodeN, unknown: r.nodeFailed}
+	return nodeCount{n: r.nodeN, unknown: r.nodeFailed, missing: r.nodeMissing}
 }
 
-// fetchClusterNodeCount returns the node count and whether the lookup failed.
-// "Not configured" and "UI off" are answers, not failures.
-func (r *Registry) fetchClusterNodeCount() (int, bool) {
+// fetchClusterNodeCount returns the node count, the known peers that are not
+// connected, and whether the lookup failed. "Not configured" and "UI off" are
+// answers, not failures.
+func (r *Registry) fetchClusterNodeCount() (int, []string, bool) {
 	if strings.EqualFold(os.Getenv("COUNCIL_UI"), "off") {
-		return 1, false
+		return 1, nil, false
 	}
 	if r.HTTPClient == nil || r.PhoenixURL == "" {
-		return 1, false
+		return 1, nil, false
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), nodeProbeTimeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, r.PhoenixURL+"/api/internal/cluster/nodes", nil)
 	if err != nil {
-		return 0, true
+		return 0, nil, true
 	}
 	resp, err := r.HTTPClient.Do(req)
 	if err != nil {
-		return 0, true
+		return 0, nil, true
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return 0, true
+		return 0, nil, true
 	}
 	var payload struct {
 		Nodes []json.RawMessage `json:"nodes"`
+		// Absent from a Phoenix that predates it: reads as none missing.
+		MissingPeers []string `json:"missing_peers"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
-		return 0, true
+		return 0, nil, true
 	}
-	return len(payload.Nodes), false
+	return len(payload.Nodes), payload.MissingPeers, false
+}
+
+// missingPeersNote is the line a local read carries when no peer is connected
+// but the cluster manager still knows of some. They may hold the answer.
+func missingPeersNote(missing []string) string {
+	return fmt.Sprintf("known peer(s) not connected: %s; showing this node only", strings.Join(missing, ", "))
 }
 
 // clusterUnknownNote is the line a local-only read carries when the node count
@@ -119,6 +132,8 @@ func (r *Registry) localOnlyNote() string {
 		return clusterUnknownNote
 	case c.Peers():
 		return fmt.Sprintf("local node only; %d nodes in the cluster", c.n)
+	case len(c.missing) > 0:
+		return missingPeersNote(c.missing)
 	}
 	return ""
 }

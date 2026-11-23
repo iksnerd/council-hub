@@ -264,6 +264,19 @@ defmodule CouncilHubUi.ClusterMixedVersionTest do
     end
   end
 
+  describe "Cluster.missing_peers/2" do
+    test "known peers that are neither connected nor this node" do
+      gone = "council_hub@10.0.0.77"
+
+      assert [^gone] =
+               Cluster.missing_peers([@peer],
+                 known_peers: fn -> [to_string(Node.self()), to_string(@peer), gone] end
+               )
+
+      assert [] = Cluster.missing_peers([@peer], known_peers: fn -> [to_string(@peer)] end)
+    end
+  end
+
   describe "a known peer that dropped out" do
     test "is named in a warning instead of silently missing" do
       create_room(%{id: "mine-known", project: "p"})

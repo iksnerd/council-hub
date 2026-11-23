@@ -223,10 +223,11 @@ type Registry struct {
 	usage *usageCounter // tool-call counter (usage.go)
 	seen  *agentSeen    // per-agent last-seen recorder (agent_seen.go)
 
-	nodeMu     sync.Mutex // guards the cached cluster node count (see clusterNodeCount)
-	nodeAt     time.Time
-	nodeN      int
-	nodeFailed bool // last lookup failed; cached for nodeCountFailTTL
+	nodeMu      sync.Mutex // guards the cached cluster node count (see clusterNodeCount)
+	nodeAt      time.Time
+	nodeN       int
+	nodeMissing []string // known peers not connected, from the last lookup
+	nodeFailed  bool     // last lookup failed; cached for nodeCountFailTTL
 }
 
 // toolResultText extracts the text content from a CallToolResult.

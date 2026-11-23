@@ -9,6 +9,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 ### Fixed
 - Cluster reads say when the node count is unknown ("cluster state unknown; showing this node only") instead of going local silently, and a failed lookup is retried after 30 s rather than cached as "no peers".
 - `list_rooms` (cluster) asks each peer to drop resolved rooms before it cuts to the window (new `exclude_status` param; older peers are still post-filtered) and warns when limit+offset exceeds the 100 rooms a peer returns.
+- A read with no peer connected now names the peers the cluster manager still knows ("known peer(s) not connected: …; showing this node only") instead of returning a clean local answer that reads as complete. `GET /api/internal/cluster/nodes` gains `missing_peers`; an older Phoenix without it reads as none missing.
 - The cluster read fallback keys on a typed error, not on the text "Error: cluster".
 - `get_digest` and `read_room` pick the fuller copy of a room (most messages, then latest update) so an empty local stub cannot hide the real room on a peer; `read_room` checks peers on a local hit.
 

@@ -800,6 +800,14 @@ defmodule CouncilHubUiWeb.ClusterControllerTest do
   end
 
   describe "GET /api/internal/cluster/nodes" do
+    test "lists known peers that are not connected, so the Go side can say so", %{conn: conn} do
+      assert %{"missing_peers" => missing} =
+               json_response(get(conn, "/api/internal/cluster/nodes"), 200)
+
+      assert is_list(missing)
+      refute Atom.to_string(Node.self()) in missing
+    end
+
     test "carries the seed doctor's findings so the Go /health can relay them", %{conn: conn} do
       finding = %{
         seed: "192.168.0.4",

@@ -406,10 +406,12 @@ defmodule CouncilHubUi.Cluster do
     {Enum.reverse(tagged_results), Enum.reverse(warnings) ++ gone}
   end
 
-  # Peers the cluster manager keeps alive that are not in `nodes`, never this
-  # node. When a test injects :nodes the real manager is not consulted unless
-  # :known_peers is injected too. Compared as strings, so no atoms are minted.
-  defp missing_peers(nodes, opts) do
+  @doc """
+  Peers the cluster manager keeps alive that are not in `nodes`, never this
+  node. When a test injects :nodes the real manager is not consulted unless
+  :known_peers is injected too. Compared as strings, so no atoms are minted.
+  """
+  def missing_peers(nodes, opts \\ []) do
     known =
       case Keyword.fetch(opts, :known_peers) do
         {:ok, fun} -> fun.()

@@ -81,7 +81,17 @@ func (r *Registry) routeClusterRead(cw StringBool, eligible bool, cluster, local
 		return true, res, out, err
 	}
 	if !count.Peers() {
-		return false, nil, ToolOutput{}, nil
+		if len(count.missing) == 0 {
+			return false, nil, ToolOutput{}, nil
+		}
+		// No peer is connected, but some are known: a clean local answer would
+		// read as complete. Say which peers are missing.
+		note := missingPeersNote(count.missing)
+		res, out, err := local()
+		if err == nil {
+			res = annotateOnce(res, "**Cluster Warning:** "+note+".", note)
+		}
+		return true, res, out, err
 	}
 	res, out, err := cluster()
 	if err != nil {

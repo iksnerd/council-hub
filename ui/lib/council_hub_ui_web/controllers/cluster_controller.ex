@@ -18,6 +18,9 @@ defmodule CouncilHubUiWeb.ClusterController do
     json(conn, %{
       nodes: all,
       count: length(all),
+      # Known peers that are not connected right now. With no peer connected they
+      # are the only sign that a clean local answer may be incomplete.
+      missing_peers: Cluster.missing_peers(Node.list()),
       version_mismatch: mismatch,
       node_identity: ClusterManager.ip_status(),
       advertised: ClusterManager.advertised_status(),
