@@ -6,7 +6,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 
 	"council-hub/internal/council"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -57,7 +56,7 @@ func (r *Registry) handleGetMessagesCluster(args GetMessagesInput) (*mcp.CallToo
 			warnings = append(warnings, fmt.Sprintf("peer fan-out unavailable: %s", err.Error()))
 			return r.renderClusterMessages(results, warnings, nil)
 		}
-		return msg(fmt.Sprintf("Error: cluster get_messages failed: %s", err.Error()))
+		return nil, ToolOutput{}, clusterErr("get_messages", err)
 	}
 
 	var remote []ClusterSearchResult
@@ -139,14 +138,14 @@ func (r *Registry) handleGetDigestCluster(args DigestInput) (*mcp.CallToolResult
 	// this node owns; peers' rows (Phoenix also echoes this node's own rooms
 	// back, tagged with its Erlang name) only fill in rooms not seen locally.
 	var rooms []council.DigestEntry
-	seen := map[string]bool{}
+	seen := map[string]int{} // room id -> index in rooms
 	if r.Server != nil {
 		local, err := r.Server.GetDigest(args.Project, args.Since)
 		if err == nil {
 			for _, d := range local {
 				d.LatestExcerpt = digestExcerpt(d.LatestExcerpt)
 				d.SourceNode = localSourceNode()
-				seen[d.RoomID] = true
+				seen[d.RoomID] = len(rooms)
 				rooms = append(rooms, d)
 			}
 		}
@@ -160,7 +159,7 @@ func (r *Registry) handleGetDigestCluster(args DigestInput) (*mcp.CallToolResult
 	raw, warnings, err := r.clusterCall("get_digest", params)
 	if err != nil {
 		if len(rooms) == 0 {
-			return msg(fmt.Sprintf("Error: cluster get_digest failed: %s", err.Error()))
+			return nil, ToolOutput{}, clusterErr("get_digest", err)
 		}
 		warnings = append(warnings, fmt.Sprintf("peer fan-out unavailable: %s", err.Error()))
 	} else {
@@ -171,16 +170,6 @@ func (r *Registry) handleGetDigestCluster(args DigestInput) (*mcp.CallToolResult
 		legacy := 0
 		noCounts := 0
 		for _, d := range remote {
-			if seen[d.RoomID] {
-				continue
-			}
-			seen[d.RoomID] = true
-			if d.DecisionCount == nil || d.SynthesisCount == nil {
-				noCounts++
-			}
-			if d.LatestMessageID == "" {
-				legacy++
-			}
 			entry := council.DigestEntry{
 				RoomID:          d.RoomID,
 				NewMessages:     d.NewMessageCount,
@@ -197,7 +186,23 @@ func (r *Registry) handleGetDigestCluster(args DigestInput) (*mcp.CallToolResult
 			if d.SynthesisCount != nil {
 				entry.SynthesisCount = *d.SynthesisCount
 			}
-			rooms = append(rooms, entry)
+			// One rule for a room seen twice (digestCopyWins), so an empty local
+			// stub cannot hide the real room on a peer.
+			if idx, dup := seen[d.RoomID]; dup {
+				if !digestCopyWins(entry, rooms[idx]) {
+					continue
+				}
+				rooms[idx] = entry
+			} else {
+				seen[d.RoomID] = len(rooms)
+				rooms = append(rooms, entry)
+			}
+			if d.DecisionCount == nil || d.SynthesisCount == nil {
+				noCounts++
+			}
+			if d.LatestMessageID == "" {
+				legacy++
+			}
 		}
 		if legacy > 0 {
 			warnings = append(warnings, fmt.Sprintf("%d peer room(s) come from a node that does not report latest_message_id/latest_author/tags (older version); those fields are empty", legacy))
@@ -337,14 +342,14 @@ func (r *Registry) handleReadRoomCluster(args ReadRoomInput) (*mcp.CallToolResul
 	var results []ClusterRoomResult
 	if r.Server != nil {
 		if room, err := r.Server.GetRoom(args.RoomID); err == nil {
-			results = append(results, clusterRoomFromLocal(room))
+			results = append(results, r.localRoomCopy(room))
 		}
 	}
 
 	raw, warnings, err := r.clusterCall("list_rooms", params)
 	if err != nil {
 		if len(results) == 0 {
-			return msg(fmt.Sprintf("Error: cluster read room failed: %s", err.Error()))
+			return nil, ToolOutput{}, clusterErr("read room", err)
 		}
 		warnings = append(warnings, fmt.Sprintf("peer fan-out unavailable: %s", err.Error()))
 	} else {
@@ -355,17 +360,12 @@ func (r *Registry) handleReadRoomCluster(args ReadRoomInput) (*mcp.CallToolResul
 		results = append(results, remote...)
 	}
 
-	// Pick the copy with the most recent UpdatedAt — the local node may hold a
-	// stub with no topic/messages while the authoritative copy lives on a peer.
+	// Pick the authoritative copy (see roomCopyWins): the local node may hold a
+	// stub with no topic/messages while the real room lives on a peer.
 	var room *ClusterRoomResult
-	var bestTime time.Time
 	for i, res := range results {
-		if res.ID == args.RoomID {
-			t := parseClusterTime(res.UpdatedAt)
-			if room == nil || t.After(bestTime) {
-				room = &results[i]
-				bestTime = t
-			}
+		if res.ID == args.RoomID && (room == nil || roomCopyWins(res, *room)) {
+			room = &results[i]
 		}
 	}
 
@@ -384,6 +384,52 @@ func (r *Registry) handleReadRoomCluster(args ReadRoomInput) (*mcp.CallToolResul
 
 	formatClusterWarnings(&b, warnings)
 	return msg(b.String())
+}
+
+// localRoomCopy is this node's copy of a room as a cluster row, with its message count.
+func (r *Registry) localRoomCopy(room council.Room) ClusterRoomResult {
+	cr := clusterRoomFromLocal(room)
+	n := r.Server.GetMessageCounts()[room.ID]
+	cr.MessageCount = &n
+	return cr
+}
+
+// roomCopyWins is the one rule for choosing between two copies of a room: the
+// one with more messages, and on a tie the later updated_at. A copy from a peer
+// that predates message_count (nil) is not counted as empty; the rule falls back
+// to updated_at when either count is unknown.
+func roomCopyWins(cand, cur ClusterRoomResult) bool {
+	if cand.MessageCount != nil && cur.MessageCount != nil && *cand.MessageCount != *cur.MessageCount {
+		return *cand.MessageCount > *cur.MessageCount
+	}
+	return parseClusterTime(cand.UpdatedAt).After(parseClusterTime(cur.UpdatedAt))
+}
+
+// peerRoomBeatsLocal asks the cluster for the room and reports whether some
+// other node holds a copy that beats the local one (roomCopyWins).
+func (r *Registry) peerRoomBeatsLocal(room council.Room) bool {
+	raw, _, err := r.clusterCall("list_rooms", map[string]any{"search": room.ID})
+	if err != nil {
+		return false
+	}
+	var remote []ClusterRoomResult
+	if json.Unmarshal(raw, &remote) != nil {
+		return false
+	}
+	local := r.localRoomCopy(room)
+	for _, rm := range remote {
+		if rm.ID == room.ID && roomCopyWins(rm, local) {
+			return true
+		}
+	}
+	return false
+}
+
+// digestCopyWins is roomCopyWins for digest rows: more new messages. A digest
+// row has no updated_at, so a tie keeps the row already held (the local one,
+// which Phoenix's echo of this node's own rooms must not displace).
+func digestCopyWins(cand, cur council.DigestEntry) bool {
+	return cand.NewMessages > cur.NewMessages
 }
 
 // writeClusterRoomHeader renders a cluster room's metadata block — shared by
@@ -431,7 +477,7 @@ func (r *Registry) handleReadRoomClusterWithMessages(args ReadRoomInput) (*mcp.C
 	raw, warnings, err := r.clusterCall("read_transcript", params)
 	if err != nil {
 		if localResult == nil {
-			return msg(fmt.Sprintf("Error: cluster read room failed: %s", err.Error()))
+			return nil, ToolOutput{}, clusterErr("read room", err)
 		}
 		warnings = append(warnings, fmt.Sprintf("peer fan-out unavailable: %s", err.Error()))
 	} else {
@@ -439,7 +485,8 @@ func (r *Registry) handleReadRoomClusterWithMessages(args ReadRoomInput) (*mcp.C
 		if err := json.Unmarshal(raw, &remote); err != nil {
 			return nil, ToolOutput{}, fmt.Errorf("decode cluster room results: %w", err)
 		}
-		if remote != nil && (localResult == nil || len(remote.Messages) > len(localResult.Messages)) {
+		if remote != nil && (localResult == nil || len(remote.Messages) > len(localResult.Messages) ||
+			(len(remote.Messages) == len(localResult.Messages) && parseClusterTime(remote.Room.UpdatedAt).After(parseClusterTime(localResult.Room.UpdatedAt)))) {
 			localResult = remote
 		}
 	}
@@ -654,7 +701,7 @@ func (r *Registry) handleSearchMessagesCluster(args SearchMessagesInput) (*mcp.C
 			warnings = append(warnings, fmt.Sprintf("peer fan-out unavailable: %s", err.Error()))
 			return r.renderClusterSearch(args, results, warnings)
 		}
-		return msg(fmt.Sprintf("Error: cluster search failed: %s", err.Error()))
+		return nil, ToolOutput{}, clusterErr("search", err)
 	}
 
 	var remote []ClusterSearchResult
@@ -731,6 +778,10 @@ func (r *Registry) renderClusterSearch(args SearchMessagesInput, results []Clust
 	return msg(b.String())
 }
 
+// peerListClamp is the most rooms Phoenix returns per peer for one list_rooms
+// call (the clamp in cluster_controller.ex and list_rooms_filtered).
+const peerListClamp = 100
+
 func (r *Registry) handleListRoomsCluster(args ListRoomsInput) (*mcp.CallToolResult, ListRoomsOutput, error) {
 	// Same defaults as the local list_rooms: limit 50, and resolved rooms hidden
 	// unless a status, search or related_to is given (status=all lifts it).
@@ -762,6 +813,10 @@ func (r *Registry) handleListRoomsCluster(args ListRoomsInput) (*mcp.CallToolRes
 	// Each node returns its first limit+offset rooms; the page is cut after the
 	// merge, since a per-node offset would skip the wrong rows.
 	window := limit + offset
+	peerWindow := window
+	if peerWindow > peerListClamp {
+		peerWindow = peerListClamp
+	}
 
 	var results []ClusterRoomResult
 	var localResolvedOpts council.ListRoomsOptions
@@ -819,11 +874,21 @@ func (r *Registry) handleListRoomsCluster(args ListRoomsInput) (*mcp.CallToolRes
 		"search":         args.Search,
 		"related_to":     args.RelatedTo,
 		"archived":       args.Archived,
-		"limit":          strconv.Itoa(window),
+		"limit":          strconv.Itoa(peerWindow),
 		"offset":         "0",
+	}
+	if hideResolved {
+		// The peer drops resolved rooms before cutting to the window. A peer
+		// on the previous release ignores this, so the rows are also filtered below.
+		params["exclude_status"] = "resolved"
+	}
+	var windowWarnings []string
+	if window > peerListClamp {
+		windowWarnings = append(windowWarnings, fmt.Sprintf("limit+offset is %d but Phoenix returns at most the first %d rooms per peer; peer rooms past that are not shown", window, peerListClamp))
 	}
 
 	raw, warnings, err := r.clusterCall("list_rooms", params)
+	warnings = append(warnings, windowWarnings...)
 	if err != nil {
 		if len(results) > 0 {
 			warnings = append(warnings, fmt.Sprintf("peer fan-out unavailable: %s", err.Error()))
@@ -835,7 +900,7 @@ func (r *Registry) handleListRoomsCluster(args ListRoomsInput) (*mcp.CallToolRes
 			}
 			return r.renderClusterRooms(args, results, warnings, omitted)
 		}
-		return listRoomsResult(fmt.Sprintf("Error: cluster list rooms failed: %s", err.Error()), newListRoomsOutput(nil, nil))
+		return nil, ListRoomsOutput{}, clusterErr("list rooms", err)
 	}
 
 	var remote []ClusterRoomResult
@@ -908,6 +973,7 @@ func (r *Registry) countClusterResolved(listParams map[string]any) (int, []strin
 	params["status"] = "resolved"
 	delete(params, "limit")
 	delete(params, "offset")
+	delete(params, "exclude_status")
 	raw, warnings, err := r.clusterCall("room_refs", params)
 	if err != nil {
 		return 0, nil, false

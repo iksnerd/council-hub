@@ -96,6 +96,7 @@ defmodule CouncilHubUiWeb.ClusterController do
       "search" => Map.get(params, "search", ""),
       "related_to" => Map.get(params, "related_to", ""),
       "archived" => Map.get(params, "archived", ""),
+      "exclude_status" => Map.get(params, "exclude_status", ""),
       "limit" => Params.clamp_int(Map.get(params, "limit"), 50, max: 100),
       "offset" => Params.clamp_int(Map.get(params, "offset"), 0, min: 0)
     }

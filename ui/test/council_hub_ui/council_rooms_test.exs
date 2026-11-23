@@ -72,6 +72,22 @@ defmodule CouncilHubUi.CouncilRoomsTest do
       assert hd(results).id == "lrf-resolved"
     end
 
+    test "exclude_status drops those rooms before the limit cuts the window" do
+      create_room(%{
+        id: "lrf-new-resolved",
+        status: "resolved",
+        updated_at: ~N[2026-05-02 00:00:00]
+      })
+
+      create_room(%{id: "lrf-old-active", status: "active", updated_at: ~N[2026-05-01 00:00:00]})
+
+      results = Council.list_rooms_filtered(%{"exclude_status" => "resolved", "limit" => 1})
+      assert Enum.map(results, & &1.id) == ["lrf-old-active"]
+
+      # Absent or empty means no exclusion (a peer that is sent nothing).
+      assert length(Council.list_rooms_filtered(%{"exclude_status" => ""})) == 2
+    end
+
     test "filters by tag" do
       create_room(%{id: "lrf-tagged", tags: "elixir,erlang"})
       create_room(%{id: "lrf-other", tags: "go,rust"})

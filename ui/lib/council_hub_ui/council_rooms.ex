@@ -44,6 +44,15 @@ defmodule CouncilHubUi.CouncilRooms do
   def list_rooms_filtered(params) when is_map(params) do
     base = filtered_rooms(params)
 
+    # `exclude_status` is applied here, before the limit cuts the window, so a
+    # caller that hides resolved rooms still gets `limit` live ones. Only the
+    # listing takes it (not `list_room_refs/1`, which counts the excluded rooms).
+    base =
+      case Map.get(params, "exclude_status") do
+        s when s in [nil, ""] -> base
+        s -> from([room: r] in base, where: r.status != ^s)
+      end
+
     limit = Params.clamp_int(Map.get(params, "limit"), 50, max: 100)
     offset = Params.clamp_int(Map.get(params, "offset"), 0, min: 0)
 

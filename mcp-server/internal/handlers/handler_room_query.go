@@ -41,6 +41,11 @@ func (r *Registry) handleListRooms(ctx context.Context, req *mcp.CallToolRequest
 		func() (*mcp.CallToolResult, ToolOutput, error) {
 			res, out, err := r.handleListRoomsCluster(args)
 			structured = out
+			if err != nil {
+				// An explicit cluster read turns err into an Error result; the
+				// structured part must still be valid.
+				structured = newListRoomsOutput(nil, nil)
+			}
 			return res, ToolOutput{}, err
 		},
 		func() (*mcp.CallToolResult, ToolOutput, error) {

@@ -179,11 +179,13 @@ func TestDefaultReadRoomLocalHitStaysLocalMissGoesWide(t *testing.T) {
 	f := newFakePhoenix(t, 2, false)
 	reg := clusteredRegistry(t, f)
 	res, _, _ := reg.handleReadRoom(context.Background(), nil, ReadRoomInput{RoomID: "local-room"})
-	if strings.Contains(resultText(res), "cluster-wide by default") || f.count("list_rooms") != 0 {
-		t.Errorf("a local hit must not fan out: %s", resultText(res))
+	// A local hit probes the peers once (a fuller peer copy would win) but, when
+	// none does, answers locally without the cluster-wide note.
+	if strings.Contains(resultText(res), "cluster-wide by default") || f.count("list_rooms") != 1 {
+		t.Errorf("a local hit with no better peer copy must stay local: %s (calls=%d)", resultText(res), f.count("list_rooms"))
 	}
 	_, _, _ = reg.handleReadRoom(context.Background(), nil, ReadRoomInput{RoomID: "peer-room"})
-	if f.count("list_rooms") != 1 {
+	if f.count("list_rooms") != 2 {
 		t.Errorf("a local miss should consult the cluster, calls=%d", f.count("list_rooms"))
 	}
 }

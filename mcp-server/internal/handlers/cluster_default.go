@@ -2,6 +2,8 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
 	"strings"
 
@@ -20,11 +22,25 @@ func clusterReadsLocal() bool {
 	return strings.EqualFold(strings.TrimSpace(os.Getenv("COUNCIL_CLUSTER_READS")), "local")
 }
 
-// peersConnected is true when the cached node count says a peer exists. The
-// count includes this node.
+// peersConnected is true when the cached node count says a peer exists. It is
+// false for an unknown count; callers that can say so use clusterNodeCount.
 func (r *Registry) peersConnected() bool {
-	return r.clusterNodeCount() > 1
+	return r.clusterNodeCount().Peers()
 }
+
+// clusterReadError is the typed failure of a cluster read (the Phoenix call
+// failed and there was nothing local to show). routeClusterRead falls back to
+// the local path on any error, so no caller needs to look at message text.
+type clusterReadError struct {
+	op  string
+	err error
+}
+
+func (e *clusterReadError) Error() string { return fmt.Sprintf("cluster %s failed: %s", e.op, e.err) }
+func (e *clusterReadError) Unwrap() error { return e.err }
+
+// clusterErr builds the error a cluster handler returns when the fan-out failed.
+func clusterErr(op string, err error) error { return &clusterReadError{op: op, err: err} }
 
 // routeClusterRead decides where a discovery-style read runs.
 //
@@ -34,25 +50,42 @@ func (r *Registry) peersConnected() bool {
 //	                      "local" and a peer is connected; otherwise not handled.
 //
 // A default cluster-wide read never errors because of the fan-out: if cluster()
-// fails, local() runs and a warning line is appended. local must force the
-// local path (cluster_wide=false) so it cannot route back here.
+// returns an error (a *clusterReadError from the handlers; never judged from
+// result text), local() runs and a warning line is appended. If the node count
+// is unknown (the lookup failed), local() runs with a "cluster state unknown"
+// line. local must force the local path (cluster_wide=false) so it cannot route
+// back here.
 func (r *Registry) routeClusterRead(cw StringBool, eligible bool, cluster, local readFn) (bool, *mcp.CallToolResult, ToolOutput, error) {
 	switch cw {
 	case "true":
 		res, out, err := cluster()
+		var ce *clusterReadError
+		if errors.As(err, &ce) {
+			// An explicit cluster read keeps its readable error result.
+			res, out, err = textResult("Error: " + ce.Error())
+		}
 		return true, res, out, err
 	case "false":
 		return false, nil, ToolOutput{}, nil
 	}
-	if !eligible || clusterReadsLocal() || !r.peersConnected() {
+	if !eligible || clusterReadsLocal() {
+		return false, nil, ToolOutput{}, nil
+	}
+	count := r.clusterNodeCount()
+	if count.Unknown() {
+		// Not "no peers": run locally and say the cluster could not be checked.
+		res, out, err := local()
+		if err == nil {
+			res = annotateOnce(res, "**Cluster Warning:** "+clusterUnknownNote+".", clusterUnknownNote)
+		}
+		return true, res, out, err
+	}
+	if !count.Peers() {
 		return false, nil, ToolOutput{}, nil
 	}
 	res, out, err := cluster()
-	if err != nil || strings.HasPrefix(resultTextOf(res), "Error: cluster") {
-		reason := "cluster fan-out failed"
-		if err != nil {
-			reason += ": " + err.Error()
-		}
+	if err != nil {
+		reason := "cluster fan-out failed: " + err.Error()
 		res, out, err = local()
 		if err == nil {
 			res = annotate(res, "**Cluster Warning:** "+reason+"; showing this node only.")
@@ -62,7 +95,14 @@ func (r *Registry) routeClusterRead(cw StringBool, eligible bool, cluster, local
 	return true, annotate(res, defaultWideNote), out, nil
 }
 
-func resultTextOf(res *mcp.CallToolResult) string { return toolResultText(res) }
+// annotateOnce is annotate, skipped when the text already carries marker (the
+// local path may have appended the same note itself).
+func annotateOnce(res *mcp.CallToolResult, note, marker string) *mcp.CallToolResult {
+	if strings.Contains(toolResultText(res), marker) {
+		return res
+	}
+	return annotate(res, note)
+}
 
 // annotate adds a note to a text result. A JSON-object body (get_digest) gets a
 // "note" field so it stays parseable; anything else gets an appended line.

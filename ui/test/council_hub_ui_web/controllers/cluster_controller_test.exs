@@ -250,6 +250,29 @@ defmodule CouncilHubUiWeb.ClusterControllerTest do
       assert hd(results)["id"] == "api-room-a"
     end
 
+    test "forwards exclude_status so the node filters before cutting to the limit",
+         %{conn: conn} do
+      create_room(%{
+        id: "ex-new-resolved",
+        status: "resolved",
+        updated_at: ~N[2026-05-02 00:00:00]
+      })
+
+      create_room(%{id: "ex-old-active", status: "active", updated_at: ~N[2026-05-01 00:00:00]})
+
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> post("/api/internal/cluster/list_rooms", %{
+          "search" => "ex-",
+          "exclude_status" => "resolved",
+          "limit" => "1"
+        })
+
+      assert %{"results" => [room]} = json_response(conn, 200)
+      assert room["id"] == "ex-old-active"
+    end
+
     test "room results include all expected fields", %{conn: conn} do
       create_room(%{
         id: "api-room-fields",

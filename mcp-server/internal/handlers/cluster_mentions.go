@@ -30,19 +30,33 @@ type ClusterMentionResult struct {
 const nodeCountTTL = 10 * time.Second
 
 // nodeCountFailTTL is how long a failed lookup (timeout, error, bad status) is
-// remembered as "no peers". It is longer than nodeCountTTL so a hung Phoenix
-// (its ClusterManager stuck dialing a dead peer) costs one short stall per
-// window rather than one per 10 s.
-const nodeCountFailTTL = 30 * time.Second
+// remembered, as "unknown" and never as "no peers": every read in the window
+// says so. It is longer than nodeCountTTL so a hung Phoenix (its ClusterManager
+// stuck dialing a dead peer) costs one short stall per window rather than one
+// per 10 s.
+var nodeCountFailTTL = 30 * time.Second
 
 // nodeProbeTimeout caps the peer-count lookup on the read path. It is separate
 // from HTTPClient's timeout, which sizes the multicall fan-out (5 s).
 var nodeProbeTimeout = 1 * time.Second
 
-// clusterNodeCount asks Phoenix how many nodes the cluster has. It returns 0
-// when that cannot be determined (no Phoenix, UI off, error, timeout), so
-// callers fail open to local rather than guess.
-func (r *Registry) clusterNodeCount() int {
+// nodeCount is the answer to "how many nodes are in the cluster". Unknown is a
+// state of its own: a failed lookup is not evidence of a single node.
+type nodeCount struct {
+	n       int
+	unknown bool
+}
+
+// Unknown reports that the lookup failed (timeout, error, bad status).
+func (c nodeCount) Unknown() bool { return c.unknown }
+
+// Peers reports a known count with at least one peer. It is false when unknown.
+func (c nodeCount) Peers() bool { return !c.unknown && c.n > 1 }
+
+// clusterNodeCount asks Phoenix how many nodes the cluster has. "Not
+// configured" and COUNCIL_UI=off are answers (a known single node); a timeout or
+// error is Unknown, which callers must say aloud rather than treat as local.
+func (r *Registry) clusterNodeCount() nodeCount {
 	r.nodeMu.Lock()
 	defer r.nodeMu.Unlock()
 	ttl := nodeCountTTL
@@ -50,21 +64,21 @@ func (r *Registry) clusterNodeCount() int {
 		ttl = nodeCountFailTTL
 	}
 	if !r.nodeAt.IsZero() && time.Since(r.nodeAt) < ttl {
-		return r.nodeN
+		return nodeCount{n: r.nodeN, unknown: r.nodeFailed}
 	}
 	r.nodeN, r.nodeFailed = r.fetchClusterNodeCount()
 	r.nodeAt = time.Now()
-	return r.nodeN
+	return nodeCount{n: r.nodeN, unknown: r.nodeFailed}
 }
 
 // fetchClusterNodeCount returns the node count and whether the lookup failed.
 // "Not configured" and "UI off" are answers, not failures.
 func (r *Registry) fetchClusterNodeCount() (int, bool) {
 	if strings.EqualFold(os.Getenv("COUNCIL_UI"), "off") {
-		return 0, false
+		return 1, false
 	}
 	if r.HTTPClient == nil || r.PhoenixURL == "" {
-		return 0, false
+		return 1, false
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), nodeProbeTimeout)
 	defer cancel()
@@ -89,13 +103,22 @@ func (r *Registry) fetchClusterNodeCount() (int, bool) {
 	return len(payload.Nodes), false
 }
 
+// clusterUnknownNote is the line a local-only read carries when the node count
+// could not be learned.
+const clusterUnknownNote = "cluster state unknown; showing this node only"
+
 // localOnlyNote is the one-line footer for a read that ran on this node only:
-// "local node only; N nodes in the cluster". Empty on a single-node cluster or
-// when the node count is unknown. Reads are local by default, and a bare empty
-// result gives no hint that a peer may hold the answer.
+// "local node only; N nodes in the cluster", or the unknown-state line when the
+// node count could not be learned. Empty on a known single-node cluster. Reads
+// are local by default, and a bare empty result gives no hint that a peer may
+// hold the answer.
 func (r *Registry) localOnlyNote() string {
-	if n := r.clusterNodeCount(); n > 1 {
-		return fmt.Sprintf("local node only; %d nodes in the cluster", n)
+	c := r.clusterNodeCount()
+	switch {
+	case c.Unknown():
+		return clusterUnknownNote
+	case c.Peers():
+		return fmt.Sprintf("local node only; %d nodes in the cluster", c.n)
 	}
 	return ""
 }

@@ -775,12 +775,14 @@ func (r *Registry) handleReadRoom(ctx context.Context, req *mcp.CallToolRequest,
 	}
 	args.IncludeLastN = n
 
-	// Default cluster-wide only when the room is not on this node: a local hit
-	// is authoritative (and a private room never leaves it).
+	// Default cluster-wide when the room is not on this node, or when a peer
+	// holds a better copy of it (roomCopyWins: an empty local stub must not hide
+	// the real room). A private room never leaves this node.
 	missLocally := false
 	if args.RoomID != "" && args.ClusterWide != "true" && args.ClusterWide != "false" {
-		_, gerr := r.Server.GetRoom(args.RoomID)
-		missLocally = gerr != nil
+		local, gerr := r.Server.GetRoom(args.RoomID)
+		missLocally = gerr != nil ||
+			(local.Visibility != "private" && !clusterReadsLocal() && r.peersConnected() && r.peerRoomBeatsLocal(local))
 	}
 	if ok, res, out, err := r.routeClusterRead(args.ClusterWide, missLocally,
 		func() (*mcp.CallToolResult, ToolOutput, error) { return r.handleReadRoomCluster(args) },
