@@ -387,6 +387,7 @@ defmodule CouncilHubUi.Cluster do
   defp fan_out(func, args, opts) do
     nodes = Keyword.get(opts, :nodes, [Node.self() | Node.list()])
     multicall = Keyword.get(opts, :multicall, &default_multicall/4)
+    missing = missing_peers(nodes, opts)
 
     replies = multicall.(nodes, __MODULE__, :local_query, [func, args])
 
@@ -398,7 +399,62 @@ defmodule CouncilHubUi.Cluster do
         {more ++ results, Enum.reverse(notes ++ w) ++ warns}
       end)
 
-    {Enum.reverse(tagged_results), Enum.reverse(warnings)}
+    # A known peer that is not connected right now is not asked (it would only
+    # time out); it is named, so the answer does not look complete.
+    gone = Enum.map(missing, &"#{&1} is unreachable; its results are missing")
+
+    {Enum.reverse(tagged_results), Enum.reverse(warnings) ++ gone}
+  end
+
+  # Peers the cluster manager keeps alive that are not in `nodes`, never this
+  # node. When a test injects :nodes the real manager is not consulted unless
+  # :known_peers is injected too. Compared as strings, so no atoms are minted.
+  defp missing_peers(nodes, opts) do
+    known =
+      case Keyword.fetch(opts, :known_peers) do
+        {:ok, fun} -> fun.()
+        :error -> if Keyword.has_key?(opts, :nodes), do: [], else: default_known_peers()
+      end
+
+    present = Enum.map([Node.self() | nodes], &to_string/1)
+    known |> Enum.map(&to_string/1) |> Enum.uniq() |> Enum.reject(&(&1 in present))
+  end
+
+  defp default_known_peers do
+    CouncilHubUi.ClusterManager.known_peers()
+  catch
+    :exit, _ -> []
+  end
+
+  @doc """
+  `Application` version of each peer, probed with ONE `:erpc.multicall` (1 s
+  timeout for all, so N dead peers cost 1 s, not N). Returns
+  `[%{node: String.t(), version: String.t()}]` in `nodes` order; a peer that
+  does not answer reads "unreachable", one that answers oddly "unknown".
+  Accepts `:multicall` (nodes, mod, fun, args -> replies) for tests.
+  """
+  def peer_versions(nodes, opts \\ []) do
+    multicall =
+      Keyword.get(opts, :multicall, fn n, m, f, a -> :erpc.multicall(n, m, f, a, 1_000) end)
+
+    replies = multicall.(nodes, Application, :spec, [:council_hub_ui, :vsn])
+
+    Enum.zip_with(nodes, replies, fn node, reply ->
+      version =
+        case reply do
+          {:ok, vsn} when is_list(vsn) ->
+            to_string(vsn)
+
+          {:ok, _} ->
+            "unknown"
+
+          other ->
+            Logger.warning("cluster nodes: #{inspect(node)} unreachable: #{inspect(other)}")
+            "unreachable"
+        end
+
+      %{node: to_string(node), version: version}
+    end)
   end
 
   # A node that answers :undef for a function added after the previous release

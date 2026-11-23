@@ -8,28 +8,7 @@ defmodule CouncilHubUiWeb.ClusterController do
     local_vsn = Application.spec(:council_hub_ui, :vsn) |> to_string()
     local = %{node: to_string(Node.self()), version: local_vsn}
 
-    peers =
-      Node.list()
-      |> Enum.map(fn node ->
-        # :erpc.call/5 raises (not {:error, _}) on a dropped/unreachable peer —
-        # a single bad node must not 500 the whole endpoint.
-        version =
-          try do
-            case :erpc.call(node, Application, :spec, [:council_hub_ui, :vsn], 1_000) do
-              vsn when is_list(vsn) -> to_string(vsn)
-              _ -> "unknown"
-            end
-          catch
-            kind, reason ->
-              Logger.warning(
-                "cluster nodes: #{inspect(node)} unreachable: #{kind} #{inspect(reason)}"
-              )
-
-              "unreachable"
-          end
-
-        %{node: to_string(node), version: version}
-      end)
+    peers = Cluster.peer_versions(Node.list())
 
     all = [local | peers]
 

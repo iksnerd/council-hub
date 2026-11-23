@@ -497,4 +497,29 @@ defmodule CouncilHubUi.ClusterTest do
       assert result.results == []
     end
   end
+
+  describe "peer_versions/2" do
+    test "probes every peer with one multicall and maps each reply" do
+      test_pid = self()
+      peers = [:"a@10.0.0.1", :"b@10.0.0.2", :"c@10.0.0.3"]
+
+      multicall = fn nodes, Application, :spec, [:council_hub_ui, :vsn] ->
+        send(test_pid, {:multicall, nodes})
+        [{:ok, ~c"0.9.0"}, {:ok, :undefined}, {:error, {:erpc, :noconnection}}]
+      end
+
+      assert Cluster.peer_versions(peers, multicall: multicall) == [
+               %{node: "a@10.0.0.1", version: "0.9.0"},
+               %{node: "b@10.0.0.2", version: "unknown"},
+               %{node: "c@10.0.0.3", version: "unreachable"}
+             ]
+
+      assert_received {:multicall, ^peers}
+      refute_received {:multicall, _}
+    end
+
+    test "no peers, no probe" do
+      assert Cluster.peer_versions([]) == []
+    end
+  end
 end

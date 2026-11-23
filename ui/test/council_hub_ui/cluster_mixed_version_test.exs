@@ -263,4 +263,36 @@ defmodule CouncilHubUi.ClusterMixedVersionTest do
       assert warning =~ "work_item"
     end
   end
+
+  describe "a known peer that dropped out" do
+    test "is named in a warning instead of silently missing" do
+      create_room(%{id: "mine-known", project: "p"})
+      gone = "council_hub@10.0.0.77"
+
+      o =
+        opts(fn
+          {:supports?, _} -> {:ok, true}
+          _ -> {:ok, []}
+        end)
+        |> Keyword.put(:known_peers, fn -> [to_string(Node.self()), to_string(@peer), gone] end)
+
+      result = Cluster.list_rooms(%{"project" => "p"}, o)
+
+      assert Enum.any?(result.results, &(&1.id == "mine-known"))
+      assert [warning] = result.warnings
+      assert warning =~ gone
+      assert warning =~ "unreachable"
+    end
+
+    test "connected peers and this node add no warning" do
+      o =
+        opts(fn
+          {:supports?, _} -> {:ok, true}
+          _ -> {:ok, []}
+        end)
+        |> Keyword.put(:known_peers, fn -> [to_string(Node.self()), to_string(@peer)] end)
+
+      assert Cluster.list_rooms(%{}, o).warnings == []
+    end
+  end
 end

@@ -69,6 +69,11 @@ defmodule CouncilHubUi.ClusterManager do
 
   # name@host — host may be an IP, hostname, or Tailscale MagicDNS name.
   @node_re ~r/^[^@\s]+@[^@\s]+$/
+  # Every distinct peer name becomes an atom, and atoms are never collected.
+  # Names come from a file, env seeds and the /settings form, so both the length
+  # and the count of peers this manager will ever mint are bounded.
+  @max_peers 64
+  @max_node_len 255
 
   # How often to re-dial known-but-disconnected peers / re-check own identity.
   @reconnect_interval :timer.seconds(10)
@@ -158,6 +163,9 @@ defmodule CouncilHubUi.ClusterManager do
     known =
       peers
       |> MapSet.union(read_seed_nodes())
+      |> Enum.filter(&valid_name?/1)
+      |> Enum.sort()
+      |> Enum.take(@max_peers)
       |> Enum.map(&String.to_atom/1)
       |> Enum.concat(Node.list())
       |> MapSet.new()
@@ -190,7 +198,9 @@ defmodule CouncilHubUi.ClusterManager do
       # Peers with a dial in flight. Node.connect/1 to an unreachable address
       # blocks for the dist setup timeout (several seconds), so it never runs
       # in this process: one unlinked Task per peer, one at a time.
-      dialing: MapSet.new()
+      dialing: MapSet.new(),
+      # monitor ref => {node, mode} for each dial Task in flight.
+      dial_refs: %{}
     }
 
     # Establish connections on boot, off the init path.
@@ -205,7 +215,7 @@ defmodule CouncilHubUi.ClusterManager do
   @impl true
   def handle_call({:connect, node_str}, from, state) do
     with :ok <- validate(node_str, state),
-         node <- String.to_atom(node_str),
+         {:ok, node} <- node_atom(node_str, state),
          false <- MapSet.member?(state.dialing, node) do
       # The dial can take seconds against a dead address; do it in a Task and
       # reply when it lands, so status calls keep answering meanwhile.
@@ -222,12 +232,15 @@ defmodule CouncilHubUi.ClusterManager do
 
   @impl true
   def handle_call({:disconnect, node_str}, _from, state) do
-    node = String.to_atom(node_str)
-    Node.disconnect(node)
+    # A name that was never an atom was never connected or known: nothing to
+    # drop, and no reason to mint an atom for it.
+    node = existing_node(node_str)
+    if node, do: Node.disconnect(node)
     peers = MapSet.delete(state.peers, node_str)
     write_peers(state.path, peers)
     # Drop from `known` too, so the reconnect loop doesn't immediately re-dial it.
-    {:reply, :ok, %{state | peers: peers, known: MapSet.delete(state.known, node)}}
+    known = if node, do: MapSet.delete(state.known, node), else: state.known
+    {:reply, :ok, %{state | peers: peers, known: known}}
   end
 
   @impl true
@@ -271,24 +284,26 @@ defmodule CouncilHubUi.ClusterManager do
 
   @impl true
   def handle_info({:dial_done, node, mode, result}, state) do
-    state = %{state | dialing: MapSet.delete(state.dialing, node)}
+    state = clear_dial(state, node)
+    finish_dial(state, node, mode, result)
+  end
 
-    case mode do
-      :boot ->
-        if result == true do
-          Logger.info("ClusterManager: connected to #{node}")
-        else
-          Logger.warning("ClusterManager: could not connect to #{node} (#{inspect(result)})")
-        end
+  # The dial Task died before reporting (killed, or crashed outside its
+  # try/catch). Without this the peer would stay in `dialing` forever and never
+  # be dialed again.
+  @impl true
+  def handle_info({:DOWN, ref, :process, _pid, reason}, %{dial_refs: refs} = state)
+      when is_map_key(refs, ref) do
+    {node, mode} = Map.fetch!(refs, ref)
+    Logger.warning("ClusterManager: dial task for #{node} exited: #{inspect(reason)}")
 
-        {:noreply, state}
+    state = %{
+      state
+      | dialing: MapSet.delete(state.dialing, node),
+        dial_refs: Map.delete(refs, ref)
+    }
 
-      :quiet ->
-        {:noreply, state}
-
-      {:user, from, node_str} ->
-        {:noreply, finish_user_connect(state, from, node_str, node, result)}
-    end
+    finish_dial(state, node, mode, {:exit, reason})
   end
 
   @impl true
@@ -535,7 +550,7 @@ defmodule CouncilHubUi.ClusterManager do
         {:error, "that's this node — pick a peer's node name"}
 
       MapSet.member?(state.peers, node_str) and
-          Enum.member?(Node.list(), String.to_atom(node_str)) ->
+          node_str in Enum.map(Node.list(), &Atom.to_string/1) ->
         {:error, "already connected to #{node_str}"}
 
       true ->
@@ -560,18 +575,74 @@ defmodule CouncilHubUi.ClusterManager do
     manager = self()
     connect = state.connect
 
-    Task.start(fn ->
-      result =
-        try do
-          connect.(node)
-        catch
-          kind, reason -> {kind, reason}
+    {:ok, pid} =
+      Task.start(fn ->
+        result =
+          try do
+            connect.(node)
+          catch
+            kind, reason -> {kind, reason}
+          end
+
+        send(manager, {:dial_done, node, mode, result})
+      end)
+
+    ref = Process.monitor(pid)
+
+    %{
+      state
+      | dialing: MapSet.put(state.dialing, node),
+        dial_refs: Map.put(state.dial_refs, ref, {node, mode})
+    }
+  end
+
+  # The Task reported: stop watching it (flushing a :DOWN already queued).
+  defp clear_dial(state, node) do
+    {done, rest} = Enum.split_with(state.dial_refs, fn {_ref, {n, _}} -> n == node end)
+    Enum.each(done, fn {ref, _} -> Process.demonitor(ref, [:flush]) end)
+    %{state | dialing: MapSet.delete(state.dialing, node), dial_refs: Map.new(rest)}
+  end
+
+  defp finish_dial(state, node, mode, result) do
+    case mode do
+      :boot ->
+        if result == true do
+          Logger.info("ClusterManager: connected to #{node}")
+        else
+          Logger.warning("ClusterManager: could not connect to #{node} (#{inspect(result)})")
         end
 
-      send(manager, {:dial_done, node, mode, result})
-    end)
+        {:noreply, state}
 
-    %{state | dialing: MapSet.put(state.dialing, node)}
+      :quiet ->
+        {:noreply, state}
+
+      {:user, from, node_str} ->
+        {:noreply, finish_user_connect(state, from, node_str, node, result)}
+    end
+  end
+
+  defp valid_name?(str),
+    do: byte_size(str) <= @max_node_len and Regex.match?(@node_re, str)
+
+  defp existing_node(str) do
+    String.to_existing_atom(str)
+  rescue
+    ArgumentError -> nil
+  end
+
+  # Atom for a validated peer name. An already-known name costs nothing; a new
+  # one is allowed only while fewer than @max_peers are known.
+  defp node_atom(str, state) do
+    case existing_node(str) do
+      nil ->
+        if MapSet.size(state.known) < @max_peers and valid_name?(str),
+          do: {:ok, String.to_atom(str)},
+          else: {:error, "too many peers or name too long (max #{@max_peers} peers)"}
+
+      node ->
+        {:ok, node}
+    end
   end
 
   defp finish_user_connect(state, from, node_str, node, true) do

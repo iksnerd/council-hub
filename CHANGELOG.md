@@ -15,6 +15,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 ### Changed
 - **`make docker-run` publishes `3001` and `4000` on `127.0.0.1`** (new `HTTP_BIND`, default `127.0.0.1`), like the compose file and the docs. It used to publish them on every interface. Use `HTTP_BIND=<address> make docker-run` to reach the hub from another machine, and set `COUNCIL_AUTH_TOKEN` when you do.
 
+### Fixed
+- **Cluster reads name a known peer that dropped out.** The fan-out asked only connected nodes, so a peer that had disconnected left no warning and the answer looked complete. It now adds "is unreachable; its results are missing" for each known peer that is not connected.
+- **`/api/internal/cluster/nodes` probes peers in one call**, so N dead peers cost 1 s instead of N s.
+- **A killed dial no longer strands a peer.** `ClusterManager` monitors each dial Task and re-dials after one dies without reporting. Peer names are also validated and capped (64 peers, 255 characters) before an atom is created.
+
 ## [0.68.0] - 2026-11-22
 
 ### Added

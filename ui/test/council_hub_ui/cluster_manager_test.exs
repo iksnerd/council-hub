@@ -300,4 +300,85 @@ defmodule CouncilHubUi.ClusterManagerTest do
       send(next, :release)
     end
   end
+
+  describe "dial Task killed before it reports" do
+    test "the peer is dialed again instead of staying in flight forever" do
+      test_pid = self()
+      path = Path.join(System.tmp_dir!(), "ch_peers_kill_#{System.unique_integer([:positive])}")
+      File.write!(path, "council_hub@10.0.0.98")
+      on_exit(fn -> File.rm(path) end)
+      name = :"clmgr_kill_#{System.unique_integer([:positive])}"
+
+      connect = fn node ->
+        send(test_pid, {:dial, node, self()})
+
+        receive do
+          :release -> false
+        end
+      end
+
+      {:ok, _} =
+        ClusterManager.start_link(
+          name: name,
+          path: path,
+          reconnect_interval: 20,
+          connect: connect
+        )
+
+      assert_receive {:dial, :"council_hub@10.0.0.98", first}, 1_000
+      Process.exit(first, :kill)
+
+      assert_receive {:dial, :"council_hub@10.0.0.98", second}, 1_000
+      assert second != first
+      send(second, :release)
+    end
+
+    test "a /settings connect whose dial dies gets an error reply" do
+      test_pid = self()
+      name = :"clmgr_kill_user_#{System.unique_integer([:positive])}"
+      path = Path.join(System.tmp_dir!(), "ch_peers_ku_#{System.unique_integer([:positive])}")
+      on_exit(fn -> File.rm(path) end)
+
+      connect = fn node ->
+        send(test_pid, {:dial, node, self()})
+
+        receive do
+          :release -> true
+        end
+      end
+
+      {:ok, _} = ClusterManager.start_link(name: name, path: path, connect: connect)
+      caller = Task.async(fn -> ClusterManager.connect(name, "council_hub@10.0.0.97") end)
+      assert_receive {:dial, _, dialer}, 1_000
+      Process.exit(dialer, :kill)
+
+      assert {:error, msg} = Task.await(caller, 2_000)
+      assert msg =~ "could not reach"
+    end
+  end
+
+  describe "atoms minted for peer names" do
+    test "boot keeps at most 64 peers from a long peers file" do
+      path = Path.join(System.tmp_dir!(), "ch_peers_cap_#{System.unique_integer([:positive])}")
+      on_exit(fn -> File.rm(path) end)
+      u = System.unique_integer([:positive])
+      File.write!(path, Enum.map_join(1..80, "\n", &"council_hub@cap#{u}-#{&1}.invalid"))
+      name = :"clmgr_cap_#{u}"
+      {:ok, _} = ClusterManager.start_link(name: name, path: path, connect: fn _ -> false end)
+
+      assert length(ClusterManager.known_peers(name)) == 64
+    end
+
+    test "disconnecting a name that was never seen creates no atom", %{name: name} do
+      str = "council_hub@never-seen-#{System.unique_integer([:positive])}.invalid"
+      assert :ok = ClusterManager.disconnect(name, str)
+      assert_raise ArgumentError, fn -> String.to_existing_atom(str) end
+    end
+
+    test "an overlong node name is refused", %{name: name} do
+      str = "council_hub@" <> String.duplicate("a", 300)
+      assert {:error, _} = ClusterManager.connect(name, str)
+      assert_raise ArgumentError, fn -> String.to_existing_atom(str) end
+    end
+  end
 end
