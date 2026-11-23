@@ -538,13 +538,16 @@ func (r *Registry) RegisterTools() {
 				"  create   (notebook_id, project?, title?) — new empty notebook; omit project for a global one\n"+
 				"  add      (notebook_id, ref_id|ref_ids|prose, kind?, after_entry_id?) — omit after_entry_id to append\n"+
 				"  update   (entry_id, prose?|prose_append?, due?, owner?, repo?, room?) — rewrite or extend a prose section or a task's label, and/or set a task's structured fields\n"+
-				"  start / check / uncheck (entry_id) — move a task to in-progress / done / open\n"+
+				"  start / check / uncheck (entry_id) — move a task to in-progress / done / open. While another owner's lease on the task is live these are refused and name the owner; unleased tasks are unchanged. check on a leased task writes a note to its room\n"+
+				"  claim    (entry_id, owner?, lease_seconds?) — take an open task, or one whose lease lapsed, for a lease (default 900 s, max 86400). Exactly one concurrent caller wins; a loser is told who holds it. owner defaults to your client name. Writes a note to the task's room, if it has one\n"+
+				"  renew    (entry_id, owner?, lease_seconds?) — extend your own live lease to now+lease_seconds; nothing renews by itself\n"+
+				"  release  (entry_id, owner?) — give your claimed task back (open again); writes a note to the task's room\n"+
 				"  move     (entry_id, after_entry_id) — reorder; empty after_entry_id means the top\n"+
 				"  remove   (entry_id) — drop one entry\n"+
 				"  delete   (notebook_id, confirm) — WHOLE notebook, not one entry (that is remove). confirm must equal the notebook id or its entry count. Soft delete: a markdown snapshot is saved under archives/notebooks and restore undoes it\n"+
 				"  restore  (notebook_id) — undo a delete\n"+
 				"  purge    (notebook_id, confirm) — permanently remove a soft-deleted notebook; cannot be undone",
-				[]string{"create", "add", "update", "start", "check", "uncheck", "move", "remove", "delete", "restore", "purge"}),
+				[]string{"create", "add", "update", "start", "check", "uncheck", "claim", "renew", "release", "move", "remove", "delete", "restore", "purge"}),
 			"confirm":        prop("string", "delete/purge only: must equal the notebook_id or its current entry count. Guards against deleting a whole notebook when you meant one entry."),
 			"notebook_id":    prop("string", "Notebook identifier (required for create, delete, add). E.g. 'release-notes-v1'. add with kind=task defaults to 'current-work' when omitted."),
 			"project":        prop("string", "Project the notebook belongs to (create only). Omit for a GLOBAL notebook — e.g. cross-project TODOs or standing checklists: it can ref messages from any room and is listed in every project's timeline footer and /notebook view."),
@@ -558,7 +561,8 @@ func (r *Registry) RegisterTools() {
 			"prose_append":   prop("string", "update only: text added to the end of the entry's existing label after one space, so a long task grows without resending it. Mutually exclusive with prose."),
 			"after_entry_id": prop("string", "Position control for add and move: the entry to land after (a full ID or a unique prefix). Omit on add to append; empty on move means the top."),
 			"due":            prop("string", "Task only (add kind=task, or update): due date YYYY-MM-DD. Open or doing tasks past it render OVERDUE; read_notebook(overdue=true) lists them. On update an empty string clears it."),
-			"owner":          prop("string", "Task only (add kind=task, or update): who owns it, free text such as an agent name. Filter with read_notebook(owner=...). Empty string clears it on update."),
+			"owner":          prop("string", "Task only (add kind=task, or update): who owns it, free text such as an agent name. Filter with read_notebook(owner=...). Empty string clears it on update. Also names who acts for claim, renew, release (default: your client name). It is a name, not authentication: anyone can pass any name."),
+			"lease_seconds":  intRange("claim/renew only: lease length in seconds (default 900, 1 to 86400). The hub's clock decides expiry. A lease is a promise to the hub, not a lock on the work: when it lapses anyone can claim the task, and read_notebook shows it as STALE.", 1, 86400),
 			"repo":           prop("string", "Task only (add kind=task, or update): the repo the task concerns, e.g. owner/name. Empty string clears it on update."),
 			"room":           prop("string", "Task only (add kind=task, or update): id of the room the task belongs to. When that room resolves or is archived the reply lists tasks still open for it. Empty string clears it on update."),
 		}),

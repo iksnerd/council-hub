@@ -35,11 +35,14 @@ type EditNotebookInput struct {
 	ProseAppend string `json:"prose_append"`
 	// Task-only structured fields (add/update). Pointers so update can tell
 	// "not given" from "clear it" (empty string).
-	Due          *string `json:"due"`
-	Owner        *string `json:"owner"`
-	Repo         *string `json:"repo"`
-	Room         *string `json:"room"`
-	AfterEntryID string  `json:"after_entry_id"`
+	Due   *string `json:"due"`
+	Owner *string `json:"owner"`
+	Repo  *string `json:"repo"`
+	Room  *string `json:"room"`
+	// LeaseSeconds (claim, renew) is the lease length; a string like the other
+	// numbers, coerced from an integer by the middleware.
+	LeaseSeconds string `json:"lease_seconds"`
+	AfterEntryID string `json:"after_entry_id"`
 	// Confirm guards whole-notebook delete and purge: it must equal the
 	// notebook id (or its current entry count).
 	Confirm string `json:"confirm"`
@@ -78,13 +81,31 @@ func foreignArgs(args EditNotebookInput) string {
 	if args.ProseAppend != "" && args.Action != "update" {
 		return fmt.Sprintf("Error: prose_append applies to action=update, not %s.", args.Action)
 	}
-	if !args.taskFields().Empty() && args.Action != "add" && args.Action != "update" {
+	if args.LeaseSeconds != "" && args.Action != "claim" && args.Action != "renew" {
+		return fmt.Sprintf("Error: lease_seconds applies to action=claim or renew, not %s.", args.Action)
+	}
+	leaseAction := args.Action == "claim" || args.Action == "renew" || args.Action == "release" || args.Action == "check" || args.Action == "start"
+	if !args.taskFields().Empty() && args.Action != "add" && args.Action != "update" && (!leaseAction || !onlyOwner(args.taskFields())) {
 		return fmt.Sprintf("Error: due/owner/repo/room apply to action=add (kind=task) or update, not %s.", args.Action)
 	}
 	if args.Confirm != "" && args.Action != "delete" && args.Action != "purge" {
 		return fmt.Sprintf("Error: confirm only applies to action=delete or purge, not %s.", args.Action)
 	}
 	return ""
+}
+
+// onlyOwner reports whether owner is the only task field given.
+func onlyOwner(f council.TaskFields) bool {
+	return f.Owner != nil && f.Due == nil && f.Repo == nil && f.Room == nil
+}
+
+// leaseOwner resolves who acts on a lease: the owner argument, else the
+// client's name from initialize. It is a string, not an authenticated identity.
+func leaseOwner(req *mcp.CallToolRequest, args EditNotebookInput) string {
+	if args.Owner != nil && strings.TrimSpace(*args.Owner) != "" {
+		return strings.TrimSpace(*args.Owner)
+	}
+	return clientIdentity(req)
 }
 
 func (a EditNotebookInput) taskFields() council.TaskFields {
@@ -409,11 +430,19 @@ func (r *Registry) handleEditNotebook(ctx context.Context, req *mcp.CallToolRequ
 		}
 		status := map[string]string{"start": "doing", "check": "done", "uncheck": "open"}[args.Action]
 		n := r.entryCount(r.notebookOf(args.NotebookID, args.EntryID))
-		if err := r.Server.SetTaskStatus(args.EntryID, status); err != nil {
+		actor := leaseOwner(req, args)
+		before, _ := r.Server.TaskLeaseInfo(args.EntryID)
+		if err := r.Server.SetTaskStatusAs(args.EntryID, status, actor); err != nil {
 			return msg(fmt.Sprintf("Error: %s", err.Error()))
+		}
+		if status == "done" && !before.LeaseUntil.IsZero() {
+			r.leaseNote(before, actor, fmt.Sprintf("finished task %s: %s", args.EntryID, clipLabel(strings.TrimSpace(before.Label))))
 		}
 		label := map[string]string{"doing": "in progress 🔄", "done": "done ☑", "open": "open ☐"}[status]
 		return msg(fmt.Sprintf("Task %s marked %s.%s", args.EntryID, label, countsNote(n, n)))
+
+	case "claim", "renew", "release":
+		return r.handleLease(req, args, msg)
 
 	case "remove":
 		if args.EntryID == "" {
@@ -440,7 +469,7 @@ func (r *Registry) handleEditNotebook(ctx context.Context, req *mcp.CallToolRequ
 		return msg(fmt.Sprintf("Entry %s moved after %s.%s", args.EntryID, args.AfterEntryID, countsNote(n, n)))
 
 	default:
-		return msg(fmt.Sprintf("Error: unknown action '%s'. Valid actions: create, add, update, start, check, uncheck, remove, move, delete, restore, purge.", args.Action))
+		return msg(fmt.Sprintf("Error: unknown action '%s'. Valid actions: create, add, update, start, check, uncheck, claim, renew, release, remove, move, delete, restore, purge.", args.Action))
 	}
 }
 
@@ -452,6 +481,9 @@ var entryAnchors = map[string][]string{
 	"start":   {"entry_id"},
 	"check":   {"entry_id"},
 	"uncheck": {"entry_id"},
+	"claim":   {"entry_id"},
+	"renew":   {"entry_id"},
+	"release": {"entry_id"},
 	"remove":  {"entry_id"},
 	"move":    {"entry_id", "after_entry_id"},
 	"add":     {"after_entry_id"},
@@ -542,9 +574,10 @@ func (r *Registry) outlineText(notebookID string, level int, f council.OutlineFi
 	}
 	filtered := f.Status != "" || f.Project != "" || f.EntryID != "" || f.Limit > 0 || f.Owner != "" || f.Overdue || f.Search != ""
 
+	now := r.Server.Now().UTC()
 	today := f.Today
 	if today == "" {
-		today = time.Now().UTC().Format("2006-01-02")
+		today = now.Format("2006-01-02")
 	}
 	outlineIDs := newRoomIDCache(r.Server)
 	var b strings.Builder
@@ -640,19 +673,19 @@ func (r *Registry) outlineText(notebookID string, level int, f council.OutlineFi
 	if len(doingTasks) > 0 && statusWanted(status, "doing") {
 		fmt.Fprintf(&b, "\n## 🔄 In progress (%d)\n", len(doingTasks))
 		for _, e := range doingTasks {
-			renderTask(&b, e, level, today)
+			renderTask(&b, e, level, today, now)
 		}
 	}
 	if len(openTasks) > 0 && statusWanted(status, "open") {
 		fmt.Fprintf(&b, "\n## ☐ Open (%d)\n", len(openTasks))
 		for _, e := range openTasks {
-			renderTask(&b, e, level, today)
+			renderTask(&b, e, level, today, now)
 		}
 	}
 	if len(doneTasks) > 0 && statusWanted(status, "done") {
 		fmt.Fprintf(&b, "\n## ☑ Done (%d)\n", len(doneTasks))
 		for _, e := range doneTasks {
-			renderTask(&b, e, level, today)
+			renderTask(&b, e, level, today, now)
 		}
 	}
 	if len(inFlight) > 0 && statusWanted(status, "open") {
@@ -705,7 +738,7 @@ func renderRoomRef(b *strings.Builder, e council.OutlineEntry, level int) {
 // renderTask writes one checklist item — a markdown checkbox carrying the task
 // label and its addressable entry ID (so it can be started, checked, or edited).
 // The box reflects status: [ ] open, [~] doing, [x] done.
-func renderTask(b *strings.Builder, e council.OutlineEntry, level int, today string) {
+func renderTask(b *strings.Builder, e council.OutlineEntry, level int, today string, now time.Time) {
 	box := "[ ]"
 	switch e.Status {
 	case "done":
@@ -717,12 +750,12 @@ func renderTask(b *strings.Builder, e council.OutlineEntry, level int, today str
 	if level > 0 {
 		label = clipLabel(label)
 	}
-	fmt.Fprintf(b, "- %s %s%s *(entry %s)*\n", box, label, taskMeta(e, today), e.ID)
+	fmt.Fprintf(b, "- %s %s%s *(entry %s)*\n", box, label, taskMeta(e, today, now), e.ID)
 }
 
 // taskMeta renders a task's structured fields as a trailing bracket, with an
 // OVERDUE marker for open/doing tasks past due. Empty when nothing is set.
-func taskMeta(e council.OutlineEntry, today string) string {
+func taskMeta(e council.OutlineEntry, today string, now time.Time) string {
 	var parts []string
 	if e.Due != "" {
 		d := "due " + e.Due
@@ -733,6 +766,13 @@ func taskMeta(e council.OutlineEntry, today string) string {
 	}
 	if e.Owner != "" {
 		parts = append(parts, "owner "+e.Owner)
+	}
+	if e.LeaseUntil != "" {
+		if council.TaskLeaseStale(e.Status, e.LeaseUntil, now) {
+			parts = append(parts, "STALE lease expired "+e.LeaseUntil+", former owner "+e.Owner)
+		} else if e.Status == "doing" {
+			parts = append(parts, "lease until "+e.LeaseUntil)
+		}
 	}
 	if e.Repo != "" {
 		parts = append(parts, "repo "+e.Repo)
@@ -876,4 +916,58 @@ func (r *Registry) openTasksNote(roomID string) string {
 	}
 	b.WriteString("\nNothing was closed. Close with edit_notebook(action=check, entry_id=...), or move to another room with action=update, entry_id=..., room=<room_id>.")
 	return b.String()
+}
+
+// handleLease runs claim, renew and release. Claim and release write one note to
+// the task's room when it has one; none without a room.
+func (r *Registry) handleLease(req *mcp.CallToolRequest, args EditNotebookInput, msg func(string) (*mcp.CallToolResult, ToolOutput, error)) (*mcp.CallToolResult, ToolOutput, error) {
+	if args.EntryID == "" {
+		return msg("Error: entry_id is required.")
+	}
+	owner := leaseOwner(req, args)
+	if err := validateSize("owner", owner, maxAuthorLen); err != nil {
+		return msg(fmt.Sprintf("Error: %s", err.Error()))
+	}
+	lease := council.DefaultLease
+	if args.LeaseSeconds != "" {
+		n, err := strconv.Atoi(strings.TrimSpace(args.LeaseSeconds))
+		if err != nil {
+			return msg(fmt.Sprintf("Error: lease_seconds must be an integer, got '%s'.", args.LeaseSeconds))
+		}
+		lease = time.Duration(n) * time.Second
+	}
+	switch args.Action {
+	case "claim":
+		l, err := r.Server.ClaimTask(args.EntryID, owner, lease)
+		if err != nil {
+			return msg(fmt.Sprintf("Error: %s", err.Error()))
+		}
+		until := l.LeaseUntil.UTC().Format(time.RFC3339)
+		r.leaseNote(l, owner, fmt.Sprintf("claimed task %s until %s: %s", args.EntryID, until, clipLabel(strings.TrimSpace(l.Label))))
+		return msg(fmt.Sprintf("Task %s claimed by %s until %s (%d s). Renew with action=renew before then; release or check it when done.", args.EntryID, owner, until, int(lease.Seconds())))
+	case "renew":
+		l, err := r.Server.RenewTask(args.EntryID, owner, lease)
+		if err != nil {
+			return msg(fmt.Sprintf("Error: %s", err.Error()))
+		}
+		return msg(fmt.Sprintf("Task %s lease renewed for %s until %s.", args.EntryID, owner, l.LeaseUntil.UTC().Format(time.RFC3339)))
+	default:
+		l, err := r.Server.ReleaseTask(args.EntryID, owner)
+		if err != nil {
+			return msg(fmt.Sprintf("Error: %s", err.Error()))
+		}
+		r.leaseNote(l, owner, fmt.Sprintf("released task %s: %s", args.EntryID, clipLabel(strings.TrimSpace(l.Label))))
+		return msg(fmt.Sprintf("Task %s released by %s; it is open again.", args.EntryID, owner))
+	}
+}
+
+// leaseNote posts a note authored by who to the task's room. It does nothing
+// when the task has no room, and a failed post never fails the lease change.
+func (r *Registry) leaseNote(l council.TaskLease, who, text string) {
+	if l.Room == "" || who == "" {
+		return
+	}
+	if _, err := r.Server.PostMessage(l.Room, who, text, "note", ""); err != nil {
+		r.Server.Logger.Warn("task lease note not posted", "room", l.Room, "error", err)
+	}
 }

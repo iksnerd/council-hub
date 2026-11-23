@@ -6,6 +6,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ## [Unreleased]
 
+### Added
+- **Task leases for `edit_notebook`.** New actions `claim`, `renew` and `release` let several agents share one task list. `claim` (`entry_id`, `owner`?, `lease_seconds`? default 900, max 86400) takes an open task, or one whose lease lapsed, in one UPDATE, so exactly one concurrent caller wins and the others are told who holds it. `renew` extends your own live lease; nothing renews by itself. While another owner's lease is live, `start`, `check` and `uncheck` are refused and name the owner. A task with a `room` gets a `note` on claim, release and done. `read_notebook` shows a lapsed lease as `STALE` with the former owner and changes nothing. Two additive columns (`task_claimed_at`, `task_lease_until`); tasks that are never claimed behave as before. The owner is a name, not authentication, and expiry uses the hub's clock.
+
 ### Changed
 - **`make docker-run` publishes `3001` and `4000` on `127.0.0.1`** (new `HTTP_BIND`, default `127.0.0.1`), like the compose file and the docs. It used to publish them on every interface. Use `HTTP_BIND=<address> make docker-run` to reach the hub from another machine, and set `COUNCIL_AUTH_TOKEN` when you do.
 

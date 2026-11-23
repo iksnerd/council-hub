@@ -44,6 +44,28 @@ When a task has a `room`, resolving or archiving that room lists the tasks still
 open for it. Nothing closes by itself: close each one with `check`, or point it at
 another room with `update`.
 
+## Claim a task with a lease (several agents, one list)
+
+When more than one agent works from the same notebook, `claim` a task before
+starting it:
+
+```
+edit_notebook(action=claim, entry_id=<full entry id>, lease_seconds=900)
+```
+
+One UPDATE decides the winner. Everyone else is told who holds the task and how
+long is left. `renew` extends your own live lease (nothing renews by itself),
+`release` gives the task back, `check` finishes it. While someone else's lease is
+live, `start`, `check` and `uncheck` are refused and name the owner. A task with
+a `room` gets a `note` on claim, release and done, authored by the owner.
+
+An expired lease is not swept: the next `claim` takes the task over, and
+`read_notebook` shows it as `STALE` with the former owner until then. Tasks nobody
+claims behave as before. Limits: the owner is a name you pass (default: your
+client name), not authentication; expiry uses the hub's clock; a lease is a
+promise to the hub, not proof the owner is alive. Notebooks are node-local, so a
+lease binds only agents using the same node.
+
 ## Close a task with `check`
 
 ```
