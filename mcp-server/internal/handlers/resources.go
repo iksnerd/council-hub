@@ -206,14 +206,14 @@ behaves exactly like a local one. (Network exposure — who can open the dashboa
   *success* path.** It cannot see a peer's rooms, so on a project that spans machines it creates
   a second room for a thread that already exists — the shadow copy above, arriving with no error.
   The exact-id conflict guard only catches two agents choosing the same slug character for
-  character. On a clustered project, run ` + "`list_rooms(project=..., cluster_wide=true)`" + ` first.
+  character. On a clustered project, run ` + "`list_rooms(project=...)`" + ` first (it is cluster-wide by default).
   Creating anyway now names any peer rooms in the same project in its result; read that list
   before you start logging into the room you just made.
 - **Deliberately not proxied:** delete_room and rename_project refuse and name the owner
   (destroying a peer's data across a node boundary is a different risk class from posting to it);
   bulk_status_update and bulk_visibility stay local-only, since a batch spanning several owners
   has no single target. For a batch, find the remote rooms with
-  ` + "`list_rooms(cluster_wide=true)`" + ` and use signal_status per room — that one routes.
+  ` + "`list_rooms`" + ` (cluster-wide by default) and use signal_status per room — that one routes.
 - **Node-local by design:** notebooks (read_notebook outlines, edit_notebook), the skills registry,
   and read cursors (mark_read) — these never cross a node boundary at all.
 - **Make a node private-by-default before sharing a cluster:**
@@ -473,7 +473,7 @@ delete_room(room_id=…)                               # permanently remove a ro
 ` + "```" + `
 bulk_visibility(all=true, visibility=private)        # make every room node-local first
 bulk_visibility(room_ids=proj-a,proj-b, visibility=public)  # re-publish only what a peer should see
-list_rooms(cluster_wide=true)                        # confirm what's visible across the cluster
+list_rooms()                                         # confirm what's visible across the cluster
 ` + "```" + `
 `
 
@@ -511,7 +511,7 @@ list_rooms(project="<proj>", tag="incoherent")        # live contradiction / dup
 list_rooms(project="<proj>", status="active")         # still open
 ` + "```" + `
 
-Private rooms are node-local — skip in cluster context (or pass cluster_wide=true).
+Private rooms are node-local — skip in cluster context.
 
 ## Per-room: read_room first, then one disposition
 

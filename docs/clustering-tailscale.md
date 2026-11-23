@@ -219,8 +219,8 @@ docker exec -e ELIXIR_ERL_OPTIONS="+fnu" council-hub \
 Then confirm cluster-wide queries fan out (results are tagged with each node name):
 
 ```text
-list_rooms(cluster_wide: "true")
-search_messages(query: "auth", cluster_wide: "true")
+list_rooms()
+search_messages(query: "auth")
 ```
 
 ## Troubleshooting
