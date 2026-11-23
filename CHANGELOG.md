@@ -13,6 +13,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 - `get_digest` and `read_room` pick the fuller copy of a room (most messages, then latest update) so an empty local stub cannot hide the real room on a peer; `read_room` checks peers on a local hit.
 
 ### Changed
+- **Startup refusal: the container will not start when it is clustering with the default cookie.** If `RELEASE_COOKIE` is the published default `council` and `COUNCIL_SEEDS` is non-empty (set by hand or found by LAN discovery), `entrypoint.sh` now exits with an error naming `COUNCIL_COOKIE`/`RELEASE_COOKIE`, instead of only warning. Anyone who can reach ports 4369/9000 with that cookie can run code on the node, and the same cookie authenticates peer write forwarding. Set your own cookie (identical on every peer), or set `COUNCIL_ALLOW_DEFAULT_COOKIE=1` to accept the risk. A single node with no seeds, including the stock `docker-compose.yml`, starts unchanged and still warns.
+- **Docs and tool text:** removed advice to pass `cluster_wide=true` to `list_rooms` (cluster-wide is the default since v0.63.0), and corrected `CLAUDE.md` on read routing and the cluster RPC timeout.
 - **`make docker-run` publishes `3001` and `4000` on `127.0.0.1`** (new `HTTP_BIND`, default `127.0.0.1`), like the compose file and the docs. It used to publish them on every interface. Use `HTTP_BIND=<address> make docker-run` to reach the hub from another machine, and set `COUNCIL_AUTH_TOKEN` when you do.
 
 ### Fixed

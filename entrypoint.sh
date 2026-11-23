@@ -123,21 +123,32 @@ if [ -n "$COUNCIL_SEEDS" ]; then
   export COUNCIL_SEEDS="$RESOLVED"
 fi
 
-# ── Warn on the default cluster cookie ──
+# ── Default cookie guard ──
 # The image ships RELEASE_COOKIE=council (Dockerfile). A cookie is not a password
-# on a door: Erlang distribution grants code execution on this node, so a node
-# running the published default with 4369/9000 reachable is remotely executable by
-# anyone who can connect. Fine on a trusted LAN, not on a network you don't own.
-# This warns rather than refuses — a single-node deployment that never publishes
-# the cluster ports is unaffected, and the container cannot see how it was
-# published (-p is host-side).
+# on a door: Erlang distribution grants code execution on this node, and the same
+# cookie authenticates peer-to-peer write forwarding. A node running the published
+# default with 4369/9000 reachable is remotely executable by anyone who can connect.
+# Clustering (COUNCIL_SEEDS non-empty, set by hand or found by discovery above) is
+# the signal that those ports are meant to be reached, so that combination refuses
+# to start. A single node with no seeds only warns: the container cannot see how
+# its ports were published (-p is host-side), and the stock compose file is local.
+# COUNCIL_ALLOW_DEFAULT_COOKIE=1 accepts the risk.
 if [ -z "$RELEASE_COOKIE" ] || [ "$RELEASE_COOKIE" = "council" ]; then
+  if [ -n "$COUNCIL_SEEDS" ] && [ "${COUNCIL_ALLOW_DEFAULT_COOKIE:-0}" != "1" ]; then
+    echo "ERROR: refusing to start: this node is clustering (COUNCIL_SEEDS=$COUNCIL_SEEDS) with the"
+    echo "       default cookie ('council'), which is published in the docs. Anyone who can reach"
+    echo "       ports 4369/9000 could run code on this node and write to its rooms."
+    echo "       Set your own on every peer: COUNCIL_COOKIE=\"\$(openssl rand -hex 32)\" (or RELEASE_COOKIE),"
+    echo "       or set COUNCIL_ALLOW_DEFAULT_COOKIE=1 if you accept the risk on a network you trust."
+    exit 1
+  fi
   echo "WARN: RELEASE_COOKIE is the image default ('council'), which is published in the docs."
   echo "      Anyone who can reach ports 4369/9000 on this host can run code on this node."
   echo "      Set your own: -e RELEASE_COOKIE=\"\$(openssl rand -hex 32)\" (identical on every peer),"
   echo "      and on an untrusted network publish the cluster ports to one interface"
   echo "      (-p <lan-ip>:4369:4369) rather than all of them."
 fi
+# ── end default cookie guard ──
 
 echo "=== Council Hub ==="
 echo "  MCP server: http://0.0.0.0:${COUNCIL_HTTP_ADDR#:}/mcp"
