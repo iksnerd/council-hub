@@ -18,6 +18,10 @@ COOKIE    ?= council
 
 -include Makefile.local
 
+# Where docker-run publishes the MCP (3001) and dashboard (4000) ports. Loopback by default: the hub has
+# no authentication unless COUNCIL_AUTH_TOKEN is set. Override with e.g. HTTP_BIND=100.x.y.z for a tailnet address.
+HTTP_BIND ?= 127.0.0.1
+
 # Where docker-run publishes the Erlang cluster ports (4369/9000). Distribution
 # grants code execution to anyone holding the cookie, so the default depends on it:
 #   - the image default cookie ('council', published in the docs): bind to
@@ -38,7 +42,7 @@ docker-build: ## Build unified Docker image (native arch)
 docker-run: ## Run council-hub (MCP on :3001, UI on :4000, cluster on :4369/:9000 — see CLUSTER_BIND)
 	@mkdir -p $(DATA_DIR)
 	docker run -d --name council-hub --restart always \
-		-p 4000:4000 -p 3001:3001 \
+		-p $(HTTP_BIND):4000:4000 -p $(HTTP_BIND):3001:3001 \
 		-p $(CLUSTER_BIND):4369:4369 -p $(CLUSTER_BIND):9000:9000 \
 		-v $(DATA_DIR):/data \
 		-e COUNCIL_TRANSPORT=http \

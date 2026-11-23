@@ -6,6 +6,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ## [Unreleased]
 
+### Changed
+- **`make docker-run` publishes `3001` and `4000` on `127.0.0.1`** (new `HTTP_BIND`, default `127.0.0.1`), like the compose file and the docs. It used to publish them on every interface. Use `HTTP_BIND=<address> make docker-run` to reach the hub from another machine, and set `COUNCIL_AUTH_TOKEN` when you do.
+
 ## [0.68.0] - 2026-11-22
 
 ### Added
