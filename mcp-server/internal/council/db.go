@@ -161,6 +161,8 @@ type Server struct {
 	LastIntegrityCheck time.Time // zero if integrity check hasn't run yet
 	HealCount          uint64    // total REINDEX self-heals since process start
 	EmbedJobRunning    int32     // 1 while a backfill/full-reembed is in flight (CAS-guarded, mutually exclusive)
+	// Clock returns the current time for task leases; nil means time.Now. Tests set it.
+	Clock func() time.Time
 }
 
 // NewServer creates a new Server with an initialized SQLite database.
@@ -423,6 +425,8 @@ func initSchema(db *sql.DB) error {
 		`ALTER TABLE notebook_entries ADD COLUMN task_owner TEXT DEFAULT ''`,
 		`ALTER TABLE notebook_entries ADD COLUMN task_repo TEXT DEFAULT ''`,
 		`ALTER TABLE notebook_entries ADD COLUMN task_room TEXT DEFAULT ''`,
+		`ALTER TABLE notebook_entries ADD COLUMN task_claimed_at TEXT DEFAULT ''`,
+		`ALTER TABLE notebook_entries ADD COLUMN task_lease_until TEXT DEFAULT ''`,
 	}
 	for _, m := range migrations {
 		_, _ = db.Exec(m) // Ignore "duplicate column" errors for already-migrated DBs

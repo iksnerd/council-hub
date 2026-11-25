@@ -54,6 +54,10 @@ type OutlineEntry struct {
 	// text; Repo and Room are an owner/repo slug and a room id. Empty = unset.
 	Due, Owner, Repo, Room string
 
+	// task only: lease, UTC RFC3339. Empty LeaseUntil = unleased (every task
+	// that was never claimed). See ClaimTask.
+	ClaimedAt, LeaseUntil string
+
 	RefRoomID    string
 	RefAuthor    string
 	RefType      string
@@ -627,10 +631,19 @@ func (s *Server) UpdateOutlineEntry(entryID, prose string) error {
 	return err
 }
 
-// SetTaskStatus moves a task entry between open / doing / done. Only task entries
-// own a status (a room_ref derives its state from its room, a prose/ref entry has
-// none), so setting the status of anything else is an error.
+// SetTaskStatus moves a task entry between open / doing / done with no caller
+// identity, so it is refused on a task whose lease is live (see SetTaskStatusAs).
+// Only task entries own a status (a room_ref derives its state from its room, a
+// prose/ref entry has none), so setting the status of anything else is an error.
 func (s *Server) SetTaskStatus(entryID, status string) error {
+	return s.SetTaskStatusAs(entryID, status, "")
+}
+
+// SetTaskStatusAs is SetTaskStatus on behalf of actor. A task with a live lease
+// held by someone else cannot be moved: the error names the owner. Unleased
+// tasks behave exactly as before. Any move clears the lease, except start by
+// the live owner, which keeps it.
+func (s *Server) SetTaskStatusAs(entryID, status, actor string) error {
 	s.Mu.Lock()
 	defer s.Mu.Unlock()
 
@@ -638,8 +651,8 @@ func (s *Server) SetTaskStatus(entryID, status string) error {
 		return fmt.Errorf("invalid task status '%s' (must be open, doing, or done)", status)
 	}
 
-	var kind, notebookID string
-	err := s.DB.QueryRow(`SELECT kind, notebook_id FROM notebook_entries WHERE id = ?`, entryID).Scan(&kind, &notebookID)
+	var kind, notebookID, owner, lease string
+	err := s.DB.QueryRow(`SELECT kind, notebook_id, COALESCE(task_owner, ''), COALESCE(task_lease_until, '') FROM notebook_entries WHERE id = ?`, entryID).Scan(&kind, &notebookID, &owner, &lease)
 	if err == sql.ErrNoRows {
 		return fmt.Errorf("entry '%s' not found", entryID)
 	}
@@ -650,7 +663,20 @@ func (s *Server) SetTaskStatus(entryID, status string) error {
 		return fmt.Errorf("entry '%s' is a %s, not a task — only task entries have a status", entryID, kind)
 	}
 
-	if _, err := s.DB.Exec(`UPDATE notebook_entries SET status = ? WHERE id = ?`, status, entryID); err != nil {
+	keepLease := false
+	if lease != "" && lease > s.nowUTC() { // live lease
+		if actor == "" || actor != owner {
+			return fmt.Errorf("task is leased to %s for another %s; only the owner can move it (or wait for the lease to lapse)", owner, leaseLeft(lease, s.now()))
+		}
+		keepLease = status == "doing"
+	}
+
+	if keepLease {
+		_, err = s.DB.Exec(`UPDATE notebook_entries SET status = ? WHERE id = ?`, status, entryID)
+	} else {
+		_, err = s.DB.Exec(`UPDATE notebook_entries SET status = ?, task_claimed_at = '', task_lease_until = '' WHERE id = ?`, status, entryID)
+	}
+	if err != nil {
 		return err
 	}
 	_, err = s.DB.Exec(`UPDATE notebooks SET updated_at = CURRENT_TIMESTAMP WHERE id = ?`, notebookID)
@@ -842,7 +868,8 @@ func (s *Server) GetOutlineFiltered(notebookID string, f OutlineFilter) (Noteboo
 		       COALESCE(rr.status, ''), COALESCE(rr.description, ''),
 		       m.retracted_at, COALESCE(m.retracted_by, ''),
 		       COALESCE(rr.project, ''), COALESCE(m.revised, 0),
-		       COALESCE(e.task_due, ''), COALESCE(e.task_owner, ''), COALESCE(e.task_repo, ''), COALESCE(e.task_room, '')
+		       COALESCE(e.task_due, ''), COALESCE(e.task_owner, ''), COALESCE(e.task_repo, ''), COALESCE(e.task_room, ''),
+		       COALESCE(e.task_claimed_at, ''), COALESCE(e.task_lease_until, '')
 		FROM notebook_entries e
 		LEFT JOIN messages m ON e.kind = 'ref' AND m.id = e.ref_id
 		LEFT JOIN rooms r ON r.id = m.room_id
@@ -873,7 +900,7 @@ func (s *Server) GetOutlineFiltered(notebookID string, f OutlineFilter) (Noteboo
 			&e.RefFound, &e.RefRoomID, &e.RefAuthor, &e.RefType,
 			&e.RefContent, &e.RefPinned, &ts, &e.RefRepo, &e.RefWorkItems,
 			&e.RefStatus, &e.RefTopic, &retractedAt, &retractedBy, &e.RefProject, &revised,
-			&e.Due, &e.Owner, &e.Repo, &e.Room); err != nil {
+			&e.Due, &e.Owner, &e.Repo, &e.Room, &e.ClaimedAt, &e.LeaseUntil); err != nil {
 			return n, nil, err
 		}
 		if ts.Valid {
