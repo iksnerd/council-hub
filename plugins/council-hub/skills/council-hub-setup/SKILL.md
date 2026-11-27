@@ -167,6 +167,8 @@ publishes neither, so add `examples/docker-compose.cluster.yml` with
 `docs/clustering-tailscale.md` before setting it up. Change the cookie: the
 image default is published in the docs, and the cookie is all that stands
 between an exposed distribution port and code execution on that machine.
+Since v0.69.0 a container that is clustering on the default cookie refuses to
+start (`COUNCIL_ALLOW_DEFAULT_COOKIE=1` accepts the risk on a trusted network).
 
 ## Securing it (only when other machines connect)
 

@@ -41,10 +41,13 @@ owner). Do not recreate the room locally.
 
 ## A clean result is not proof
 
-Fan-out reaches **connected** nodes only. A peer that dropped out (changed
-cookie, stopped container, moved address) is absent, not unreachable, so no
-warning is appended and the answer looks complete (2026-09-21: 30 rooms, all
-`[local]`, while the cluster was split). Before trusting a cluster read:
+Fan-out reaches **connected** nodes only. Since v0.69.0 a peer the cluster
+manager still knows but cannot reach is named in the reply ("known peer(s) not
+connected: ...", or "<node> is unreachable; its results are missing"), and an
+unknown node count says "cluster state unknown". A peer that was never seeded,
+or one on an older hub, can still be silently absent, so the answer can look
+complete when it is not (2026-09-21: 30 rooms, all `[local]`, while the
+cluster was split). Before trusting a cluster read:
 
 ```
 curl -s localhost:3001/health        # count cluster_nodes; read node_identity_warning, seed_warning

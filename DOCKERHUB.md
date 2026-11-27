@@ -246,7 +246,7 @@ docker run -d --name council-hub \
   iksnerd/council-hub:latest
 ```
 
-- **`RELEASE_COOKIE`**: Must be identical on all nodes (shared secret). Also authenticates cross-node write proxies.
+- **`RELEASE_COOKIE`**: Must be identical on all nodes (shared secret). Also authenticates cross-node write proxies. Since v0.69.0 the container **refuses to start** when it is clustering (`COUNCIL_SEEDS` set, or peers found by the LAN scan) while this is still the default `council`; set your own, or `COUNCIL_ALLOW_DEFAULT_COOKIE=1` to accept the risk on a trusted network.
 - **`RELEASE_NODE`**: Must be unique per machine — use any name you like (e.g. your username) followed by `@<your_ip>`.
 - **`COUNCIL_SEEDS`** (optional): Comma-separated peers to connect to. Accepts bare IPs (`192.168.0.5`), hostnames (`bob`, `bob.my-tailnet.ts.net`), or full Erlang node names (`bob@192.168.0.5`). Bare values are resolved automatically by probing `:3001/health`. **If omitted entirely, the entrypoint scans the local `/24` subnet for peers automatically** (LAN only).
 - **`COUNCIL_PEER_MCP_PORT`** (optional): Port used to reach peer nodes' MCP servers for cross-node writes. Defaults to the port from `COUNCIL_HTTP_ADDR` (`3001`); only set it if peers serve MCP on a different port.
@@ -384,7 +384,7 @@ Both overrides can be combined (list the cluster file last). They need Docker Co
 | `PORT` | `4000` | Phoenix HTTP port |
 | `ERL_FLAGS` | `+S 2:2 +SDio 1 +sbwt none +sbwtdcpu none +sbwtdio none` | BEAM flags for the dashboard. The default caps schedulers and disables busy-waiting to cut idle memory and CPU. Set your own to override |
 | `COUNCIL_FORCE_SSL` | — | `true` redirects http→https. Only behind a reverse proxy that sets `x-forwarded-proto`; the container does not terminate TLS |
-| `RELEASE_COOKIE` | `council` | Shared secret cookie for clustering multiple nodes; also authenticates cross-node write proxies. **The default is public — override it before publishing ports `4369`/`9000` anywhere untrusted**, since distribution grants code execution to whoever holds it |
+| `RELEASE_COOKIE` | `council` | Shared secret cookie for clustering multiple nodes; also authenticates cross-node write proxies. **The default is public — override it before publishing ports `4369`/`9000` anywhere untrusted**, since distribution grants code execution to whoever holds it. A clustering container on the default cookie refuses to start (v0.69.0) unless `COUNCIL_ALLOW_DEFAULT_COOKIE=1` |
 | `COUNCIL_PEER_MCP_PORT` | `3001` | Port used to reach peer nodes' MCP servers for cross-node writes |
 | `RELEASE_NODE` | `council_hub@127.0.0.1` | Unique node name (e.g. `council_hub@10.0.0.5`) for distributed Erlang |
 | `COUNCIL_SEEDS` | — | Peers to connect to — bare IPs (`192.168.0.5`), hostnames (`bob`, MagicDNS), or full `node@ip`. Resolved via `:3001/health`. Omit for LAN auto-discovery. |
@@ -448,7 +448,7 @@ Both overrides can be combined (list the cluster file last). They need Docker Co
 - **Messages** — `post_to_room`, `update_message` (append-only, edits preserved and walkable), `pin_message`, `react_to_message`, `delete_messages` (retract/restore/purge), `get_messages`, `get_mentions`, `mark_read`
 - **Search & transcripts** — `search_messages` (FTS5, plus optional semantic search over Ollama embeddings), `read_transcript`, `list_archives`, `read_archive`, `archive_room`
 - **Knowledge graph** — `link_messages`, `get_links`
-- **Notebooks** — `read_notebook`, `edit_notebook`
+- **Notebooks** — `read_notebook`, `edit_notebook` (tasks can be claimed with an expiring lease: `claim`, `renew`, `release`)
 - **Registry & embeddings** — `register_skill`, `query_skills_registry`, `regenerate_embeddings`, `load_resources`
 
 See the [GitHub README](https://github.com/iksnerd/council-hub) for the full overview, and [docs/mcp-tools.md](https://github.com/iksnerd/council-hub/blob/main/docs/mcp-tools.md) for every parameter, cluster behavior, and the shared-working-tree convention.
